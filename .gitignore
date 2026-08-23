@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+tests/consumer/dist/
+*.tsbuildinfo
+.DS_Store
+
+# Local commercial/shareware game content must never be committed.
+apps/viewer/public/local/*
+!apps/viewer/public/local/.gitkeep
+!apps/viewer/public/local/README.md

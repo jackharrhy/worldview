@@ -1,0 +1,37 @@
+{
+  "name": "worldview-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build --workspace @jackharrhy/worldview && npm run dev --workspace @worldview/viewer",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:browser": "npm run build --workspace @jackharrhy/worldview && npm run test:consumer && playwright test",
+    "test:consumer": "tsc -p tests/consumer/tsconfig.json --noEmit && vite build --config tests/consumer/vite.config.ts",
+    "test:package": "node tests/consumer/node-smoke.mjs && npm pack --dry-run --workspace packages/worldview",
+    "typecheck": "npm run build:types --workspace @jackharrhy/worldview && npm run typecheck --workspaces --if-present && tsc -p tests/tsconfig.json --noEmit",
+    "lint": "oxlint . --deny-warnings --report-unused-disable-directives",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build && npm run test:consumer && npm run test:package"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "^24.0.0",
+    "@webgpu/types": "^0.1.64",
+    "oxfmt": "^0.60.0",
+    "oxlint": "^1.75.0",
+    "typescript": "7.0.2",
+    "unplugin-typegpu": "0.12.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "npm@11.17.0"
+}

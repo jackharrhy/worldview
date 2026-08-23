@@ -1,0 +1,72 @@
+{
+  "name": "@jackharrhy/worldview",
+  "version": "0.1.0",
+  "description": "Embeddable TypeGPU renderer for Quake BSP29 and GoldSrc BSP30 maps",
+  "keywords": [
+    "bsp",
+    "goldsrc",
+    "quake",
+    "typegpu",
+    "webgpu"
+  ],
+  "homepage": "https://github.com/jackharrhy/worldview#readme",
+  "bugs": {
+    "url": "https://github.com/jackharrhy/worldview/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jackharrhy/worldview.git"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./dist/standalone.js"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./element": {
+      "types": "./dist/element/index.d.ts",
+      "import": "./dist/element.js"
+    },
+    "./walkability": {
+      "types": "./dist/walkability/index.d.ts",
+      "import": "./dist/walkability.js"
+    },
+    "./standalone": {
+      "types": "./dist/standalone.d.ts",
+      "import": "./dist/standalone.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vite build && vite build --config vite.standalone.config.ts && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build:types": "tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "prepack": "npm run build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "typegpu": "0.12.1",
+    "wgpu-matrix": "^3.4.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

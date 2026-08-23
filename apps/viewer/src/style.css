@@ -1,0 +1,270 @@
+:root {
+  color-scheme: dark light;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  background: #20221f;
+  color: #eceee8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-width: 20rem;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.viewer-shell {
+  position: relative;
+  width: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: #20221f;
+  isolation: isolate;
+}
+
+#map-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  cursor: crosshair;
+}
+
+#map-canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px #a5bd78;
+}
+
+.map-readout {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1;
+  display: grid;
+  gap: 0.25rem;
+  max-width: min(30rem, calc(100vw - 23rem));
+  color: #f1f2ed;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-shadow: 0 1px 3px rgb(16 17 15 / 92%);
+  pointer-events: none;
+}
+
+.map-readout strong {
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-readout__format {
+  color: #c7cbc0;
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.6875rem;
+}
+
+.viewer-shell[data-state='error'] .map-readout > [data-status] {
+  color: #ffc1b8;
+}
+
+.control-hint {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  z-index: 1;
+  margin: 0;
+  color: #d9ddd2;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  text-shadow: 0 1px 3px rgb(16 17 15 / 92%);
+  pointer-events: none;
+}
+
+.reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 0.875rem;
+  height: 0.875rem;
+  translate: -50% -50%;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.reticle::before,
+.reticle::after {
+  position: absolute;
+  content: '';
+  background: #e8ebdf;
+  box-shadow: 0 1px 2px rgb(16 17 15 / 80%);
+}
+
+.reticle::before {
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 1px;
+}
+
+.reticle::after {
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 100%;
+}
+
+.hide-reticle .reticle {
+  display: none;
+}
+
+.drop-target {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  place-items: center;
+  border: 2px solid #a5bd78;
+  color: #f1f2ed;
+  background: rgb(32 34 31 / 88%);
+  font-size: 0.875rem;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+.drop-target:not([hidden]) {
+  display: grid;
+}
+
+.control-dock {
+  --tp-base-background-color: rgb(29 31 28 / 96%);
+  --tp-base-border-radius: 3px;
+  --tp-base-font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  --tp-base-shadow-color: rgb(13 14 12 / 34%);
+  --tp-blade-border-radius: 2px;
+  --tp-blade-value-width: 160px;
+  --tp-button-background-color: #9db272;
+  --tp-button-background-color-active: #bdd18f;
+  --tp-button-background-color-focus: #b0c582;
+  --tp-button-background-color-hover: #aabd7c;
+  --tp-button-foreground-color: #1c2414;
+  --tp-container-background-color: rgb(194 204 183 / 8%);
+  --tp-container-background-color-active: rgb(194 204 183 / 18%);
+  --tp-container-background-color-focus: rgb(194 204 183 / 14%);
+  --tp-container-background-color-hover: rgb(194 204 183 / 11%);
+  --tp-container-foreground-color: #e1e5da;
+  --tp-groove-foreground-color: rgb(194 204 183 / 12%);
+  --tp-input-background-color: rgb(8 9 8 / 38%);
+  --tp-input-background-color-active: rgb(8 9 8 / 62%);
+  --tp-input-background-color-focus: rgb(8 9 8 / 54%);
+  --tp-input-background-color-hover: rgb(8 9 8 / 46%);
+  --tp-input-foreground-color: #e8ebe1;
+  --tp-label-foreground-color: #acb2a5;
+  --tp-monitor-background-color: rgb(8 9 8 / 34%);
+  --tp-monitor-foreground-color: #c5cabf;
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 2;
+  width: 20rem;
+  max-height: calc(100dvh - 1.5rem);
+}
+
+.control-dock > .tp-dfwv {
+  position: static;
+  width: 100%;
+  max-height: calc(100dvh - 1.5rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.visually-hidden {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: light) {
+  :root,
+  .viewer-shell {
+    background: #dfe1db;
+  }
+
+  .control-dock {
+    --tp-base-background-color: rgb(238 240 234 / 97%);
+    --tp-base-shadow-color: rgb(37 40 34 / 22%);
+    --tp-button-background-color: #667d43;
+    --tp-button-background-color-active: #425a24;
+    --tp-button-background-color-focus: #4e672d;
+    --tp-button-background-color-hover: #597238;
+    --tp-button-foreground-color: #f2f4ee;
+    --tp-container-background-color: rgb(65 72 58 / 8%);
+    --tp-container-background-color-active: rgb(65 72 58 / 18%);
+    --tp-container-background-color-focus: rgb(65 72 58 / 14%);
+    --tp-container-background-color-hover: rgb(65 72 58 / 11%);
+    --tp-container-foreground-color: #30352c;
+    --tp-groove-foreground-color: rgb(65 72 58 / 13%);
+    --tp-input-background-color: rgb(54 61 48 / 10%);
+    --tp-input-background-color-active: rgb(54 61 48 / 20%);
+    --tp-input-background-color-focus: rgb(54 61 48 / 17%);
+    --tp-input-background-color-hover: rgb(54 61 48 / 14%);
+    --tp-input-foreground-color: #252a22;
+    --tp-label-foreground-color: #5b6255;
+    --tp-monitor-background-color: rgb(54 61 48 / 8%);
+    --tp-monitor-foreground-color: #4b5246;
+  }
+}
+
+@media (max-width: 640px) {
+  .map-readout {
+    top: 0.75rem;
+    left: 0.75rem;
+    max-width: calc(100vw - 1.5rem);
+  }
+
+  .control-hint {
+    display: none;
+  }
+
+  .control-dock {
+    top: auto;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    width: auto;
+    max-height: min(47dvh, 28rem);
+  }
+
+  .control-dock > .tp-dfwv {
+    max-height: min(47dvh, 28rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control-dock *,
+  .control-dock *::before,
+  .control-dock *::after {
+    transition-duration: 0s !important;
+  }
+}

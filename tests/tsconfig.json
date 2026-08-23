@@ -1,0 +1,7 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["@webgpu/types", "node"]
+  },
+  "include": ["../playwright.config.ts", "browser/**/*.ts"]
+}
