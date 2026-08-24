@@ -1,5 +1,21 @@
 import { defineConfig } from '@playwright/test';
 
+const localChromiumArguments = [
+  '--enable-unsafe-webgpu',
+  '--enable-features=WebGPU',
+  '--use-angle=swiftshader',
+];
+
+// Chromium's own GPU tests use its software Vulkan adapter on GPU-less Linux hosts.
+const ciChromiumArguments = [
+  '--enable-features=Vulkan',
+  '--use-angle=swiftshader',
+  '--use-vulkan=swiftshader',
+  '--use-webgpu-adapter=swiftshader',
+  '--disable-vulkan-surface',
+  '--enable-unsafe-webgpu',
+];
+
 export default defineConfig({
   testDir: './tests/browser',
   webServer: [
@@ -18,7 +34,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:5173',
     viewport: { width: 1440, height: 900 },
     launchOptions: {
-      args: ['--enable-unsafe-webgpu', '--enable-features=WebGPU', '--use-angle=swiftshader'],
+      args: process.env.CI ? ciChromiumArguments : localChromiumArguments,
     },
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
