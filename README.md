@@ -4,6 +4,9 @@ Worldview renders static Quake and GoldSrc maps in ordinary web pages.
 
 It supports Quake BSP29 and GoldSrc BSP30 through WebGPU and TypeGPU.
 
+[Open the viewer](https://jackharrhy.github.io/worldview/?fixture=goldsrc) or load your own BSP from
+the **Load → Local files** control.
+
 ## Development
 
 Requirements: Node.js 24 or newer and npm 11.

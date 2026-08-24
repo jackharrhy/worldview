@@ -29,6 +29,10 @@ it lands. A renderer used for visual comparison is a test oracle, not an impleme
 - `apps/viewer`: full-screen Vite and vanilla TypeScript viewer with a Tweakpane control dock.
 - `packages/worldview`: ESM package published as `@jackharrhy/worldview`.
 
+The viewer is deployed to GitHub Pages from `main`. Its Pages build uses the `/worldview/` base
+path and includes only the synthetic fixtures; visitors can provide other maps through URLs or the
+local file picker.
+
 The package includes its main viewer API, a GPU-independent `./core` subpath, an `./element`
 registration subpath, a GPU-independent `./walkability` subpath, and a self-contained browser module
 that registers `<world-view>`.
