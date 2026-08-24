@@ -17,6 +17,8 @@ npm run dev
 npm run check
 ```
 
+Maintainers can find the local npm release process in [docs/releasing.md](docs/releasing.md).
+
 ## JavaScript
 
 ```ts

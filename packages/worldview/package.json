@@ -53,7 +53,8 @@
     }
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "vite build && vite build --config vite.standalone.config.ts && tsc -p tsconfig.build.json --emitDeclarationOnly",
