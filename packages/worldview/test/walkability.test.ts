@@ -67,6 +67,33 @@ describe('walkability', () => {
     expect(first.nodes.every((node) => node.position[2] === 36.03125)).toBe(true);
   });
 
+  it('enforces the minimum spacing and maximum node budget', async () => {
+    const generated = await generateWalkability(floorWorld(), {
+      spacing: 1,
+      directions: 4,
+      maximumNodes: 500_000,
+      allowJump: false,
+      yieldEvery: 0,
+    });
+
+    expect(generated.parameters.spacing).toBe(8);
+    expect(generated.parameters.mergeDistance).toBeCloseTo(2.72);
+    expect(generated.parameters.maximumNodes).toBe(200_000);
+    expect(generated.statistics.nodes).toBeGreaterThan(1);
+  });
+
+  it('uses and preserves the default node budget in sidecars', async () => {
+    const generated = await generateWalkability(floorWorld(), {
+      spacing: 8,
+      allowJump: false,
+      yieldEvery: 0,
+    });
+
+    expect(generated.parameters.maximumNodes).toBe(200_000);
+    expect(generated.statistics.truncated).toBe(false);
+    expect(parseWalkability(serializeWalkability(generated))).toEqual(generated);
+  });
+
   it('records jumps and drops as directed traversal rather than flattening reachability', async () => {
     const world = jumpLedgeWorld();
     const withoutJump = await generateWalkability(world, {

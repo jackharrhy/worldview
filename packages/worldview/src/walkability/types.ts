@@ -80,9 +80,11 @@ export interface WalkabilityProgress {
 }
 
 export interface GenerateWalkabilityOptions {
+  /** Horizontal sample spacing in world units, clamped to the range 8–256. */
   readonly spacing?: number;
   readonly mergeDistance?: number;
   readonly directions?: 4 | 8;
+  /** Safety budget, clamped to the range 1–200,000. Defaults to 200,000. */
   readonly maximumNodes?: number;
   readonly allowJump?: boolean;
   readonly jumpSeconds?: number;

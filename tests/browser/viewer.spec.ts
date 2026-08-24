@@ -108,6 +108,12 @@ test('development viewer generates, visualizes, and persists walkability', async
   await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 15_000 });
   await page.getByRole('button', { name: 'Map', exact: true }).click();
   await page.getByRole('button', { name: 'Walkability', exact: true }).click();
+  const spacing = page.locator('[data-walkability-spacing]');
+  await spacing.fill('1');
+  await spacing.press('Enter');
+  await expect(spacing).toHaveValue('8');
+  await spacing.fill('32');
+  await spacing.press('Enter');
   await page.locator('[data-walkability-generate]').click();
   await expect(page.locator('[data-walkability-nodes]')).not.toHaveValue('0', {
     timeout: 15_000,

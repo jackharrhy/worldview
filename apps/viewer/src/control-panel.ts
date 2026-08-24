@@ -233,12 +233,15 @@ export function createControlPanel(
   walkabilityFolder
     .addBinding(state, 'walkabilityVisible', { label: 'Show graph' })
     .on('change', (event) => actions.setWalkabilityVisible(event.value));
-  walkabilityFolder.addBinding(state, 'walkabilitySpacing', {
+  const walkabilitySpacingBinding = walkabilityFolder.addBinding(state, 'walkabilitySpacing', {
     label: 'Spacing',
-    min: 16,
+    min: 8,
     max: 128,
-    step: 8,
+    step: 1,
   });
+  walkabilitySpacingBinding.element
+    .querySelector('input')
+    ?.setAttribute('data-walkability-spacing', '');
   walkabilityFolder.addBinding(state, 'walkabilityJump', { label: 'Probe jumps' });
   const walkabilityNodesBinding = walkabilityFolder.addBinding(state, 'walkabilityNodes', {
     label: 'Nodes',

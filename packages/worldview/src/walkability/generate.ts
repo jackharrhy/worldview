@@ -56,9 +56,9 @@ function finiteInRange(value: number | undefined, fallback: number, min: number,
 }
 
 function normalizedParameters(options: GenerateWalkabilityOptions): WalkabilityParameters {
-  const spacing = finiteInRange(options.spacing, 32, 4, 256);
+  const spacing = finiteInRange(options.spacing, 32, 8, 256);
   const mergeDistance = finiteInRange(options.mergeDistance, spacing * 0.34, 1, spacing * 0.49);
-  const maximumNodes = Math.round(finiteInRange(options.maximumNodes, 50_000, 1, 1_000_000));
+  const maximumNodes = Math.round(finiteInRange(options.maximumNodes, 200_000, 1, 200_000));
   const fixedDeltaSeconds = finiteInRange(options.fixedDeltaSeconds, 0.01, 0.002, 0.05);
   const suppliedMovement = options.movement ?? {};
   const movement: GoldSrcMovementConfig = {

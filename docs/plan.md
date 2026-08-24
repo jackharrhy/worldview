@@ -91,8 +91,9 @@ the public player controller. No source code from the article or engine SDKs is 
 `generateWalkability`, `serializeWalkability`, `parseWalkability`, `planWalkabilityCutaway`,
 compatibility checks, types, and the map fingerprint are exported from
 `@jackharrhy/worldview/walkability`. Generation is deterministic for a map and parameter set,
-accepts an abort signal, yields cooperatively, reports progress, and has a hard node budget. The
-format is versioned JSON. Its fingerprint is a fast stale sidecar check, not a security hash.
+accepts an abort signal, yields cooperatively, and reports progress. Sampling spacing ranges from 8
+to 256 world units, and generation stops at no more than 200,000 nodes. The format is versioned
+JSON. Its fingerprint is a fast stale sidecar check, not a security hash.
 
 The development viewer can generate, display, load, clear, and download this graph. A file named
 `<map>.worldview-walkability.json` beside a local `<map>.bsp` is discovered and loaded automatically.
