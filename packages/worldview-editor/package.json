@@ -1,0 +1,40 @@
+{
+  "name": "@jackharrhy/worldview-editor",
+  "version": "0.1.0",
+  "description": "Browser-first Valve 220 level-editor primitives for Worldview",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./render": {
+      "types": "./dist/render/index.d.ts",
+      "import": "./dist/render/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@jackharrhy/worldview": "*",
+    "wgpu-matrix": "^3.4.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

@@ -81,10 +81,14 @@ function adjustedColor(color: d.v3f): d.v3f {
 
 function sampleDiffuse(uv: d.v2f): d.v4f {
   'use gpu';
+  const scrolledUv = d.vec2f(
+    uv.x - sceneLayout.$.scene.eyeTime.w * materialLayout.$.material.options.w,
+    uv.y,
+  );
   return std.textureSample(
     materialLayout.$.diffuse,
     materialLayout.$.textureSampler,
-    uv.div(materialLayout.$.material.sizes.xy),
+    scrolledUv.div(materialLayout.$.material.sizes.xy),
   );
 }
 

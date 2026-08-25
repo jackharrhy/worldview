@@ -7,6 +7,9 @@ tests/consumer/dist/
 *.tsbuildinfo
 .DS_Store
 
+# Disposable local clones used for prior-art research.
+.research/
+
 # Local commercial/shareware game content must never be committed.
 apps/viewer/public/local/*
 !apps/viewer/public/local/.gitkeep

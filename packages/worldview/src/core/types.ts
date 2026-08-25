@@ -97,6 +97,8 @@ export interface ParsedModel {
   readonly renderMode: GoldSrcRenderMode;
   readonly renderAmount: number;
   readonly renderColor: Vec3Tuple;
+  /** Signed texture-space units per second for GoldSrc `scroll*` materials. */
+  readonly textureScrollSpeed: number;
 }
 
 export interface ParsedWorld {

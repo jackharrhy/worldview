@@ -33,7 +33,7 @@ import {
 } from '../src/viewer/audio.js';
 import { roomPresetForType } from '../src/viewer/room-presets.js';
 import { surfaceTextureBelow } from '../src/viewer/surface.js';
-import { goldSrcBrushPipeline } from '../src/render/renderer.js';
+import { goldSrcBrushPipeline, goldSrcTextureScrollSpeed } from '../src/render/renderer.js';
 import { WorldCamera } from '../src/viewer/camera.js';
 import { WorldControls, type PlayerSoundEvent } from '../src/viewer/controls.js';
 import {
@@ -457,7 +457,47 @@ describe('BSP', () => {
       renderMode: 2,
       renderAmount: 128,
       renderColor: [12, 34, 56],
+      textureScrollSpeed: -547.5,
     });
+  });
+
+  it('retains GoldSrc scrolling-texture speed and scopes it to scroll materials', () => {
+    const scrolling = parseBsp(
+      makeBsp({
+        textureName: 'scroll_fixture',
+        brushEntity: '"classname" "func_conveyor"\n"speed" "512"',
+      }),
+    );
+    const worldBatch = scrolling.batches.find((batch) => batch.modelIndex === 0)!;
+    const conveyorBatch = scrolling.batches.find((batch) => batch.modelIndex === 1)!;
+    expect(scrolling.models[1]).toMatchObject({ textureScrollSpeed: 512 });
+    expect(goldSrcTextureScrollSpeed(scrolling, worldBatch)).toBe(0);
+    expect(goldSrcTextureScrollSpeed(scrolling, conveyorBatch)).toBe(512);
+
+    const ordinary = parseBsp(
+      makeBsp({
+        textureName: 'ordinary',
+        brushEntity: '"classname" "func_conveyor"\n"speed" "512"',
+      }),
+    );
+    expect(
+      goldSrcTextureScrollSpeed(
+        ordinary,
+        ordinary.batches.find((batch) => batch.modelIndex === 1)!,
+      ),
+    ).toBe(0);
+  });
+
+  it('decodes the render-color scroll speed used by other GoldSrc brush entities', () => {
+    const world = parseBsp(
+      makeBsp({
+        textureName: 'scroll_fixture',
+        brushEntity: '"classname" "func_wall"\n"rendercolor" "1 4 0"',
+      }),
+    );
+    const batch = world.batches.find((candidate) => candidate.modelIndex === 1)!;
+    expect(world.models[1]).toMatchObject({ textureScrollSpeed: -64 });
+    expect(goldSrcTextureScrollSpeed(world, batch)).toBe(-64);
   });
 
   it('marks supported static solid brush models as player collision', () => {

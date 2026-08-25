@@ -1,0 +1,3262 @@
+import { expect, test, type Page } from '@playwright/test';
+import {
+  EditorSession,
+  brushesInDocument,
+  createBoxBrush,
+  createObjectSelection,
+  createSequentialIdFactory,
+  createStarterDocument,
+  deriveBrush,
+  deriveEditorGroups,
+  deriveEditorLayers,
+  parseMap,
+  parseEntityOrigin,
+  setBrushFaceMaterials,
+  serializeMap,
+} from '../../packages/worldview-editor/src/core/index.js';
+
+function adjacentBrushSource(): string {
+  const ids = createSequentialIdFactory('browser-shared-face');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const left = createBoxBrush([-32, -32, 0], [0, 32, 32], 'LEFT', ids);
+  const right = createBoxBrush([0, -32, 0], [32, 32, 32], 'RIGHT', ids);
+
+  return serializeMap({
+    ...starter,
+    entities: [{ ...worldspawn, brushes: [left, right] }, ...starter.entities.slice(1)],
+  });
+}
+
+function subtractionBrushSource(): string {
+  const ids = createSequentialIdFactory('browser-csg-subtract');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const target = createBoxBrush([-48, -48, -32], [48, 48, 32], 'TARGET', ids);
+  const cutter = createBoxBrush([-16, -16, -48], [16, 16, 48], 'CUTTER', ids);
+  return serializeMap({
+    ...starter,
+    entities: [{ ...worldspawn, brushes: [target, cutter] }, ...starter.entities.slice(1)],
+  });
+}
+
+function selectionPaintSource(): string {
+  const ids = createSequentialIdFactory('browser-object-paint');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const brushes = [
+    createBoxBrush([-160, -32, 0], [-96, 32, 64], 'PAINT_A', ids),
+    createBoxBrush([-32, -32, 0], [32, 32, 64], 'PAINT_B', ids),
+    createBoxBrush([96, -32, 0], [160, 32, 64], 'PAINT_C', ids),
+  ];
+  return serializeMap({
+    ...starter,
+    entities: [{ ...worldspawn, brushes }, ...starter.entities.slice(1)],
+  });
+}
+
+function selectionBrushSource(): string {
+  const ids = createSequentialIdFactory('browser-selection-brush');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const brushes = [
+    createBoxBrush([-96, -96, -32], [96, 96, 96], 'SELECTOR', ids),
+    createBoxBrush([-24, -24, 0], [24, 24, 32], 'INSIDE', ids),
+    createBoxBrush([80, -16, 0], [112, 16, 32], 'CROSSING', ids),
+    createBoxBrush([144, -16, 0], [176, 16, 32], 'OUTSIDE', ids),
+    createBoxBrush([-24, 40, 160], [24, 64, 192], 'ELEVATED', ids),
+  ];
+  return serializeMap({
+    ...starter,
+    entities: [
+      { ...worldspawn, brushes },
+      {
+        id: ids.entity(),
+        properties: { classname: 'info_target', origin: '0 -48 16' },
+        brushes: [],
+      },
+      {
+        id: ids.entity(),
+        properties: { classname: 'info_target', origin: '160 64 16' },
+        brushes: [],
+      },
+    ],
+  });
+}
+
+function regularGroupSource(): string {
+  const ids = createSequentialIdFactory('browser-linked-group');
+  const starter = createStarterDocument();
+  const brush = createBoxBrush([-32, -16, 0], [32, 16, 64], 'LINKED_DOOR', ids);
+  const marker = {
+    id: ids.entity(),
+    properties: {
+      classname: 'info_target',
+      origin: '0 96 32',
+      angle: '90',
+      targetname: 'door_a',
+    },
+    brushes: [],
+  };
+  const document = {
+    ...starter,
+    entities: [{ ...starter.entities[0]!, brushes: [brush] }, marker],
+  };
+  const session = new EditorSession(document);
+  session.select(createObjectSelection([brush.id], [marker.id]));
+  session.groupSelected('Reusable doorway', ids);
+  return serializeMap(session.document);
+}
+
+function drillSelectionSource(): string {
+  const ids = createSequentialIdFactory('browser-selection-drill');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const front = createBoxBrush([72, -136, 88], [120, -88, 136], 'DRILL_FRONT', ids);
+  const back = createBoxBrush([16, -72, 48], [64, -24, 96], 'DRILL_BACK', ids);
+  return serializeMap({
+    ...starter,
+    entities: [{ ...worldspawn, brushes: [front, back] }, ...starter.entities.slice(1)],
+  });
+}
+
+function brushEntitySiblingSource(): string {
+  const ids = createSequentialIdFactory('browser-brush-entity');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const worldBrush = createBoxBrush([-192, -32, 0], [-128, 32, 64], 'WORLD', ids);
+  const first = createBoxBrush([-32, -32, 0], [32, 32, 64], 'DETAIL_A', ids);
+  const second = createBoxBrush([96, -32, 0], [160, 32, 64], 'DETAIL_B', ids);
+  return serializeMap({
+    ...starter,
+    entities: [
+      { ...worldspawn, brushes: [worldBrush] },
+      { id: ids.entity(), properties: { classname: 'func_detail' }, brushes: [first, second] },
+      ...starter.entities.slice(1),
+    ],
+  });
+}
+
+function entityLinkSource(): string {
+  const ids = createSequentialIdFactory('browser-entity-links');
+  const starter = createStarterDocument();
+  const worldspawn = { ...starter.entities[0]!, brushes: [] };
+  const doorBrush = createBoxBrush([-16, -16, 0], [16, 16, 64], 'DOOR', ids);
+  return serializeMap({
+    ...starter,
+    entities: [
+      worldspawn,
+      {
+        id: ids.entity(),
+        properties: {
+          classname: 'trigger_once',
+          origin: '-96 0 32',
+          target: 'door_a',
+          killtarget: 'unused_a',
+        },
+        brushes: [],
+      },
+      {
+        id: ids.entity(),
+        properties: { classname: 'func_door', targetname: 'door_a', target: 'relay_a' },
+        brushes: [doorBrush],
+      },
+      {
+        id: ids.entity(),
+        properties: {
+          classname: 'trigger_relay',
+          origin: '96 0 32',
+          targetname: 'relay_a',
+          target: 'unused_a',
+        },
+        brushes: [],
+      },
+      {
+        id: ids.entity(),
+        properties: { classname: 'info_null', origin: '192 0 32', targetname: 'unused_a' },
+        brushes: [],
+      },
+    ],
+  });
+}
+
+function issueBrowserSource(): string {
+  const ids = createSequentialIdFactory('browser-issues');
+  const starter = createStarterDocument();
+  const box = createBoxBrush([-32, -32, 0], [32, 32, 64], 'BROKEN', ids);
+  const invalid = { ...box, faces: box.faces.slice(0, 3) };
+  return serializeMap({
+    ...starter,
+    entities: [
+      { ...starter.entities[0]!, brushes: [invalid] },
+      {
+        id: ids.entity(),
+        properties: { classname: 'light', origin: 'not a vector' },
+        brushes: [],
+      },
+      {
+        id: ids.entity(),
+        properties: {
+          classname: 'trigger_once',
+          origin: '96 0 16',
+          target: 'missing_door',
+        },
+        brushes: [],
+      },
+    ],
+  });
+}
+
+function viewFilterSource(): string {
+  const ids = createSequentialIdFactory('browser-view-filters');
+  const starter = createStarterDocument();
+  const world = createBoxBrush([-128, -32, 0], [-96, 32, 48], 'STONE', ids);
+  const detail = createBoxBrush([-64, -32, 0], [-32, 32, 48], 'DETAIL', ids);
+  const trigger = createBoxBrush([0, -32, 0], [32, 32, 48], 'TRIGGER', ids);
+  const clip = createBoxBrush([64, -32, 0], [96, 32, 48], 'PLAYERCLIP', ids);
+  return serializeMap({
+    ...starter,
+    entities: [
+      { ...starter.entities[0]!, brushes: [world] },
+      { id: ids.entity(), properties: { classname: 'func_detail' }, brushes: [detail] },
+      { id: ids.entity(), properties: { classname: 'trigger_once' }, brushes: [trigger] },
+      { id: ids.entity(), properties: { classname: 'func_wall' }, brushes: [clip] },
+      {
+        id: ids.entity(),
+        properties: { classname: 'light', origin: '-48 96 24' },
+        brushes: [],
+      },
+      {
+        id: ids.entity(),
+        properties: { classname: 'monster_army', origin: '48 96 24' },
+        brushes: [],
+      },
+    ],
+  });
+}
+
+function materialUsageSource(): string {
+  const ids = createSequentialIdFactory('browser-material-usage');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const firstBase = createBoxBrush([-96, -32, 0], [-32, 32, 64], 'DEV_FLOOR', ids);
+  const first = setBrushFaceMaterials(
+    firstBase,
+    'DEV_PILLAR',
+    firstBase.faces.slice(0, 2).map((face) => face.id),
+  );
+  const second = createBoxBrush([32, -32, 0], [96, 32, 64], 'DEV_FLOOR', ids);
+  return serializeMap({
+    ...starter,
+    entities: [{ ...worldspawn, brushes: [first, second] }, ...starter.entities.slice(1)],
+  });
+}
+
+function normalizeTestVector(value: readonly number[]): number[] {
+  const magnitude = Math.hypot(...value);
+  return value.map((component) => component / magnitude);
+}
+
+function crossTestVectors(left: readonly number[], right: readonly number[]): number[] {
+  return [
+    left[1]! * right[2]! - left[2]! * right[1]!,
+    left[2]! * right[0]! - left[0]! * right[2]!,
+    left[0]! * right[1]! - left[1]! * right[0]!,
+  ];
+}
+
+function dotTestVectors(left: readonly number[], right: readonly number[]): number {
+  return left.reduce((sum, component, index) => sum + component * right[index]!, 0);
+}
+
+async function openEditor(page: Page): Promise<void> {
+  await page.goto('http://127.0.0.1:5174/');
+  await expect(page.locator('#status-message')).toContainText('Source renderer ready');
+  await expect(page.locator('.viewport-error')).toBeHidden();
+}
+
+async function readEditorDocument(page: Page) {
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
+  const source = await page.locator('#map-source').inputValue();
+  await page.getByRole('button', { name: 'Close source' }).click();
+  return parseMap(source);
+}
+
+async function perspectivePoint(
+  page: Page,
+  xFraction: number,
+  yFraction: number,
+): Promise<{ readonly x: number; readonly y: number }> {
+  const bounds = await page.locator('.source-canvas').nth(1).boundingBox();
+  if (!bounds) throw new Error('The perspective editor canvas has no bounds');
+  return {
+    x: bounds.x + bounds.width * xFraction,
+    y: bounds.y + bounds.height * yFraction,
+  };
+}
+
+async function perspectiveWorldPoint(
+  page: Page,
+  point: readonly [number, number, number],
+): Promise<{ readonly x: number; readonly y: number }> {
+  const bounds = await page.locator('.source-canvas').nth(1).boundingBox();
+  if (!bounds) throw new Error('The perspective editor canvas has no bounds');
+  const yaw = Math.PI * 0.72;
+  const pitch = -0.43;
+  const forward = normalizeTestVector([
+    Math.cos(yaw) * Math.cos(pitch),
+    Math.sin(yaw) * Math.cos(pitch),
+    Math.sin(pitch),
+  ]);
+  const right = normalizeTestVector(crossTestVectors(forward, [0, 0, 1]));
+  const up = normalizeTestVector(crossTestVectors(right, forward));
+  const center = [0, 0, 48];
+  const eye = center.map((component, axis) => component - forward[axis]! * 620);
+  const relative = point.map((component, axis) => component - eye[axis]!);
+  const depth = dotTestVectors(relative, forward);
+  const halfHeight = Math.tan(Math.PI / 6);
+  const ndcX =
+    dotTestVectors(relative, right) / (depth * halfHeight * (bounds.width / bounds.height));
+  const ndcY = dotTestVectors(relative, up) / (depth * halfHeight);
+  return {
+    x: bounds.x + ((ndcX + 1) * bounds.width) / 2,
+    y: bounds.y + ((1 - ndcY) * bounds.height) / 2,
+  };
+}
+
+async function viewportPoint(
+  page: Page,
+  viewportIndex: number,
+  xFraction: number,
+  yFraction: number,
+): Promise<{ readonly x: number; readonly y: number }> {
+  const bounds = await page.locator('.source-canvas').nth(viewportIndex).boundingBox();
+  if (!bounds) throw new Error(`Editor canvas ${viewportIndex} has no bounds`);
+  return {
+    x: bounds.x + bounds.width * xFraction,
+    y: bounds.y + bounds.height * yFraction,
+  };
+}
+
+async function topWorldPoint(
+  page: Page,
+  x: number,
+  y: number,
+): Promise<{ readonly x: number; readonly y: number }> {
+  const bounds = await page.locator('.source-canvas').nth(0).boundingBox();
+  if (!bounds) throw new Error('The top editor canvas has no bounds');
+  const span = 640;
+  const aspect = bounds.width / bounds.height;
+  return {
+    x: bounds.x + bounds.width * (0.5 + x / (span * aspect)),
+    y: bounds.y + bounds.height * (0.5 - y / span),
+  };
+}
+
+async function frontWorldPoint(
+  page: Page,
+  x: number,
+  z: number,
+): Promise<{ readonly x: number; readonly y: number }> {
+  const bounds = await page.locator('.source-canvas').nth(2).boundingBox();
+  if (!bounds) throw new Error('The front editor canvas has no bounds');
+  const span = 640;
+  const aspect = bounds.width / bounds.height;
+  return {
+    x: bounds.x + bounds.width * (0.5 + x / (span * aspect)),
+    y: bounds.y + bounds.height * (0.5 - (z - 48) / span),
+  };
+}
+
+interface CameraSnapshot {
+  readonly center: readonly number[];
+  readonly position: readonly number[];
+  readonly yaw: number;
+  readonly pitch: number;
+  readonly distance: number;
+  readonly orthographicSpan: number;
+  readonly fieldOfViewDegrees: number;
+  readonly flySpeed: number;
+}
+
+async function perspectiveCamera(page: Page): Promise<CameraSnapshot> {
+  const indicator = page.locator('#perspective-mode');
+  await expect(indicator).toHaveAttribute('data-camera');
+  const value = await indicator.getAttribute('data-camera');
+  if (!value) throw new Error('Perspective camera state was not published');
+  return JSON.parse(value) as CameraSnapshot;
+}
+
+function cameraDistance(left: readonly number[], right: readonly number[]): number {
+  return Math.hypot(left[0]! - right[0]!, left[1]! - right[1]!, left[2]! - right[2]!);
+}
+
+test.describe('3D source authoring', () => {
+  test('browses live issues, locates objects, filters findings, and quick-fixes with undo', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(issueBrowserSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+
+    const issueStatus = page.locator('#issue-status');
+    await expect(issueStatus).toHaveText('Issues 4');
+    await expect(issueStatus).toHaveAttribute('data-state', 'error');
+    await issueStatus.click();
+    await expect(page.locator('#issue-browser')).toBeVisible();
+    await expect(page.locator('#issue-summary')).toHaveText('2 errors · 2 warnings');
+
+    const invalid = page.locator('[data-issue-type="invalid-brush"]');
+    await expect(invalid).toHaveCount(1);
+    await invalid.locator('.issue-description').click();
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await invalid.getByRole('button', { name: 'Fix', exact: true }).click();
+    await expect(page.locator('[data-issue-type="invalid-brush"]')).toHaveCount(0);
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.getByRole('button', { name: 'Undo' })).toHaveAttribute(
+      'title',
+      'Undo Delete invalid brush',
+    );
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('[data-issue-type="invalid-brush"]')).toHaveCount(1);
+
+    const invalidOrigin = page.locator('[data-issue-type="invalid-origin"]');
+    await invalidOrigin.locator('.issue-description').click();
+    await expect(page.locator('#selection-kind')).toHaveText('Entity');
+    await invalidOrigin.getByRole('button', { name: 'Fix', exact: true }).click();
+    await expect(page.locator('[data-issue-type="invalid-origin"]')).toHaveCount(0);
+
+    const unresolved = page.locator('[data-issue-type="unresolved-target"]');
+    await unresolved.getByRole('button', { name: 'Hide', exact: true }).click();
+    await expect(page.locator('[data-issue-type="unresolved-target"]')).toHaveCount(0);
+    await page.locator('#show-hidden-issues').check();
+    await expect(page.locator('[data-issue-type="unresolved-target"]')).toHaveClass(/hidden-issue/);
+    await page
+      .locator('[data-issue-type="unresolved-target"]')
+      .getByRole('button', { name: 'Show', exact: true })
+      .click();
+
+    await page.getByText('Filter types', { exact: true }).click();
+    await page.locator('[data-issue-filter="empty-brush-entity"]').uncheck();
+    await expect(page.locator('[data-issue-type="empty-brush-entity"]')).toHaveCount(0);
+  });
+
+  test('filters entity definitions and special brushes without changing map source or history', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(viewFilterSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const sourceBefore = serializeMap(await readEditorDocument(page));
+
+    const viewButton = page.locator('[data-action="toggle-view-filters"]');
+    await viewButton.click();
+    await expect(page.locator('#view-filter-popover')).toBeVisible();
+    await expect(page.locator('#entity-class-filter-summary')).toHaveText('5 classes');
+    await expect(page.locator('[data-entity-classname]')).toHaveCount(5);
+
+    await page.locator('[data-entity-classname="light"] input').uncheck();
+    await expect(page.locator('#view-filter-count')).toHaveText('1');
+    await expect(page.locator('#hidden-object-count')).toHaveText('1');
+    await page.locator('[data-special-brush-filter="trigger"]').uncheck();
+    await expect(page.locator('#view-filter-count')).toHaveText('2');
+    await page.locator('#show-world-brushes').uncheck();
+    await expect(page.locator('#view-filter-count')).toHaveText('3');
+    await expect(page.locator('#view-filter-status')).toHaveText(
+      '3 objects filtered · map source unchanged',
+    );
+    await expect(page.locator('#document-revision')).toHaveText('0');
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
+
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'All', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('3 Objects');
+    expect(serializeMap(await readEditorDocument(page))).toBe(sourceBefore);
+
+    await viewButton.click();
+    await page.locator('#entity-class-filter-search').fill('monster');
+    await expect(page.locator('[data-entity-classname]')).toHaveCount(1);
+    await expect(page.locator('[data-entity-classname="monster_army"]')).toBeVisible();
+    await page
+      .locator('#view-filter-popover')
+      .getByRole('button', { name: 'All', exact: true })
+      .click();
+    await page.locator('#show-world-brushes').check();
+    await page.locator('[data-special-brush-filter="trigger"]').check();
+    await expect(page.locator('#view-filter-count')).toBeHidden();
+    await expect(page.locator('#hidden-object-count')).toHaveText('0');
+  });
+
+  test('repeats a duplicate, move, and rotate sequence as one editor transaction', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(adjacentBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const repeatButton = page.locator('[data-action="repeat-commands"]');
+    const clearRepeatButton = page.locator('[data-action="clear-repeat-commands"]');
+    await expect(repeatButton).toBeDisabled();
+
+    const left = await topWorldPoint(page, -16, 0);
+    await page.mouse.click(left.x, left.y);
+    await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+    await expect(repeatButton).toHaveText('Repeat 1');
+    await page.locator('[data-nudge-axis="2"][data-nudge-direction="1"]').click();
+    await expect(repeatButton).toHaveText('Repeat 2');
+
+    await page.getByRole('button', { name: 'Rotate', exact: true }).click();
+    await page.locator('#transform-pivot-x').fill('0');
+    await page.locator('#transform-pivot-y').fill('0');
+    await page.locator('#transform-pivot-z').fill('0');
+    await page.locator('#rotate-angle').fill('90');
+    await page.getByRole('button', { name: 'Apply transform' }).click();
+    await expect(repeatButton).toHaveText('Repeat 3');
+    await expect(repeatButton).toHaveAttribute(
+      'title',
+      'Repeat Duplicate → Move → Rotate (Ctrl/Command+Shift+R)',
+    );
+    await expect(clearRepeatButton).toBeEnabled();
+
+    await page.keyboard.press('Control+Shift+R');
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#document-revision')).toHaveText('4');
+    await expect(page.locator('#status-message')).toContainText('Repeat 3 commands');
+    await expect(repeatButton).toHaveText('Repeat 3');
+    const document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document).some((brush) => {
+        const bounds = deriveBrush(brush).bounds;
+        return (
+          bounds?.min[0] === -32 &&
+          bounds.min[1] === -32 &&
+          bounds.min[2] === 32 &&
+          bounds.max[0] === 0 &&
+          bounds.max[1] === 32 &&
+          bounds.max[2] === 64
+        );
+      }),
+    ).toBe(true);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+    await expect(repeatButton).toHaveText('Repeat');
+    await expect(repeatButton).toBeDisabled();
+  });
+
+  test('manages active TrenchBroom layers, visibility, locking, ordering, and removal', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(adjacentBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await page.getByRole('tab', { name: 'Map', exact: true }).click();
+
+    await expect(page.locator('.layer-row')).toHaveCount(1);
+    await expect(page.locator('#active-layer-name')).toHaveText('Default Layer active');
+    await page.locator('#layer-name').fill('Architecture');
+    await page.getByRole('button', { name: 'Add layer', exact: true }).click();
+    await expect(page.locator('.layer-row')).toHaveCount(2);
+    await expect(page.locator('#active-layer-name')).toHaveText('Architecture active');
+
+    const left = await topWorldPoint(page, -16, 0);
+    await page.mouse.click(left.x, left.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.getByRole('button', { name: 'Move selection', exact: true }).click();
+    let document = await readEditorDocument(page);
+    let architecture = deriveEditorLayers(document).find((layer) => layer.name === 'Architecture')!;
+    expect(architecture.brushIds).toHaveLength(1);
+    expect(
+      brushesInDocument(document).find((brush) => brush.id === architecture.brushIds[0])!.faces[0]
+        ?.material,
+    ).toBe('LEFT');
+
+    await page.getByRole('button', { name: 'Hide Architecture', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await expect(page.locator('#hidden-object-count')).toHaveText('1');
+    await page.mouse.click(left.x, left.y);
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await page.getByRole('button', { name: 'Show Architecture', exact: true }).click();
+    await page.getByRole('button', { name: 'Lock Architecture', exact: true }).click();
+    await expect(page.locator('#locked-object-count')).toHaveText('1');
+    await page.mouse.click(left.x, left.y);
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await page.getByRole('button', { name: 'Unlock Architecture', exact: true }).click();
+    await page.getByRole('button', { name: 'Select contents', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page
+      .getByRole('button', { name: 'Omit Architecture in compile export', exact: true })
+      .click();
+
+    await page.locator('#layer-name').fill('Gameplay');
+    await page.getByRole('button', { name: 'Add layer', exact: true }).click();
+    await page.locator('[data-action="layer-up"]').click();
+    const gameplayName = page.getByRole('textbox', { name: 'Rename Gameplay', exact: true });
+    await gameplayName.fill('Logic');
+    await gameplayName.press('Enter');
+    document = await readEditorDocument(page);
+    expect(deriveEditorLayers(document).map((layer) => layer.name)).toEqual([
+      'Default Layer',
+      'Logic',
+      'Architecture',
+    ]);
+    architecture = deriveEditorLayers(document).find((layer) => layer.name === 'Architecture')!;
+    expect(architecture.omitFromExport).toBe(true);
+
+    await page.getByRole('textbox', { name: 'Rename Architecture', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove', exact: true }).click();
+    document = await readEditorDocument(page);
+    expect(deriveEditorLayers(document).map((layer) => layer.name)).toEqual([
+      'Default Layer',
+      'Logic',
+    ]);
+    expect(
+      deriveEditorLayers(document)[0]!
+        .brushIds.map((brushId) =>
+          brushesInDocument(document).find((brush) => brush.id === brushId),
+        )
+        .some((brush) => brush?.faces[0]?.material === 'LEFT'),
+    ).toBe(true);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    document = await readEditorDocument(page);
+    expect(deriveEditorLayers(document).map((layer) => layer.name)).toEqual([
+      'Default Layer',
+      'Logic',
+      'Architecture',
+    ]);
+  });
+
+  test('selection brushes consume their volumes and select touching, enclosed, or projected objects', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(selectionBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const selector = await topWorldPoint(page, 80, 80);
+    await page.mouse.click(selector.x, selector.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#selection-brush-section')).toBeVisible();
+    await expect(page.locator('#selection-brush-count')).toHaveText('1 volume');
+
+    await page.getByRole('button', { name: 'Enclosed', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('2 Objects');
+    await expect(page.locator('#status-message')).toContainText('selected 2 enclosed objects');
+    let queried = await readEditorDocument(page);
+    expect(brushesInDocument(queried).map((brush) => brush.faces[0]?.material)).not.toContain(
+      'SELECTOR',
+    );
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.getByRole('button', { name: 'Touching', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('3 Objects');
+    await expect(page.locator('#status-message')).toContainText('selected 3 touching objects');
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.mouse.move(selector.x, selector.y);
+    await page.getByRole('button', { name: 'Enclosed in 2D', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('3 Objects');
+    await expect(page.locator('#status-message')).toContainText('selected 3 xy enclosed objects');
+    queried = await readEditorDocument(page);
+    expect(brushesInDocument(queried)).toHaveLength(4);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
+    await expect(page.locator('#selection-kind')).toHaveText('7 Objects');
+    await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+Shift+A`);
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+  });
+
+  test('Ctrl-drag paint-selects objects and duplicate-moves a selected set atomically', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(selectionPaintSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+
+    const first = await topWorldPoint(page, -128, 0);
+    const second = await topWorldPoint(page, 0, 0);
+    const third = await topWorldPoint(page, 128, 0);
+    await page.mouse.click(first.x, first.y);
+    await page.keyboard.down('Control');
+    await page.mouse.move(second.x, second.y);
+    await page.mouse.down();
+    await page.mouse.move(third.x, third.y, { steps: 16 });
+    await page.mouse.up();
+    await page.keyboard.up('Control');
+
+    await expect(page.locator('#selection-kind')).toHaveText('3 Brushes');
+    await expect(page.locator('#status-message')).toContainText('Paint selected 3 brushes');
+
+    const duplicateEnd = await topWorldPoint(page, 0, 128);
+    await page.keyboard.down('Control');
+    await page.mouse.move(second.x, second.y);
+    await page.mouse.down();
+    await page.mouse.move(duplicateEnd.x, duplicateEnd.y, { steps: 16 });
+    await page.mouse.up();
+    await page.keyboard.up('Control');
+
+    await expect(page.locator('#brush-count')).toHaveText('6');
+    await expect(page.locator('#selection-kind')).toHaveText('3 Brushes');
+    await expect(page.locator('#status-message')).toContainText('Duplicate and move brushes');
+    const duplicated = await readEditorDocument(page);
+    expect(brushesInDocument(duplicated)).toHaveLength(6);
+    expect(
+      brushesInDocument(duplicated).filter((brush) => deriveBrush(brush).bounds?.min[1] === 96),
+    ).toHaveLength(3);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+    await expect(page.locator('#selection-kind')).toHaveText('3 Brushes');
+  });
+
+  test('hides, isolates, and locks objects without dirtying map source', async ({ page }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(selectionPaintSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const first = await topWorldPoint(page, -128, 0);
+    const second = await topWorldPoint(page, 0, 0);
+
+    await page.mouse.click(first.x, first.y);
+    await page.getByRole('button', { name: 'Hide', exact: true }).click();
+    await expect(page.locator('#hidden-object-count')).toHaveText('1');
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+    await page.mouse.click(first.x, first.y);
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#hidden-object-count')).toHaveText('0');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+
+    await page.mouse.click(second.x, second.y);
+    await page.getByRole('button', { name: 'Isolate', exact: true }).click();
+    await expect(page.locator('#hidden-object-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.mouse.click(first.x, first.y);
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await page.getByRole('button', { name: 'Show all', exact: true }).click();
+    await expect(page.locator('#hidden-object-count')).toHaveText('0');
+
+    await page.mouse.click(first.x, first.y);
+    await page.getByRole('button', { name: 'Lock', exact: true }).click();
+    await expect(page.locator('#locked-object-count')).toHaveText('1');
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await page.mouse.click(first.x, first.y);
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await page.getByRole('button', { name: 'Unlock all', exact: true }).click();
+    await expect(page.locator('#locked-object-count')).toHaveText('0');
+    await page.mouse.click(first.x, first.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+    expect(brushesInDocument(await readEditorDocument(page))).toHaveLength(3);
+  });
+
+  test('groups mixed viewport selections, opens members for editing, renames, and ungroups', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(selectionPaintSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const first = await topWorldPoint(page, -128, 0);
+    const second = await topWorldPoint(page, 0, 0);
+    await page.mouse.click(first.x, first.y);
+    await page.keyboard.down('Control');
+    await page.mouse.click(second.x, second.y);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+
+    await page.locator('#group-name').fill('West hall');
+    await page.locator('[data-action="create-group"]').click();
+    await expect(page.locator('#selection-kind')).toHaveText('Group');
+    await expect(page.locator('#group-count')).toHaveText('1');
+    await expect(page.locator('#group-state')).toHaveText('2 objects');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    let grouped = await readEditorDocument(page);
+    const groupEntity = grouped.entities.find(
+      (entity) => entity.properties['_tb_type'] === '_tb_group',
+    );
+    expect(groupEntity?.properties).toMatchObject({
+      classname: 'func_group',
+      _tb_name: 'West hall',
+      _tb_id: '1',
+    });
+    expect(groupEntity?.brushes).toHaveLength(2);
+
+    await page.locator('[data-action="open-group"]').click();
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#group-state')).toHaveText('Editing West hall');
+    await expect(page.locator('#locked-object-count')).toHaveText('3');
+    await page.locator('[data-nudge-axis="0"][data-nudge-direction="1"]').click();
+    await expect(page.locator('#document-revision')).toHaveText('2');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#selection-kind')).toHaveText('Group');
+    await expect(page.locator('#locked-object-count')).toHaveText('0');
+
+    await page.locator('#group-name').fill('West architecture');
+    await page.locator('[data-action="rename-group"]').click();
+    await expect(page.locator('#document-revision')).toHaveText('3');
+    await expect(page.locator('#group-name')).toHaveValue('West architecture');
+    await page.locator('[data-action="ungroup"]').click();
+    await expect(page.locator('#group-count')).toHaveText('0');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+    await expect(page.locator('#document-revision')).toHaveText('4');
+    grouped = await readEditorDocument(page);
+    expect(grouped.entities.some((entity) => entity.properties['_tb_type'] === '_tb_group')).toBe(
+      false,
+    );
+    expect(brushesInDocument(grouped)).toHaveLength(3);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('Group');
+    await expect(page.locator('#group-count')).toHaveText('1');
+    await expect(page.locator('#group-name')).toHaveValue('West architecture');
+
+    await page.mouse.dblclick(first.x, first.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#group-state')).toHaveText('Editing West architecture');
+    const empty = await viewportPoint(page, 0, 0.08, 0.08);
+    await page.mouse.dblclick(empty.x, empty.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Group');
+    await expect(page.locator('#locked-object-count')).toHaveText('0');
+  });
+
+  test('linked groups synchronize transformed contents and preserve per-copy entity properties', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(regularGroupSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const originalBrush = await topWorldPoint(page, 0, 0);
+    await page.mouse.click(originalBrush.x, originalBrush.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Group');
+
+    await page.locator('[data-action="create-linked-duplicate"]').click();
+    await expect(page.locator('#selection-kind')).toHaveText('Linked Group');
+    await expect(page.locator('#group-count')).toHaveText('2');
+    await expect(page.locator('#group-state')).toHaveText('Linked · 2 copies');
+    await expect(page.locator('[data-action="unlink-group"]')).toBeVisible();
+    let linked = await readEditorDocument(page);
+    let linkedGroups = deriveEditorGroups(linked);
+    expect(new Set(linkedGroups.map((group) => group.linkedGroupId)).size).toBe(1);
+    expect(linkedGroups.every((group) => group.transformation)).toBe(true);
+
+    await page.locator('[data-action="open-group"]').click();
+    await expect(page.locator('#group-state')).toHaveText('Editing linked · 2 copies');
+    const copiedMarker = await topWorldPoint(page, 16, 112);
+    await page.mouse.click(copiedMarker.x, copiedMarker.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Entity');
+    const protectAngle = page.getByRole('checkbox', { name: 'Protect angle' });
+    await expect(protectAngle).toBeVisible();
+    await protectAngle.check();
+    const angle = page.getByRole('textbox', { name: 'angle value' });
+    await angle.fill('180');
+    await angle.press('Tab');
+
+    const copiedBrush = await topWorldPoint(page, 16, 16);
+    await page.mouse.click(copiedBrush.x, copiedBrush.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.locator('[data-nudge-axis="2"][data-nudge-direction="1"]').click();
+    linked = await readEditorDocument(page);
+    linkedGroups = deriveEditorGroups(linked);
+    expect(
+      linkedGroups
+        .map(
+          (group) =>
+            deriveBrush(
+              linked.entities
+                .flatMap((entity) => entity.brushes)
+                .find((brush) => brush.id === group.brushIds[0])!,
+            ).bounds?.min[2],
+        )
+        .toSorted(),
+    ).toEqual([16, 16]);
+    const linkedAngles = linkedGroups
+      .map((group) => {
+        const entity = linked.entities.find(
+          (candidate) => candidate.id === group.pointEntityIds[0],
+        )!;
+        return {
+          angle: entity.properties.angle,
+          protected: entity.properties['_tb_protected_properties'] ?? '',
+        };
+      })
+      .toSorted((left, right) => Number(left.angle) - Number(right.angle));
+    expect(linkedAngles).toEqual([
+      { angle: '90', protected: '' },
+      { angle: '180', protected: 'angle' },
+    ]);
+
+    await page.locator('[data-action="close-group"]').click();
+    await page.locator('[data-action="unlink-group"]').click();
+    await expect(page.locator('#selection-kind')).toHaveText('Group');
+    linked = await readEditorDocument(page);
+    expect(deriveEditorGroups(linked).every((group) => group.linkedGroupId === null)).toBe(true);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('Linked Group');
+  });
+
+  test('navigates the perspective camera without changing the active tool or map', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.getByRole('button', { name: 'Focus', exact: true })).toBeEnabled();
+
+    const beforeOrbit = await perspectiveCamera(page);
+    await page.keyboard.down('Alt');
+    await page.mouse.move(brushPoint.x, brushPoint.y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(brushPoint.x + 64, brushPoint.y + 24, { steps: 8 });
+    await page.mouse.up({ button: 'right' });
+    await page.keyboard.up('Alt');
+    const afterOrbit = await perspectiveCamera(page);
+    expect(cameraDistance(afterOrbit.position, beforeOrbit.position)).toBeGreaterThan(1);
+    await expect(page.locator('#perspective-mode')).toContainText('ORBIT');
+
+    await page.getByRole('button', { name: 'Focus', exact: true }).click();
+    await expect(page.locator('#status-message')).toContainText('Framed the selection');
+    await expect(page.locator('#perspective-mode')).toContainText('FOCUS');
+
+    const lookStart = await perspectiveCamera(page);
+    const lookPoint = await perspectivePoint(page, 0.72, 0.32);
+    await page.mouse.move(lookPoint.x, lookPoint.y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(lookPoint.x + 72, lookPoint.y + 32, { steps: 8 });
+    await page.mouse.up({ button: 'right' });
+    const lookEnd = await perspectiveCamera(page);
+    expect(cameraDistance(lookEnd.position, lookStart.position)).toBeLessThan(0.001);
+    expect(Math.abs(lookEnd.yaw - lookStart.yaw)).toBeGreaterThan(0.1);
+    await expect(page.locator('#perspective-mode')).toContainText('LOOK');
+
+    const panStart = await perspectiveCamera(page);
+    await page.mouse.down({ button: 'middle' });
+    await page.mouse.move(lookPoint.x - 48, lookPoint.y + 40, { steps: 8 });
+    await page.mouse.up({ button: 'middle' });
+    const panEnd = await perspectiveCamera(page);
+    expect(cameraDistance(panEnd.position, panStart.position)).toBeGreaterThan(1);
+    await expect(page.locator('#perspective-mode')).toContainText('PAN');
+
+    await page.locator('#grid-size').selectOption('32');
+    await page.locator('.source-canvas').nth(1).focus();
+    const flyStart = await perspectiveCamera(page);
+    await page.keyboard.down('w');
+    await page.waitForTimeout(180);
+    await page.keyboard.up('w');
+    const flyEnd = await perspectiveCamera(page);
+    expect(cameraDistance(flyEnd.position, flyStart.position)).toBeGreaterThan(4);
+    await expect(page.locator('#perspective-mode')).toContainText('FLY');
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    await page.mouse.down({ button: 'right' });
+    const speedStart = await perspectiveCamera(page);
+    await page.mouse.wheel(0, -180);
+    const speedEnd = await perspectiveCamera(page);
+    await page.mouse.up({ button: 'right' });
+    expect(speedEnd.flySpeed).toBeGreaterThan(speedStart.flySpeed);
+    await expect(page.locator('#viewport-context-menu')).toBeHidden();
+
+    const zoomStart = await perspectiveCamera(page);
+    await page.keyboard.down('Shift');
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Shift');
+    const zoomEnd = await perspectiveCamera(page);
+    expect(zoomEnd.fieldOfViewDegrees).toBeLessThan(zoomStart.fieldOfViewDegrees);
+    await expect(page.locator('#perspective-mode')).toContainText('ZOOM');
+
+    const dollyStart = await perspectiveCamera(page);
+    await page.mouse.wheel(0, -160);
+    const dollyEnd = await perspectiveCamera(page);
+    expect(cameraDistance(dollyEnd.position, dollyStart.position)).toBeGreaterThan(1);
+    await expect(page.locator('#perspective-mode')).toContainText('DOLLY');
+
+    await page.keyboard.press('Home');
+    await expect(page.locator('#status-message')).toContainText('Framed the selection');
+    await expect(page.locator('#perspective-mode')).toContainText('FOCUS');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+  });
+
+  test('stationary right-click opens contextual 3D face, object, material, and entity actions', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const point = await perspectivePoint(page, 0.5, 0.58);
+    const menu = page.locator('#viewport-context-menu');
+
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await expect(menu).toBeVisible();
+    await expect(menu.locator('.viewport-context-heading')).toContainText('3D view');
+    await expect(menu.getByRole('menuitem', { name: 'Select face', exact: true })).toBeVisible();
+    await menu.getByRole('menuitem', { name: 'Select face', exact: true }).click();
+    await expect(menu).toBeHidden();
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Reveal DEV_FLOOR', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Textures', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.locator('#material-filter')).toHaveValue('DEV_FLOOR');
+    await expect(page.getByRole('button', { name: 'DEV_FLOOR', exact: true })).toHaveClass(
+      /active/,
+    );
+
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Select object', exact: true }).click();
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Hide selection', exact: true }).click();
+    await expect(page.locator('#hidden-object-count')).toHaveText('1');
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    let document = await readEditorDocument(page);
+    expect(document.revision).toBe(0);
+    await page.getByRole('button', { name: 'Show all', exact: true }).click();
+
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await menu.locator('summary').filter({ hasText: 'Create point entity' }).click();
+    await menu.getByRole('menuitem', { name: 'Deathmatch start', exact: true }).click();
+    await expect(menu).toBeHidden();
+    await expect(page.locator('#selection-kind')).toHaveText('Entity');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    document = await readEditorDocument(page);
+    expect(
+      document.entities.filter(
+        (entity) => entity.properties.classname === 'info_player_deathmatch',
+      ),
+    ).toHaveLength(1);
+
+    const beforeLook = await perspectiveCamera(page);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(point.x + 64, point.y + 24, { steps: 8 });
+    await page.mouse.up({ button: 'right' });
+    await expect(menu).toBeHidden();
+    const afterLook = await perspectiveCamera(page);
+    expect(Math.abs(afterLook.yaw - beforeLook.yaw)).toBeGreaterThan(0.1);
+  });
+
+  test('copies map-text objects and pastes them at original or 3D surface positions', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(selectionPaintSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const first = await topWorldPoint(page, -128, 0);
+    await page.mouse.click(first.x, first.y);
+
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect(page.locator('#status-message')).toContainText('Copied selected objects');
+    await page.getByRole('button', { name: 'Paste', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#brush-bounds')).toHaveText('-160 -32 0 to -96 32 64');
+    await expect(page.locator('#status-message')).toContainText('copied position');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+
+    const destination = await perspectiveWorldPoint(page, [0, 0, 64]);
+    await page.mouse.move(destination.x, destination.y);
+    await expect(page.getByRole('button', { name: 'Paste here', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Paste here', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 64 to 32 32 128');
+    await expect(page.locator('#status-message')).toContainText('PERSPECTIVE pointer');
+    await expect(page.locator('#document-revision')).toHaveText('3');
+    expect(brushesInDocument(await readEditorDocument(page))).toHaveLength(4);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+
+    await page.keyboard.press('Control+c');
+    await expect(page.locator('#status-message')).toContainText('Copied selected objects');
+    await page.keyboard.press('Control+v');
+    await expect(page.locator('#brush-count')).toHaveText('5');
+    await expect(page.locator('#status-message')).toContainText('copied position');
+  });
+
+  test('Ctrl-wheel drills the 3D selection through occluding brushes in both directions', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(drillSelectionSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const center = await perspectivePoint(page, 0.5, 0.5);
+
+    await page.mouse.click(center.x, center.y);
+    await expect(page.locator('#brush-bounds')).toHaveText('72 -136 88 to 120 -88 136');
+    await page.keyboard.down('Control');
+    await page.mouse.move(center.x, center.y);
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('16 -72 48 to 64 -24 96');
+    await expect(page.locator('#status-message')).toContainText('Drilled selection farther');
+
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, 120);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('72 -136 88 to 120 -88 136');
+    await expect(page.locator('#status-message')).toContainText('Drilled selection nearer');
+  });
+
+  test('double-click selects every brush owned by one brush entity', async ({ page }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(brushEntitySiblingSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const first = await topWorldPoint(page, 0, 0);
+
+    await page.mouse.dblclick(first.x, first.y);
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+    await expect(page.locator('#status-message')).toContainText('Selected 2 sibling brushes');
+  });
+
+  test('places, selects, moves, duplicate-moves, deletes, and restores point entities', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Entity', exact: true }).click();
+    await expect(page.locator('#point-entity-tool-section')).toBeVisible();
+    await page.locator('#point-entity-preset').selectOption('info_player_start');
+    await expect(page.locator('#point-entity-classname')).toHaveValue('info_player_start');
+
+    const placedPoint = await perspectiveWorldPoint(page, [96, 96, 0]);
+    await page.mouse.click(placedPoint.x, placedPoint.y);
+    await expect(page.locator('#entity-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Entity');
+    await expect(page.locator('#entity-classname')).toHaveText('info_player_start');
+    await expect(page.locator('#status-message')).toContainText('Placed info_player_start');
+
+    let document = await readEditorDocument(page);
+    let playerStarts = document.entities.filter(
+      (entity) => entity.properties.classname === 'info_player_start',
+    );
+    expect(playerStarts.map(parseEntityOrigin)).toContainEqual([96, 96, 32]);
+
+    await page.getByRole('button', { name: 'Select', exact: true }).click();
+    const placedTopPoint = await topWorldPoint(page, 96, 96);
+    const movedPoint = await topWorldPoint(page, 160, 160);
+    await page.mouse.move(placedTopPoint.x, placedTopPoint.y);
+    await page.mouse.down();
+    await page.mouse.move(movedPoint.x, movedPoint.y, { steps: 12 });
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('Move entity');
+    document = await readEditorDocument(page);
+    playerStarts = document.entities.filter(
+      (entity) => entity.properties.classname === 'info_player_start',
+    );
+    expect(playerStarts.map(parseEntityOrigin)).toContainEqual([160, 160, 32]);
+
+    const duplicatedPoint = await topWorldPoint(page, 224, 224);
+    await page.keyboard.down('Control');
+    await page.mouse.move(movedPoint.x, movedPoint.y);
+    await page.mouse.down();
+    await page.mouse.move(duplicatedPoint.x, duplicatedPoint.y, { steps: 12 });
+    await page.mouse.up();
+    await page.keyboard.up('Control');
+    await expect(page.locator('#entity-count')).toHaveText('5');
+    await expect(page.locator('#status-message')).toContainText('Duplicate and move entity');
+    document = await readEditorDocument(page);
+    playerStarts = document.entities.filter(
+      (entity) => entity.properties.classname === 'info_player_start',
+    );
+    expect(playerStarts.map(parseEntityOrigin)).toEqual(
+      expect.arrayContaining([
+        [160, 160, 32],
+        [224, 224, 32],
+      ]),
+    );
+
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.locator('#entity-count')).toHaveText('4');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#entity-count')).toHaveText('5');
+    await expect(page.locator('#selection-kind')).toHaveText('Entity');
+  });
+
+  test('rotates and flips point entities while optionally preserving their angle property', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const playerPoint = await topWorldPoint(page, 0, -96);
+    await page.mouse.click(playerPoint.x, playerPoint.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Entity');
+    await expect(page.locator('#entity-classname')).toHaveText('info_player_start');
+    await expect(page.locator('#object-flip-section')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Rotate', exact: true }).click();
+    await expect(page.locator('#transform-tool-title')).toHaveText('Rotate entity');
+    await expect(page.locator('#rotate-update-entity-angles')).toBeChecked();
+    await expect(page.locator('#rotate-update-entity-angles')).toBeEnabled();
+    await page.locator('#rotate-angle').fill('90');
+    await page.getByRole('button', { name: 'Apply transform' }).click();
+    await expect(page.locator('#status-message')).toContainText('Rotate entity');
+
+    let document = await readEditorDocument(page);
+    let player = document.entities.find(
+      (entity) => entity.properties.classname === 'info_player_start',
+    )!;
+    expect(parseEntityOrigin(player)).toEqual([0, -96, 24]);
+    expect(player.properties.angle).toBe('180');
+
+    await page.locator('#rotate-update-entity-angles').uncheck();
+    await page.getByRole('button', { name: 'Apply transform' }).click();
+    document = await readEditorDocument(page);
+    player = document.entities.find(
+      (entity) => entity.properties.classname === 'info_player_start',
+    )!;
+    expect(player.properties.angle).toBe('180');
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.locator('#rotate-update-entity-angles').check();
+    await page.getByRole('button', { name: 'Flip Y', exact: true }).click();
+    await expect(page.locator('#status-message')).toContainText('Flip entity');
+    document = await readEditorDocument(page);
+    player = document.entities.find(
+      (entity) => entity.properties.classname === 'info_player_start',
+    )!;
+    expect(parseEntityOrigin(player)).toEqual([0, -96, 24]);
+    expect(player.properties.angle).toBe('270');
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    document = await readEditorDocument(page);
+    player = document.entities.find(
+      (entity) => entity.properties.classname === 'info_player_start',
+    )!;
+    expect(player.properties.angle).toBe('90');
+  });
+
+  test('converts a selected brush set into an entity and makes it structural again', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(adjacentBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const left = await topWorldPoint(page, -16, 0);
+    const right = await topWorldPoint(page, 16, 0);
+    await page.mouse.click(left.x, left.y);
+    await page.keyboard.down('Control');
+    await page.mouse.click(right.x, right.y);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+
+    await page.locator('#brush-entity-classname').fill('func_detail');
+    await page.getByRole('button', { name: 'Make Entity', exact: true }).click();
+    await expect(page.locator('#entity-count')).toHaveText('4');
+    await expect(page.locator('#entity-classname')).toHaveText('func_detail');
+    let document = await readEditorDocument(page);
+    expect(
+      document.entities.find((entity) => entity.properties.classname === 'func_detail')?.brushes,
+    ).toHaveLength(2);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#entity-count')).toHaveText('3');
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(page.locator('#entity-count')).toHaveText('4');
+    await expect(page.getByRole('button', { name: 'Make Structural', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Make Structural', exact: true }).click();
+
+    await expect(page.locator('#entity-count')).toHaveText('3');
+    document = await readEditorDocument(page);
+    expect(document.entities.some((entity) => entity.properties.classname === 'func_detail')).toBe(
+      false,
+    );
+    expect(
+      document.entities.find((entity) => entity.properties.classname === 'worldspawn')?.brushes,
+    ).toHaveLength(2);
+  });
+
+  test('Hull tool captures a reference polygon, duplicates it, and creates one convex brush', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Hull', exact: true }).click();
+    const start = await perspectivePoint(page, 0.5, 0.58);
+    const end = await perspectivePoint(page, 0.5, 0.4);
+
+    await page.mouse.dblclick(start.x, start.y);
+    await expect(page.locator('#hull-point-count')).toHaveText('4 points');
+    await expect(page.getByRole('button', { name: 'Create hull' })).toBeDisabled();
+
+    await page.keyboard.down('Shift');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+
+    await expect(page.locator('#hull-point-count')).toHaveText('8 points');
+    await expect(page.getByRole('button', { name: 'Create hull' })).toBeEnabled();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#status-message')).toContainText('Create hull brush');
+    await expect(page.locator('#hull-point-count')).toHaveText('0 points');
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+  });
+
+  test('Hull tool places single and rectangular face points and cancels the whole set', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Hull', exact: true }).click();
+    const single = await perspectivePoint(page, 0.5, 0.58);
+    const rectangleStart = await perspectivePoint(page, 0.45, 0.57);
+    const rectangleEnd = await perspectivePoint(page, 0.56, 0.5);
+
+    await page.mouse.click(single.x, single.y);
+    await expect(page.locator('#hull-point-count')).toHaveText('1 point');
+    await page.mouse.move(rectangleStart.x, rectangleStart.y);
+    await page.mouse.down();
+    await page.mouse.move(rectangleEnd.x, rectangleEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.locator('#hull-point-count')).toContainText('points');
+    await expect(page.locator('#hull-point-count')).not.toHaveText('1 point');
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#hull-point-count')).toHaveText('0 points');
+    await expect(page.getByRole('button', { name: 'Hull', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#status-message')).toContainText('Discarded all hull points');
+  });
+
+  test('Simple Shape tool creates hollow cylinders and spheroids through live batch previews', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Brush', exact: true }).click();
+    await expect(page.locator('#simple-shape-tool-section')).toBeVisible();
+    await page.locator('#simple-shape-kind').selectOption('cylinder');
+    await page.locator('#simple-shape-sides').fill('8');
+    await page.locator('#simple-shape-hollow').check();
+    await page.locator('#simple-shape-thickness').fill('8');
+    const start = await topWorldPoint(page, -64, -64);
+    const end = await topWorldPoint(page, 64, 64);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await expect(page.locator('#status-message')).toContainText('cylinder preview');
+    await expect(page.locator('#simple-shape-result')).toHaveText('8 brushes');
+    await page.mouse.up();
+
+    await expect(page.locator('#brush-count')).toHaveText('11');
+    await expect(page.locator('#selection-kind')).toHaveText('8 Brushes');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+
+    await page.locator('#simple-shape-kind').selectOption('uv-sphere');
+    await page.locator('#simple-shape-sides').fill('8');
+    await page.locator('#simple-shape-rings').fill('4');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await expect(page.locator('#status-message')).toContainText('UV spheroid preview');
+    await page.mouse.up();
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#brush-faces')).toHaveText('40');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+  });
+
+  test('Simple Shape 3D drawing supports square, cube, and height-only modifiers', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Brush', exact: true }).click();
+    const start = await perspectiveWorldPoint(page, [-64, -64, 0]);
+    const end = await perspectiveWorldPoint(page, [64, 32, 0]);
+    await page.keyboard.down('Shift');
+    await page.keyboard.down('Alt');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await expect(page.locator('#status-message')).toContainText('(cube)');
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await page.keyboard.up('Shift');
+
+    let created = brushesInDocument(await readEditorDocument(page)).at(-1)!;
+    let bounds = deriveBrush(created).bounds!;
+    const spans = bounds.max.map((component, axis) => component - bounds.min[axis]!);
+    expect(spans[0]).toBeCloseTo(spans[1]!);
+    expect(spans[1]).toBeCloseTo(spans[2]!);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+
+    const topStart = await topWorldPoint(page, -96, -32);
+    const topEnd = await topWorldPoint(page, -32, 64);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(topStart.x, topStart.y);
+    await page.mouse.down();
+    await page.mouse.move(topEnd.x, topEnd.y, { steps: 8 });
+    await expect(page.locator('#status-message')).toContainText('(square)');
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    created = brushesInDocument(await readEditorDocument(page)).at(-1)!;
+    bounds = deriveBrush(created).bounds!;
+    expect(bounds.max[0] - bounds.min[0]).toBeCloseTo(bounds.max[1] - bounds.min[1]);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 6 });
+    await page.keyboard.down('Alt');
+    await page.mouse.move(end.x, end.y - 96, { steps: 8 });
+    await expect(page.locator('#status-message')).toContainText('(height)');
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    created = brushesInDocument(await readEditorDocument(page)).at(-1)!;
+    bounds = deriveBrush(created).bounds!;
+    expect(bounds.max[2] - bounds.min[2]).toBeGreaterThan(16);
+    expect(deriveBrush(created).valid).toBe(true);
+  });
+
+  test('runs convex merge and empty intersection from the contextual CSG controls', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(adjacentBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const left = await topWorldPoint(page, -16, 0);
+    const right = await topWorldPoint(page, 16, 0);
+    await page.mouse.click(left.x, left.y);
+    await page.keyboard.down('Control');
+    await page.mouse.click(right.x, right.y);
+    await page.keyboard.up('Control');
+
+    await expect(page.locator('#csg-section')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Convex merge' })).toBeEnabled();
+    await page.getByRole('button', { name: 'Convex merge' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('1');
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 0 to 32 32 32');
+    await expect(page.locator('#status-message')).toContainText('CSG merge');
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('2');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+    await page.getByRole('button', { name: 'Intersect', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('0');
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('2');
+  });
+
+  test('subtracts the selected cutter and hollows with current grid thickness', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(subtractionBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const center = await topWorldPoint(page, 0, 0);
+    await page.mouse.click(center.x, center.y);
+    await page.getByRole('button', { name: 'Subtract', exact: true }).click();
+
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('4 Brushes');
+    await expect(page.locator('#status-message')).toContainText('CSG subtract');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('2');
+
+    await page.locator('#grid-size').selectOption('8');
+    await page.mouse.click(center.x, center.y);
+    await page.getByRole('button', { name: 'Hollow', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('7');
+    await expect(page.locator('#selection-kind')).toHaveText('6 Brushes');
+    await expect(page.locator('#status-message')).toContainText('8-unit walls');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('2');
+  });
+
+  test('shift-click and double-click select faces without leaving the Select tool', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const point = await perspectivePoint(page, 0.5, 0.58);
+
+    await page.keyboard.down('Shift');
+    await page.mouse.click(point.x, point.y);
+    await page.keyboard.up('Shift');
+
+    await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await expect(page.locator('#face-material')).toHaveText('DEV_FLOOR');
+    await expect(page.locator('#face-extrude-section')).toBeVisible();
+
+    await page.keyboard.down('Shift');
+    await page.mouse.dblclick(point.x, point.y);
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('6 Faces');
+    await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  test('Shift-drag permanently resizes selected brushes without activating the Face tool', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const start = await perspectivePoint(page, 0.5, 0.58);
+    const end = await perspectivePoint(page, 0.5, 0.38);
+    await page.mouse.click(start.x, start.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+
+    await page.keyboard.down('Shift');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#brush-bounds')).not.toHaveText('-128 -128 -32 to 128 128 0');
+    await expect(page.locator('#status-message')).toContainText('Extrude face');
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await page.mouse.click(start.x, start.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Shift');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await page.keyboard.up('Control');
+
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#status-message')).toContainText('Split-extrude face');
+  });
+
+  test('permanent resize modifiers move a face freely or stamp a new brush from Select', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const start = await perspectivePoint(page, 0.5, 0.58);
+    const translateEnd = await perspectivePoint(page, 0.58, 0.48);
+    const stampEnd = await perspectivePoint(page, 0.5, 0.38);
+    await page.mouse.click(start.x, start.y);
+
+    await page.keyboard.down('Shift');
+    await page.keyboard.down('Alt');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(translateEnd.x, translateEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await page.keyboard.up('Shift');
+
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('Move face');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Shift');
+    await page.keyboard.down('Alt');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(stampEnd.x, stampEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await page.keyboard.up('Shift');
+    await page.keyboard.up('Control');
+
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#status-message')).toContainText('Stamp face');
+  });
+
+  test('Sweep previews path controls and commits all generated brushes as one undoable edit', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const point = await perspectivePoint(page, 0.5, 0.58);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(point.x, point.y);
+    await page.keyboard.up('Shift');
+    await page.getByRole('button', { name: 'Sweep', exact: true }).click();
+
+    await expect(page.locator('#sweep-tool-section')).toBeVisible();
+    await expect(page.locator('#sweep-generated-count')).toHaveText('4 brushes');
+    await expect(page.locator('#brush-count')).toHaveText('7');
+    await page.locator('#sweep-segments').fill('3');
+    await page.locator('#sweep-iterations').fill('2');
+    await page.locator('#sweep-rotate-z').fill('30');
+    await page.locator('#sweep-path').selectOption('arc');
+    await page.locator('#sweep-snap').check();
+
+    await expect(page.locator('#sweep-generated-count')).toHaveText('6 brushes');
+    await expect(page.locator('#brush-count')).toHaveText('9');
+    await expect(page.locator('#status-message')).toContainText('Sweep preview');
+    await page.getByRole('button', { name: 'Apply Sweep', exact: true }).click();
+
+    await expect(page.locator('#selection-kind')).toHaveText('6 Brushes');
+    await expect(page.locator('#brush-count')).toHaveText('9');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('Created 6 brushes');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('9');
+    await expect(page.locator('#selection-kind')).toHaveText('6 Brushes');
+  });
+
+  test('Sweep destination supports direct 3D movement, ring rotation, uniform scale, and two-stage Escape', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const face = await perspectivePoint(page, 0.5, 0.58);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(face.x, face.y);
+    await page.keyboard.up('Shift');
+    await page.getByRole('button', { name: 'Sweep', exact: true }).click();
+
+    const center = await perspectiveWorldPoint(page, [0, 0, 64]);
+    const movedCenter = await perspectiveWorldPoint(page, [32, 0, 64]);
+    await page.mouse.move(center.x, center.y);
+    await page.mouse.down();
+    await page.mouse.move(movedCenter.x, movedCenter.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#sweep-translate-x')).toHaveValue('32');
+    await expect(page.locator('#status-message')).toContainText('destination translate set');
+
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    const ringStart = await perspectiveWorldPoint(page, [168, 0, 64]);
+    const ringEnd = await perspectiveWorldPoint(page, [0, 168, 64]);
+    await page.mouse.move(ringStart.x, ringStart.y);
+    await page.mouse.down();
+    await page.mouse.move(ringEnd.x, ringEnd.y, { steps: 12 });
+    await page.mouse.up();
+    await expect(page.locator('#sweep-rotate-z')).not.toHaveValue('0');
+    await expect(page.locator('#status-message')).toContainText('destination rotate set');
+
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    const scalePivot = await perspectiveWorldPoint(page, [0, 0, 64]);
+    const scaleStart = await perspectiveWorldPoint(page, [128, 128, 64]);
+    const scaleEnd = {
+      x: scalePivot.x + (scaleStart.x - scalePivot.x) * 1.5,
+      y: scalePivot.y + (scaleStart.y - scalePivot.y) * 1.5,
+    };
+    await page.mouse.move(scaleStart.x, scaleStart.y);
+    await page.mouse.down();
+    await page.mouse.move(scaleEnd.x, scaleEnd.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#sweep-scale')).toHaveValue('1.5');
+    await expect(page.locator('#status-message')).toContainText('destination scale set');
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#sweep-scale')).toHaveValue('1');
+    await expect(page.getByRole('button', { name: 'Sweep', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#brush-count')).toHaveText('3');
+  });
+
+  test('Face tool drags a plane along its normal as one undoable extrusion', async ({ page }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Face' }).click();
+    const start = await perspectivePoint(page, 0.5, 0.58);
+    const end = await perspectivePoint(page, 0.5, 0.38);
+
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await page.mouse.up();
+
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#brush-bounds')).not.toHaveText('-128 -128 -32 to 128 128 0');
+    await expect(page.locator('#status-message')).toContainText('Extrude face');
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 128 128 0');
+  });
+
+  test('Alt-drag moves face vertices on perspective and orthographic viewport planes', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Face' }).click();
+    const perspectiveStart = await perspectivePoint(page, 0.5, 0.58);
+    const perspectiveEnd = await perspectivePoint(page, 0.58, 0.48);
+
+    await page.keyboard.down('Alt');
+    await page.mouse.move(perspectiveStart.x, perspectiveStart.y);
+    await page.mouse.down();
+    await page.mouse.move(perspectiveEnd.x, perspectiveEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('Move face');
+    await expect(page.locator('#brush-bounds')).not.toHaveText('-128 -128 -32 to 128 128 0');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 128 128 0');
+
+    const topStart = await topWorldPoint(page, -64, 0);
+    const topEnd = await topWorldPoint(page, -32, 32);
+    await page.keyboard.down('Alt');
+    await page.mouse.move(topStart.x, topStart.y);
+    await page.mouse.down();
+    await page.mouse.move(topEnd.x, topEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+
+    await expect(page.locator('#document-revision')).toHaveText('3');
+    await expect(page.locator('#status-message')).toContainText('Move face');
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -32 0 to 0 64 96');
+  });
+
+  test('Face handles accept viewport-aware keyboard nudges and staged Escape cancellation', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Face' }).click();
+    const face = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(face.x, face.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+
+    const topPointer = await topWorldPoint(page, 0, 0);
+    await page.mouse.move(topPointer.x, topPointer.y);
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('#status-message')).toContainText('Nudge face');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 144 128 0');
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await expect(page.locator('#face-material')).toHaveText('DEV_FLOOR');
+
+    const frontPointer = await frontWorldPoint(page, 0, 48);
+    await page.mouse.move(frontPointer.x, frontPointer.y);
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 144 128 16');
+    await expect(page.locator('#document-revision')).toHaveText('2');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.getByRole('button', { name: 'Face', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#status-message')).toContainText('Press Escape again');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+  });
+
+  test('Ctrl+Alt-drag stamps an independent face prism and the inspector repeats it exactly', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Face' }).click();
+    const start = await perspectivePoint(page, 0.5, 0.58);
+    const end = await perspectivePoint(page, 0.5, 0.38);
+    await page.mouse.click(start.x, start.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Alt');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await page.keyboard.up('Control');
+
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('Stamp face');
+    const stampedDocument = await readEditorDocument(page);
+    const stampedBounds = brushesInDocument(stampedDocument).map(
+      (brush) => deriveBrush(brush).bounds,
+    );
+    expect(stampedBounds).toContainEqual({ min: [-128, -128, -32], max: [128, 128, 0] });
+    expect(
+      stampedBounds.some(
+        (bounds) =>
+          bounds?.min[0] === -128 &&
+          bounds.min[1] === -128 &&
+          bounds.min[2] === 0 &&
+          bounds.max[0] === 128 &&
+          bounds.max[1] === 128 &&
+          bounds.max[2] > 0,
+      ),
+    ).toBe(true);
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await page.locator('#face-extrude-distance').fill('16');
+    await page.getByRole('button', { name: 'Stamp', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#document-revision')).toHaveText('3');
+    await expect(page.locator('#status-message')).toContainText('Stamp face');
+  });
+
+  test('Ctrl-drag split-extrudes a face into two undoable brushes', async ({ page }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Face' }).click();
+    const start = await perspectivePoint(page, 0.5, 0.58);
+    const end = await perspectivePoint(page, 0.5, 0.38);
+
+    await page.keyboard.down('Control');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Control');
+
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('Split-extrude face');
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+    await expect(page.locator('#document-revision')).toHaveText('2');
+
+    await page.mouse.click(start.x, start.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await page.locator('#face-extrude-distance').fill('-16');
+    await page.getByRole('button', { name: 'Split', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#document-revision')).toHaveText('3');
+    await expect(page.locator('#status-message')).toContainText('Split-extrude face');
+  });
+
+  test('Face tool extrudes an opposing shared boundary across adjacent brushes', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(adjacentBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('2');
+
+    const leftCenter = await topWorldPoint(page, -16, 0);
+    const rightCenter = await topWorldPoint(page, 16, 0);
+    await page.mouse.click(leftCenter.x, leftCenter.y);
+    await page.keyboard.down('Control');
+    await page.mouse.click(rightCenter.x, rightCenter.y);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+
+    await page.getByRole('button', { name: 'Face' }).click();
+    const sharedFace = await topWorldPoint(page, 0, 0);
+    const movedFace = await topWorldPoint(page, 16, 0);
+    await page.mouse.move(sharedFace.x, sharedFace.y);
+    await page.mouse.down();
+    await page.mouse.move(movedFace.x, movedFace.y, { steps: 10 });
+    await page.mouse.up();
+
+    await expect(page.locator('#selection-kind')).toHaveText('2 Faces');
+    await expect(page.locator('#face-extrude-section')).toBeVisible();
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 0 to 16 32 32');
+    await expect(page.locator('#status-message')).toContainText('Extrude shared faces');
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 0 to 0 32 32');
+    await expect(page.locator('#document-revision')).toHaveText('2');
+  });
+
+  test('Face tool toggles faces and double-click selects every face on a brush', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Face' }).click();
+    const point = await perspectivePoint(page, 0.5, 0.58);
+
+    await page.mouse.click(point.x, point.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await page.keyboard.down('Shift');
+    await page.mouse.click(point.x, point.y);
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+
+    await page.mouse.dblclick(point.x, point.y);
+    await expect(page.locator('#selection-kind')).toHaveText('6 Faces');
+    await expect(page.locator('#face-extrude-section')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Duplicate' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Delete' })).toBeDisabled();
+
+    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.locator('#material-name').fill('FACE_SET');
+    await page.locator('[data-action="apply-material"]').click();
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#face-material')).toHaveText('FACE_SET');
+    await expect(page.locator('#status-message')).toContainText('Apply material');
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#face-material')).toHaveText('DEV_FLOOR');
+
+    const empty = await perspectivePoint(page, 0.05, 0.05);
+    await page.mouse.click(empty.x, empty.y);
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await page.keyboard.down('Alt');
+    await page.mouse.dblclick(point.x, point.y);
+    await page.keyboard.up('Alt');
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await expect(page.locator('#status-message')).toContainText('Select coplanar faces');
+  });
+
+  test('material browser reports usage, selects consumers, and replaces globally or in selection', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(materialUsageSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+
+    await expect(page.locator('#material-count')).toHaveText('2 loaded · 2 in use');
+    await expect(page.locator('.material-tile.in-use')).toHaveCount(2);
+    await page.locator('#material-sort').selectOption('usage');
+    await expect(page.locator('.material-tile').first().locator('span')).toHaveText('DEV_FLOOR');
+    await page.locator('#material-used-only').check();
+    await expect(page.locator('.material-tile')).toHaveCount(2);
+    await page.getByRole('button', { name: 'DEV_FLOOR', exact: true }).click();
+
+    await page.locator('[data-action="select-material-faces"]').click();
+    await expect(page.locator('#selection-kind')).toHaveText('10 Faces');
+    await expect(page.getByRole('button', { name: 'Face', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await page.locator('[data-action="select-material-brushes"]').click();
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#material-replace-scope')).toContainText('whole map');
+    await page.locator('#material-replace-source').fill('DEV_FLOOR');
+    await page.locator('#material-replace-target').fill('REPLACED');
+    await page.locator('[data-action="replace-material"]').click();
+    await expect(page.locator('#selection-kind')).toHaveText('10 Faces');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('on 10 faces');
+    let document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document).flatMap((brush) =>
+        brush.faces.filter((face) => face.material === 'REPLACED'),
+      ),
+    ).toHaveLength(10);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+    await page.getByRole('button', { name: 'DEV_FLOOR', exact: true }).click();
+    await page.locator('[data-action="select-material-brushes"]').click();
+    const first = await topWorldPoint(page, -64, 0);
+    await page.mouse.click(first.x, first.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#material-replace-scope')).toContainText('1 selected brush');
+    await page.locator('#material-replace-source').fill('DEV_FLOOR');
+    await page.locator('#material-replace-target').fill('SCOPED');
+    await page.locator('[data-action="replace-material"]').click();
+    await expect(page.locator('#selection-kind')).toHaveText('4 Faces');
+    await expect(page.locator('#status-message')).toContainText('on 4 faces');
+    document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document).flatMap((brush) =>
+        brush.faces.filter((face) => face.material === 'SCOPED'),
+      ),
+    ).toHaveLength(4);
+  });
+
+  test('Face tool lassos projected handles in orthographic and perspective views', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const ground = await topWorldPoint(page, 64, -96);
+    await page.mouse.click(ground.x, ground.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.getByRole('button', { name: 'Face' }).click();
+
+    const rightStart = await topWorldPoint(page, 160, 32);
+    const rightEnd = await topWorldPoint(page, 96, -32);
+    await page.mouse.move(rightStart.x, rightStart.y);
+    await page.mouse.down();
+    await page.mouse.move(rightEnd.x, rightEnd.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+
+    const leftStart = await topWorldPoint(page, -160, 32);
+    const leftEnd = await topWorldPoint(page, -96, -32);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(leftStart.x, leftStart.y);
+    await page.mouse.down();
+    await page.mouse.move(leftEnd.x, leftEnd.y, { steps: 8 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Faces');
+
+    await page.mouse.move(rightStart.x, rightStart.y);
+    await page.mouse.down();
+    await page.mouse.move(rightEnd.x, rightEnd.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+
+    const perspectiveStart = await perspectivePoint(page, 0.05, 0.05);
+    const perspectiveEnd = await perspectivePoint(page, 0.95, 0.95);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(perspectiveStart.x, perspectiveStart.y);
+    await page.mouse.down();
+    await page.mouse.move(perspectiveEnd.x, perspectiveEnd.y, { steps: 12 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('6 Faces');
+    await expect(page.locator('#status-message')).toContainText('Lasso selected 6 faces');
+  });
+
+  test('Face tool paint-selects visible faces across multiple brushes', async ({ page }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Face' }).click();
+    const firstPillar = await topWorldPoint(page, -64, 0);
+    const secondPillar = await topWorldPoint(page, 64, 0);
+    await page.mouse.click(firstPillar.x, firstPillar.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Shift');
+    await page.mouse.move(firstPillar.x, firstPillar.y);
+    await page.mouse.down();
+    await page.mouse.move(secondPillar.x, secondPillar.y, { steps: 24 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await page.keyboard.up('Control');
+
+    await expect(page.locator('#selection-kind')).toHaveText('3 Faces');
+    await expect(page.locator('#status-message')).toContainText('Paint selected 3 faces');
+    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.locator('#material-name').fill('PAINTED_PATH');
+    await page.locator('[data-action="apply-material"]').click();
+    await expect(page.locator('#face-material')).toHaveText('PAINTED_PATH');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#document-revision')).toHaveText('2');
+  });
+
+  test('Perspective face painting accumulates frontmost brush surfaces', async ({ page }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Face' }).click();
+    const firstPillar = await perspectiveWorldPoint(page, [-64, 0, 96]);
+    const secondPillar = await perspectiveWorldPoint(page, [64, 0, 160]);
+    await page.mouse.click(firstPillar.x, firstPillar.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+
+    await page.keyboard.down('Meta');
+    await page.keyboard.down('Shift');
+    await page.mouse.move(firstPillar.x, firstPillar.y);
+    await page.mouse.down();
+    await page.mouse.move(secondPillar.x, secondPillar.y, { steps: 32 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await page.keyboard.up('Meta');
+
+    await expect(page.locator('#selection-kind')).toHaveText(/^[2-9] Faces$/);
+    await expect(page.locator('#status-message')).toContainText('Paint selected');
+    await expect(page.locator('#pointer-context')).toContainText('PERSPECTIVE / face paint');
+  });
+
+  test('Alt transfers projected, material-only, and whole-brush face attributes in 3D', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const sourcePoint = await perspectivePoint(page, 0.5, 0.58);
+    const targetPoint = await perspectiveWorldPoint(page, [64, 0, 160]);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(sourcePoint.x, sourcePoint.y);
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+
+    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.locator('#material-name').fill('TRANSFER_SOURCE');
+    await page.locator('[data-action="apply-material"]').click();
+    await page.locator('#texture-shift-u').fill('37');
+    await page.locator('#texture-shift-v').fill('-11');
+    await page.locator('#texture-scale-u').fill('0.5');
+    await page.locator('#texture-scale-v').fill('2');
+    await page.locator('#texture-rotation').fill('30');
+    await page.locator('[data-action="apply-texture-transform"]').click();
+    await expect(page.locator('#document-revision')).toHaveText('2');
+
+    await page.keyboard.down('Alt');
+    await page.mouse.click(targetPoint.x, targetPoint.y);
+    await page.keyboard.up('Alt');
+    await expect(page.locator('#document-revision')).toHaveText('3');
+    let document = await readEditorDocument(page);
+    let brushes = brushesInDocument(document);
+    const sourceFace = brushes[0]!.faces.find((face) => face.material === 'TRANSFER_SOURCE')!;
+    let targetFaces = brushes[2]!.faces.filter((face) => face.material === 'TRANSFER_SOURCE');
+    expect(targetFaces).toHaveLength(1);
+    expect(targetFaces[0]!.projection).toEqual(sourceFace.projection);
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#document-revision')).toHaveText('4');
+    await page.keyboard.down('Alt');
+    await page.keyboard.down('Control');
+    await page.mouse.click(targetPoint.x, targetPoint.y);
+    await page.keyboard.up('Control');
+    await page.keyboard.up('Alt');
+    await expect(page.locator('#document-revision')).toHaveText('5');
+    document = await readEditorDocument(page);
+    brushes = brushesInDocument(document);
+    targetFaces = brushes[2]!.faces.filter((face) => face.material === 'TRANSFER_SOURCE');
+    expect(targetFaces).toHaveLength(1);
+    expect(targetFaces[0]!.projection).not.toEqual(sourceFace.projection);
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#document-revision')).toHaveText('6');
+    await page.keyboard.down('Alt');
+    await page.mouse.dblclick(targetPoint.x, targetPoint.y);
+    await page.keyboard.up('Alt');
+    await expect(page.locator('#document-revision')).toHaveText('7');
+    document = await readEditorDocument(page);
+    brushes = brushesInDocument(document);
+    expect(brushes[2]!.faces.every((face) => face.material === 'TRANSFER_SOURCE')).toBe(true);
+  });
+
+  test('Alt-drag paints a chained attribute path as one undoable 3D transaction', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const sourcePoint = await perspectiveWorldPoint(page, [-64, 0, 96]);
+    const pathStart = await perspectivePoint(page, 0.5, 0.58);
+    const pathEnd = await perspectiveWorldPoint(page, [64, 0, 160]);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(sourcePoint.x, sourcePoint.y);
+    await page.keyboard.up('Shift');
+    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.locator('#material-name').fill('CHAIN_SOURCE');
+    await page.locator('[data-action="apply-material"]').click();
+
+    await page.keyboard.down('Alt');
+    await page.mouse.move(pathStart.x, pathStart.y);
+    await page.mouse.down();
+    await page.mouse.move(pathEnd.x, pathEnd.y, { steps: 32 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+
+    await expect(page.locator('#document-revision')).toHaveText('2');
+    await expect(page.locator('#pointer-context')).toContainText('PERSPECTIVE / transfer');
+    let document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document)
+        .flatMap((brush) => brush.faces)
+        .filter((face) => face.material === 'CHAIN_SOURCE').length,
+    ).toBeGreaterThanOrEqual(3);
+    await page.getByRole('button', { name: 'Undo' }).click();
+    document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document)
+        .flatMap((brush) => brush.faces)
+        .filter((face) => face.material === 'CHAIN_SOURCE'),
+    ).toHaveLength(1);
+  });
+
+  test('Copy and Paste transfer standalone face attributes onto a 3D target selection', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const sourcePoint = await perspectivePoint(page, 0.5, 0.58);
+    const targetPoint = await perspectiveWorldPoint(page, [64, 0, 160]);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(sourcePoint.x, sourcePoint.y);
+    await page.keyboard.up('Shift');
+    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.locator('#material-name').fill('CLIPBOARD_SOURCE');
+    await page.locator('[data-action="apply-material"]').click();
+    await page.locator('#texture-shift-u').fill('29');
+    await page.locator('#texture-shift-v').fill('-17');
+    await page.locator('#texture-scale-u').fill('0.5');
+    await page.locator('#texture-scale-v').fill('1.5');
+    await page.locator('#texture-rotation').fill('45');
+    await page.locator('[data-action="apply-texture-transform"]').click();
+
+    const copy = page.getByRole('button', { name: 'Copy', exact: true });
+    await expect(copy).toBeEnabled();
+    await copy.click();
+    await expect(page.locator('#status-message')).toContainText(
+      'Copied face material and attributes',
+    );
+
+    await page.mouse.click(targetPoint.x, targetPoint.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.keyboard.down('Shift');
+    await page.mouse.click(targetPoint.x, targetPoint.y);
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await page.getByRole('button', { name: 'Paste', exact: true }).click();
+    await expect(page.locator('#status-message')).toContainText(
+      'Pasted CLIPBOARD_SOURCE and its attributes onto 1 face',
+    );
+    await expect(page.locator('#document-revision')).toHaveText('3');
+
+    let document = await readEditorDocument(page);
+    const source = brushesInDocument(document)[0]!.faces.find(
+      (face) => face.material === 'CLIPBOARD_SOURCE',
+    )!;
+    const targets = brushesInDocument(document)[2]!.faces.filter(
+      (face) => face.material === 'CLIPBOARD_SOURCE',
+    );
+    expect(targets).toHaveLength(1);
+    expect(targets[0]!.projection).toEqual(source.projection);
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document)[2]!.faces.some((face) => face.material === 'CLIPBOARD_SOURCE'),
+    ).toBe(false);
+
+    await page.mouse.click(targetPoint.x, targetPoint.y, { button: 'right' });
+    const menu = page.locator('#viewport-context-menu');
+    await expect(menu.getByRole('menuitem', { name: 'Copy face attributes' })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'Paste face attributes here' })).toBeVisible();
+  });
+
+  test('texture alignment controls edit faces and whole object selections reversibly', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const point = await perspectivePoint(page, 0.5, 0.58);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(point.x, point.y);
+    await page.keyboard.up('Shift');
+    await page.getByRole('tab', { name: 'Textures' }).click();
+
+    await page.getByRole('button', { name: 'Flip U' }).click();
+    await expect(page.locator('#texture-scale-u')).toHaveValue('-1');
+    await expect(page.locator('#status-message')).toContainText('Flip texture horizontally');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#texture-scale-u')).toHaveValue('1');
+
+    await page.getByRole('button', { name: 'Rotate +90°' }).click();
+    await expect(page.locator('#texture-rotation')).toHaveValue('90');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#texture-rotation')).toHaveValue('0');
+
+    await page.locator('[data-texture-layout="auto-fit"]').click();
+    await expect(page.locator('#texture-scale-u')).toHaveValue('4');
+    await expect(page.locator('#texture-scale-v')).toHaveValue('4');
+    await expect(page.locator('#texture-shift-u')).toHaveValue('32');
+    await expect(page.locator('#texture-shift-v')).toHaveValue('32');
+    await page.getByRole('button', { name: 'Undo' }).click();
+
+    await page.locator('[data-texture-layout="justify-u-min"]').click();
+    await expect(page.locator('#texture-shift-u')).toHaveValue('128');
+    await expect(page.locator('#status-message')).toContainText('Justify texture left');
+    await page.getByRole('button', { name: 'Undo' }).click();
+
+    await page.locator('[data-texture-layout="fit-u"]').click();
+    await expect(page.locator('#texture-scale-u')).toHaveValue('0.8');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await page.locator('[data-texture-layout="fit-u"]').click({ modifiers: ['Meta'] });
+    await expect(page.locator('#texture-scale-u')).toHaveValue('4');
+    await page.locator('[data-texture-layout="fit-u"]').click({ modifiers: ['Meta'] });
+    await expect(page.locator('#texture-scale-u')).toHaveValue('8');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await page.getByRole('button', { name: 'Undo' }).click();
+
+    await page.locator('[data-texture-layout="align-edge"]').click();
+    expect(Number(await page.locator('#texture-rotation').inputValue())).not.toBeCloseTo(0);
+    await page.locator('[data-texture-layout="align-edge"]').click({ modifiers: ['Shift'] });
+    expect(Number(await page.locator('#texture-rotation').inputValue())).toBeCloseTo(0);
+
+    await page.mouse.click(point.x, point.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.locator('[data-texture-layout="auto-fit"]').click();
+    let document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document)[0]!.faces.every((face) =>
+        face.projection.scale.every((component) => component !== 1),
+      ),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await page.getByRole('button', { name: 'Flip V' }).click();
+    document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document)[0]!.faces.every((face) => face.projection.scale[1] === -1),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'Undo' }).click();
+  });
+
+  test('graphical UV editor pans, rotates, and scales the selected face with live history', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const face = await perspectivePoint(page, 0.5, 0.58);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(face.x, face.y);
+    await page.keyboard.up('Shift');
+    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+
+    const editor = page.locator('#uv-editor');
+    await expect(editor).toBeVisible();
+    await expect(page.locator('#uv-editor-status')).toContainText('DEV_FLOOR · 64×64 · 1 face');
+    const bounds = await editor.boundingBox();
+    if (!bounds) throw new Error('The UV editor has no bounds');
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const xScale = bounds.width / 320;
+    const yScale = bounds.height / 220;
+
+    await page.mouse.move(center.x - 30, center.y - 20);
+    await page.mouse.down();
+    await page.mouse.move(center.x + 10, center.y - 20, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('Pan texture');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#texture-shift-u')).not.toHaveValue('0');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#texture-shift-u')).toHaveValue('0');
+
+    await page.mouse.move(center.x + 72 * xScale, center.y);
+    await page.mouse.down();
+    await page.mouse.move(center.x, center.y - 72 * yScale, { steps: 12 });
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('Rotate texture');
+    await expect(page.locator('#texture-rotation')).not.toHaveValue('0');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#texture-rotation')).toHaveValue('0');
+
+    await page.mouse.move(center.x + 52 * xScale, center.y);
+    await page.mouse.down();
+    await page.mouse.move(center.x + 82 * xScale, center.y, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('Scale texture');
+    await expect(page.locator('#texture-scale-u')).not.toHaveValue('1');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+  });
+
+  test('UV editor pivot snaps without dirtying the map and Escape cancels a live preview', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const face = await perspectivePoint(page, 0.5, 0.58);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(face.x, face.y);
+    await page.keyboard.up('Shift');
+    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+    const editor = page.locator('#uv-editor');
+    const bounds = await editor.boundingBox();
+    if (!bounds) throw new Error('The UV editor has no bounds');
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+
+    await page.mouse.move(center.x, center.y);
+    await page.mouse.down();
+    await page.mouse.move(
+      bounds.x + (66 / 320) * bounds.width,
+      bounds.y + (16 / 220) * bounds.height,
+      { steps: 10 },
+    );
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('UV transform origin moved');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+    await page.getByRole('button', { name: 'Center origin', exact: true }).click();
+    await expect(page.locator('#status-message')).toContainText('origin reset');
+
+    await page.mouse.move(center.x - 30, center.y - 20);
+    await page.mouse.down();
+    await page.mouse.move(center.x + 15, center.y - 20, { steps: 8 });
+    await expect(page.locator('#texture-shift-u')).not.toHaveValue('0');
+    await page.mouse.move(center.x - 30, center.y - 20, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#texture-shift-u')).toHaveValue('0');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+
+    await page.mouse.move(center.x - 30, center.y - 20);
+    await page.mouse.down();
+    await page.mouse.move(center.x + 15, center.y - 20, { steps: 10 });
+    await expect(page.locator('#status-message')).toContainText('Pan texture preview');
+    await expect(page.locator('#texture-shift-u')).not.toHaveValue('0');
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('UV transform cancelled');
+    await expect(page.locator('#texture-shift-u')).toHaveValue('0');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+  });
+
+  test('Clip tool previews and commits a two-point split as one undoable edit', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+
+    await page.getByRole('button', { name: 'Clip' }).click();
+    await expect(page.locator('#clip-tool-section')).toBeVisible();
+    const first = await viewportPoint(page, 0, 0.5, 0.3);
+    const second = await viewportPoint(page, 0, 0.5, 0.7);
+    await page.mouse.click(first.x, first.y);
+    await expect(page.locator('#clip-point-count')).toHaveText('1 / 3 points');
+    await page.mouse.click(second.x, second.y);
+    await expect(page.locator('#clip-point-count')).toHaveText('2 / 3 points');
+    await expect(page.locator('#status-message')).toContainText('Clip preview ready');
+    await expect(page.locator('#clip-point-positions')).toHaveText('1: 0 128 -16 · 2: 0 -128 -16');
+
+    const partialMove = await topWorldPoint(page, 32, 112);
+    const movedFirst = await topWorldPoint(page, 64, 96);
+    await page.mouse.move(first.x, first.y);
+    await page.mouse.down();
+    await page.mouse.move(partialMove.x, partialMove.y, { steps: 5 });
+    await page.keyboard.down('Shift');
+    await page.mouse.move(movedFirst.x, movedFirst.y, { steps: 5 });
+    await expect(page.locator('#status-message')).toContainText('Clip point 1 preview · X locked');
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#status-message')).toContainText('Moved clip point 1 · X locked');
+    await expect(page.locator('#clip-point-count')).toHaveText('2 / 3 points');
+    await expect(page.locator('#clip-point-positions')).toHaveText('1: 64 128 -16 · 2: 0 -128 -16');
+
+    await page.getByRole('button', { name: 'Split' }).click();
+    await expect(page.locator('#status-message')).toContainText('Split preview ready');
+    await page.getByRole('button', { name: 'Apply clip' }).click();
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#status-message')).toContainText('Split brush');
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+  });
+
+  test('Clip tool applies one plane to an object selection set atomically', async ({ page }) => {
+    await openEditor(page);
+    const left = await topWorldPoint(page, -64, 0);
+    const right = await topWorldPoint(page, 64, 0);
+    await page.mouse.click(left.x, left.y);
+    await page.keyboard.down('Control');
+    await page.mouse.click(right.x, right.y);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+
+    await page.getByRole('button', { name: 'Clip' }).click();
+    await expect(page.locator('#clip-tool-section')).toBeVisible();
+    const first = await topWorldPoint(page, -128, 0);
+    const second = await topWorldPoint(page, 128, 0);
+    await page.mouse.click(first.x, first.y);
+    await page.mouse.click(second.x, second.y);
+    await expect(page.locator('#clip-point-count')).toHaveText('2 / 3 points');
+    await page.getByRole('button', { name: 'Split' }).click();
+    await expect(page.locator('#status-message')).toContainText('Split preview ready');
+
+    await page.getByRole('button', { name: 'Apply clip' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('5');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+    await expect(page.locator('#status-message')).toContainText('Split brushes');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+  });
+
+  test('resolves entity links and switches all four TrenchBroom visibility modes', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(entityLinkSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await page.getByRole('tab', { name: 'Map', exact: true }).click();
+
+    await expect(page.locator('#entity-link-count')).toHaveText('0 / 4 shown');
+    await page.locator('#entity-link-mode').selectOption('all');
+    await expect(page.locator('#entity-link-count')).toHaveText('4 / 4 shown');
+    await expect(page.locator('#status-message')).toContainText('Entity links: All');
+    await page.locator('#entity-link-mode').selectOption('none');
+    await expect(page.locator('#entity-link-count')).toHaveText('0 / 4 shown');
+
+    await page.locator('#entity-link-mode').selectOption('direct');
+    const trigger = await topWorldPoint(page, -96, 0);
+    await page.mouse.click(trigger.x, trigger.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Entity');
+    await expect(page.locator('#entity-link-count')).toHaveText('2 / 4 shown');
+    await page.locator('#entity-link-mode').selectOption('transitive');
+    await expect(page.locator('#entity-link-count')).toHaveText('4 / 4 shown');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+  });
+
+  test('Perspective clip-point dragging stays glued to the snapped brush surface', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Clip' }).click();
+    const first = await perspectiveWorldPoint(page, [0, 0, 0]);
+    const second = await topWorldPoint(page, 0, -128);
+    await page.mouse.click(first.x, first.y);
+    await page.mouse.click(second.x, second.y);
+    await expect(page.locator('#clip-point-positions')).toHaveText('1: 0 0 0 · 2: 0 -128 -16');
+
+    const target = await perspectivePoint(page, 0.4, 0.68);
+    await page.mouse.move(first.x, first.y);
+    await page.mouse.down();
+    await page.keyboard.down('Shift');
+    await page.mouse.move(target.x, target.y, { steps: 10 });
+    await expect(page.locator('#status-message')).toContainText('Clip point 1 preview');
+    await expect(page.locator('#status-message')).not.toContainText('locked');
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#status-message')).toContainText('Moved clip point 1');
+
+    const movedPositions = await page.locator('#clip-point-positions').textContent();
+    const movedPoint = movedPositions?.match(/^1: (-?\d+) (-?\d+) (-?\d+)/);
+    expect(movedPoint).not.toBeNull();
+    expect(Number(movedPoint?.[1])).not.toBe(0);
+    expect(Number(movedPoint?.[2])).not.toBe(0);
+    expect(Number(movedPoint?.[3])).toBe(-32);
+  });
+
+  test('Ctrl-click builds an object set for atomic movement, transforms, duplicate, and delete', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const left = await topWorldPoint(page, -64, 0);
+    const right = await topWorldPoint(page, 64, 0);
+    await page.mouse.click(left.x, left.y);
+    await page.keyboard.down('Control');
+    await page.mouse.click(right.x, right.y);
+    await page.keyboard.up('Control');
+
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -32 0 to 96 32 160');
+    await page.locator('[data-nudge-axis="1"][data-nudge-direction="1"]').click();
+    await expect(page.locator('#status-message')).toContainText('Move brushes');
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -16 0 to 96 48 160');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -32 0 to 96 32 160');
+
+    await page.getByRole('button', { name: 'Rotate' }).click();
+    await expect(page.locator('#transform-tool-title')).toHaveText('Rotate brushes');
+    await page.locator('#rotate-angle').fill('90');
+    await page.getByRole('button', { name: 'Apply transform' }).click();
+    await expect(page.locator('#status-message')).toContainText('Rotate brushes');
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -96 0 to 32 96 160');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -32 0 to 96 32 160');
+
+    await page.getByRole('button', { name: 'Duplicate' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('5');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+    await expect(page.locator('#status-message')).toContainText('Duplicate brushes');
+    await page.getByRole('button', { name: 'Delete' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await expect(page.locator('#status-message')).toContainText('Delete brushes');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-count')).toHaveText('5');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+  });
+
+  test('brush dragging uses XY, live Shift axis locking, and Alt vertical movement', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    const originalBounds = '-128 -128 -32 to 128 128 0';
+
+    const start = await topWorldPoint(page, 0, 0);
+    const partial = await topWorldPoint(page, 32, 16);
+    const end = await topWorldPoint(page, 64, 32);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(partial.x, partial.y, { steps: 5 });
+    await page.keyboard.down('Shift');
+    await page.mouse.move(end.x, end.y, { steps: 5 });
+    await expect(page.locator('#status-message')).toContainText('X locked');
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#brush-bounds')).toHaveText('-64 -128 -32 to 192 128 0');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText(originalBounds);
+
+    const verticalStart = await perspectiveWorldPoint(page, [0, 0, -16]);
+    const verticalEnd = await perspectiveWorldPoint(page, [0, 0, 48]);
+    await page.mouse.move(verticalStart.x, verticalStart.y);
+    await page.keyboard.down('Alt');
+    await page.mouse.down();
+    await page.mouse.move(verticalEnd.x, verticalEnd.y, { steps: 10 });
+    await expect(page.locator('#status-message')).toContainText('vertical Z');
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 32 to 128 128 64');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+  });
+
+  test('Vertex and Edge tools expose and reshape handles across an object selection set', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const left = await topWorldPoint(page, -64, 0);
+    const right = await topWorldPoint(page, 64, 0);
+    await page.mouse.click(left.x, left.y);
+    await page.keyboard.down('Control');
+    await page.mouse.click(right.x, right.y);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    await expect(page.locator('#topology-tool-section')).toBeVisible();
+    await expect(page.locator('#topology-tool-title')).toHaveText('Vertex editing');
+    const vertexStart = await topWorldPoint(page, -96, -32);
+    const vertexEnd = await topWorldPoint(page, -112, -48);
+    await page.mouse.move(vertexStart.x, vertexStart.y);
+    await page.mouse.down();
+    await page.mouse.move(vertexEnd.x, vertexEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('Move vertices');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+    await expect(page.locator('#brush-bounds')).toHaveText('-112 -48 0 to 96 32 160');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -32 0 to 96 32 160');
+
+    await page.getByRole('button', { name: 'Edge' }).click();
+    await expect(page.locator('#topology-tool-section')).toBeVisible();
+    await expect(page.locator('#topology-tool-title')).toHaveText('Edge editing');
+  });
+
+  test('exact rotate, scale, and shear controls each commit one reversible transform', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    const originalBounds = '-128 -128 -32 to 128 128 0';
+
+    await page.getByRole('button', { name: 'Rotate' }).click();
+    await expect(page.locator('#transform-tool-title')).toHaveText('Rotate brush');
+    await page.locator('#rotate-angle').fill('45');
+    await page.getByRole('button', { name: 'Apply transform' }).click();
+    await expect(page.locator('#status-message')).toContainText('Rotate brush');
+    await expect(page.locator('#brush-bounds')).not.toHaveText(originalBounds);
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText(originalBounds);
+
+    await page.getByRole('button', { name: 'Scale' }).click();
+    await page.locator('#scale-x').fill('0.5');
+    await page.getByRole('button', { name: 'Apply transform' }).click();
+    await expect(page.locator('#status-message')).toContainText('Scale brush');
+    await expect(page.locator('#brush-bounds')).toHaveText('-64 -128 -32 to 64 128 0');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText(originalBounds);
+
+    await page.getByRole('button', { name: 'Shear' }).click();
+    await page.locator('#shear-offset').fill('16');
+    await page.getByRole('button', { name: 'Apply transform' }).click();
+    await expect(page.locator('#status-message')).toContainText('Shear brush');
+    await expect(page.locator('#brush-bounds')).not.toHaveText(originalBounds);
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText(originalBounds);
+  });
+
+  test('Rotate handle drag previews and commits a snapped viewport rotation', async ({ page }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Rotate' }).click();
+    const start = await viewportPoint(page, 0, 0.82, 0.5);
+    const end = await viewportPoint(page, 0, 0.5, 0.18);
+
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 12 });
+    await page.mouse.up();
+
+    await expect(page.locator('#status-message')).toContainText('Rotate brush');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+  });
+
+  test('Perspective rotation rings choose a world axis instead of forcing Z', async ({ page }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Rotate' }).click();
+
+    const radius = 256 * 0.62 + 10;
+    const pivot = [0, 0, -16] as const;
+    const startRadians = Math.PI / 4;
+    const endRadians = startRadians + Math.PI / 6;
+    const start = await perspectiveWorldPoint(page, [
+      pivot[0],
+      Math.cos(startRadians) * radius,
+      pivot[2] + Math.sin(startRadians) * radius,
+    ]);
+    const end = await perspectiveWorldPoint(page, [
+      pivot[0],
+      Math.cos(endRadians) * radius,
+      pivot[2] + Math.sin(endRadians) * radius,
+    ]);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 12 });
+    await page.mouse.up();
+
+    await expect(page.locator('#status-message')).toContainText('Rotate brush');
+    const document = await readEditorDocument(page);
+    const floor = brushesInDocument(document).find((brush) =>
+      brush.faces.some((face) => face.material === 'DEV_FLOOR'),
+    )!;
+    const bounds = deriveBrush(floor).bounds!;
+    expect(bounds.min[0]).toBeCloseTo(-128, 4);
+    expect(bounds.max[0]).toBeCloseTo(128, 4);
+    expect(bounds.min[2]).toBeLessThan(-80);
+    expect(bounds.max[2]).toBeGreaterThan(45);
+  });
+
+  test('A manually entered rotate pivot also drives direct viewport gestures', async ({ page }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Rotate' }).click();
+    await page.locator('#transform-pivot-x').fill('64');
+    await page.locator('#transform-pivot-y').fill('0');
+    await page.locator('#transform-pivot-z').fill('-16');
+
+    const start = await topWorldPoint(page, 192, 0);
+    const end = await topWorldPoint(page, 64, 128);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 12 });
+    await page.mouse.up();
+
+    await expect(page.locator('#status-message')).toContainText('Rotate brush');
+    await expect(page.locator('#brush-bounds')).toHaveText('-64 -192 -32 to 192 64 0');
+  });
+
+  test('The rotate center is a snapped, constrained, cancellable viewport handle', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Rotate' }).click();
+    await expect(page.locator('#document-revision')).toHaveText('0');
+
+    const initial = await topWorldPoint(page, 0, 0);
+    const first = await topWorldPoint(page, 64, 32);
+    await page.mouse.move(initial.x, initial.y);
+    await expect(
+      page.locator('.viewport-pane[data-viewport="xy"] .transform-readout'),
+    ).toContainText('0  0  -16');
+    await page.mouse.down();
+    await page.mouse.move(first.x, first.y, { steps: 10 });
+    await page.mouse.up();
+
+    await expect(page.locator('#transform-pivot-x')).toHaveValue('64');
+    await expect(page.locator('#transform-pivot-y')).toHaveValue('32');
+    await expect(page.locator('#transform-pivot-z')).toHaveValue('-16');
+    await expect(page.locator('#status-message')).toContainText('Rotate pivot moved');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
+
+    const constrained = await topWorldPoint(page, 128, 96);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(first.x, first.y);
+    await page.mouse.down();
+    await page.mouse.move(constrained.x, constrained.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#transform-pivot-x')).toHaveValue('128');
+    await expect(page.locator('#transform-pivot-y')).toHaveValue('32');
+    await expect(page.locator('#status-message')).toContainText('X locked');
+
+    const constrainedPivot = await topWorldPoint(page, 128, 32);
+    const cancelled = await topWorldPoint(page, 192, 96);
+    await page.mouse.move(constrainedPivot.x, constrainedPivot.y);
+    await page.mouse.down();
+    await page.mouse.move(cancelled.x, cancelled.y, { steps: 10 });
+    await expect(page.locator('#status-message')).toContainText('pivot preview');
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(page.locator('#transform-pivot-x')).toHaveValue('128');
+    await expect(page.locator('#transform-pivot-y')).toHaveValue('32');
+    await expect(page.locator('#status-message')).toContainText('pivot move cancelled');
+    await expect(page.locator('#document-revision')).toHaveText('0');
+  });
+
+  test('Scale and shear handles commit live orthographic transforms', async ({ page }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    const originalBounds = '-128 -128 -32 to 128 128 0';
+
+    await page.getByRole('button', { name: 'Scale' }).click();
+    const scaleStart = await topWorldPoint(page, 128, 0);
+    const scaleEnd = await topWorldPoint(page, 192, 0);
+    await page.mouse.move(scaleStart.x, scaleStart.y);
+    await page.mouse.down();
+    await page.mouse.move(scaleEnd.x, scaleEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('Scale brush');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 192 128 0');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText(originalBounds);
+
+    await page.keyboard.down('Shift');
+    await page.mouse.move(scaleStart.x, scaleStart.y);
+    await page.mouse.down();
+    await page.mouse.move(scaleEnd.x, scaleEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#status-message')).toContainText('Scale brush');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -160 -32 to 192 160 0');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText(originalBounds);
+
+    await page.getByRole('button', { name: 'Shear' }).click();
+    const shearStart = await viewportPoint(page, 0, 0.5, 0.5);
+    const shearEnd = await viewportPoint(page, 0, 0.68, 0.5);
+    await page.mouse.move(shearStart.x, shearStart.y);
+    await page.mouse.down();
+    await page.mouse.move(shearEnd.x, shearEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('Shear brush');
+    await expect(page.locator('#brush-bounds')).not.toHaveText(originalBounds);
+  });
+
+  test('Perspective corner scaling keeps the opposite 3D corner anchored', async ({ page }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Scale' }).click();
+    const anchor = await perspectiveWorldPoint(page, [-128, -128, -32]);
+    const handle = await perspectiveWorldPoint(page, [128, 128, 0]);
+    const end = {
+      x: anchor.x + (handle.x - anchor.x) * 1.25,
+      y: anchor.y + (handle.y - anchor.y) * 1.25,
+    };
+
+    await page.mouse.move(handle.x, handle.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 12 });
+    await page.mouse.up();
+
+    await expect(page.locator('#status-message')).toContainText('Scale brush');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 192 192 8');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+  });
+
+  test('selected vertices survive tool changes and accept direct and exact transforms', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Vertex' }).click();
+
+    const lassoStart = await topWorldPoint(page, -150, 150);
+    const lassoEnd = await topWorldPoint(page, 150, 100);
+    await page.mouse.move(lassoStart.x, lassoStart.y);
+    await page.mouse.down();
+    await page.mouse.move(lassoEnd.x, lassoEnd.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#topology-selection-count')).toHaveText('4');
+
+    await page.getByRole('button', { name: 'Scale' }).click();
+    await expect(page.locator('#transform-tool-title')).toHaveText('Scale selected vertices');
+    await expect(page.locator('#topology-selection-count')).toHaveText('4');
+    const scaleStart = await topWorldPoint(page, 128, 128);
+    const scaleEnd = await topWorldPoint(page, 160, 128);
+    await page.mouse.move(scaleStart.x, scaleStart.y);
+    await page.keyboard.down('Alt');
+    await page.mouse.down();
+    await page.mouse.move(scaleEnd.x, scaleEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await expect(page.locator('#status-message')).toContainText('Scale components');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#brush-bounds')).toHaveText('-160 -128 -32 to 160 128 0');
+    await expect(page.locator('#topology-selection-count')).toHaveText('4');
+
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    await expect(page.locator('#topology-selection-count')).toHaveText('4');
+    await page.getByRole('button', { name: 'Rotate' }).click();
+    await expect(page.locator('#transform-tool-title')).toHaveText('Rotate selected vertices');
+    await page.locator('#rotate-angle').fill('15');
+    await page.getByRole('button', { name: 'Apply transform' }).click();
+    await expect(page.locator('#status-message')).toContainText('Rotate components');
+    await expect(page.locator('#document-revision')).toHaveText('2');
+    await expect(page.locator('#brush-bounds')).not.toHaveText('-160 -128 -32 to 160 128 0');
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    await expect(page.locator('#topology-selection-count')).toHaveText('4');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 128 128 0');
+    await page.getByRole('button', { name: 'Edge' }).click();
+    const edge = await topWorldPoint(page, 0, 128);
+    await page.mouse.click(edge.x, edge.y);
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+    await page.getByRole('button', { name: 'Shear' }).click();
+    await expect(page.locator('#transform-tool-title')).toHaveText('Shear selected edges');
+    await page.locator('#shear-source-axis').selectOption('0');
+    await page.locator('#shear-target-axis').selectOption('1');
+    await page.locator('#shear-offset').fill('16');
+    await page.getByRole('button', { name: 'Apply transform' }).click();
+    await expect(page.locator('#status-message')).toContainText('Shear components');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await page.getByRole('button', { name: 'Edge' }).click();
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+  });
+
+  test('Vertex and Edge handles reshape a brush through valid undoable hull edits', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    const originalBounds = '-128 -128 -32 to 128 128 0';
+
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    await expect(page.locator('#topology-tool-title')).toHaveText('Vertex editing');
+    const firstVertex = await topWorldPoint(page, 128, 128);
+    const vertexStart = await topWorldPoint(page, -128, -128);
+    const vertexEnd = await topWorldPoint(page, -96, -96);
+    await page.mouse.click(firstVertex.x, firstVertex.y);
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+    await page.keyboard.down('Control');
+    await page.mouse.click(vertexStart.x, vertexStart.y);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#topology-selection-count')).toHaveText('2');
+    await page.mouse.move(vertexStart.x, vertexStart.y);
+    await page.mouse.down();
+    await page.mouse.move(vertexEnd.x, vertexEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('Move vertices');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await expect(page.locator('#brush-bounds')).not.toHaveText(originalBounds);
+    await expect(page.locator('#brush-bounds')).toContainText('to 160 160');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText(originalBounds);
+
+    await page.getByRole('button', { name: 'Edge' }).click();
+    await expect(page.locator('#topology-tool-title')).toHaveText('Edge editing');
+    const edgeStart = await topWorldPoint(page, 0, 128);
+    const edgeEnd = await topWorldPoint(page, 32, 160);
+    await page.mouse.move(edgeStart.x, edgeStart.y);
+    await page.mouse.down();
+    await page.mouse.move(edgeEnd.x, edgeEnd.y, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.locator('#status-message')).toContainText('Move vertices');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await expect(page.locator('#brush-bounds')).not.toHaveText(originalBounds);
+  });
+
+  test('Vertex handles drag directly in the perspective authoring view', async ({ page }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    const originalBounds = '-128 -128 -32 to 128 128 0';
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    const start = await perspectiveWorldPoint(page, [128, 128, 0]);
+
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 48, start.y - 28, { steps: 12 });
+    await expect(page.locator('#status-message')).toContainText('XY plane');
+    await page.mouse.up();
+
+    await expect(page.locator('#status-message')).toContainText('Move vertices');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await expect(page.locator('#brush-bounds')).not.toHaveText(originalBounds);
+    await expect(page.locator('#brush-bounds')).toHaveText(/-32 to .* 0$/);
+    await expect(page.locator('#document-revision')).toHaveText('1');
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    const verticalEnd = await perspectiveWorldPoint(page, [128, 128, 64]);
+    await page.mouse.move(start.x, start.y);
+    await page.keyboard.down('Alt');
+    await page.mouse.down();
+    await page.mouse.move(verticalEnd.x, verticalEnd.y, { steps: 12 });
+    await expect(page.locator('#status-message')).toContainText('vertical Z');
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 128 128 64');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+  });
+
+  test('Vertex lassos toggle or add handles and deletion refuses collapsed hulls', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Vertex' }).click();
+
+    const topLeft = await topWorldPoint(page, -150, 150);
+    const topRight = await topWorldPoint(page, 150, 100);
+    await page.mouse.move(topLeft.x, topLeft.y);
+    await page.mouse.down();
+    await page.mouse.move(topRight.x, topRight.y, { steps: 8 });
+    await expect(page.locator('.handle-lasso')).toBeVisible();
+    await page.mouse.up();
+    await expect(page.locator('.handle-lasso')).toHaveCount(0);
+    await expect(page.locator('#topology-selection-count')).toHaveText('4');
+
+    const bottomLeft = await topWorldPoint(page, -150, -100);
+    const bottomRight = await topWorldPoint(page, 150, -150);
+    await page.keyboard.down('Control');
+    await page.mouse.move(bottomLeft.x, bottomLeft.y);
+    await page.mouse.down();
+    await page.mouse.move(bottomRight.x, bottomRight.y, { steps: 8 });
+    await page.mouse.up();
+    await page.keyboard.up('Control');
+    await expect(page.locator('#topology-selection-count')).toHaveText('8');
+
+    await page.mouse.move(topLeft.x, topLeft.y);
+    await page.mouse.down();
+    await page.mouse.move(topRight.x, topRight.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#topology-selection-count')).toHaveText('4');
+
+    const empty = await topWorldPoint(page, 0, 0);
+    await page.mouse.click(empty.x, empty.y);
+    await expect(page.locator('#topology-selection-count')).toHaveText('0');
+    const corner = await topWorldPoint(page, 128, 128);
+    await page.mouse.click(corner.x, corner.y);
+    await page.keyboard.press('Delete');
+    await expect(page.locator('#status-message')).toContainText('Delete vertices');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await expect(page.locator('#brush-faces')).not.toHaveText('6');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-faces')).toHaveText('6');
+
+    const wholeStart = await topWorldPoint(page, -160, 160);
+    const wholeEnd = await topWorldPoint(page, 160, -160);
+    await page.mouse.move(wholeStart.x, wholeStart.y);
+    await page.mouse.down();
+    await page.mouse.move(wholeEnd.x, wholeEnd.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#topology-selection-count')).toHaveText('8');
+    const revisionBeforeRejectedDelete = await page.locator('#document-revision').textContent();
+    await page.keyboard.press('Delete');
+    await expect(page.locator('#status-message')).toContainText('collapse');
+    await expect(page.locator('#document-revision')).toHaveText(revisionBeforeRejectedDelete ?? '');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+
+    await page.getByRole('button', { name: 'Edge' }).click();
+    const topEdge = await topWorldPoint(page, 0, 128);
+    await page.mouse.click(topEdge.x, topEdge.y);
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+    await page.keyboard.press('Delete');
+    await expect(page.locator('#status-message')).toContainText('Delete vertices');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await expect(page.locator('#brush-faces')).not.toHaveText('6');
+  });
+
+  test('Ctrl switches vertex dragging from relative to absolute grid snapping', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.locator('#grid-size').selectOption('64');
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    const start = await frontWorldPoint(page, 128, -32);
+    const end = await frontWorldPoint(page, 148, -16);
+
+    await page.mouse.move(start.x, start.y);
+    await page.keyboard.down('Control');
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await expect(page.locator('#status-message')).toContainText('absolute snap');
+    await page.mouse.up();
+    await page.keyboard.up('Control');
+
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+  });
+
+  test('Shift+Alt-click quick-snaps a selected vertex onto an existing corner', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    const source = await topWorldPoint(page, 128, 128);
+    const target = await topWorldPoint(page, 128, -128);
+
+    await page.mouse.click(source.x, source.y);
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+    await page.keyboard.down('Shift');
+    await page.keyboard.down('Alt');
+    await page.mouse.click(target.x, target.y);
+    await page.keyboard.up('Alt');
+    await page.keyboard.up('Shift');
+
+    await expect(page.locator('#status-message')).toContainText('Snap vertices');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await expect(page.locator('#brush-faces')).not.toHaveText('6');
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-faces')).toHaveText('6');
+  });
+
+  test('Arrow keys nudge selected vertex and edge handles on the active viewport axes', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    const corner = await topWorldPoint(page, 128, 128);
+    await page.mouse.click(corner.x, corner.y);
+
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('#status-message')).toContainText('Nudge vertices');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 144 128 0');
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 144 144 0');
+    await expect(page.locator('#document-revision')).toHaveText('2');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 128 128 0');
+
+    await page.getByRole('button', { name: 'Edge' }).click();
+    const edge = await topWorldPoint(page, 0, 128);
+    await page.mouse.click(edge.x, edge.y);
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('#status-message')).toContainText('Nudge edges');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 128 144 0');
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await page.getByRole('button', { name: 'Undo' }).click();
+
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    const frontCorner = await frontWorldPoint(page, 128, 0);
+    await page.mouse.click(frontCorner.x, frontCorner.y);
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 128 128 16');
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+  });
+
+  test('Escape clears topology handles before leaving the component tool', async ({ page }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    const corner = await topWorldPoint(page, 128, 128);
+    await page.mouse.click(corner.x, corner.y);
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#topology-selection-count')).toHaveText('0');
+    await expect(page.getByRole('button', { name: 'Vertex', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#status-message')).toContainText('Press Escape again');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+  });
+
+  test('Shift-drag adds a snapped surface vertex and splits the convex hull', async ({ page }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Vertex' }).click();
+    const start = await topWorldPoint(page, 128, 0);
+    const end = await topWorldPoint(page, 160, 0);
+
+    await page.keyboard.down('Shift');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await expect(page.locator('#status-message')).toContainText('Vertex insertion preview');
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+
+    await expect(page.locator('#status-message')).toContainText('Add vertex');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#geometry-state')).toHaveText('valid');
+    await expect(page.locator('#brush-faces')).not.toHaveText('6');
+    await expect(page.locator('#topology-selection-count')).toHaveText('1');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator('#brush-faces')).toHaveText('6');
+  });
+});

@@ -312,6 +312,13 @@ export function goldSrcBrushPipeline(
   return null;
 }
 
+export function goldSrcTextureScrollSpeed(world: ParsedWorld, batch: DrawBatch): number {
+  if (world.version !== 30 || batch.modelIndex === 0) return 0;
+  const material = world.materials[batch.materialIndex];
+  if (!material?.name.toLowerCase().startsWith('scroll')) return 0;
+  return world.models[batch.modelIndex]?.textureScrollSpeed ?? 0;
+}
+
 function selectedPipeline(
   pipelines: Pipelines,
   world: ParsedWorld,
@@ -458,7 +465,9 @@ export class TypeGpuWorldRenderer {
       this.loaded.world.batches.some(
         (batch) =>
           this.loaded.world.models[batch.modelIndex]?.visible &&
-          (batch.kind === 'water' || (batch.kind === 'sky' && this.loaded.world.version === 29)),
+          (batch.kind === 'water' ||
+            (batch.kind === 'sky' && this.loaded.world.version === 29) ||
+            goldSrcTextureScrollSpeed(this.loaded.world, batch) !== 0),
       )
     );
   }
@@ -847,7 +856,12 @@ export class TypeGpuWorldRenderer {
       const lightmap = this.lightmapTextures.get(batch.lightmapPage) ?? white;
       const uniform = this.root.createUniform(MaterialUniform, {
         sizes: [material.diffuse.width, material.diffuse.height, lightmap.width, lightmap.height],
-        options: [this.loaded.world.version === 29 ? 1 : 0, this.loaded.skybox ? 1 : 0, 0, 0],
+        options: [
+          this.loaded.world.version === 29 ? 1 : 0,
+          this.loaded.skybox ? 1 : 0,
+          0,
+          goldSrcTextureScrollSpeed(this.loaded.world, batch),
+        ],
         renderColor: [
           (model?.renderColor[0] ?? 255) / 255,
           (model?.renderColor[1] ?? 255) / 255,

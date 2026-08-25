@@ -307,6 +307,20 @@ function parseRenderColor(value: string | undefined): Vec3Tuple {
   ];
 }
 
+function textureScrollSpeed(entity: ReturnType<typeof parseEntities>[number], classname: string) {
+  if (classname === 'func_conveyor') {
+    const speed = Number(entityValue(entity, 'speed'));
+    return Number.isFinite(speed) && speed !== 0 ? speed : 100;
+  }
+
+  const channels = entityValue(entity, 'rendercolor')?.trim().split(/\s+/).map(Number);
+  if (!channels || channels.length !== 3 || channels.some((channel) => !Number.isFinite(channel))) {
+    return 0;
+  }
+  const magnitude = ((channels[1] ?? 0) * 256 + (channels[2] ?? 0)) / 16;
+  return (channels[0] ?? 0) === 0 ? magnitude : -magnitude;
+}
+
 function modelRenderState(modelIndex: number, entities: ReturnType<typeof parseEntities>) {
   if (modelIndex === 0) {
     return {
@@ -317,6 +331,7 @@ function modelRenderState(modelIndex: number, entities: ReturnType<typeof parseE
       renderMode: 0 as GoldSrcRenderMode,
       renderAmount: 255,
       renderColor: [255, 255, 255] as Vec3Tuple,
+      textureScrollSpeed: 0,
     };
   }
 
@@ -333,6 +348,7 @@ function modelRenderState(modelIndex: number, entities: ReturnType<typeof parseE
       renderMode: 0 as GoldSrcRenderMode,
       renderAmount: 255,
       renderColor: [255, 255, 255] as Vec3Tuple,
+      textureScrollSpeed: 0,
     };
   }
 
@@ -359,6 +375,7 @@ function modelRenderState(modelIndex: number, entities: ReturnType<typeof parseE
     renderMode,
     renderAmount,
     renderColor: parseRenderColor(entityValue(entity, 'rendercolor')),
+    textureScrollSpeed: textureScrollSpeed(entity, classname),
   };
 }
 
@@ -720,6 +737,7 @@ export function parseBsp(
       renderMode: state.renderMode,
       renderAmount: state.renderAmount,
       renderColor: state.renderColor,
+      textureScrollSpeed: state.textureScrollSpeed,
     };
   });
 

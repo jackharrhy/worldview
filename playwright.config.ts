@@ -29,6 +29,11 @@ export default defineConfig({
       url: 'http://127.0.0.1:4173/standalone.html',
       reuseExistingServer: !process.env.CI,
     },
+    {
+      command: 'npm run dev --workspace @worldview/editor -- --host 127.0.0.1',
+      url: 'http://127.0.0.1:5174',
+      reuseExistingServer: !process.env.CI,
+    },
   ],
   use: {
     baseURL: 'http://127.0.0.1:5173',
