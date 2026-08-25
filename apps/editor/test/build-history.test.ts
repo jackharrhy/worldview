@@ -25,6 +25,18 @@ class MemoryStorage implements MapBuildHistoryStorage {
   }
 }
 
+class QuotaStorage extends MemoryStorage {
+  public failNextSave = true;
+
+  public override async save(record: MapBuildHistoryRecord): Promise<void> {
+    if (this.failNextSave) {
+      this.failNextSave = false;
+      throw new DOMException('quota full', 'QuotaExceededError');
+    }
+    await super.save(record);
+  }
+}
+
 function result(buildId: string): MapCompileResult {
   return {
     backend: 'remote',
@@ -50,5 +62,26 @@ describe('map build history', () => {
 
     expect((await service.list('one.map')).map(({ buildId }) => buildId)).toEqual(['three', 'two']);
     expect((await service.list('other.map')).map(({ buildId }) => buildId)).toEqual(['other']);
+  });
+
+  it('prunes old records and retries once under quota pressure', async () => {
+    const storage = new QuotaStorage();
+    for (let index = 0; index < 4; index += 1) {
+      storage.records.set(`old-${index}`, {
+        version: 1,
+        buildId: `old-${index}`,
+        mapKey: 'one.map',
+        createdAt: index,
+        result: result(`old-${index}`),
+      });
+    }
+    const errors: unknown[] = [];
+    const service = new MapBuildHistoryService(storage, (error) => errors.push(error), 4);
+
+    await service.record('one.map', result('new'));
+
+    expect(errors).toEqual([]);
+    expect(storage.records.has('new')).toBe(true);
+    expect(storage.records.size).toBe(3);
   });
 });

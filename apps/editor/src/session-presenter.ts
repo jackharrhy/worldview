@@ -32,6 +32,7 @@ export class SessionPresenter {
   public connectSession(): void {
     this.state.stopSubscription?.();
     this.state.stopSubscription = this.state.session.subscribe((change) => {
+      const started = performance.now();
       this.state.renderer?.setDocument(
         this.state.session.document,
         this.state.session.selection,
@@ -60,6 +61,10 @@ export class SessionPresenter {
       if (change.kind !== 'selection' && change.kind !== 'view')
         this.ui.launchButton.disabled = true;
       this.ui.statusMessage.textContent = `${change.label}. Document revision ${change.documentRevision}.`;
+      performance.measure('worldview.editor.change-presentation', {
+        start: started,
+        end: performance.now(),
+      });
     });
   }
 

@@ -14,6 +14,7 @@ import type {
   EditorViewportKind,
 } from './types.js';
 import { gridVertices, scaleOverlayVertices, upload, type SceneBuffers } from './scene-buffers.js';
+import { boundsVisible } from './scene-visibility.js';
 import {
   addScaled,
   cross,
@@ -292,6 +293,7 @@ export abstract class ViewportBase {
     if (scene.solids.length > 0) {
       pass.setPipeline(this.pipelines.solid);
       for (const batch of scene.solids) {
+        if (!boundsVisible(matrix, batch.bounds)) continue;
         pass.setBindGroup(1, materialBindGroup(batch.materialName));
         pass.setVertexBuffer(0, batch.buffer);
         pass.draw(batch.count);

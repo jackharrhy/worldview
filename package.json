@@ -13,6 +13,7 @@
     "build": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/compiler-service && npm run build --workspace @worldview/viewer && npm run build --workspace @worldview/editor",
     "test": "npm run test --workspaces --if-present",
     "test:browser": "npm run build --workspace @jackharrhy/worldview && npm run test:consumer && playwright test",
+    "test:editor-performance": "npm run build --workspace @jackharrhy/worldview-editor && WORLDVIEW_PERF_GATE=1 playwright test tests/browser/editor-performance.spec.ts --project=chromium",
     "test:consumer": "tsc -p tests/consumer/tsconfig.json --noEmit && vite build --config tests/consumer/vite.config.ts",
     "test:package": "node tests/consumer/node-smoke.mjs && npm pack --dry-run --workspace packages/worldview",
     "release:check": "npm run check && npm run test:browser",

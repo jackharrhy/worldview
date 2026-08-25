@@ -18,6 +18,11 @@ export type {
   MapLaunchResult,
 } from './compiler.js';
 export {
+  BoundsSpatialIndex,
+  type BoundsSpatialEntry,
+  type SpatialRayHit,
+} from './spatial-index.js';
+export {
   createObjectClipboardDocument,
   FACE_ATTRIBUTE_CLIPBOARD_HEADER,
   objectClipboardBounds,

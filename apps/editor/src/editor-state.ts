@@ -30,6 +30,7 @@ import {
   type EditorTopologyKind,
   type EntityLinkMode,
   type MapCompileResult,
+  type MapCompileQuality,
   type MapDocument,
   type MapSourceState,
   type SimpleShapeOptions,
@@ -150,6 +151,7 @@ export class EditorState {
   public portalOverlayVisible = false;
   public launchProfileId: string | null = null;
   public activeCompileProfileId = 'default';
+  public activeCompileQuality: MapCompileQuality = 'preview';
   public showingCompiled = false;
   public referenceScenes: EditorReferenceScene[] = [];
   public referenceSequence = 0;

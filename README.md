@@ -31,6 +31,10 @@ and YZ views:
 npm run dev:editor
 ```
 
+The canonical roadmap and architecture are in [docs/plan.md](docs/plan.md). The complete delivered
+interaction matrix and its test evidence are in
+[docs/editor-capabilities.md](docs/editor-capabilities.md).
+
 It can browse local WADs, load read-only `.map` references, and compile the current revision into a
 flyable BSP preview. Brush creation, movement, duplication, deletion, entity-property editing, and
 face extrusion or splitting use revision-safe previews with undo and redo. From the Select tool,

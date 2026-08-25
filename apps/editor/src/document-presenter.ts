@@ -75,7 +75,8 @@ export class DocumentPresenter {
     });
   }
 
-  public updateSourceFromDocument(): void {
+  public updateSourceFromDocument(force = false): void {
+    if (!force && !this.ui.sourceDialog.open) return;
     const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
     this.ui.source.value = plan.status === 'safe' ? plan.text : plan.normalizedText;
     this.ui.sourceMessage.textContent =

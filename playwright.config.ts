@@ -5,6 +5,7 @@ const localChromiumArguments = [
   '--enable-features=WebGPU',
   '--use-angle=swiftshader',
 ];
+const performanceChromiumArguments = ['--enable-unsafe-webgpu', '--enable-features=WebGPU'];
 
 // Chromium's own GPU tests use its software Vulkan adapter on GPU-less Linux hosts.
 const ciChromiumArguments = [
@@ -39,7 +40,11 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:5173',
     viewport: { width: 1440, height: 900 },
     launchOptions: {
-      args: process.env.CI ? ciChromiumArguments : localChromiumArguments,
+      args: process.env.CI
+        ? ciChromiumArguments
+        : process.env.WORLDVIEW_PERF_GATE === '1'
+          ? performanceChromiumArguments
+          : localChromiumArguments,
     },
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],

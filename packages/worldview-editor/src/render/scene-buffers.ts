@@ -48,12 +48,7 @@ import {
   type ScaleSide,
   type TopologyHandle,
 } from './viewport-geometry.js';
-
-interface SolidBatch {
-  readonly materialName: string;
-  readonly buffer: GPUBuffer;
-  readonly count: number;
-}
+import { SolidBatchBuilder, type SolidBatch } from './scene-solid-batches.js';
 
 export interface SceneBuffers {
   readonly solids: readonly SolidBatch[];
@@ -566,8 +561,9 @@ export function buildSceneBuffers(
   entityDefinitions?: EntityDefinitionCatalog,
   diagnosticOverlays: readonly EditorDiagnosticOverlay[] = [],
   sprites: readonly EditorSpriteMaterial[] = [],
+  previousSolids: readonly SolidBatch[] = [],
 ): SceneBuffers {
-  const solidByMaterial = new Map<string, number[]>();
+  const solidBatches = new SolidBatchBuilder(previousSolids);
   const lines: number[] = [];
   const perspectiveGridLines: number[] = [];
   const renderedTopologyKeys = new Set<string>();
@@ -582,6 +578,7 @@ export function buildSceneBuffers(
   const hiddenEntityIds = new Set(objectViewState.hiddenEntityIds);
   const lockedBrushIds = new Set(objectViewState.lockedBrushIds);
   const lockedEntityIds = new Set(objectViewState.lockedEntityIds);
+  const denseDocument = brushesInDocument(document).length > 2_000;
   const selectedBounds =
     isTransformTool(tool) && topologySelection.length > 0
       ? topologyHandleBounds(topologySelection)
@@ -607,8 +604,12 @@ export function buildSceneBuffers(
           : locked
             ? '__worldview_locked__'
             : face.material;
-        const solid = solidByMaterial.get(materialName) ?? [];
-        solidByMaterial.set(materialName, solid);
+        const solid = solidBatches.vertices(
+          materialName,
+          derived.bounds!,
+          offset,
+          `${brush.id}:${brush.revision}:${offset.join(',')}`,
+        );
         const base = reference
           ? ([0.25, 0.48, 0.58] as const)
           : locked
@@ -636,7 +637,11 @@ export function buildSceneBuffers(
           !reference &&
           hoverSelection?.brushId === brush.id &&
           hoverSelection.faceId === face.faceId;
-        if (!reference && perspectiveGridLines.length / 12 < 100_000) {
+        if (
+          !reference &&
+          (!denseDocument || selectedFace || hoveredFace) &&
+          perspectiveGridLines.length / 12 < 100_000
+        ) {
           appendProjectedFaceGrid(
             perspectiveGridLines,
             face,
@@ -786,8 +791,12 @@ export function buildSceneBuffers(
         spriteByPath.get(normalizedSprite.split('/').at(-1) ?? '');
       if (sprite) {
         const scale = Math.max(0.01, Number(entity.properties.scale ?? 1) || 1);
-        const solid = solidByMaterial.get(sprite.material.name) ?? [];
-        solidByMaterial.set(sprite.material.name, solid);
+        const solid = solidBatches.vertices(
+          sprite.material.name,
+          bounds,
+          offset,
+          `${entity.id}:${JSON.stringify(entity.properties)}:${sprite.path}:${sprite.material.width}x${sprite.material.height}:${offset.join(',')}`,
+        );
         appendSpritePlane(
           solid,
           center,
@@ -952,11 +961,7 @@ export function buildSceneBuffers(
     }
   }
   return {
-    solids: [...solidByMaterial].map(([materialName, solid]) => ({
-      materialName,
-      buffer: upload(device, new Float32Array(solid), GPUBufferUsage.VERTEX),
-      count: solid.length / 8,
-    })),
+    solids: solidBatches.finish(device),
     lines: upload(device, new Float32Array(lines), GPUBufferUsage.VERTEX),
     lineCount: lines.length / 6,
     perspectiveGrid: upload(device, new Float32Array(perspectiveGridLines), GPUBufferUsage.VERTEX),

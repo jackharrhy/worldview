@@ -61,6 +61,7 @@ export function bindEditorElements() {
   const layerUpButton = required<HTMLButtonElement>('[data-action="layer-up"]');
   const layerDownButton = required<HTMLButtonElement>('[data-action="layer-down"]');
   const compileButton = required<HTMLButtonElement>('[data-action="compile"]');
+  const buildProfile = required<HTMLSelectElement>('#build-profile');
   const togglePreviewButton = required<HTMLButtonElement>('[data-action="toggle-preview"]');
   const toggleLeakButton = required<HTMLButtonElement>('[data-action="toggle-leak"]');
   const togglePortalsButton = required<HTMLButtonElement>('[data-action="toggle-portals"]');
@@ -68,6 +69,7 @@ export function bindEditorElements() {
   const launchButton = required<HTMLButtonElement>('[data-action="launch"]');
   const buildLogDialog = required<HTMLDialogElement>('#build-log-dialog');
   const buildLogOutput = required<HTMLPreElement>('#build-log-output');
+  const buildHistory = required<HTMLSelectElement>('#build-history');
   const recoveryDialog = required<HTMLDialogElement>('#recovery-dialog');
   const recoveryList = required<HTMLDivElement>('#recovery-list');
   const compileState = required<HTMLDivElement>('.compile-state');
@@ -297,6 +299,7 @@ export function bindEditorElements() {
     layerUpButton,
     layerDownButton,
     compileButton,
+    buildProfile,
     togglePreviewButton,
     toggleLeakButton,
     togglePortalsButton,
@@ -304,6 +307,7 @@ export function bindEditorElements() {
     launchButton,
     buildLogDialog,
     buildLogOutput,
+    buildHistory,
     recoveryDialog,
     recoveryList,
     compileState,

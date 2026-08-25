@@ -113,7 +113,7 @@ export class ToolEvents {
       this.app.geometry.resetSweep(true);
       this.ui.statusMessage.textContent = 'Sweep destination and path controls reset.';
     });
-    this.ui.applySweepButton.addEventListener('click', this.app.geometry.applySweep);
+    this.ui.applySweepButton.addEventListener('click', () => this.app.geometry.applySweep());
     this.ui.createHullButton.addEventListener('click', () => {
       try {
         if (!this.state.renderer?.commitHullBrush())
@@ -145,13 +145,13 @@ export class ToolEvents {
           this.app.geometry.setClipMode(mode);
       });
     }
-    this.ui.applyClipButton.addEventListener('click', this.app.geometry.applyClip);
+    this.ui.applyClipButton.addEventListener('click', () => this.app.geometry.applyClip());
     required<HTMLButtonElement>('[data-action="reset-clip"]').addEventListener('click', () => {
       this.state.renderer?.clearClipPlane();
     });
     required<HTMLButtonElement>('[data-action="reset-transform-pivot"]').addEventListener(
       'click',
-      this.app.transform.resetTransformPivot,
+      () => this.app.transform.resetTransformPivot(),
     );
     for (const input of [
       this.ui.transformPivotX,
@@ -167,9 +167,8 @@ export class ToolEvents {
         }
       });
     }
-    required<HTMLButtonElement>('[data-action="apply-transform"]').addEventListener(
-      'click',
-      this.app.transform.applyExactTransform,
+    required<HTMLButtonElement>('[data-action="apply-transform"]').addEventListener('click', () =>
+      this.app.transform.applyExactTransform(),
     );
     for (const button of document.querySelectorAll<HTMLButtonElement>('[data-flip-axis]')) {
       button.addEventListener('click', () => {

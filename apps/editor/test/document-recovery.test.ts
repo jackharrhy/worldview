@@ -115,4 +115,24 @@ describe('document recovery', () => {
     expect(snapshots.filter((snapshot) => !snapshot.protected)).toHaveLength(2);
     recovery.dispose();
   });
+
+  it('reports storage failures without changing the captured document', async () => {
+    const captured = fixture(5);
+    const storage = new MemoryStorage();
+    storage.save = () => Promise.reject(new DOMException('quota full', 'QuotaExceededError'));
+    const errors: unknown[] = [];
+    const recovery = new DocumentRecoveryService(
+      () => captured,
+      storage,
+      (error) => errors.push(error),
+      0,
+    );
+
+    await recovery.flush();
+
+    expect(errors).toHaveLength(1);
+    expect(captured.document.revision).toBe(5);
+    expect(await recovery.list(captured.documentKey)).toEqual([]);
+    recovery.dispose();
+  });
 });

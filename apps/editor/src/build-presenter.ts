@@ -130,9 +130,10 @@ export class BuildPresenter {
     );
   }
 
-  public inspectBuildResult(result: MapCompileResult): void {
+  public inspectBuildResult(result: MapCompileResult, record = true): void {
     this.state.latestBuild = result;
-    void this.state.buildHistory.record(this.state.currentDocumentName.toLowerCase(), result);
+    if (record)
+      void this.state.buildHistory.record(this.state.currentDocumentName.toLowerCase(), result);
     const leakText = this.buildArtifactText(result, 'leak-path');
     const portalText = this.buildArtifactText(result, 'portal');
     const leak = leakText ? parseLeakPath(leakText) : null;
@@ -157,7 +158,7 @@ export class BuildPresenter {
     this.ui.togglePortalsButton.disabled = !this.state.buildOverlays.some(
       (overlay) => overlay.kind === 'portal',
     );
-    this.ui.buildLogButton.disabled = result.logs.length === 0 && result.diagnostics.length === 0;
+    this.ui.buildLogButton.disabled = false;
     this.ui.buildLogOutput.textContent = [
       ...result.diagnostics.map(
         (diagnostic) =>
@@ -172,6 +173,36 @@ export class BuildPresenter {
       !this.state.launchProfileId ||
       result.sourceDocumentRevision !== this.state.session.document.revision;
     this.updateDiagnosticOverlayVisibility();
+  }
+
+  public async renderBuildHistory(): Promise<void> {
+    const records = await this.state.buildHistory.list(
+      this.state.currentDocumentName.toLowerCase(),
+    );
+    this.ui.buildHistory.replaceChildren(
+      ...records.map((record) => {
+        const option = document.createElement('option');
+        option.value = record.buildId;
+        option.textContent = `${record.result.status === 'succeeded' ? '✓' : '×'} ${new Date(record.createdAt).toLocaleString()} · r${record.result.sourceDocumentRevision}`;
+        return option;
+      }),
+    );
+    this.ui.buildHistory.disabled = records.length === 0;
+    if (
+      this.state.latestBuild &&
+      records.some(({ buildId }) => buildId === this.state.latestBuild?.buildId)
+    ) {
+      this.ui.buildHistory.value = this.state.latestBuild.buildId;
+    }
+  }
+
+  public async inspectHistoricalBuild(buildId: string): Promise<void> {
+    const record = (
+      await this.state.buildHistory.list(this.state.currentDocumentName.toLowerCase())
+    ).find((candidate) => candidate.buildId === buildId);
+    if (!record) return;
+    this.inspectBuildResult(record.result, false);
+    this.ui.statusMessage.textContent = `Showing retained build ${record.buildId.slice(0, 8)} from ${new Date(record.createdAt).toLocaleString()}.`;
   }
 
   public async installCompiledPreview(result: MapCompileResult): Promise<void> {
@@ -213,8 +244,9 @@ export class BuildPresenter {
   }
 
   public async compilePreview(): Promise<void> {
+    const quality = this.state.activeCompileQuality;
     this.ui.compileButton.disabled = true;
-    this.setCompileState('COMPILING PREVIEW', 'busy');
+    this.setCompileState(`COMPILING ${quality.toUpperCase()}`, 'busy');
     this.ui.statusMessage.textContent = `Sending document revision ${this.state.session.document.revision} to the compiler.`;
     try {
       const assets = this.app.document.compileAssets();
@@ -222,7 +254,7 @@ export class BuildPresenter {
         {
           mapName: 'worldview_preview',
           mapText: this.app.document.serializeCompileDocument(assets),
-          quality: 'preview',
+          quality,
           profileId: this.state.activeCompileProfileId,
           expectedDocumentRevision: this.state.session.document.revision,
           assets: assets.map(({ name, data }) => ({
@@ -272,7 +304,7 @@ export class BuildPresenter {
       const capabilities = await this.state.buildService.capabilities();
       let compileProfile = capabilities.compileProfiles.find((profile) => profile.id === 'default');
       const logicalProfile = this.state.projectWorkspace?.manifest.buildProfiles.find(
-        ({ id }) => id === this.state.projectWorkspace?.manifest.defaultBuildProfile,
+        ({ id }) => id === this.ui.buildProfile.value,
       );
       if (this.state.projectWorkspace && this.state.projectKey && logicalProfile) {
         const local = await this.state.projectLocalState.load(this.state.projectKey);
@@ -294,6 +326,10 @@ export class BuildPresenter {
         }
       }
       this.state.activeCompileProfileId = compileProfile?.id ?? 'default';
+      this.state.activeCompileQuality = logicalProfile?.quality ?? 'preview';
+      this.ui.compileButton.textContent = logicalProfile
+        ? `Build ${logicalProfile.label}`
+        : 'Compile';
       this.state.launchProfileId = capabilities.launchProfiles[0]?.id ?? null;
       this.ui.compileButton.disabled = !compileProfile;
       this.ui.launchButton.disabled =

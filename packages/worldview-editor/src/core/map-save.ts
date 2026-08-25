@@ -35,6 +35,7 @@ function valueEqual(left: unknown, right: unknown): boolean {
 }
 
 function faceEqual(left: MapFace, right: MapFace): boolean {
+  if (left === right) return true;
   return (
     left.id === right.id &&
     valueEqual(left.planePoints, right.planePoints) &&
@@ -45,6 +46,7 @@ function faceEqual(left: MapFace, right: MapFace): boolean {
 }
 
 function brushEqual(left: MapBrush, right: MapBrush): boolean {
+  if (left === right) return true;
   return (
     left.id === right.id &&
     left.faces.length === right.faces.length &&
@@ -53,6 +55,7 @@ function brushEqual(left: MapBrush, right: MapBrush): boolean {
 }
 
 function entityEqual(left: MapEntity, right: MapEntity): boolean {
+  if (left === right) return true;
   return (
     left.id === right.id &&
     valueEqual(left.properties, right.properties) &&
@@ -243,13 +246,13 @@ function applyPatches(source: string, patches: readonly SourcePatch[]): string {
 
 /** Plans a structure-preserving save or returns a normalized copy with blocking diagnostics. */
 export function planMapSave(document: MapDocument, state: MapSourceState): MapSavePlan {
-  const normalizedText = serializeMap(document);
+  const blocked = (diagnostic: MapSourceDiagnostic): MapSavePlan => ({
+    status: 'blocked',
+    normalizedText: serializeMap(document),
+    diagnostics: [diagnostic],
+  });
   if (retainedOrderChanged(state.originalDocument.entities, document.entities)) {
-    return {
-      status: 'blocked',
-      normalizedText,
-      diagnostics: [unsafe('Existing entities were reordered and cannot be source-patched safely')],
-    };
+    return blocked(unsafe('Existing entities were reordered and cannot be source-patched safely'));
   }
   const patches: SourcePatch[] = [];
   const currentEntities = new Map(document.entities.map((entity) => [entity.id, entity]));
@@ -261,30 +264,22 @@ export function planMapSave(document: MapDocument, state: MapSourceState): MapSa
     const current = currentEntities.get(original.id);
     const span = spanByEntity.get(original.id);
     if (!span) {
-      return {
-        status: 'blocked',
-        normalizedText,
-        diagnostics: [unsafe(`Entity ${original.id} has no retained source anchor`)],
-      };
+      return blocked(unsafe(`Entity ${original.id} has no retained source anchor`));
     }
     if (!current) {
       if (span.opaque.length > 0) {
-        return {
-          status: 'blocked',
-          normalizedText,
-          diagnostics: [
-            unsafe(
-              `Entity ${original.id} owns unsupported source that cannot be reanchored after deletion`,
-            ),
-          ],
-        };
+        return blocked(
+          unsafe(
+            `Entity ${original.id} owns unsupported source that cannot be reanchored after deletion`,
+          ),
+        );
       }
       patches.push({ start: span.start, end: span.end, text: '' });
       continue;
     }
     const result = entityPatches(original, current, span, state, document.format === 'valve-220');
     if (!isPatchList(result)) {
-      return { status: 'blocked', normalizedText, diagnostics: [result] };
+      return blocked(result);
     }
     patches.push(...result);
   }

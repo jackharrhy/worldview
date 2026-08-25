@@ -186,6 +186,18 @@ export class ProjectPresenter {
     );
     this.ui.projectMap.hidden = workspace.maps.length === 0;
     this.ui.projectMap.selectedIndex = -1;
+    this.ui.buildProfile.replaceChildren(
+      ...workspace.manifest.buildProfiles.map((profile) => {
+        const option = document.createElement('option');
+        option.value = profile.id;
+        option.textContent = `${profile.label} · ${profile.quality}`;
+        return option;
+      }),
+    );
+    this.ui.buildProfile.hidden = workspace.manifest.buildProfiles.length === 0;
+    this.ui.buildProfile.value =
+      workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? '';
+    await this.app.build.checkCompilerService();
     this.ui.statusMessage.textContent = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
   }
 
@@ -252,7 +264,7 @@ export class ProjectPresenter {
     });
 
     required<HTMLButtonElement>('[data-action="show-source"]').addEventListener('click', () => {
-      this.app.document.updateSourceFromDocument();
+      this.app.document.updateSourceFromDocument(true);
       this.ui.sourceDialog.showModal();
       this.ui.source.focus();
     });
@@ -303,6 +315,10 @@ export class ProjectPresenter {
       if (!map) return;
       await this.openEditorMap(map.file, map.handle, map.path);
     });
+    this.ui.buildProfile.addEventListener(
+      'change',
+      () => void this.app.build.checkCompilerService(),
+    );
 
     required<HTMLButtonElement>('[data-action="open-file"]').addEventListener('click', async () => {
       try {

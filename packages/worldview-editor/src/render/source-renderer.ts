@@ -1,12 +1,10 @@
 import {
   brushVertices,
-  brushesInDocument,
   deriveBrush,
   editorGroupForObject,
   findBrush,
   intersectBrushRay,
   intersectPointEntityRay,
-  pointEntitiesInDocument,
   selectedBrushIds,
   selectedFaceReferences,
   selectedPointEntityIds,
@@ -31,6 +29,8 @@ import type {
   EditorViewportKind,
 } from './types.js';
 import { buildSceneBuffers, objectSelectionBounds, type SceneBuffers } from './scene-buffers.js';
+import { buildEditorObjectSpatialIndex, type IndexedEditorObject } from './object-spatial-index.js';
+import type { BoundsSpatialIndex } from '../core/index.js';
 import {
   createMaterialResource,
   destroyMaterialResource,
@@ -87,6 +87,7 @@ export class EditorSourceRenderer {
   private materials: readonly EditorMaterial[];
   private entityLinkMode: EntityLinkMode;
   private entityDefinitions: EditorSourceRendererOptions['entityDefinitions'];
+  private objectSpatialIndex: BoundsSpatialIndex<IndexedEditorObject>;
   private openGroupId: string | null;
   private tool: EditorTool;
   private readonly materialResources = new Map<string, MaterialResource>();
@@ -128,6 +129,7 @@ export class EditorSourceRenderer {
     this.materials = options.materials ?? [];
     this.entityLinkMode = options.entityLinkMode ?? 'direct';
     this.entityDefinitions = options.entityDefinitions;
+    this.objectSpatialIndex = buildEditorObjectSpatialIndex(this.document, this.entityDefinitions);
     this.openGroupId = options.openGroupId ?? null;
     this.tool = options.tool ?? 'select';
     this.onClipPlaneChange = options.onClipPlaneChange;
@@ -165,18 +167,21 @@ export class EditorSourceRenderer {
     );
     this.rebuildMaterialResources();
     const hitTests = (origin: Vec3, direction: Vec3): readonly EditorObjectRayHit[] =>
-      [
-        ...brushesInDocument(this.document).flatMap((brush) => {
-          if (
-            this.objectViewState.hiddenBrushIds.includes(brush.id) ||
-            this.objectViewState.lockedBrushIds.includes(brush.id)
-          ) {
-            return [];
+      this.objectSpatialIndex
+        .queryRay(origin, direction)
+        .flatMap<EditorObjectRayHit>(({ value }) => {
+          if (value.kind === 'brush') {
+            const brush = value.brush;
+            if (
+              this.objectViewState.hiddenBrushIds.includes(brush.id) ||
+              this.objectViewState.lockedBrushIds.includes(brush.id)
+            ) {
+              return [];
+            }
+            const hit = intersectBrushRay(brush, origin, direction);
+            return hit ? [hit] : [];
           }
-          const hit = intersectBrushRay(brush, origin, direction);
-          return hit ? [hit] : [];
-        }),
-        ...pointEntitiesInDocument(this.document, this.entityDefinitions).flatMap((entity) => {
+          const entity = value.entity;
           if (
             this.objectViewState.hiddenEntityIds.includes(entity.id) ||
             this.objectViewState.lockedEntityIds.includes(entity.id)
@@ -185,8 +190,8 @@ export class EditorSourceRenderer {
           }
           const hit = intersectPointEntityRay(entity, origin, direction, this.entityDefinitions);
           return hit ? [hit] : [];
-        }),
-      ].toSorted((left, right) => left.distance - right.distance);
+        })
+        .toSorted((left, right) => left.distance - right.distance);
     const hitTest = (origin: Vec3, direction: Vec3): EditorObjectRayHit | null =>
       hitTests(origin, direction)[0] ?? null;
     const interaction: ViewportInteraction = {
@@ -611,7 +616,10 @@ export class EditorSourceRenderer {
     objectViewState: EditorObjectViewState = this.objectViewState,
   ): void {
     if (this.disposed) return;
+    const documentChanged = document !== this.document;
     this.document = document;
+    if (documentChanged)
+      this.objectSpatialIndex = buildEditorObjectSpatialIndex(document, this.entityDefinitions);
     this.selection = selection;
     this.objectViewState = objectViewState;
     const topologyKind = this.tool === 'vertex' || this.tool === 'edge' ? this.tool : null;
@@ -686,7 +694,8 @@ export class EditorSourceRenderer {
   }
 
   private rebuildScene(): void {
-    for (const batch of this.scene.solids) batch.buffer.destroy();
+    const started = performance.now();
+    const previous = this.scene;
     this.scene.lines.destroy();
     this.scene.perspectiveGrid.destroy();
     this.scene = buildSceneBuffers(
@@ -713,8 +722,17 @@ export class EditorSourceRenderer {
       this.entityDefinitions,
       this.diagnosticOverlays,
       this.sprites,
+      previous.solids,
     );
+    const retainedBuffers = new Set(this.scene.solids.map(({ buffer }) => buffer));
+    for (const batch of previous.solids) {
+      if (!retainedBuffers.has(batch.buffer)) batch.buffer.destroy();
+    }
     this.sceneVersion += 1;
+    performance.measure('worldview.editor.scene-rebuild', {
+      start: started,
+      end: performance.now(),
+    });
   }
 
   public setMaterials(materials: readonly EditorMaterial[]): void {
@@ -755,6 +773,7 @@ export class EditorSourceRenderer {
   ): void {
     if (this.entityDefinitions === entityDefinitions) return;
     this.entityDefinitions = entityDefinitions;
+    this.objectSpatialIndex = buildEditorObjectSpatialIndex(this.document, entityDefinitions);
     this.rebuildScene();
   }
 

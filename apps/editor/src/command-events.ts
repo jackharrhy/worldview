@@ -57,21 +57,21 @@ export class CommandEvents {
 
     this.ui.undoButton.addEventListener('click', () => this.state.session.undo());
     this.ui.redoButton.addEventListener('click', () => this.state.session.redo());
-    this.ui.repeatCommandsButton.addEventListener(
-      'click',
-      this.app.document.repeatRecordedCommands,
+    this.ui.repeatCommandsButton.addEventListener('click', () =>
+      this.app.document.repeatRecordedCommands(),
     );
     this.ui.clearRepeatCommandsButton.addEventListener('click', () => {
       if (!this.state.session.clearRepeatableCommands()) {
         this.ui.statusMessage.textContent = 'No recorded command sequence to clear.';
       }
     });
-    this.ui.selectAllButton.addEventListener('click', this.app.document.selectAllEditableObjects);
-    this.ui.invertSelectionButton.addEventListener(
-      'click',
-      this.app.document.invertEditableObjectSelection,
+    this.ui.selectAllButton.addEventListener('click', () =>
+      this.app.document.selectAllEditableObjects(),
     );
-    this.ui.duplicateButton.addEventListener('click', this.app.document.duplicateSelection);
+    this.ui.invertSelectionButton.addEventListener('click', () =>
+      this.app.document.invertEditableObjectSelection(),
+    );
+    this.ui.duplicateButton.addEventListener('click', () => this.app.document.duplicateSelection());
     this.ui.copyButton.addEventListener('click', () => void this.app.document.copySelection());
     this.ui.pasteButton.addEventListener(
       'click',
@@ -81,10 +81,9 @@ export class CommandEvents {
       'click',
       () => void this.app.document.pasteFromClipboard(true),
     );
-    this.ui.deleteButton.addEventListener('click', this.app.document.deleteSelection);
-    this.ui.focusSelectionButton.addEventListener(
-      'click',
-      this.app.contextMenu.focusCurrentSelection,
+    this.ui.deleteButton.addEventListener('click', () => this.app.document.deleteSelection());
+    this.ui.focusSelectionButton.addEventListener('click', () =>
+      this.app.contextMenu.focusCurrentSelection(),
     );
     this.ui.hideSelectionButton.addEventListener('click', () => this.state.session.hideSelected());
     this.ui.isolateSelectionButton.addEventListener('click', () =>
@@ -113,7 +112,14 @@ export class CommandEvents {
       this.state.portalOverlayVisible = !this.state.portalOverlayVisible;
       this.app.build.updateDiagnosticOverlayVisibility();
     });
-    this.ui.buildLogButton.addEventListener('click', () => this.ui.buildLogDialog.showModal());
+    this.ui.buildLogButton.addEventListener('click', async () => {
+      await this.app.build.renderBuildHistory();
+      this.ui.buildLogDialog.showModal();
+    });
+    this.ui.buildHistory.addEventListener(
+      'change',
+      () => void this.app.build.inspectHistoricalBuild(this.ui.buildHistory.value),
+    );
     required<HTMLButtonElement>('[data-action="close-build-log"]').addEventListener('click', () =>
       this.ui.buildLogDialog.close(),
     );
@@ -142,7 +148,7 @@ export class CommandEvents {
     required<HTMLButtonElement>('[data-action="close-issues"]').addEventListener('click', () =>
       this.app.organization.setIssueBrowserOpen(false),
     );
-    this.ui.showHiddenIssues.addEventListener('change', this.app.organization.renderIssues);
+    this.ui.showHiddenIssues.addEventListener('change', () => this.app.organization.renderIssues());
     for (const input of document.querySelectorAll<HTMLInputElement>('[data-issue-filter]')) {
       input.addEventListener('change', () => {
         const type = input.dataset.issueFilter as EditorIssueType | undefined;
@@ -171,9 +177,8 @@ export class CommandEvents {
         if (type) this.state.session.setSpecialBrushFilterVisible(type, input.checked);
       });
     }
-    this.ui.entityClassFilterSearch.addEventListener(
-      'input',
-      this.app.organization.renderViewFilters,
+    this.ui.entityClassFilterSearch.addEventListener('input', () =>
+      this.app.organization.renderViewFilters(),
     );
     required<HTMLButtonElement>('[data-action="show-all-entity-classes"]').addEventListener(
       'click',

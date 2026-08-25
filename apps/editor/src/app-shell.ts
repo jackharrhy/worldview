@@ -24,6 +24,7 @@ export function renderEditorShell(): string {
         <button type="button" data-action="versions">Versions</button>
         <button type="button" data-action="show-source">Source</button>
         <span class="topbar-rule" aria-hidden="true"></span>
+        <select id="build-profile" aria-label="Build profile" hidden></select>
         <button type="button" data-action="compile">Compile</button>
         <button type="button" data-action="toggle-preview" disabled>Preview</button>
         <button type="button" data-action="toggle-leak" disabled>Leak</button>
@@ -84,7 +85,7 @@ export function renderEditorShell(): string {
     </section>
 
     <dialog id="build-log-dialog" class="build-log-dialog">
-      <header><strong>Build diagnostics</strong><button type="button" data-action="close-build-log">Close</button></header>
+      <header><strong>Build diagnostics</strong><select id="build-history" aria-label="Build history"></select><button type="button" data-action="close-build-log">Close</button></header>
       <pre id="build-log-output"></pre>
     </dialog>
     <dialog id="recovery-dialog" class="build-log-dialog recovery-dialog">
