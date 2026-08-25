@@ -180,6 +180,42 @@ function matchingBracket(source: string, opening: number, open: string, close: s
   return -1;
 }
 
+function maskComments(source: string): string {
+  const masked = [...source];
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index]!;
+    if (character === '"' && source[index - 1] !== '\\') {
+      quoted = !quoted;
+      continue;
+    }
+    if (quoted || character !== '/') continue;
+    const next = source[index + 1];
+    if (next === '/') {
+      while (index < source.length && source[index] !== '\n') {
+        masked[index] = ' ';
+        index += 1;
+      }
+      index -= 1;
+    } else if (next === '*') {
+      masked[index] = ' ';
+      masked[index + 1] = ' ';
+      index += 2;
+      while (index < source.length) {
+        if (source[index] === '*' && source[index + 1] === '/') {
+          masked[index] = ' ';
+          masked[index + 1] = ' ';
+          index += 1;
+          break;
+        }
+        if (source[index] !== '\n' && source[index] !== '\r') masked[index] = ' ';
+        index += 1;
+      }
+    }
+  }
+  return masked.join('');
+}
+
 function fgdAttribute(header: string, name: string): string | undefined {
   return new RegExp(`\\b${name}\\s*\\(([^)]*)\\)`, 'i').exec(header)?.[1];
 }
@@ -187,12 +223,19 @@ function fgdAttribute(header: string, name: string): string | undefined {
 function parseFgd(source: string, sourcePath?: string): ParsedEntityDefinitionFile {
   const definitions: EntityDefinition[] = [];
   const diagnostics: EntityDefinitionDiagnostic[] = [];
-  const includes = [...source.matchAll(/@include\s+"([^"]+)"/gi)].map((match) => match[1]!);
+  const parseableSource = maskComments(source);
+  const includes = [...parseableSource.matchAll(/@include\s+"([^"]+)"/gi)].map(
+    (match) => match[1]!,
+  );
   const classPattern =
     /@(BaseClass|PointClass|SolidClass)\b([\s\S]*?)=\s*([\w.$-]+)\s*(?::\s*"([^"]*)")?\s*\[/gi;
-  for (let match = classPattern.exec(source); match; match = classPattern.exec(source)) {
+  for (
+    let match = classPattern.exec(parseableSource);
+    match;
+    match = classPattern.exec(parseableSource)
+  ) {
     const opening = classPattern.lastIndex - 1;
-    const closing = matchingBracket(source, opening, '[', ']');
+    const closing = matchingBracket(parseableSource, opening, '[', ']');
     if (closing < 0) {
       diagnostics.push({
         severity: 'error',
@@ -225,14 +268,15 @@ function parseFgd(source: string, sourcePath?: string): ParsedEntityDefinitionFi
       ...(color ? { color } : {}),
       ...(sprite ? { sprite } : {}),
       ...(model ? { model } : {}),
-      properties: parseFgdProperties(source.slice(opening + 1, closing)),
+      properties: parseFgdProperties(parseableSource.slice(opening + 1, closing)),
       ...(sourcePath ? { sourcePath } : {}),
     });
     classPattern.lastIndex = closing + 1;
   }
-  const classTokens = [...source.matchAll(/@(BaseClass|PointClass|SolidClass)\b/gi)].length;
+  const classTokens = [...parseableSource.matchAll(/@(BaseClass|PointClass|SolidClass)\b/gi)]
+    .length;
   if (definitions.length < classTokens) {
-    const firstClass = /@(BaseClass|PointClass|SolidClass)\b/i.exec(source);
+    const firstClass = /@(BaseClass|PointClass|SolidClass)\b/i.exec(parseableSource);
     diagnostics.push({
       severity: 'error',
       message: `Parsed ${definitions.length} of ${classTokens} FGD class declarations`,

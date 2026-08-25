@@ -251,7 +251,7 @@ class Parser {
   } {
     const start = this.peek()?.start ?? 0;
     const points: [Vec3, Vec3, Vec3] = [this.parsePoint(), this.parsePoint(), this.parsePoint()];
-    const material = this.takeValue('Expected a face material');
+    const material = this.takeMaterial();
     let projection: TextureProjection;
     if (this.check('[')) {
       this.format = 'valve-220';
@@ -329,6 +329,36 @@ class Parser {
     const offset = this.takeNumber('Expected texture-axis offset');
     this.expect(']');
     return { axis, offset };
+  }
+
+  private takeMaterial(): string {
+    const first = this.peek();
+    if (!first || (first.kind === 'symbol' && first.value !== '{' && first.value !== '}')) {
+      throw new MapParseError('Expected a face material', first?.line ?? 1, first?.column ?? 1);
+    }
+    if (first.kind === 'string') {
+      this.index += 1;
+      return first.value;
+    }
+    let material = '';
+    let end = first.start;
+    while (true) {
+      const token = this.peek();
+      if (
+        !token ||
+        (material.length > 0 && token.start !== end) ||
+        (token.kind === 'symbol' && token.value !== '{' && token.value !== '}')
+      ) {
+        break;
+      }
+      material += token.value;
+      end = token.end;
+      this.index += 1;
+    }
+    if (material === '{' || material === '}') {
+      throw new MapParseError('Expected a face material', first.line, first.column);
+    }
+    return material;
   }
 
   private peek(offset = 0): Token | undefined {

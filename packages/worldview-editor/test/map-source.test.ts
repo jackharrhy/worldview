@@ -145,6 +145,15 @@ describe('source-backed map saving', () => {
     expect(plan.text.replaceAll('\r\n', '')).not.toContain('\n');
   });
 
+  it('preserves alpha-test material tokens that begin with a structural brace', () => {
+    const source = CLASSIC_SOURCE.replace('STONE 8 16', '{char_trans 8 16');
+    const parsed = parseMapSource(source);
+    const plan = planMapSave(parsed.document, parsed.source);
+
+    expect(parsed.document.entities[0]?.brushes[0]?.faces[0]?.material).toBe('{char_trans');
+    expect(plan).toEqual({ status: 'safe', text: source, diagnostics: [] });
+  });
+
   it('converts classic faces only after the document format is explicitly changed', () => {
     const parsed = parseMapSource(CLASSIC_SOURCE);
     const converted = { ...parsed.document, revision: 1, format: 'valve-220' as const };

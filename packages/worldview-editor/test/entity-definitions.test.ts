@@ -49,6 +49,26 @@ describe('entity definition catalogs', () => {
     );
   });
 
+  it('ignores comments while locating FGD class blocks', () => {
+    const parsed = parseEntityDefinitionFile(
+      'fgd',
+      `
+// @PointClass = ignored_comment [
+@PointClass color(0 255 0) = info_notnull : "Wildcard" // inline note
+[
+  targetname(target_source) : "Name"
+]
+/* @SolidClass = ignored_block [ ] */
+`,
+      'entities/commented.fgd',
+    );
+
+    expect(parsed.diagnostics).toEqual([]);
+    expect(parsed.definitions).toMatchObject([
+      { classname: 'info_notnull', kind: 'point', color: [0, 255, 0] },
+    ]);
+  });
+
   it('parses Quake QUAKED point and brush declarations', () => {
     const parsed = parseEntityDefinitionFile(
       'def',

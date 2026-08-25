@@ -104,14 +104,18 @@ export class DocumentPresenter {
   }
 
   public duplicateSelection(): void {
-    this.state.duplicateSequence += 1;
-    const duplicated = this.state.session.duplicateSelected(
-      createSequentialIdFactory(`duplicate-${this.state.duplicateSequence}`),
-      [this.state.activeGridSize, this.state.activeGridSize, 0],
-      this.ui.textureLock.checked,
-      this.state.openGroupId,
-    );
-    if (!duplicated) this.ui.statusMessage.textContent = 'Select a brush before duplicating.';
+    try {
+      this.state.duplicateSequence += 1;
+      const duplicated = this.state.session.duplicateSelected(
+        createSequentialIdFactory(`duplicate-${this.state.duplicateSequence}`),
+        [this.state.activeGridSize, this.state.activeGridSize, 0],
+        this.ui.textureLock.checked,
+        this.state.openGroupId,
+      );
+      if (!duplicated) this.ui.statusMessage.textContent = 'Select a brush before duplicating.';
+    } catch (error) {
+      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+    }
   }
 
   public repeatRecordedCommands(): void {

@@ -142,6 +142,11 @@ missing or moved resources remain visible diagnostics.
 Available GoldSrc SPR2 resources render in source view. Missing or corrupt sprites fall back to
 definition-colored bounds. Quake MDL and GoldSrc studio-model rendering remain deferred.
 
+Version 1 projects resolve loose WADs, palettes, definition files, and sprite roots. They do not
+mount PAK archives or extract textures embedded in BSPs. A project built from an installed Quake
+game therefore needs a loose mapper WAD or an explicit external extraction step; that limitation
+must stay visible rather than being mistaken for a missing-texture parsing failure.
+
 ### Builds and launch
 
 `MapBuildService`, `MapBuildCapabilities`, compile/launch request and result contracts, and typed
@@ -208,6 +213,14 @@ Focused suites cover:
 - Gesture state ownership: `gesture-controller.test.ts`.
 - Spatial correctness and generated scale: `spatial-index.test.ts` and
   `scale-benchmark.test.ts`.
+
+The generated fixtures are supplemented by an ignored, local compatibility corpus. On 2026-08-25,
+all 63 GPL-republished [original Quake map sources](https://rome.ro/resources) parsed without
+diagnostics and round-tripped byte-for-byte (43,988 brushes total). All 54 maps in the
+[LibreQuake mapper archive](https://github.com/lavenderdotpet/LibreQuake/releases) also parsed and
+round-tripped byte-for-byte (92,492 brushes total); its largest production map contains 7,710
+brushes. The pinned TrenchBroom Quake FGD parsed all 111 declarations without diagnostics. These
+third-party test assets remain outside the repository under `apps/viewer/public/local`.
 
 The fixed performance command is `npm run test:editor-performance`. It generates an 8,000
 six-face-brush map, runs Chromium at 2560×1440/DPR 1 on the reference development Mac, and asserts:
