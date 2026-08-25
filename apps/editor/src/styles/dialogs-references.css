@@ -398,9 +398,8 @@
   }
   .top-actions button,
   .inspector-toggle {
-    min-width: 43px;
-    padding: 0 7px;
-    font-size: 10px;
+    min-width: 30px;
+    padding: 0;
   }
   .workspace,
   .workspace.inspector-closed {

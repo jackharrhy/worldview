@@ -305,6 +305,13 @@ export interface PointerDrag {
   readonly topologyLassoAdditive: boolean;
   readonly cameraMode: 'look' | 'orbit' | 'pan' | null;
   readonly cameraEye: Vec3 | null;
+  readonly cameraOrbit: {
+    readonly center: Vec3;
+    readonly distance: number;
+    readonly yaw: number;
+    readonly pitch: number;
+  } | null;
+  cameraOrbitInitialized: boolean;
   x: number;
   y: number;
   moved: number;

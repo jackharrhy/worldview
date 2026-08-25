@@ -59,6 +59,13 @@ export class MaterialsPresenter {
       .filter(Boolean);
     const usages = materialUsageInDocument(this.state.session.document);
     const usageByName = new Map(usages.map((usage) => [usage.material.toLowerCase(), usage]));
+    const loadedNames = new Set(
+      this.state.materialCatalog.materials().map((material) => material.name.toLowerCase()),
+    );
+    const missingMaterials = usages
+      .filter((usage) => !loadedNames.has(usage.material.toLowerCase()))
+      .map((usage) => usage.material)
+      .toSorted((left, right) => left.localeCompare(right));
     const materials = this.state.materialCatalog
       .materials()
       .filter((material) =>
@@ -78,6 +85,11 @@ export class MaterialsPresenter {
         return left.name.localeCompare(right.name);
       });
     this.ui.materialCount.textContent = `${this.state.materialCatalog.size} loaded · ${usages.length} in use`;
+    this.ui.materialCoverage.hidden = missingMaterials.length === 0;
+    this.ui.materialCoverage.textContent =
+      missingMaterials.length === 0
+        ? ''
+        : `Missing ${missingMaterials.length} of ${usages.length} map materials: ${missingMaterials.slice(0, 8).join(', ')}${missingMaterials.length > 8 ? `, +${missingMaterials.length - 8} more` : ''}. Load the matching WAD to render them.`;
     this.ui.materialGrid.replaceChildren();
     for (const material of materials) {
       const usage = usageByName.get(material.name.toLowerCase());

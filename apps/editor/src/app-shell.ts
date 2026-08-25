@@ -4,6 +4,10 @@ import {
   EDITOR_SPECIAL_BRUSH_FILTER_INFO,
 } from '@jackharrhy/worldview-editor';
 
+function toolbarIcon(name: string, label: string): string {
+  return `<i class="ph ph-${name}" aria-hidden="true"></i><span class="toolbar-label">${label}</span>`;
+}
+
 /** Static application chrome kept separate from the editor's state and command wiring. */
 export function renderEditorShell(): string {
   return `
@@ -14,62 +18,72 @@ export function renderEditorShell(): string {
         <span id="document-name" class="document-name">untitled.map</span>
       </div>
       <nav class="top-actions" aria-label="Document actions">
-        <button type="button" data-action="new">New</button>
-        <button type="button" data-action="open-file">Open</button>
-        <button type="button" data-action="open-project">Project</button>
+        <div class="toolbar-group" aria-label="Files">
+          <button class="icon-button" type="button" data-action="new" title="New map">${toolbarIcon('file-plus', 'New')}</button>
+          <button class="icon-button" type="button" data-action="open-file" title="Open map">${toolbarIcon('folder-open', 'Open')}</button>
+          <button class="icon-button" type="button" data-action="open-project" title="Open project directory">${toolbarIcon('folders', 'Project')}</button>
+          <button class="icon-button" type="button" data-action="download" title="Save map">${toolbarIcon('floppy-disk', 'Save')}</button>
+        </div>
         <select id="project-map" aria-label="Project map" hidden></select>
-        <button type="button" data-action="download">Save</button>
-        <button type="button" data-action="export-normalized">Export normalized</button>
-        <button type="button" data-action="checkpoint">Checkpoint</button>
-        <button type="button" data-action="versions">Versions</button>
-        <button type="button" data-action="show-source">Source</button>
-        <span class="topbar-rule" aria-hidden="true"></span>
-        <select id="build-profile" aria-label="Build profile" hidden></select>
-        <button type="button" data-action="compile">Compile</button>
-        <button type="button" data-action="toggle-preview" disabled>Preview</button>
-        <button type="button" data-action="toggle-leak" disabled>Leak</button>
-        <button type="button" data-action="toggle-portals" disabled>Portals</button>
-        <button type="button" data-action="build-log" disabled>Log</button>
-        <button type="button" data-action="launch" disabled>Launch</button>
+        <div class="toolbar-group secondary-actions" aria-label="Document history and source">
+          <button class="icon-button" type="button" data-action="export-normalized" title="Export normalized copy">${toolbarIcon('export', 'Export normalized')}</button>
+          <button class="icon-button" type="button" data-action="checkpoint" title="Create recovery checkpoint">${toolbarIcon('bookmark-simple', 'Checkpoint')}</button>
+          <button class="icon-button" type="button" data-action="versions" title="Recovery versions">${toolbarIcon('clock-counter-clockwise', 'Versions')}</button>
+          <button class="icon-button" type="button" data-action="show-source" title="Edit map source">${toolbarIcon('code', 'Source')}</button>
+        </div>
+        <div class="toolbar-group build-actions" aria-label="Build">
+          <select id="build-profile" aria-label="Build profile" hidden></select>
+          <button class="icon-button" type="button" data-action="compile" title="Compile map">${toolbarIcon('hammer', 'Compile')}</button>
+          <button class="icon-button" type="button" data-action="toggle-preview" title="Toggle compiled preview" disabled>${toolbarIcon('monitor-play', 'Preview')}</button>
+          <button class="icon-button" type="button" data-action="toggle-leak" title="Toggle leak path" disabled>${toolbarIcon('warning', 'Leak')}</button>
+          <button class="icon-button" type="button" data-action="toggle-portals" title="Toggle portals" disabled>${toolbarIcon('intersect-three', 'Portals')}</button>
+          <button class="icon-button" type="button" data-action="build-log" title="Build diagnostics" disabled>${toolbarIcon('terminal-window', 'Log')}</button>
+          <button class="icon-button" type="button" data-action="launch" title="Launch external game" disabled>${toolbarIcon('rocket-launch', 'Launch')}</button>
+        </div>
       </nav>
-      <button class="inspector-toggle" type="button" data-action="toggle-inspector" aria-pressed="true">Inspector</button>
-      <div class="compile-state" title="Compiler service state">COMPILER OFFLINE</div>
+      <button class="inspector-toggle icon-button" type="button" data-action="toggle-inspector" aria-pressed="true" title="Toggle inspector">${toolbarIcon('sidebar', 'Inspector')}</button>
       <input id="map-file" type="file" accept=".map,.txt" hidden>
       <input id="reference-files" type="file" accept=".map" multiple hidden>
     </header>
 
     <section class="toolrail" aria-label="Editor tools">
-      <button class="tool-button active" type="button" data-tool="select" aria-pressed="true">Select</button>
-      <button class="tool-button" type="button" data-tool="create" aria-pressed="false">Brush</button>
-      <button class="tool-button" type="button" data-tool="entity" aria-pressed="false">Entity</button>
-      <button class="tool-button" type="button" data-tool="hull" aria-pressed="false">Hull</button>
-      <button class="tool-button" type="button" data-tool="face" aria-pressed="false">Face</button>
-      <button class="tool-button" type="button" data-tool="sweep" aria-pressed="false">Sweep</button>
-      <button class="tool-button" type="button" data-tool="clip" aria-pressed="false">Clip</button>
-      <button class="tool-button" type="button" data-tool="vertex" aria-pressed="false">Vertex</button>
-      <button class="tool-button" type="button" data-tool="edge" aria-pressed="false">Edge</button>
-      <button class="tool-button" type="button" data-tool="rotate" aria-pressed="false">Rotate</button>
-      <button class="tool-button" type="button" data-tool="scale" aria-pressed="false">Scale</button>
-      <button class="tool-button" type="button" data-tool="shear" aria-pressed="false">Shear</button>
+      <div class="toolbar-group tool-group" aria-label="Modes">
+        <button class="tool-button icon-button active" type="button" data-tool="select" aria-pressed="true" title="Select objects">${toolbarIcon('cursor', 'Select')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="create" aria-pressed="false" title="Create brush">${toolbarIcon('cube', 'Brush')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="entity" aria-pressed="false" title="Place entity">${toolbarIcon('user-square', 'Entity')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="hull" aria-pressed="false" title="Build convex hull">${toolbarIcon('polygon', 'Hull')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="face" aria-pressed="false" title="Edit faces">${toolbarIcon('square', 'Face')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="sweep" aria-pressed="false" title="Sweep selection">${toolbarIcon('flow-arrow', 'Sweep')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="clip" aria-pressed="false" title="Clip brushes">${toolbarIcon('scissors', 'Clip')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="vertex" aria-pressed="false" title="Edit vertices">${toolbarIcon('vector-three', 'Vertex')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="edge" aria-pressed="false" title="Edit edges">${toolbarIcon('line-segment', 'Edge')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="rotate" aria-pressed="false" title="Rotate selection">${toolbarIcon('arrow-clockwise', 'Rotate')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="scale" aria-pressed="false" title="Scale selection">${toolbarIcon('arrows-out', 'Scale')}</button>
+        <button class="tool-button icon-button" type="button" data-tool="shear" aria-pressed="false" title="Shear selection">${toolbarIcon('perspective', 'Shear')}</button>
+      </div>
       <span class="toolrail-rule" aria-hidden="true"></span>
-      <button type="button" data-action="focus-selection" title="Frame the selection in every viewport (Home)" disabled>Focus</button>
-      <button type="button" data-action="select-all" title="Select every visible, unlocked object (Ctrl/Command+A)">All</button>
-      <button type="button" data-action="invert-selection" title="Invert the visible, unlocked object selection (Ctrl/Command+Shift+A)">Invert</button>
-      <button type="button" data-action="undo" disabled>Undo</button>
-      <button type="button" data-action="redo" disabled>Redo</button>
-      <button type="button" data-action="repeat-commands" title="Repeat recorded object commands (Ctrl/Command+Shift+R)" disabled>Repeat</button>
-      <button type="button" data-action="clear-repeat-commands" title="Start a new command-repetition sequence" disabled>Clear repeat</button>
-      <button type="button" data-action="duplicate" disabled>Duplicate</button>
-      <button type="button" data-action="copy" title="Copy selected objects or face attributes (Ctrl/Command+C)" disabled>Copy</button>
-      <button type="button" data-action="paste" title="Paste objects or face attributes (Ctrl/Command+V)">Paste</button>
-      <button type="button" data-action="paste-here" title="Paste copied bounds at the viewport pointer (Ctrl/Command+Shift+V)" disabled>Paste here</button>
-      <button type="button" data-action="delete" disabled>Delete</button>
+      <div class="toolbar-group selection-actions" aria-label="Selection and history">
+        <button class="icon-button" type="button" data-action="focus-selection" title="Frame selection (Home)" disabled>${toolbarIcon('crosshair', 'Focus')}</button>
+        <button class="icon-button" type="button" data-action="select-all" title="Select all (Ctrl/Command+A)">${toolbarIcon('selection-all', 'All')}</button>
+        <button class="icon-button" type="button" data-action="invert-selection" title="Invert selection (Ctrl/Command+Shift+A)">${toolbarIcon('selection-inverse', 'Invert')}</button>
+        <button class="icon-button" type="button" data-action="undo" title="Undo" disabled>${toolbarIcon('arrow-counter-clockwise', 'Undo')}</button>
+        <button class="icon-button" type="button" data-action="redo" title="Redo" disabled>${toolbarIcon('arrow-clockwise', 'Redo')}</button>
+        <button class="icon-button" type="button" data-action="repeat-commands" title="Repeat commands (Ctrl/Command+Shift+R)" disabled>${toolbarIcon('repeat', 'Repeat')}</button>
+        <button class="icon-button" type="button" data-action="clear-repeat-commands" title="Clear repeat sequence" disabled>${toolbarIcon('prohibit', 'Clear repeat')}</button>
+        <button class="icon-button" type="button" data-action="duplicate" title="Duplicate" disabled>${toolbarIcon('copy-simple', 'Duplicate')}</button>
+        <button class="icon-button" type="button" data-action="copy" title="Copy (Ctrl/Command+C)" disabled>${toolbarIcon('clipboard', 'Copy')}</button>
+        <button class="icon-button" type="button" data-action="paste" title="Paste (Ctrl/Command+V)">${toolbarIcon('clipboard-text', 'Paste')}</button>
+        <button class="icon-button" type="button" data-action="paste-here" title="Paste at pointer (Ctrl/Command+Shift+V)" disabled>${toolbarIcon('push-pin', 'Paste here')}</button>
+        <button class="icon-button" type="button" data-action="delete" title="Delete" disabled>${toolbarIcon('trash', 'Delete')}</button>
+      </div>
       <span class="toolrail-rule" aria-hidden="true"></span>
-      <button type="button" data-action="hide-selection" title="Hide selected objects" disabled>Hide</button>
-      <button type="button" data-action="isolate-selection" title="Hide every object except the selection" disabled>Isolate</button>
-      <button type="button" data-action="show-all" title="Show all hidden objects" disabled>Show all</button>
-      <button type="button" data-action="lock-selection" title="Lock selected objects against picking and editing" disabled>Lock</button>
-      <button type="button" data-action="unlock-all" title="Unlock all objects" disabled>Unlock all</button>
+      <div class="toolbar-group visibility-actions" aria-label="Visibility and locking">
+        <button class="icon-button" type="button" data-action="hide-selection" title="Hide selection" disabled>${toolbarIcon('eye-slash', 'Hide')}</button>
+        <button class="icon-button" type="button" data-action="isolate-selection" title="Isolate selection" disabled>${toolbarIcon('target', 'Isolate')}</button>
+        <button class="icon-button" type="button" data-action="show-all" title="Show all hidden objects" disabled>${toolbarIcon('eye', 'Show all')}</button>
+        <button class="icon-button" type="button" data-action="lock-selection" title="Lock selection" disabled>${toolbarIcon('lock', 'Lock')}</button>
+        <button class="icon-button" type="button" data-action="unlock-all" title="Unlock all objects" disabled>${toolbarIcon('lock-open', 'Unlock all')}</button>
+      </div>
       <span class="toolrail-rule" aria-hidden="true"></span>
       <label class="tool-select">Grid
         <select id="grid-size" aria-label="Grid size">
@@ -79,7 +93,7 @@ export function renderEditorShell(): string {
         </select>
       </label>
       <label class="tool-toggle"><input id="texture-lock" type="checkbox" checked> Texture lock</label>
-      <button class="view-filter-toggle" type="button" data-action="toggle-view-filters" aria-expanded="false" title="Filter entity definitions and special brush types without changing map source">View <span id="view-filter-count">0</span></button>
+      <button class="view-filter-toggle icon-button" type="button" data-action="toggle-view-filters" aria-expanded="false" title="Viewport filters">${toolbarIcon('funnel', 'View')}<span id="view-filter-count">0</span></button>
       <span class="toolrail-spacer"></span>
       <span class="tool-help">RMB look · Alt+RMB orbit · MMB pan · WASD/QX fly · Home focus</span>
     </section>
@@ -425,6 +439,7 @@ export function renderEditorShell(): string {
                 <button type="button" data-action="replace-material">Replace</button>
               </div>
               <p id="material-replace-scope" class="material-replace-scope">No selection: replace across the whole map.</p>
+              <p id="material-coverage" class="material-coverage" hidden></p>
               <p id="material-message" class="material-message">WAD assets stay in memory and are not embedded in map source.</p>
             </div>
           </section>
@@ -502,8 +517,9 @@ export function renderEditorShell(): string {
     </section>
 
     <footer class="statusbar">
-      <span id="status-message">Starting WebGPU source renderer...</span>
+      <span id="status-message" aria-live="polite">Starting WebGPU source renderer...</span>
       <button id="issue-status" type="button" data-action="toggle-issues" aria-expanded="false">Issues 0</button>
+      <div class="compile-state" title="Compiler service state">COMPILER OFFLINE</div>
       <span id="pointer-context">Perspective / edit</span>
     </footer>
 

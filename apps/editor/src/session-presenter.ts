@@ -18,6 +18,7 @@ interface ReplaceDocumentOptions {
   readonly diskFingerprint?: string | null;
   readonly dirty?: boolean;
   readonly savedRevision?: number;
+  readonly focusView?: boolean;
 }
 
 export class SessionPresenter {
@@ -116,6 +117,7 @@ export class SessionPresenter {
     } finally {
       this.state.replacingDocument = false;
     }
+    if (options.focusView) this.state.renderer?.focusDocument();
     this.state.savedDocumentRevision = options.savedRevision ?? document.revision;
     this.state.lastRecoveryLabel = label;
     this.app.document.setDocumentDirty(options.dirty ?? false);

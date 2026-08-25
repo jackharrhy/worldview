@@ -547,6 +547,7 @@
 }
 
 .material-message,
+.material-coverage,
 .entity-link-section p,
 .reference-section p,
 .source-message {
@@ -554,6 +555,13 @@
   color: var(--quiet);
   font-size: 9px;
   line-height: 1.45;
+}
+
+.material-coverage {
+  padding: 7px 8px;
+  border: 1px solid rgb(224 111 103 / 42%);
+  background: rgb(224 111 103 / 8%);
+  color: #e7a19b;
 }
 
 .entity-link-mode {

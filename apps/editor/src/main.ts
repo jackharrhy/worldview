@@ -2,6 +2,7 @@ import { renderEditorShell } from './app-shell.js';
 import { EditorApplication } from './editor-application.js';
 import { bindEditorElements } from './editor-elements.js';
 
+import '@phosphor-icons/web/regular/style.css';
 import './style.css';
 
 const root = document.querySelector<HTMLDivElement>('#app');

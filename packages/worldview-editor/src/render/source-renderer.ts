@@ -1,10 +1,13 @@
 import {
+  brushesInDocument,
   brushVertices,
+  createObjectSelection,
   deriveBrush,
   editorGroupForObject,
   findBrush,
   intersectBrushRay,
   intersectPointEntityRay,
+  pointEntitiesInDocument,
   selectedBrushIds,
   selectedFaceReferences,
   selectedPointEntityIds,
@@ -958,6 +961,20 @@ export class EditorSourceRenderer {
       this.topologySelection.length > 0
         ? topologyHandleBounds(this.topologySelection)
         : objectSelectionBounds(this.document, this.selection);
+    if (!bounds) return false;
+    for (const viewport of this.viewports) viewport.focusBounds(bounds);
+    return true;
+  }
+
+  public focusDocument(): boolean {
+    if (this.disposed) return false;
+    const bounds = objectSelectionBounds(
+      this.document,
+      createObjectSelection(
+        brushesInDocument(this.document).map((brush) => brush.id),
+        pointEntitiesInDocument(this.document).map((entity) => entity.id),
+      ),
+    );
     if (!bounds) return false;
     for (const viewport of this.viewports) viewport.focusBounds(bounds);
     return true;

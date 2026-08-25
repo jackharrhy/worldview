@@ -16,6 +16,7 @@ import { RendererPresenter } from './renderer-presenter.js';
 import { SessionPresenter } from './session-presenter.js';
 import { ToolEvents } from './tool-events.js';
 import { TransformToolPresenter } from './transform-tool-presenter.js';
+import { WebMcpPresenter } from './webmcp-presenter.js';
 
 export class EditorApplication implements EditorStateHost {
   public readonly state: EditorState;
@@ -31,6 +32,7 @@ export class EditorApplication implements EditorStateHost {
   public readonly contextMenu = new ContextMenuPresenter(this);
   public readonly project = new ProjectPresenter(this);
   public readonly renderer = new RendererPresenter(this);
+  public readonly webmcp = new WebMcpPresenter(this);
   private readonly organizationEvents = new OrganizationEvents(this);
   private readonly commandEvents = new CommandEvents(this);
   private readonly toolEvents = new ToolEvents(this);
@@ -72,5 +74,6 @@ export class EditorApplication implements EditorStateHost {
     this.commandEvents.connect();
     this.toolEvents.connect();
     this.keyboardEvents.connect();
+    await this.webmcp.connect();
   }
 }

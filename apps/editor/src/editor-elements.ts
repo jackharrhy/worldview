@@ -202,6 +202,7 @@ export function bindEditorElements() {
   const lockedObjectCount = required<HTMLElement>('#locked-object-count');
   const geometryState = required<HTMLElement>('#geometry-state');
   const materialCount = required<HTMLElement>('#material-count');
+  const materialCoverage = required<HTMLParagraphElement>('#material-coverage');
   const materialGrid = required<HTMLDivElement>('#material-grid');
   const materialFilter = required<HTMLInputElement>('#material-filter');
   const materialSort = required<HTMLSelectElement>('#material-sort');
@@ -428,6 +429,7 @@ export function bindEditorElements() {
     lockedObjectCount,
     geometryState,
     materialCount,
+    materialCoverage,
     materialGrid,
     materialFilter,
     materialSort,

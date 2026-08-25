@@ -275,6 +275,53 @@ async function openEditor(page: Page): Promise<void> {
   await expect(page.locator('.viewport-error')).toBeHidden();
 }
 
+interface BrowserSiteToolResult {
+  readonly summary: string;
+  readonly [key: string]: unknown;
+}
+
+async function installSiteToolRegistry(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    interface SiteTool {
+      readonly name: string;
+      execute(input: unknown): unknown | Promise<unknown>;
+    }
+    const tools = new Map<string, SiteTool>();
+    Object.defineProperty(document, 'modelContext', {
+      configurable: true,
+      value: {
+        registerTool(tool: SiteTool) {
+          tools.set(tool.name, tool);
+        },
+      },
+    });
+    Object.defineProperty(window, 'worldviewSiteTools', {
+      configurable: true,
+      value: tools,
+    });
+  });
+}
+
+async function executeSiteTool(
+  page: Page,
+  name: string,
+  input: Record<string, unknown> = {},
+): Promise<BrowserSiteToolResult> {
+  return page.evaluate(
+    async ({ toolName, toolInput }) => {
+      interface SiteTool {
+        execute(input: unknown): unknown | Promise<unknown>;
+      }
+      const tools = (window as unknown as { worldviewSiteTools: Map<string, SiteTool> })
+        .worldviewSiteTools;
+      const tool = tools.get(toolName);
+      if (!tool) throw new Error(`Site tool ${toolName} was not registered`);
+      return tool.execute(toolInput);
+    },
+    { toolName: name, toolInput: input },
+  ) as Promise<BrowserSiteToolResult>;
+}
+
 async function readEditorDocument(page: Page) {
   await page.getByRole('button', { name: 'Source', exact: true }).click();
   const source = await page.locator('#map-source').inputValue();
@@ -390,6 +437,120 @@ async function perspectiveCamera(page: Page): Promise<CameraSnapshot> {
 function cameraDistance(left: readonly number[], right: readonly number[]): number {
   return Math.hypot(left[0]! - right[0]!, left[1]! - right[1]!, left[2]! - right[2]!);
 }
+
+test.describe('WebMCP site authoring', () => {
+  test('keeps the normal editor available when the browser has no site-tool API', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tools', 'unsupported');
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tool-count', '0');
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toBeEnabled();
+  });
+
+  test('registers first-class live tools with revision guards, visible edits, and undo', async ({
+    page,
+  }) => {
+    await installSiteToolRegistry(page);
+    await openEditor(page);
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tools', 'ready');
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tool-count', '21');
+
+    const names = await page.evaluate(() => [
+      ...(
+        window as unknown as { worldviewSiteTools: Map<string, unknown> }
+      ).worldviewSiteTools.keys(),
+    ]);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'worldview_inspect_editor',
+        'worldview_list_objects',
+        'worldview_select',
+        'worldview_translate_selection',
+        'worldview_create_box',
+        'worldview_history',
+        'worldview_replace_map_source',
+        'worldview_open_project_map',
+      ]),
+    );
+
+    const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
+    expect(inspection.revision).toBe(0);
+    expect(inspection.counts).toMatchObject({ brushes: 3, faces: 18 });
+    const documentId = inspection.documentId as string;
+    const listed = await executeSiteTool(page, 'worldview_list_objects', {
+      kind: 'brush',
+      limit: 10,
+    });
+    const objects = listed.objects as Array<{
+      id: string;
+      bounds: unknown;
+    }>;
+    const firstBrush = objects[0]!;
+
+    await executeSiteTool(page, 'worldview_select', {
+      expectedDocumentId: documentId,
+      expectedRevision: 0,
+      mode: 'objects',
+      brushIds: [firstBrush.id],
+    });
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#status-message')).toContainText('Site tool: updated');
+
+    await executeSiteTool(page, 'worldview_frame_view', { target: 'selection' });
+    await expect(page.locator('#status-message')).toContainText('Site tool: framed');
+    await executeSiteTool(page, 'worldview_set_tool', { tool: 'face' });
+    await expect(page.getByRole('button', { name: 'Face', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await executeSiteTool(page, 'worldview_set_tool', { tool: 'select' });
+
+    const translated = await executeSiteTool(page, 'worldview_translate_selection', {
+      expectedDocumentId: documentId,
+      expectedRevision: 0,
+      delta: [16, 0, 0],
+      textureLock: true,
+    });
+    expect(translated.revision).toBe(1);
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('Site tool: translated');
+
+    await expect(
+      executeSiteTool(page, 'worldview_translate_selection', {
+        expectedDocumentId: documentId,
+        expectedRevision: 0,
+        delta: [16, 0, 0],
+      }),
+    ).rejects.toThrow('Stale document revision');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+
+    const undone = await executeSiteTool(page, 'worldview_history', {
+      expectedDocumentId: documentId,
+      expectedRevision: 1,
+      action: 'undo',
+    });
+    const undoRevision = undone.revision as number;
+    expect(undoRevision).toBeGreaterThan(1);
+    await expect(page.locator('#status-message')).toContainText('Site tool: undo completed');
+    const afterUndo = await executeSiteTool(page, 'worldview_list_objects', {
+      kind: 'brush',
+      query: firstBrush.id,
+    });
+    expect((afterUndo.objects as Array<{ bounds: unknown }>)[0]?.bounds).toEqual(firstBrush.bounds);
+
+    const created = await executeSiteTool(page, 'worldview_create_box', {
+      expectedDocumentId: documentId,
+      expectedRevision: undoRevision,
+      min: [192, 192, 0],
+      max: [256, 256, 64],
+      material: 'DEV_FLOOR',
+    });
+    expect(created.revision).toBeGreaterThan(undoRevision);
+    expect(created.brushId).toEqual(expect.any(String));
+    await expect(page.locator('#status-message')).toContainText('Site tool: created brush');
+  });
+});
 
 test.describe('3D source authoring', () => {
   test('browses live issues, locates objects, filters findings, and quick-fixes with undo', async ({
@@ -915,6 +1076,16 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
     await expect(page.getByRole('button', { name: 'Focus', exact: true })).toBeEnabled();
 
+    const beforeStationaryOrbit = await perspectiveCamera(page);
+    await page.keyboard.down('Alt');
+    await page.mouse.move(brushPoint.x, brushPoint.y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(brushPoint.x + 2, brushPoint.y + 2);
+    await page.mouse.up({ button: 'right' });
+    await page.keyboard.up('Alt');
+    const afterStationaryOrbit = await perspectiveCamera(page);
+    expect(afterStationaryOrbit).toEqual(beforeStationaryOrbit);
+
     const beforeOrbit = await perspectiveCamera(page);
     await page.keyboard.down('Alt');
     await page.mouse.move(brushPoint.x, brushPoint.y);
@@ -989,6 +1160,33 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#status-message')).toContainText('Framed the selection');
     await expect(page.locator('#perspective-mode')).toContainText('FOCUS');
     await expect(page.locator('#document-revision')).toHaveText('0');
+  });
+
+  test('frames a newly opened map instead of leaving distant geometry off-screen', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const ids = createSequentialIdFactory('browser-open-focus');
+    const starter = createStarterDocument();
+    const distantBrush = createBoxBrush([4800, 6800, 1200], [5200, 7200, 1600], 'DEV_FLOOR', ids);
+    const source = serializeMap({
+      ...starter,
+      entities: [{ ...starter.entities[0]!, brushes: [distantBrush] }],
+    });
+    await page.locator('#map-file').setInputFiles({
+      name: 'distant.map',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(source),
+    });
+    await expect(page.locator('#status-message')).toContainText('Opened distant.map');
+    const camera = await perspectiveCamera(page);
+    expect(camera.center[0]).toBeCloseTo(5000);
+    expect(camera.center[1]).toBeCloseTo(7000);
+    expect(camera.center[2]).toBeCloseTo(1400);
+    const top = await page.locator('.source-canvas').first().boundingBox();
+    if (!top) throw new Error('Top viewport has no bounds');
+    await page.mouse.click(top.x + top.width / 2, top.y + top.height / 2);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
   });
 
   test('stationary right-click opens contextual 3D face, object, material, and entity actions', async ({
@@ -1976,6 +2174,7 @@ test.describe('3D source authoring', () => {
     await page.getByRole('tab', { name: 'Textures', exact: true }).click();
 
     await expect(page.locator('#material-count')).toHaveText('2 loaded · 2 in use');
+    await expect(page.locator('#material-coverage')).toBeHidden();
     await expect(page.locator('.material-tile.in-use')).toHaveCount(2);
     await page.locator('#material-sort').selectOption('usage');
     await expect(page.locator('.material-tile').first().locator('span')).toHaveText('DEV_FLOOR');
@@ -2003,6 +2202,9 @@ test.describe('3D source authoring', () => {
     await page.locator('[data-action="replace-material"]').click();
     await expect(page.locator('#selection-kind')).toHaveText('10 Faces');
     await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#material-coverage')).toContainText(
+      'Missing 1 of 2 map materials: REPLACED',
+    );
     await expect(page.locator('#status-message')).toContainText('on 10 faces');
     let document = await readEditorDocument(page);
     expect(

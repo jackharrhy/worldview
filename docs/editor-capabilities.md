@@ -18,7 +18,8 @@ in `apps/editor/test`, and end-to-end interaction tests in `tests/browser/editor
 | FGD, DEF, ENT, definition inheritance, and sprite fallback                        | `packages/worldview-editor/test/entity-definitions.test.ts` and `apps/editor/test/project-workspace.test.ts`                                                         |
 | Compile/launch capabilities, diagnostics, artifacts, cancellation, and history    | `packages/worldview-editor/test/build-artifacts.test.ts`, `apps/compiler-service/test/compiler.test.ts`, and `apps/editor/test/build-history.test.ts`                |
 | Spatial queries and 8,000-brush behavior                                          | `packages/worldview-editor/test/spatial-index.test.ts`, `scale-benchmark.test.ts`, and `tests/browser/editor-performance.spec.ts`                                    |
-| Complete browser interaction contract                                             | 68 Chromium scenarios in `tests/browser/editor.spec.ts`                                                                                                              |
+| WebMCP live authoring and unsupported-browser fallback                            | `WebMCP site authoring` scenarios in `tests/browser/editor.spec.ts`                                                                                                  |
+| Complete browser interaction contract                                             | 71 Chromium scenarios in `tests/browser/editor.spec.ts`                                                                                                              |
 
 ## Scope
 
@@ -169,6 +170,25 @@ assembly and reusable viewport geometry live outside the input-heavy viewport co
 browser application keeps its static shell and clipboard workflow outside the command coordinator.
 These are internal boundaries: the public editor entrypoints and authored map data flow are
 unchanged.
+The application chrome uses one icon family and fixed-size grouped actions so modes and common
+commands remain scannable without competing with the viewports. Context-bearing map, grid, and
+build-profile controls stay textual. Icon actions retain accessible names, tooltips, keyboard
+routes, and visible focus state.
+
+The visible editor is also a first-class WebMCP site-tool host when the built-in browser provides
+`document.modelContext.registerTool`. Twenty-one semantic tools cover live editor inspection,
+bounded object/material/source queries, selection and camera framing, tool activation, transforms,
+material and raw entity-property edits, box and point-entity creation, duplication, deletion,
+history, explicit source replacement, and maps from an already authorized project. They call the
+same presenters and `EditorSession` transactions used by direct interaction. Every document edit
+requires the caller's observed document identity and revision, reports the resulting state, stays undoable when it is an
+ordinary editing command, and visibly updates the normal canvas, inspector, history controls, and
+live status message. Source replacement and dirty project-map switching are explicitly destructive;
+site tools do not save to disk, launch external software, or accept arbitrary paths or commands.
+When the experimental browser API is missing or disabled, registration is a no-op and the full
+visual editor remains unchanged. Browser coverage injects only the proposed registration surface,
+then executes the real registered definitions and existing application logic.
+
 The active grid size rebuilds the orthographic and horizontal construction grids immediately. In
 the perspective pane, a DOM-free dominant-axis projection clips world-aligned grid lines to every
 visible convex brush face; sloped faces therefore stretch the grid while every generated endpoint
@@ -186,7 +206,10 @@ coordinate under the pointer remains invariant. Focus or Home fits the current o
 selection into every source viewport without rotating the perspective camera or advancing the
 document revision. The renderer reports immutable camera snapshots, including eye position, field
 of view, and fly speed, through `onCameraChange`, and exposes `focusSelection()` for application
-shells. No TrenchBroom implementation source is adapted.
+shells. Opening a new file fits the whole document into all four panes, so distant real-map
+geometry does not begin outside a fixed starter view. Orbit hit-point retargeting is deferred until
+the pointer crosses the five-pixel gesture threshold; a stationary or accidental Alt+right press
+therefore cannot move the camera. No TrenchBroom implementation source is adapted.
 
 Stationary right-click is disambiguated from camera look, orbit, and pan with the same five-pixel
 gesture threshold used by viewport editing. The renderer publishes an immutable context event with
@@ -709,7 +732,10 @@ as the authoritative mapping.
 
 The DOM-free material-usage query groups tokens case-insensitively and reports deterministic face
 and brush counts. The Textures inspector uses it to mark in-use catalog entries, restrict the grid
-to used materials, and sort by descending face usage. A material query can select every visible,
+to used materials, and sort by descending face usage. It also compares every used token with the
+loaded catalog and keeps an explicit missing-count and bounded name list visible; absent mapper
+WADs are therefore reported as a resource problem instead of appearing to be a renderer failure.
+A material query can select every visible,
 editable matching face or containing brush without changing the map. Replacement is one atomic
 document transaction: no selection means the whole map, a face selection means only those faces,
 and an object selection means matching faces on its selected brushes. The resulting face selection

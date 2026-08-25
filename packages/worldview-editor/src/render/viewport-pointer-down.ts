@@ -41,6 +41,7 @@ export abstract class ViewportPointerDown extends ViewportTools {
               : 'pan'
             : null;
       const cameraEye = this.kind === 'perspective' ? this.perspectiveEye() : null;
+      let cameraOrbit: PointerDrag['cameraOrbit'] = null;
       if (cameraMode === 'orbit' && cameraEye) {
         const orbitPoint = this.interaction.hitTest(ray.origin, ray.direction)?.point;
         if (orbitPoint) {
@@ -52,10 +53,12 @@ export abstract class ViewportPointerDown extends ViewportTools {
           const distance = Math.hypot(...direction);
           if (distance > 1) {
             const forward = normalize(direction);
-            this.state.center = [...orbitPoint] as [number, number, number];
-            this.state.distance = distance;
-            this.state.yaw = Math.atan2(forward[1], forward[0]);
-            this.state.pitch = Math.asin(Math.max(-1, Math.min(1, forward[2])));
+            cameraOrbit = {
+              center: [...orbitPoint] as Vec3,
+              distance,
+              yaw: Math.atan2(forward[1], forward[0]),
+              pitch: Math.asin(Math.max(-1, Math.min(1, forward[2]))),
+            };
           }
         }
       }
@@ -404,6 +407,8 @@ export abstract class ViewportPointerDown extends ViewportTools {
         topologyLassoAdditive: (event.ctrlKey || event.metaKey) && !insertionTopologyHandle,
         cameraMode,
         cameraEye,
+        cameraOrbit,
+        cameraOrbitInitialized: false,
         anchor: planePoint
           ? rayPlaneIntersection(ray.origin, ray.direction, planePoint, planeNormal)
           : null,

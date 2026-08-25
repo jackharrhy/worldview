@@ -31,6 +31,12 @@ import type { EditorApplication } from './editor-application.js';
 import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
 import { required } from './editor-elements.js';
 
+interface OpenEditorMapOptions {
+  readonly expectedDocumentId?: string;
+  readonly expectedRevision?: number;
+  readonly throwOnError?: boolean;
+}
+
 export class ProjectPresenter {
   public constructor(private readonly app: EditorApplication) {}
   private get state() {
@@ -44,20 +50,43 @@ export class ProjectPresenter {
     file: File,
     handle: EditorFileHandle | null,
     logicalName = file.name,
+    options: OpenEditorMapOptions = {},
   ): Promise<void> {
     try {
+      const assertExpectedDocument = (): void => {
+        if (
+          options.expectedDocumentId !== undefined &&
+          this.state.session.document.id !== options.expectedDocumentId
+        ) {
+          throw new Error(
+            `Stale document identity: expected ${options.expectedDocumentId}, current document is ${this.state.session.document.id}`,
+          );
+        }
+        if (
+          options.expectedRevision !== undefined &&
+          this.state.session.document.revision !== options.expectedRevision
+        ) {
+          throw new Error(
+            `Stale document revision: expected ${options.expectedRevision}, current revision is ${this.state.session.document.revision}`,
+          );
+        }
+      };
       const text = await file.text();
+      assertExpectedDocument();
       let parsed = parseMapSource(text, createSequentialIdFactory(`opened-${Date.now()}`));
       const fingerprint = mapSourceFingerprint(text);
       const recovered = await this.state.recovery.latest(logicalName.toLowerCase());
-      if (
+      assertExpectedDocument();
+      const restoreRecovery = Boolean(
         recovered &&
         recovered.updatedAt > file.lastModified &&
         recovered.document.revision !== recovered.savedDocumentRevision &&
         window.confirm(
           `A newer recovery snapshot exists for ${logicalName}. Restore revision ${recovered.document.revision}?`,
-        )
-      ) {
+        ),
+      );
+      assertExpectedDocument();
+      if (recovered && restoreRecovery) {
         const sourceMatchesDisk = recovered.source.fingerprint === fingerprint;
         if (sourceMatchesDisk) parsed = parseMapSource(text, recoverySourceIdFactory(recovered));
         this.app.session.replaceDocument(parsed.document, 'Open map before recovery', {
@@ -67,6 +96,7 @@ export class ProjectPresenter {
           diskFingerprint: sourceMatchesDisk ? fingerprint : null,
           dirty: false,
           savedRevision: parsed.document.revision,
+          focusView: true,
         });
         this.state.session.restoreDocument(recovered.document, `Restore ${recovered.label}`);
         this.ui.statusMessage.textContent = sourceMatchesDisk
@@ -74,6 +104,7 @@ export class ProjectPresenter {
           : `Restored recovery for ${logicalName} as a detached copy because the on-disk source changed.`;
         return;
       }
+      assertExpectedDocument();
       this.app.session.replaceDocument(parsed.document, 'Open map', {
         name: logicalName,
         source: parsed.source,
@@ -81,10 +112,12 @@ export class ProjectPresenter {
         diskFingerprint: fingerprint,
         dirty: false,
         savedRevision: parsed.document.revision,
+        focusView: true,
       });
       this.ui.statusMessage.textContent = `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`;
     } catch (error) {
       this.ui.statusMessage.textContent = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
+      if (options.throwOnError) throw error;
     }
   }
 
@@ -260,6 +293,7 @@ export class ProjectPresenter {
         diskFingerprint: null,
         dirty: true,
         savedRevision: -1,
+        focusView: true,
       });
     });
 

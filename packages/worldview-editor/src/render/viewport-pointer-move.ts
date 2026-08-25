@@ -107,6 +107,15 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
         this.canvas.closest('.viewport-pane')?.classList.add('camera-looking');
         this.notifyCamera('look');
       } else if (drag.cameraMode === 'orbit' && drag.moved >= 5) {
+        if (!drag.cameraOrbitInitialized) {
+          if (drag.cameraOrbit) {
+            this.state.center = [...drag.cameraOrbit.center];
+            this.state.distance = drag.cameraOrbit.distance;
+            this.state.yaw = drag.cameraOrbit.yaw;
+            this.state.pitch = drag.cameraOrbit.pitch;
+          }
+          drag.cameraOrbitInitialized = true;
+        }
         this.state.yaw -= deltaX * 0.006;
         this.state.pitch = Math.max(-1.45, Math.min(1.45, this.state.pitch + deltaY * 0.006));
         this.canvas.closest('.viewport-pane')?.classList.add('camera-orbiting');

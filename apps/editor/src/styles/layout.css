@@ -127,7 +127,8 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 11px;
-  min-width: 190px;
+  width: clamp(170px, 18vw, 270px);
+  min-width: 170px;
   height: 100%;
   padding: 0 12px;
   border-right: 1px solid var(--line);
@@ -150,10 +151,13 @@ textarea:focus-visible {
 }
 
 .top-actions {
+  flex: 1;
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 3px;
   min-width: 0;
   height: 100%;
+  padding: 0 4px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -163,25 +167,76 @@ textarea:focus-visible {
   display: none;
 }
 
-.top-actions button,
-.inspector-toggle {
-  min-width: 50px;
-  height: 100%;
-  padding: 0 10px;
-  border-width: 0 1px 0 0;
-  border-radius: 0;
-  border-color: var(--line);
+.toolbar-group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.top-actions .toolbar-group + .toolbar-group,
+.top-actions select + .toolbar-group {
+  margin-left: 3px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+}
+
+.toolbar-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.icon-button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
+}
+
+.icon-button .ph {
+  font-size: 17px;
+  line-height: 1;
 }
 
 .top-actions button:hover:not(:disabled),
 .inspector-toggle:hover:not(:disabled),
 .inspector-toggle[aria-pressed='true'] {
+  border-color: var(--line);
   background: var(--surface-raised);
   color: var(--text);
+}
+
+.top-actions select {
+  flex: none;
+  width: clamp(150px, 20vw, 310px);
+  height: 28px;
+  min-width: 0;
+  padding: 2px 24px 2px 7px;
+  overflow: hidden;
+  border-color: var(--line);
+  background: var(--surface-input);
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+
+.top-actions #build-profile {
+  width: clamp(112px, 12vw, 178px);
 }
 
 .topbar-rule,
@@ -194,13 +249,19 @@ textarea:focus-visible {
 }
 
 .inspector-toggle {
+  flex: none;
+  width: 38px;
+  min-width: 38px;
+  height: 100%;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
   margin-left: auto;
   border-left: 1px solid var(--line);
 }
 
 .compile-state {
   flex: none;
-  padding: 0 12px;
+  padding: 0 2px;
   color: var(--quiet);
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 9px;
@@ -266,34 +327,24 @@ textarea:focus-visible {
 }
 
 .toolrail {
-  gap: 0;
+  gap: 3px;
+  padding: 2px 5px;
   overflow-x: auto;
   border-bottom: 1px solid var(--line);
   background: #15181c;
   scrollbar-width: none;
 }
 
-.toolrail > button {
-  flex: none;
-  height: 100%;
-  min-height: 0;
-  padding: 0 10px;
-  border-width: 0 1px 0 0;
-  border-radius: 0;
+.toolrail .icon-button:hover:not(:disabled) {
   border-color: var(--line);
-  background: transparent;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.toolrail > button:hover:not(:disabled) {
   background: var(--surface-raised);
   color: var(--text);
 }
 
-.toolrail > .tool-button.active {
+.toolrail .tool-button.active {
+  border-color: #70532e;
   box-shadow: inset 0 -2px var(--accent);
-  background: #20242a;
+  background: #28241e;
   color: var(--text);
 }
 
@@ -301,6 +352,8 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  width: auto;
+  padding: 0 4px;
 }
 
 .view-filter-toggle #view-filter-count {
@@ -326,7 +379,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 6px;
   height: 100%;
-  padding: 0 8px;
+  padding: 0 5px;
   color: var(--muted);
   font-size: 10px;
   white-space: nowrap;
@@ -347,7 +400,7 @@ textarea:focus-visible {
 }
 
 .toolrail-spacer {
-  flex: 1 0 12px;
+  flex: 1 0 6px;
 }
 .tool-help {
   flex: none;
@@ -355,6 +408,12 @@ textarea:focus-visible {
   color: var(--quiet);
   font-size: 10px;
   white-space: nowrap;
+}
+
+@media (max-width: 1500px) {
+  .tool-help {
+    display: none;
+  }
 }
 
 .view-filter-popover {

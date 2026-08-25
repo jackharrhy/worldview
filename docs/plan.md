@@ -13,6 +13,10 @@ explicitly converts it. An optional loopback helper provides configured native c
 external-game launch; the browser remains useful without it through import/download, local browser
 resources, and recovery.
 
+When the host browser supports WebMCP site tools, people and agents can also inspect and author the
+same live map through semantic Worldview operations. This is a first-class authoring surface over
+the visible editor, not a hidden test protocol; browser-driven tests are one consumer of it.
+
 There is no release-number target or semantic-compatibility promise while the editor is hot magma.
 App, package, helper, documentation, and consumer tests may change atomically. The detailed list of
 delivered interactions lives in [`editor-capabilities.md`](./editor-capabilities.md).
@@ -28,6 +32,8 @@ delivered interactions lives in [`editor-capabilities.md`](./editor-capabilities
   merge, Q2/Q3 formats, and native editor-owned geometry containers are deferred.
 - The existing viewer remains a bounded static-world exhibit. Conveyor pushing, trigger state, and
   full game simulation are out of scope.
+- Site-tool availability is browser- and account-dependent. Its absence never disables or changes
+  the ordinary visual editor, and a separate remote MCP service is not required.
 
 ## Source and licensing policy
 
@@ -62,8 +68,8 @@ third-party distributions listed in `THIRD_PARTY_NOTICES.md`.
 - `apps/viewer`: development/static viewer and generated license-compatible fixtures.
 - `packages/worldview-editor`: DOM-free map document, source preservation, project, definition,
   build contracts, commands, sessions, gesture controllers, spatial queries, and WebGPU rendering.
-- `apps/editor`: browser composition root, focused presenters, filesystem/project adapters,
-  IndexedDB services, dialogs, and four-view authoring UI.
+- `apps/editor`: browser composition root, focused presenters, filesystem/project and WebMCP
+  adapters, IndexedDB services, dialogs, and four-view authoring UI.
 - `apps/compiler-service`: loopback adapter around explicitly configured compile and launch
   profiles.
 
@@ -79,7 +85,8 @@ Every hand-written production TypeScript or CSS file beneath `apps/editor/src` a
 ## Editor architecture
 
 The application entrypoint is composition-only. Presenters own project/files, commands, tools,
-inspectors, materials, organization, build UI, dialogs, and session-to-view presentation.
+inspectors, materials, organization, build UI, dialogs, WebMCP registration, and session-to-view
+presentation.
 
 `EditorSession` is the singular transaction and history coordinator. Focused DOM-free domains own
 selection/view state, object transforms, topology, geometry/CSG, entities/materials, and
@@ -87,6 +94,12 @@ organization. Renderer gesture controllers implement explicit `begin`, `update`,
 `cancel` states; GPU scene ownership stays outside controllers. Document mutations, validation,
 derived queries, source parsing, and serialization are separate modules without circular domain
 dependencies.
+
+The browser shell gives the viewports visual priority. A compact, consistently sized icon toolbar
+groups file, mode, selection/history, visibility, and build commands; document and build-profile
+selectors retain text where context matters. Every icon action keeps an accessible text name,
+keyboard path, focus treatment, and descriptive tooltip. Rare-command menus remain future shell
+work because a browser cannot delegate them to a native operating-system menu bar.
 
 Renderer solids are partitioned by material and spatial cell. Structural-sharing signatures reuse
 unchanged GPU buffers across revisions, conservative frustum tests skip invisible batches, and an
@@ -161,13 +174,29 @@ Failed or stale builds never replace the active BSP preview. Successful current 
 launched externally through a configured launch capability. IndexedDB retains a quota-aware 20
 build records per map, and the diagnostics dialog can inspect historical records.
 
+### Live site authoring tools
+
+When `document.modelContext.registerTool` exists, the editor registers semantic WebMCP tools for
+live inspection, bounded object/material/source queries, selection and framing, tool activation,
+undoable transforms, material and entity-property edits, object creation/duplication/deletion,
+history, explicit source replacement, and opening a map from an already authorized project. Tool
+handlers call the same presenters and `EditorSession` commands as visible controls; they do not
+duplicate geometry logic or expose renderer internals.
+
+Every document edit carries the document ID and revision observed by the caller and rejects stale
+requests. Results return the new identity/revision and enough live state to verify the visible change. Source replacement
+detaches file ownership and requires an explicit destructive confirmation; project-map switching
+requires explicit permission to discard dirty state. These tools do not save files, launch external
+programs, accept executable paths, or bypass normal browser safety review. Unsupported browsers
+feature-detect to a no-op while keeping the complete visual workflow.
+
 ## Data flow
 
 1. A new/imported/file-backed `.map` is parsed into source state plus semantic `MapDocument`.
-2. `EditorSession` commands derive and validate candidates, then atomically commit one document and
-   history entry.
-3. Presenters update inspectors and renderer state; derived geometry, spatial indexes, and GPU
-   batches are disposable caches.
+2. Visible controls or a registered site tool call focused presenters; `EditorSession` commands
+   derive and validate candidates, then atomically commit one document and history entry.
+3. Presenters update inspectors, site-tool verification state, and renderer state; derived
+   geometry, spatial indexes, and GPU batches are disposable caches.
 4. Recovery snapshots source state after commits. Save planning patches original source regions;
    a file-backed save first rechecks disk fingerprint.
 5. A project manifest resolves ordered browser-local resources and logical build profiles.
@@ -196,7 +225,7 @@ condition has not been met.
 ## Acceptance and regression gates
 
 `npm run check` is the required static, architecture, formatting, lint, type, unit, build, consumer,
-and package gate. Editor behavior is exercised by 68 Chromium scenarios in
+and package gate. Editor behavior is exercised by 71 Chromium scenarios in
 `tests/browser/editor.spec.ts`.
 
 Focused suites cover:
@@ -213,6 +242,10 @@ Focused suites cover:
 - Gesture state ownership: `gesture-controller.test.ts`.
 - Spatial correctness and generated scale: `spatial-index.test.ts` and
   `scale-benchmark.test.ts`.
+- Real-map viewport safety: file-open document framing, sub-threshold orbit stability, and explicit
+  missing-material coverage in `tests/browser/editor.spec.ts`.
+- WebMCP authoring: native-API fallback, registration, inspection, visible selection/tool/camera
+  changes, undoable edits, stale-revision rejection, and history in `tests/browser/editor.spec.ts`.
 
 The generated fixtures are supplemented by an ignored, local compatibility corpus. On 2026-08-25,
 all 63 GPL-republished [original Quake map sources](https://rome.ro/resources) parsed without
