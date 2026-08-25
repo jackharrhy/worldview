@@ -29,7 +29,7 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
     this.canvas.addEventListener('pointermove', (event) => {
       const pointerPosition = this.pointerPositionAt(event.clientX, event.clientY);
       if (pointerPosition) this.interaction.pointerPosition(pointerPosition);
-      const drag = this.dragState;
+      const drag = this.gestures.update(event.pointerId);
       if (!drag) {
         const tool = this.interaction.currentTool();
         if (tool === 'rotate') {

@@ -32,6 +32,7 @@ import {
   type PointerDrag,
   initialState,
 } from './viewport-common.js';
+import { GestureController } from './gesture-controller.js';
 export abstract class ViewportBase {
   protected abstract connectInput(): void;
   protected abstract cancelDrag(): void;
@@ -48,7 +49,7 @@ export abstract class ViewportBase {
   protected scaleOverlay: GPUBuffer | null = null;
   protected scaleOverlayCount = 0;
   protected disposed = false;
-  protected dragState: PointerDrag | null = null;
+  protected readonly gestures = new GestureController<PointerDrag>();
   protected pendingFaceTransferClick: number | null = null;
   protected faceTransferSequenceSource: FaceSelection | null | undefined;
   protected faceTransferSequenceReset: number | null = null;
@@ -57,6 +58,10 @@ export abstract class ViewportBase {
   protected transformReadoutPivot: Vec3 | null = null;
   protected readonly flyKeys = new Set<string>();
   protected lastRenderTime = performance.now();
+
+  protected get dragState(): PointerDrag | null {
+    return this.gestures.current;
+  }
   protected readonly cancelOnEscape = (event: KeyboardEvent) => {
     if (
       event.key !== 'Escape' ||

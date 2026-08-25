@@ -10,7 +10,7 @@ export class Viewport extends ViewportPointerMove {
     this.connectPointerDown();
     this.connectPointerMove();
     this.canvas.addEventListener('pointerup', (event) => {
-      const drag = this.dragState;
+      const drag = this.gestures.commit(event.pointerId);
       if (!drag) return;
       if (drag.button === 2 && drag.moved < 5 && drag.cameraMode !== 'orbit') {
         const pointer = this.pointerPositionAt(event.clientX, event.clientY);
@@ -264,7 +264,6 @@ export class Viewport extends ViewportPointerMove {
       this.canvas.closest('.viewport-pane')?.classList.remove('camera-orbiting');
       this.canvas.closest('.viewport-pane')?.classList.remove('camera-panning');
       if (!drag.pivotMoving) this.hideTransformReadout();
-      this.dragState = null;
     });
     this.canvas.addEventListener('dblclick', (event) => {
       if (event.button !== 0) return;
@@ -451,7 +450,7 @@ export class Viewport extends ViewportPointerMove {
   }
 
   protected cancelDrag(): void {
-    const drag = this.dragState;
+    const drag = this.gestures.cancel();
     if (!drag) return;
     if (drag.clipMoving && drag.clipPointIndex !== null && drag.clipPoint) {
       this.interaction.moveClipPoint(
@@ -564,6 +563,5 @@ export class Viewport extends ViewportPointerMove {
     this.canvas.closest('.viewport-pane')?.classList.remove('camera-panning');
     this.hideTransformReadout();
     this.removeHandleLasso();
-    this.dragState = null;
   }
 }

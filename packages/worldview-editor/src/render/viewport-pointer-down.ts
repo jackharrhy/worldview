@@ -24,6 +24,7 @@ import { ViewportTools } from './viewport-tools.js';
 export abstract class ViewportPointerDown extends ViewportTools {
   protected connectPointerDown(): void {
     this.canvas.addEventListener('pointerdown', (event) => {
+      if (this.dragState) this.cancelDrag();
       this.canvas.focus({ preventScroll: true });
       this.canvas.setPointerCapture(event.pointerId);
       const pointerPosition = this.pointerPositionAt(event.clientX, event.clientY);
@@ -340,7 +341,7 @@ export abstract class ViewportPointerDown extends ViewportTools {
         !faceTranslating
           ? ([0, 0, 1] as const)
           : this.viewDirection());
-      this.dragState = {
+      this.gestures.begin({
         button: event.button,
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -429,7 +430,7 @@ export abstract class ViewportPointerDown extends ViewportTools {
         lastTransform: null,
         lastPivot: null,
         lastSweep: null,
-      };
+      });
     });
   }
 }
