@@ -5,6 +5,7 @@ import type {
   EditorObjectViewState,
   EditorSelection,
   EditorMaterial,
+  EntityDefinitionCatalog,
   EntityLinkMode,
   FaceAttributeTransferMode,
   FaceId,
@@ -256,13 +257,27 @@ export interface EditorReferenceScene {
   readonly visible: boolean;
 }
 
+export interface EditorDiagnosticOverlay {
+  readonly id: string;
+  readonly kind: 'leak-path' | 'portal';
+  readonly points: readonly Vec3[];
+}
+
+export interface EditorSpriteMaterial {
+  readonly path: string;
+  readonly material: EditorMaterial;
+}
+
 export interface EditorSourceRendererOptions {
   readonly canvases: EditorViewportCanvases;
   readonly document: MapDocument;
   readonly selection?: EditorSelection | null;
   readonly objectViewState?: EditorObjectViewState;
   readonly materials?: readonly EditorMaterial[];
+  readonly entityDefinitions?: EntityDefinitionCatalog;
   readonly referenceScenes?: readonly EditorReferenceScene[];
+  readonly diagnosticOverlays?: readonly EditorDiagnosticOverlay[];
+  readonly sprites?: readonly EditorSpriteMaterial[];
   readonly entityLinkMode?: EntityLinkMode;
   /** Persistent ID of the group currently opened for component editing. */
   readonly openGroupId?: string | null;

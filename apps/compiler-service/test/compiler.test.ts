@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { safeAssetName, safeMapName, stageArguments } from '../src/compiler.js';
+import { configuredLaunchProfile } from '../src/launch.js';
 
 describe('native compiler planning', () => {
   it('uses fast vis and bounded light work for preview compiles', () => {
@@ -41,5 +42,27 @@ describe('native compiler planning', () => {
     expect(safeAssetName('textures.wad')).toBe('textures.wad');
     expect(() => safeAssetName('../textures.wad')).toThrow(/Asset names/);
     expect(() => safeAssetName('payload.sh')).toThrow(/unsupported extension/);
+  });
+
+  it('accepts launch configuration only from machine-local absolute paths', () => {
+    expect(
+      configuredLaunchProfile({
+        WORLDVIEW_LAUNCH_EXECUTABLE: '/games/quake',
+        WORLDVIEW_LAUNCH_WORKING_DIRECTORY: '/games',
+        WORLDVIEW_LAUNCH_MAP_DIRECTORY: '/games/id1/maps',
+        WORLDVIEW_LAUNCH_ARGS_JSON: '["+map","%MAP%"]',
+      }),
+    ).toMatchObject({
+      profileId: 'default-launch',
+      arguments: ['+map', '%MAP%'],
+      game: 'quake',
+    });
+    expect(() =>
+      configuredLaunchProfile({
+        WORLDVIEW_LAUNCH_EXECUTABLE: 'quake',
+        WORLDVIEW_LAUNCH_WORKING_DIRECTORY: '/games',
+        WORLDVIEW_LAUNCH_MAP_DIRECTORY: '/games/id1/maps',
+      }),
+    ).toThrow(/absolute paths/);
   });
 });

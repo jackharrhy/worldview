@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 export type CompileQuality = 'preview' | 'final';
 
@@ -10,6 +11,7 @@ export interface NativeCompilerRequest {
   readonly mapText: string;
   readonly quality: CompileQuality;
   readonly expectedDocumentRevision: number;
+  readonly profileId?: string;
   readonly assets?: readonly NativeCompilerAsset[];
 }
 
@@ -36,19 +38,25 @@ export interface NativeCompileDiagnostic {
 }
 
 export interface NativeCompilerResult {
+  readonly status: 'succeeded' | 'failed';
+  readonly buildId: string;
   readonly sourceDocumentRevision: number;
   readonly diagnostics: readonly NativeCompileDiagnostic[];
   readonly artifacts: readonly {
     name: string;
     mediaType: string;
     base64: string;
+    kind: 'bsp' | 'portal' | 'leak-path' | 'log' | 'other';
+    stage?: string;
   }[];
+  readonly logs: readonly { stage: string; text: string; truncated: boolean }[];
   readonly elapsedMilliseconds: number;
 }
 
 interface StageResult {
   readonly stage: string;
   readonly output: string;
+  readonly truncated: boolean;
 }
 
 export class NativeCompileError extends Error {
@@ -133,11 +141,18 @@ async function runStage(
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
+    let truncated = false;
     let timedOut = false;
     let settled = false;
     const append = (chunk: Buffer) => {
-      if (output.length >= config.maxLogBytes) return;
-      output += chunk.toString('utf8').slice(0, config.maxLogBytes - output.length);
+      if (output.length >= config.maxLogBytes) {
+        truncated = true;
+        return;
+      }
+      const text = chunk.toString('utf8');
+      const remaining = config.maxLogBytes - output.length;
+      output += text.slice(0, remaining);
+      truncated ||= text.length > remaining;
     };
     child.stdout.on('data', append);
     child.stderr.on('data', append);
@@ -174,9 +189,65 @@ async function runStage(
             output,
           ),
         );
-      } else finish(undefined, { stage, output });
+      } else finish(undefined, { stage, output, truncated });
     });
   });
+}
+
+function diagnosticSeverity(line: string): NativeCompileDiagnostic['severity'] {
+  if (/\b(?:error|fatal|leak(?:ed|ing)?)\b/i.test(line)) return 'error';
+  if (/\bwarn(?:ing)?\b/i.test(line)) return 'warning';
+  return 'info';
+}
+
+function stageDiagnostics(stage: string, output: string): readonly NativeCompileDiagnostic[] {
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return (lines.length > 0 ? lines : [`${stage} completed`]).map((message) => ({
+    severity: diagnosticSeverity(message),
+    stage,
+    message,
+  }));
+}
+
+function artifactMetadata(name: string): {
+  readonly kind: 'bsp' | 'portal' | 'leak-path' | 'log' | 'other';
+  readonly mediaType: string;
+  readonly stage?: string;
+} {
+  const extension = name.toLowerCase().split('.').at(-1);
+  if (extension === 'bsp') return { kind: 'bsp', mediaType: 'application/x-quake-bsp' };
+  if (extension === 'prt')
+    return { kind: 'portal', mediaType: 'application/x-quake-portal', stage: 'qbsp' };
+  if (extension === 'pts' || extension === 'lin') {
+    return { kind: 'leak-path', mediaType: 'text/plain', stage: 'qbsp' };
+  }
+  if (extension === 'log') return { kind: 'log', mediaType: 'text/plain' };
+  return { kind: 'other', mediaType: 'application/octet-stream' };
+}
+
+async function collectArtifacts(
+  workingDirectory: string,
+): Promise<NativeCompilerResult['artifacts']> {
+  const names = await readdir(workingDirectory);
+  const allowed = names.filter((name) => /\.(?:bsp|prt|pts|lin|log)$/i.test(name)).toSorted();
+  return Promise.all(
+    allowed.map(async (name) => {
+      const metadata = artifactMetadata(name);
+      const base64 = (await readFile(join(workingDirectory, name))).toString('base64');
+      return metadata.stage
+        ? {
+            name,
+            kind: metadata.kind,
+            mediaType: metadata.mediaType,
+            stage: metadata.stage,
+            base64,
+          }
+        : { name, kind: metadata.kind, mediaType: metadata.mediaType, base64 };
+    }),
+  );
 }
 
 export async function compileNativeMap(
@@ -185,6 +256,7 @@ export async function compileNativeMap(
   signal?: AbortSignal,
 ): Promise<NativeCompilerResult> {
   const started = performance.now();
+  const buildId = randomUUID();
   const mapName = safeMapName(request.mapName);
   const workingDirectory = await mkdtemp(join(tmpdir(), 'worldview-compile-'));
   const expectedPrefix = join(tmpdir(), 'worldview-compile-');
@@ -213,33 +285,48 @@ export async function compileNativeMap(
       }
     }
     const stages: StageResult[] = [];
+    let failure: NativeCompileError | null = null;
     for (const stage of stageArguments(request.quality, mapPath, bspPath, config, assetDirectory)) {
-      stages.push(
-        await runStage(
-          stage.stage,
-          commands[stage.stage],
-          stage.args,
-          workingDirectory,
-          config,
-          signal,
-        ),
-      );
+      try {
+        stages.push(
+          await runStage(
+            stage.stage,
+            commands[stage.stage],
+            stage.args,
+            workingDirectory,
+            config,
+            signal,
+          ),
+        );
+      } catch (error) {
+        if (error instanceof NativeCompileError) {
+          failure = error;
+          stages.push({ stage: error.stage, output: error.output, truncated: false });
+          break;
+        }
+        throw error;
+      }
     }
-    const bsp = await readFile(bspPath);
+    const artifacts = await collectArtifacts(workingDirectory);
+    const diagnostics = stages.flatMap(({ stage, output }) => stageDiagnostics(stage, output));
+    if (failure) {
+      diagnostics.push({ severity: 'error', stage: failure.stage, message: failure.message });
+    } else if (!artifacts.some(({ kind }) => kind === 'bsp')) {
+      diagnostics.push({
+        severity: 'error',
+        stage: 'compiler',
+        message: 'Compiler produced no BSP artifact',
+      });
+    }
+    const status =
+      failure || !artifacts.some(({ kind }) => kind === 'bsp') ? 'failed' : 'succeeded';
     return {
+      status,
+      buildId,
       sourceDocumentRevision: request.expectedDocumentRevision,
-      diagnostics: stages.map(({ stage, output }) => ({
-        severity: 'info',
-        stage,
-        message: output.trim() || `${stage} completed`,
-      })),
-      artifacts: [
-        {
-          name: basename(bspPath),
-          mediaType: 'application/x-quake-bsp',
-          base64: bsp.toString('base64'),
-        },
-      ],
+      diagnostics,
+      artifacts,
+      logs: stages.map(({ stage, output, truncated }) => ({ stage, text: output, truncated })),
       elapsedMilliseconds: performance.now() - started,
     };
   } finally {

@@ -11,11 +11,27 @@ npm run dev --workspace @worldview/compiler-service
 ```
 
 The service listens on `127.0.0.1:8788` by default. `GET /health` reports whether executables are
-configured; `POST /compile` implements the JSON protocol consumed by `RemoteMapCompiler`.
+configured; `GET /capabilities`, `POST /compile`, and `POST /launch` implement the safe profile-ID
+protocol consumed by `RemoteMapCompiler`. Expected compiler failures return structured failed-build
+results with bounded per-stage logs and any BSP, PRT, PTS, LIN, or log artifacts produced before the
+failure.
 Preview compiles use `qbsp -nofill`, fast vis, and bounded light work so partially constructed maps
 remain inspectable. Final compiles restore outside filling, detailed vis, and extra light sampling.
 Uploaded WADs and related compile assets live only in the request's temporary directory. The editor
 adds WAD basenames to a transient compile copy of worldspawn; it does not modify the source document.
+
+External launch is disabled unless all machine-local settings are present. Browser requests select
+the advertised profile and build ID; they never provide a command or filesystem path:
+
+```sh
+WORLDVIEW_LAUNCH_EXECUTABLE=/absolute/path/to/quake \
+WORLDVIEW_LAUNCH_WORKING_DIRECTORY=/absolute/path/to/game \
+WORLDVIEW_LAUNCH_MAP_DIRECTORY=/absolute/path/to/game/id1/maps \
+WORLDVIEW_LAUNCH_ARGS_JSON='["+map","%MAP%"]'
+```
+
+The helper retains the newest 20 successful in-memory builds for launch. `%MAP%` in configured
+arguments is replaced with the already-validated map name. Processes are spawned without a shell.
 
 `npm run dev` performs a fresh TypeScript build and starts the service. Restart it after changing
 service source.

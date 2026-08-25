@@ -16,11 +16,20 @@ export function renderEditorShell(): string {
       <nav class="top-actions" aria-label="Document actions">
         <button type="button" data-action="new">New</button>
         <button type="button" data-action="open-file">Open</button>
+        <button type="button" data-action="open-project">Project</button>
+        <select id="project-map" aria-label="Project map" hidden></select>
         <button type="button" data-action="download">Save</button>
+        <button type="button" data-action="export-normalized">Export normalized</button>
+        <button type="button" data-action="checkpoint">Checkpoint</button>
+        <button type="button" data-action="versions">Versions</button>
         <button type="button" data-action="show-source">Source</button>
         <span class="topbar-rule" aria-hidden="true"></span>
         <button type="button" data-action="compile">Compile</button>
         <button type="button" data-action="toggle-preview" disabled>Preview</button>
+        <button type="button" data-action="toggle-leak" disabled>Leak</button>
+        <button type="button" data-action="toggle-portals" disabled>Portals</button>
+        <button type="button" data-action="build-log" disabled>Log</button>
+        <button type="button" data-action="launch" disabled>Launch</button>
       </nav>
       <button class="inspector-toggle" type="button" data-action="toggle-inspector" aria-pressed="true">Inspector</button>
       <div class="compile-state" title="Compiler service state">COMPILER OFFLINE</div>
@@ -73,6 +82,15 @@ export function renderEditorShell(): string {
       <span class="toolrail-spacer"></span>
       <span class="tool-help">RMB look · Alt+RMB orbit · MMB pan · WASD/QX fly · Home focus</span>
     </section>
+
+    <dialog id="build-log-dialog" class="build-log-dialog">
+      <header><strong>Build diagnostics</strong><button type="button" data-action="close-build-log">Close</button></header>
+      <pre id="build-log-output"></pre>
+    </dialog>
+    <dialog id="recovery-dialog" class="build-log-dialog recovery-dialog">
+      <header><strong>Recovery versions</strong><button type="button" data-action="close-recovery">Close</button></header>
+      <div id="recovery-list" class="recovery-list"></div>
+    </dialog>
 
     <aside id="view-filter-popover" class="view-filter-popover" aria-label="Viewport filters" hidden>
       <header><div><strong>View filters</strong><span>Non-serialized</span></div><button type="button" data-action="close-view-filters">Close</button></header>

@@ -25,12 +25,19 @@ import {
   type EditorObjectViewState,
   type EditorSelection,
   type EntityId,
+  type EntityDefinitionCatalog,
   type EntityLinkMode,
   type MapDocument,
   type TransformAxis,
   type Vec3,
 } from '../core/index.js';
-import type { EditorReferenceScene, EditorTool, EditorViewportKind } from './types.js';
+import type {
+  EditorDiagnosticOverlay,
+  EditorReferenceScene,
+  EditorSpriteMaterial,
+  EditorTool,
+  EditorViewportKind,
+} from './types.js';
 import {
   cross,
   isTransformTool,
@@ -536,6 +543,33 @@ function appendBoundsWireframe(
   }
 }
 
+function appendSpritePlane(
+  solid: number[],
+  center: Vec3,
+  width: number,
+  height: number,
+  axis: 0 | 1,
+): void {
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+  const point = (horizontal: number, vertical: number): Vec3 => {
+    const result = [...center] as [number, number, number];
+    result[axis] += horizontal;
+    result[2] += vertical;
+    return result;
+  };
+  const corners = [
+    { point: point(-halfWidth, -halfHeight), texture: [0, height] },
+    { point: point(halfWidth, -halfHeight), texture: [width, height] },
+    { point: point(halfWidth, halfHeight), texture: [width, 0] },
+    { point: point(-halfWidth, halfHeight), texture: [0, 0] },
+  ] as const;
+  for (const index of [0, 1, 2, 0, 2, 3]) {
+    const vertex = corners[index]!;
+    solid.push(...vertex.point, 1, 1, 1, ...vertex.texture);
+  }
+}
+
 function appendEntityLinkArrow(
   lines: number[],
   start: Vec3,
@@ -593,11 +627,21 @@ export function buildSceneBuffers(
   topologyHover: TopologyHandle | null,
   entityLinkMode: EntityLinkMode,
   openGroupId: string | null,
+  entityDefinitions?: EntityDefinitionCatalog,
+  diagnosticOverlays: readonly EditorDiagnosticOverlay[] = [],
+  sprites: readonly EditorSpriteMaterial[] = [],
 ): SceneBuffers {
   const solidByMaterial = new Map<string, number[]>();
   const lines: number[] = [];
   const perspectiveGridLines: number[] = [];
   const renderedTopologyKeys = new Set<string>();
+  const spriteByPath = new Map<string, EditorSpriteMaterial>();
+  for (const sprite of sprites) {
+    const path = sprite.path.trim().replaceAll('\\', '/').replace(/^\/+/, '').toLowerCase();
+    spriteByPath.set(path, sprite);
+    const basename = path.split('/').at(-1);
+    if (basename && !spriteByPath.has(basename)) spriteByPath.set(basename, sprite);
+  }
   const hiddenBrushIds = new Set(objectViewState.hiddenBrushIds);
   const hiddenEntityIds = new Set(objectViewState.hiddenEntityIds);
   const lockedBrushIds = new Set(objectViewState.lockedBrushIds);
@@ -761,13 +805,18 @@ export function buildSceneBuffers(
         }
       }
     }
-    for (const entity of pointEntitiesInDocument(source)) {
+    for (const entity of pointEntitiesInDocument(source, entityDefinitions)) {
       if (!reference && hiddenEntityIds.has(entity.id)) continue;
-      const bounds = pointEntityBounds(entity);
+      const bounds = pointEntityBounds(entity, entityDefinitions);
       if (!bounds) continue;
       const selected = !reference && isPointEntitySelected(selection, entity.id);
       const hovered = !reference && isPointEntitySelected(hoverSelection, entity.id);
       const classname = entity.properties.classname?.toLowerCase() ?? '';
+      const definitionColor = entityDefinitions
+        ?.find(classname)
+        ?.color?.map((component) => component / 255) as
+        | readonly [number, number, number]
+        | undefined;
       const locked = !reference && lockedEntityIds.has(entity.id);
       const color = reference
         ? ([0.42, 0.72, 0.82] as const)
@@ -781,7 +830,7 @@ export function buildSceneBuffers(
                 ? ([1, 0.92, 0.25] as const)
                 : classname.startsWith('info_player')
                   ? ([0.2, 0.92, 0.92] as const)
-                  : ([0.9, 0.35, 0.82] as const);
+                  : (definitionColor ?? ([0.9, 0.35, 0.82] as const));
       appendBoundsWireframe(lines, bounds, color, offset);
       const center: Vec3 = [
         (bounds.min[0] + bounds.max[0]) / 2 + offset[0],
@@ -789,6 +838,35 @@ export function buildSceneBuffers(
         (bounds.min[2] + bounds.max[2]) / 2 + offset[2],
       ];
       appendTopologyMarker(lines, center, color, 5);
+      const spriteReference =
+        entity.properties.model ?? entityDefinitions?.find(classname)?.sprite ?? '';
+      const normalizedSprite = spriteReference
+        .trim()
+        .replaceAll('\\', '/')
+        .replace(/^\/+/, '')
+        .toLowerCase();
+      const sprite =
+        spriteByPath.get(normalizedSprite) ??
+        spriteByPath.get(normalizedSprite.split('/').at(-1) ?? '');
+      if (sprite) {
+        const scale = Math.max(0.01, Number(entity.properties.scale ?? 1) || 1);
+        const solid = solidByMaterial.get(sprite.material.name) ?? [];
+        solidByMaterial.set(sprite.material.name, solid);
+        appendSpritePlane(
+          solid,
+          center,
+          sprite.material.width * scale,
+          sprite.material.height * scale,
+          0,
+        );
+        appendSpritePlane(
+          solid,
+          center,
+          sprite.material.width * scale,
+          sprite.material.height * scale,
+          1,
+        );
+      }
       const yaw = pointEntityYawDegrees(entity);
       if (yaw !== null) {
         const width = Math.max(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1]);
@@ -927,6 +1005,16 @@ export function buildSceneBuffers(
     }
   }
   if (tool === 'sweep') appendSweepOverlay(lines, sweepCaps);
+  for (const overlay of diagnosticOverlays) {
+    const color =
+      overlay.kind === 'leak-path' ? ([1, 0.12, 0.1] as const) : ([0.1, 0.92, 1] as const);
+    for (let index = 1; index < overlay.points.length; index += 1) {
+      lines.push(...overlay.points[index - 1]!, ...color, ...overlay.points[index]!, ...color);
+    }
+    if (overlay.kind === 'portal' && overlay.points.length > 2) {
+      lines.push(...overlay.points.at(-1)!, ...color, ...overlay.points[0]!, ...color);
+    }
+  }
   return {
     solids: [...solidByMaterial].map(([materialName, solid]) => ({
       materialName,

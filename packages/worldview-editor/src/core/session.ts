@@ -766,6 +766,23 @@ export class EditorSession {
     this.notify('document', label);
   }
 
+  /** Replaces document contents as one history entry, primarily for recovery/version restore. */
+  public restoreDocument(document: MapDocument, label = 'Restore document'): void {
+    const restored: MapDocument = {
+      ...structuredClone(document),
+      revision: this.currentDocument.revision + 1,
+    };
+    this.commitDocumentCandidate({
+      label,
+      baseDocumentRevision: this.currentDocument.revision,
+      before: this.currentDocument,
+      after: restored,
+      selectionBefore: this.currentSelection,
+      selectionAfter: null,
+      document: restored,
+    });
+  }
+
   /** Sets the group whose members are currently editable; linked sibling updates stay atomic. */
   public setEditingGroup(groupId: string | null): void {
     if (

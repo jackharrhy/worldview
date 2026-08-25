@@ -5,8 +5,17 @@ export type {
   MapCompileQuality,
   MapCompileRequest,
   MapCompileResult,
+  MapCompileStatus,
+  MapCompileArtifactKind,
+  MapCompileLog,
   MapCompiler,
   MapCompilerBackend,
+  MapBuildCapabilities,
+  MapBuildProfileCapability,
+  MapBuildService,
+  MapLaunchProfileCapability,
+  MapLaunchRequest,
+  MapLaunchResult,
 } from './compiler.js';
 export {
   createObjectClipboardDocument,
@@ -19,6 +28,12 @@ export {
   type FaceAttributeClipboard,
 } from './clipboard.js';
 export { MapCompileCoordinator, type MapCompileOutcome } from './compile-coordinator.js';
+export {
+  parseLeakPath,
+  parsePortalFile,
+  type ParsedBuildPath,
+  type ParsedPortalFile,
+} from './build-artifacts.js';
 export { projectedFaceGridSegments, type ConstructionGridSegment } from './construction-grid.js';
 export {
   deriveEntityLinks,
@@ -28,6 +43,16 @@ export {
   type EntityLinkMode,
   type EntityLinkProperty,
 } from './entity-links.js';
+export {
+  EntityDefinitionCatalog,
+  parseEntityDefinitionFile,
+  type EntityDefinition,
+  type EntityDefinitionDiagnostic,
+  type EntityPropertyChoice,
+  type EntityPropertyDefinition,
+  type EntityPropertyType,
+  type ParsedEntityDefinitionFile,
+} from './entity-definitions.js';
 export {
   applyEditorIssueFix,
   deriveEditorIssues,
@@ -103,7 +128,7 @@ export {
   textureCoordinates,
   type BrushRayHit,
 } from './geometry.js';
-export { MapParseError, parseMap } from './map-parser.js';
+export { MapParseError, mapSourceFingerprint, parseMap, parseMapSource } from './map-parser.js';
 export {
   BUILTIN_POINT_ENTITY_DEFINITIONS,
   formatEntityOrigin,
@@ -212,7 +237,30 @@ export {
   type CompilerFetch,
   type RemoteMapCompilerOptions,
 } from './remote-compiler.js';
-export { serializeMap } from './map-serializer.js';
+export { planMapSave, rebaseMapSource } from './map-save.js';
+export {
+  serializeMap,
+  serializeMapBrush,
+  serializeMapEntity,
+  serializeMapFace,
+} from './map-serializer.js';
+export type {
+  MapSavePlan,
+  MapSourceDiagnostic,
+  MapSourceState,
+  ParsedMapSource,
+} from './map-source-types.js';
+export {
+  parseWorldviewProject,
+  serializeWorldviewProject,
+  WorldviewProjectParseError,
+  type EntityDefinitionFormat,
+  type WorldviewEntityDefinitionSource,
+  type WorldviewGameProfile,
+  type WorldviewProjectBuildProfile,
+  type WorldviewProjectManifest,
+  type WorldviewProjectResources,
+} from './worldview-project.js';
 export {
   connectedCoplanarFaces,
   createBrushSelection,

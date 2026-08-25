@@ -2,10 +2,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 
 import {
   compileNativeMap,
-  NativeCompileError,
   type NativeCompilerConfig,
   type NativeCompilerRequest,
 } from './compiler.js';
+import { configuredLaunchProfile, launchBuild, type LaunchableBuild } from './launch.js';
 
 const host = process.env.WORLDVIEW_COMPILER_HOST ?? '127.0.0.1';
 const port = Number(process.env.WORLDVIEW_COMPILER_PORT ?? 8788);
@@ -32,11 +32,35 @@ const config: NativeCompilerConfig = {
   ),
   maxLogBytes: Math.max(1024, Number(process.env.WORLDVIEW_COMPILER_MAX_LOG_BYTES ?? 512 * 1024)),
 };
+const gameProfile = process.env.WORLDVIEW_GAME_PROFILE === 'goldsrc' ? 'goldsrc' : 'quake';
+const launchProfile = configuredLaunchProfile(process.env);
+const buildHistory = new Map<string, LaunchableBuild>();
+const maxBuildHistory = Math.max(1, Number(process.env.WORLDVIEW_COMPILER_HISTORY ?? 20));
 
 let activeCompiles = 0;
 
 function compilerConfigured(): boolean {
   return Boolean(config.qbsp && config.vis && config.light);
+}
+
+function rememberBuild(
+  request: NativeCompilerRequest,
+  result: Awaited<ReturnType<typeof compileNativeMap>>,
+): void {
+  if (result.status !== 'succeeded') return;
+  const bsp = result.artifacts.find((artifact) => artifact.kind === 'bsp');
+  if (!bsp) return;
+  buildHistory.set(result.buildId, {
+    buildId: result.buildId,
+    mapName: request.mapName,
+    sourceDocumentRevision: result.sourceDocumentRevision,
+    bspBase64: bsp.base64,
+  });
+  while (buildHistory.size > maxBuildHistory) {
+    const oldest = buildHistory.keys().next().value as string | undefined;
+    if (!oldest) break;
+    buildHistory.delete(oldest);
+  }
 }
 
 function cors(request: IncomingMessage, response: ServerResponse): boolean {
@@ -79,6 +103,9 @@ function compileRequest(value: unknown): NativeCompilerRequest {
   ) {
     throw new Error('Request contains invalid compile fields');
   }
+  if (request.profileId !== undefined && request.profileId !== 'default') {
+    throw new Error('Unknown compile profile');
+  }
   if (
     request.assets !== undefined &&
     (!Array.isArray(request.assets) ||
@@ -93,6 +120,24 @@ function compileRequest(value: unknown): NativeCompilerRequest {
     throw new Error('Request contains invalid compile assets');
   }
   return request as NativeCompilerRequest;
+}
+
+function launchRequest(value: unknown): {
+  readonly buildId: string;
+  readonly profileId: string;
+  readonly expectedDocumentRevision: number;
+} {
+  if (!value || typeof value !== 'object') throw new Error('Request must be a JSON object');
+  const request = value as Record<string, unknown>;
+  if (
+    typeof request.buildId !== 'string' ||
+    typeof request.profileId !== 'string' ||
+    !Number.isInteger(request.expectedDocumentRevision) ||
+    Number(request.expectedDocumentRevision) < 0
+  ) {
+    throw new Error('Request contains invalid launch fields');
+  }
+  return request as ReturnType<typeof launchRequest>;
 }
 
 const server = createServer(async (request, response) => {
@@ -115,6 +160,51 @@ const server = createServer(async (request, response) => {
     });
     return;
   }
+  if (request.method === 'GET' && request.url === '/capabilities') {
+    json(response, 200, {
+      protocolVersion: 1,
+      compileProfiles: compilerConfigured()
+        ? [
+            {
+              id: 'default',
+              label: 'Local ericw-tools',
+              game: gameProfile,
+              qualities: ['preview', 'final'],
+            },
+          ]
+        : [],
+      launchProfiles: launchProfile
+        ? [{ id: launchProfile.profileId, label: launchProfile.label, game: launchProfile.game }]
+        : [],
+    });
+    return;
+  }
+  if (request.method === 'POST' && request.url === '/launch') {
+    if (!launchProfile) {
+      json(response, 503, { error: 'No external launch profile is configured' });
+      return;
+    }
+    try {
+      const requested = launchRequest(await readJson(request));
+      if (requested.profileId !== launchProfile.profileId) {
+        json(response, 400, { error: 'Unknown launch profile' });
+        return;
+      }
+      const build = buildHistory.get(requested.buildId);
+      if (!build) {
+        json(response, 404, { error: 'Build is unavailable or expired' });
+        return;
+      }
+      if (build.sourceDocumentRevision !== requested.expectedDocumentRevision) {
+        json(response, 409, { error: 'Build revision does not match the requested revision' });
+        return;
+      }
+      json(response, 200, await launchBuild(build, launchProfile));
+    } catch (error) {
+      json(response, 400, { error: error instanceof Error ? error.message : String(error) });
+    }
+    return;
+  }
   if (request.method !== 'POST' || request.url !== '/compile') {
     json(response, 404, { error: 'Not found' });
     return;
@@ -132,18 +222,14 @@ const server = createServer(async (request, response) => {
   request.once('aborted', () => controller.abort());
   activeCompiles += 1;
   try {
-    const result = await compileNativeMap(
-      compileRequest(await readJson(request)),
-      config,
-      controller.signal,
-    );
+    const requested = compileRequest(await readJson(request));
+    const result = await compileNativeMap(requested, config, controller.signal);
+    rememberBuild(requested, result);
     json(response, 200, result);
   } catch (error) {
     if (controller.signal.aborted) return;
-    const native = error instanceof NativeCompileError ? error : null;
-    json(response, native ? 422 : 400, {
+    json(response, 400, {
       error: error instanceof Error ? error.message : String(error),
-      ...(native ? { stage: native.stage, output: native.output } : {}),
     });
   } finally {
     activeCompiles -= 1;

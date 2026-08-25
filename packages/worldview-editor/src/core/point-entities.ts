@@ -1,4 +1,5 @@
 import type { TransformAxis } from './document.js';
+import type { EntityDefinitionCatalog } from './entity-definitions.js';
 import type { Bounds, EntityId, MapDocument, MapEntity, Vec3 } from './types.js';
 
 export interface PointEntityDefinition {
@@ -6,6 +7,8 @@ export interface PointEntityDefinition {
   readonly label: string;
   readonly bounds: Bounds;
   readonly defaults?: Readonly<Record<string, string>>;
+  readonly color?: readonly [number, number, number];
+  readonly sprite?: string;
 }
 
 const SMALL_POINT_BOUNDS: Bounds = { min: [-8, -8, -8], max: [8, 8, 8] };
@@ -41,7 +44,25 @@ export const BUILTIN_POINT_ENTITY_DEFINITIONS: readonly PointEntityDefinition[] 
   },
 ] as const;
 
-export function pointEntityDefinition(classname: string): PointEntityDefinition {
+export function pointEntityDefinition(
+  classname: string,
+  catalog?: EntityDefinitionCatalog,
+): PointEntityDefinition {
+  const catalogDefinition = catalog?.find(classname);
+  if (catalogDefinition?.kind === 'point') {
+    return {
+      classname: catalogDefinition.classname,
+      label: catalogDefinition.label,
+      bounds: catalogDefinition.bounds ?? STANDARD_POINT_BOUNDS,
+      defaults: Object.fromEntries(
+        catalogDefinition.properties.flatMap((property) =>
+          property.defaultValue === undefined ? [] : [[property.key, property.defaultValue]],
+        ),
+      ),
+      ...(catalogDefinition.color ? { color: catalogDefinition.color } : {}),
+      ...(catalogDefinition.sprite ? { sprite: catalogDefinition.sprite } : {}),
+    };
+  }
   return (
     BUILTIN_POINT_ENTITY_DEFINITIONS.find(
       (definition) => definition.classname.toLowerCase() === classname.trim().toLowerCase(),
@@ -359,19 +380,25 @@ export function flipPointEntity(
   return replaceEntityProperties(entity, properties);
 }
 
-export function pointEntityBounds(entity: MapEntity): Bounds | null {
+export function pointEntityBounds(
+  entity: MapEntity,
+  catalog?: EntityDefinitionCatalog,
+): Bounds | null {
   if (entity.brushes.length > 0) return null;
   const origin = parseEntityOrigin(entity);
   if (!origin) return null;
-  const relative = pointEntityDefinition(entity.properties.classname ?? '').bounds;
+  const relative = pointEntityDefinition(entity.properties.classname ?? '', catalog).bounds;
   return {
     min: [origin[0] + relative.min[0], origin[1] + relative.min[1], origin[2] + relative.min[2]],
     max: [origin[0] + relative.max[0], origin[1] + relative.max[1], origin[2] + relative.max[2]],
   };
 }
 
-export function pointEntitiesInDocument(document: MapDocument): readonly MapEntity[] {
-  return document.entities.filter((entity) => pointEntityBounds(entity) !== null);
+export function pointEntitiesInDocument(
+  document: MapDocument,
+  catalog?: EntityDefinitionCatalog,
+): readonly MapEntity[] {
+  return document.entities.filter((entity) => pointEntityBounds(entity, catalog) !== null);
 }
 
 export interface PointEntityRayHit {
@@ -384,8 +411,9 @@ export function intersectPointEntityRay(
   entity: MapEntity,
   origin: Vec3,
   direction: Vec3,
+  catalog?: EntityDefinitionCatalog,
 ): PointEntityRayHit | null {
-  const bounds = pointEntityBounds(entity);
+  const bounds = pointEntityBounds(entity, catalog);
   if (!bounds) return null;
   let enter = 0;
   let exit = Number.POSITIVE_INFINITY;

@@ -34,9 +34,11 @@ import {
 } from '../core/index.js';
 import type {
   EditorSourceRendererOptions,
+  EditorSpriteMaterial,
   EditorBrushDragEvent,
   EditorBrushCreateEvent,
   EditorCameraNavigationMode,
+  EditorDiagnosticOverlay,
   EditorReferenceScene,
   EditorSweepDragEvent,
   EditorFaceDragEvent,
@@ -3198,7 +3200,11 @@ export class EditorSourceRenderer {
   private sweepCaps: readonly (readonly Vec3[])[] = [];
   private lastClipViewport: EditorViewportKind = 'perspective';
   private referenceScenes: readonly EditorReferenceScene[];
+  private diagnosticOverlays: readonly EditorDiagnosticOverlay[];
+  private sprites: readonly EditorSpriteMaterial[];
+  private materials: readonly EditorMaterial[];
   private entityLinkMode: EntityLinkMode;
+  private entityDefinitions: EditorSourceRendererOptions['entityDefinitions'];
   private openGroupId: string | null;
   private tool: EditorTool;
   private readonly materialResources = new Map<string, MaterialResource>();
@@ -3235,7 +3241,11 @@ export class EditorSourceRenderer {
       max: [8, 8, 8],
     };
     this.referenceScenes = options.referenceScenes ?? [];
+    this.diagnosticOverlays = options.diagnosticOverlays ?? [];
+    this.sprites = options.sprites ?? [];
+    this.materials = options.materials ?? [];
     this.entityLinkMode = options.entityLinkMode ?? 'direct';
+    this.entityDefinitions = options.entityDefinitions;
     this.openGroupId = options.openGroupId ?? null;
     this.tool = options.tool ?? 'select';
     this.onClipPlaneChange = options.onClipPlaneChange;
@@ -3262,13 +3272,16 @@ export class EditorSourceRenderer {
       this.topologyHover,
       this.entityLinkMode,
       this.openGroupId,
+      this.entityDefinitions,
+      this.diagnosticOverlays,
+      this.sprites,
     );
     this.fallbackMaterial = createMaterialResource(
       device,
       this.materialBindGroupLayout,
       this.materialSampler,
     );
-    this.setMaterials(options.materials ?? []);
+    this.rebuildMaterialResources();
     const hitTests = (origin: Vec3, direction: Vec3): readonly EditorObjectRayHit[] =>
       [
         ...brushesInDocument(this.document).flatMap((brush) => {
@@ -3281,14 +3294,14 @@ export class EditorSourceRenderer {
           const hit = intersectBrushRay(brush, origin, direction);
           return hit ? [hit] : [];
         }),
-        ...pointEntitiesInDocument(this.document).flatMap((entity) => {
+        ...pointEntitiesInDocument(this.document, this.entityDefinitions).flatMap((entity) => {
           if (
             this.objectViewState.hiddenEntityIds.includes(entity.id) ||
             this.objectViewState.lockedEntityIds.includes(entity.id)
           ) {
             return [];
           }
-          const hit = intersectPointEntityRay(entity, origin, direction);
+          const hit = intersectPointEntityRay(entity, origin, direction, this.entityDefinitions);
           return hit ? [hit] : [];
         }),
       ].toSorted((left, right) => left.distance - right.distance);
@@ -3889,15 +3902,24 @@ export class EditorSourceRenderer {
       this.topologyHover,
       this.entityLinkMode,
       this.openGroupId,
+      this.entityDefinitions,
+      this.diagnosticOverlays,
+      this.sprites,
     );
     this.sceneVersion += 1;
   }
 
   public setMaterials(materials: readonly EditorMaterial[]): void {
     if (this.disposed) return;
+    this.materials = materials;
+    this.rebuildMaterialResources();
+  }
+
+  private rebuildMaterialResources(): void {
     for (const resource of this.materialResources.values()) destroyMaterialResource(resource);
     this.materialResources.clear();
-    for (const material of materials) {
+    const spriteMaterials = this.sprites.map((sprite) => sprite.material);
+    for (const material of [...this.materials, ...spriteMaterials]) {
       const key = material.name.trim().toLowerCase();
       const previous = this.materialResources.get(key);
       if (previous) destroyMaterialResource(previous);
@@ -3911,6 +3933,27 @@ export class EditorSourceRenderer {
         ),
       );
     }
+  }
+
+  public setSprites(sprites: readonly EditorSpriteMaterial[]): void {
+    if (this.disposed) return;
+    this.sprites = sprites;
+    this.rebuildMaterialResources();
+    this.rebuildScene();
+  }
+
+  public setEntityDefinitions(
+    entityDefinitions: EditorSourceRendererOptions['entityDefinitions'],
+  ): void {
+    if (this.entityDefinitions === entityDefinitions) return;
+    this.entityDefinitions = entityDefinitions;
+    this.rebuildScene();
+  }
+
+  public setDiagnosticOverlays(overlays: readonly EditorDiagnosticOverlay[]): void {
+    if (this.disposed) return;
+    this.diagnosticOverlays = overlays;
+    this.rebuildScene();
   }
 
   public setSelection(selection: EditorSelection | null): void {

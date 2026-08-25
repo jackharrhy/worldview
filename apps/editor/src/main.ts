@@ -1,9 +1,28 @@
 import type { WorldviewViewer } from '@jackharrhy/worldview';
 import { renderEditorShell } from './app-shell.js';
+import { MapBuildHistoryService } from './build-history.js';
 import { EditorClipboard } from './editor-clipboard.js';
+import { DocumentRecoveryService } from './document-recovery.js';
+import {
+  downloadMapCopy,
+  ExternalFileChangeError,
+  pickMapFile,
+  saveMapFile,
+  type EditorFileHandle,
+} from './project-files.js';
+import {
+  loadProjectEntityDefinitions,
+  loadProjectSprites,
+  openWorldviewProject,
+  pickProjectDirectory,
+  projectFile,
+  type WorldviewProjectWorkspace,
+} from './project-workspace.js';
+import { ProjectLocalStateService } from './project-local-state.js';
 import { TextureUvEditor } from './uv-editor.js';
 import {
   EditorSession,
+  EntityDefinitionCatalog,
   EditorMaterialCatalog,
   MapCompileCoordinator,
   RemoteMapCompiler,
@@ -32,7 +51,12 @@ import {
   linkedGroupSiblings,
   materialUsageInDocument,
   matchingBrushFaces,
+  mapSourceFingerprint,
   parseMap,
+  parseMapSource,
+  parseLeakPath,
+  parsePortalFile,
+  planMapSave,
   pointEntityBounds,
   pointEntityDefinition,
   protectedEntityProperties,
@@ -44,6 +68,7 @@ import {
   selectionForEditorGroup,
   visibleEntityLinks,
   serializeMap,
+  rebaseMapSource,
   type BrushEditCandidate,
   type BrushBatchEditCandidate,
   type BrushSelection,
@@ -68,6 +93,7 @@ import {
   type EditorHullCreateEvent,
   type EditorIssue,
   type EditorIssueType,
+  type EntityPropertyDefinition,
   type EditorLayerId,
   type EditorMaterial,
   type EditorObjectViewState,
@@ -75,6 +101,8 @@ import {
   type EditorPointerPositionEvent,
   type EditorSelection,
   type EditorReferenceScene,
+  type EditorDiagnosticOverlay,
+  type EditorSpriteMaterial,
   type EditorSweepDragEvent,
   type EditorSpecialBrushFilter,
   type EditorViewportCanvases,
@@ -86,6 +114,7 @@ import {
   type EditorTransformPivotDragEvent,
   type MapCompileResult,
   type MapDocument,
+  type MapSourceState,
   type SelectionBrushQueryMode,
   type SimpleShapeKind,
   type SimpleShapeOptions,
@@ -162,6 +191,14 @@ const layerUpButton = required<HTMLButtonElement>('[data-action="layer-up"]');
 const layerDownButton = required<HTMLButtonElement>('[data-action="layer-down"]');
 const compileButton = required<HTMLButtonElement>('[data-action="compile"]');
 const togglePreviewButton = required<HTMLButtonElement>('[data-action="toggle-preview"]');
+const toggleLeakButton = required<HTMLButtonElement>('[data-action="toggle-leak"]');
+const togglePortalsButton = required<HTMLButtonElement>('[data-action="toggle-portals"]');
+const buildLogButton = required<HTMLButtonElement>('[data-action="build-log"]');
+const launchButton = required<HTMLButtonElement>('[data-action="launch"]');
+const buildLogDialog = required<HTMLDialogElement>('#build-log-dialog');
+const buildLogOutput = required<HTMLPreElement>('#build-log-output');
+const recoveryDialog = required<HTMLDialogElement>('#recovery-dialog');
+const recoveryList = required<HTMLDivElement>('#recovery-list');
 const compileState = required<HTMLDivElement>('.compile-state');
 const perspectiveMode = required<HTMLElement>('#perspective-mode');
 const compiledCanvas = required<HTMLCanvasElement>('.compiled-canvas');
@@ -318,6 +355,7 @@ const materialReplaceScope = required<HTMLParagraphElement>('#material-replace-s
 const wadFiles = required<HTMLInputElement>('#wad-files');
 const paletteFile = required<HTMLInputElement>('#palette-file');
 const mapFile = required<HTMLInputElement>('#map-file');
+const projectMap = required<HTMLSelectElement>('#project-map');
 const referenceFiles = required<HTMLInputElement>('#reference-files');
 const referenceCount = required<HTMLElement>('#reference-count');
 const referenceList = required<HTMLDivElement>('#reference-list');
@@ -337,7 +375,22 @@ const canvases: EditorViewportCanvases = {
   perspective: required<HTMLCanvasElement>('[data-viewport="perspective"] .source-canvas'),
 };
 
-let session = new EditorSession(createStarterDocument());
+const starterDocument = createStarterDocument();
+let session = new EditorSession(starterDocument);
+let currentMapSource: MapSourceState = rebaseMapSource(
+  starterDocument,
+  serializeMap(starterDocument),
+);
+let currentFileHandle: EditorFileHandle | null = null;
+let lastDiskFingerprint: string | null = null;
+let savedDocumentRevision = -1;
+let documentDirty = true;
+let replacingDocument = false;
+let lastRecoveryLabel = 'Initial document';
+let projectWorkspace: WorldviewProjectWorkspace | null = null;
+let projectKey: string | null = null;
+let entityDefinitions = new EntityDefinitionCatalog();
+let projectSprites: readonly EditorSpriteMaterial[] = [];
 let renderer: EditorSourceRenderer | null = null;
 let stopSubscription: (() => void) | null = null;
 let moveCandidate: DocumentEditCandidate | null = null;
@@ -404,6 +457,12 @@ let activeEntityId: MapDocument['entities'][number]['id'] | null = null;
 let activeTool: EditorTool = 'select';
 let compiledViewer: WorldviewViewer | null = null;
 let compiledRevision: number | null = null;
+let latestBuild: MapCompileResult | null = null;
+let buildOverlays: readonly EditorDiagnosticOverlay[] = [];
+let leakOverlayVisible = true;
+let portalOverlayVisible = false;
+let launchProfileId: string | null = null;
+let activeCompileProfileId = 'default';
 let showingCompiled = false;
 let referenceScenes: EditorReferenceScene[] = [];
 let referenceSequence = 0;
@@ -419,9 +478,13 @@ const enabledIssueTypes = new Set<EditorIssueType>(
 );
 const compilerEndpoint =
   new URLSearchParams(window.location.search).get('compiler') ?? 'http://127.0.0.1:8788/compile';
-const compilerCoordinator = new MapCompileCoordinator(
-  new RemoteMapCompiler({ endpoint: compilerEndpoint }),
-);
+const buildService = new RemoteMapCompiler({ endpoint: compilerEndpoint });
+const compilerCoordinator = new MapCompileCoordinator(buildService);
+const buildHistory = new MapBuildHistoryService(undefined, (error) => {
+  statusMessage.textContent = `Build history storage failed: ${error instanceof Error ? error.message : String(error)}`;
+  statusMessage.classList.add('error-text');
+});
+const projectLocalState = new ProjectLocalStateService();
 const materialCatalog = new EditorMaterialCatalog();
 const builtInMaterials = [
   createDeveloperMaterial('DEV_FLOOR', [99, 126, 103], [137, 164, 140]),
@@ -491,6 +554,22 @@ let viewportContext: EditorViewportContextMenuEvent | null = null;
 const diagnosticQuakePalette = createDiagnosticQuakePalette();
 let compiledPreviewWarning: string | null = null;
 
+const recovery = new DocumentRecoveryService(
+  () => ({
+    documentKey: currentDocumentName.toLowerCase(),
+    fileName: currentDocumentName,
+    document: session.document,
+    source: currentMapSource,
+    savedDocumentRevision,
+    label: lastRecoveryLabel,
+  }),
+  undefined,
+  (error) => {
+    statusMessage.textContent = `Recovery storage failed: ${error instanceof Error ? error.message : String(error)}`;
+    statusMessage.classList.add('error-text');
+  },
+);
+
 interface CompileAssetEntry {
   readonly name: string;
   readonly data: ArrayBuffer;
@@ -544,13 +623,24 @@ function serializeCompileDocument(assets: readonly CompileAssetEntry[]): string 
 }
 
 function updateSourceFromDocument(): void {
-  source.value = serializeMap(session.document);
+  const plan = planMapSave(session.document, currentMapSource);
+  source.value = plan.status === 'safe' ? plan.text : plan.normalizedText;
+  sourceMessage.textContent =
+    plan.status === 'safe'
+      ? 'Source preview preserves the opened map structure.'
+      : plan.diagnostics.map(({ message }) => message).join(' ');
+  sourceMessage.classList.toggle('error-text', plan.status === 'blocked');
 }
 
 function setDocumentName(name: string): void {
   currentDocumentName = name.toLowerCase().endsWith('.map') ? name : `${name}.map`;
-  documentName.textContent = currentDocumentName;
+  documentName.textContent = `${documentDirty ? '• ' : ''}${currentDocumentName}`;
   documentName.title = currentDocumentName;
+}
+
+function setDocumentDirty(dirty: boolean): void {
+  documentDirty = dirty;
+  setDocumentName(currentDocumentName);
 }
 
 function setInspectorOpen(open: boolean): void {
@@ -1734,6 +1824,73 @@ function setEntityProperty(key: string, value: string | null, protect = false): 
   }
 }
 
+function typedEntityPropertyControl(
+  key: string,
+  value: string,
+  definition?: EntityPropertyDefinition,
+): HTMLElement {
+  if (definition?.type === 'choices' && definition.choices) {
+    const select = document.createElement('select');
+    for (const choice of definition.choices) {
+      const option = document.createElement('option');
+      option.value = choice.value;
+      option.textContent = choice.label;
+      select.append(option);
+    }
+    if (![...select.options].some((option) => option.value === value) && value) {
+      select.append(new Option(`Unknown (${value})`, value));
+    }
+    select.value = value;
+    select.setAttribute('aria-label', `${definition.label} value`);
+    select.addEventListener('change', () => setEntityProperty(key, select.value));
+    return select;
+  }
+  if (definition?.type === 'boolean') {
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = value !== '0' && value.toLowerCase() !== 'false' && value !== '';
+    input.setAttribute('aria-label', `${definition.label} value`);
+    input.addEventListener('change', () => setEntityProperty(key, input.checked ? '1' : '0'));
+    return input;
+  }
+  if (definition?.type === 'flags' && definition.choices) {
+    const flags = document.createElement('div');
+    flags.className = 'entity-flags';
+    const selected = Number(value) || 0;
+    for (const choice of definition.choices) {
+      const bit = Number(choice.value);
+      if (!Number.isInteger(bit) || bit <= 0) continue;
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = (selected & bit) === bit;
+      input.addEventListener('change', () => {
+        const next = [...flags.querySelectorAll<HTMLInputElement>('input[data-flag]')].reduce(
+          (sum, checkbox) => sum | (checkbox.checked ? Number(checkbox.dataset.flag) : 0),
+          0,
+        );
+        setEntityProperty(key, String(next));
+      });
+      input.dataset.flag = String(bit);
+      label.append(input, choice.label);
+      flags.append(label);
+    }
+    return flags;
+  }
+  const input = document.createElement('input');
+  input.type =
+    definition?.type === 'integer' || definition?.type === 'float' || definition?.type === 'angle'
+      ? 'number'
+      : 'text';
+  if (definition?.type === 'integer') input.step = '1';
+  if (definition?.type === 'float' || definition?.type === 'angle') input.step = 'any';
+  input.value = value;
+  input.placeholder = definition?.defaultValue ?? '';
+  input.setAttribute('aria-label', `${definition?.label ?? key} value`);
+  input.addEventListener('change', () => setEntityProperty(key, input.value));
+  return input;
+}
+
 function renderEntityProperties(mapDocument: MapDocument, selection: EditorSelection | null): void {
   const entity = selection?.entityId
     ? mapDocument.entities.find((candidate) => candidate.id === selection.entityId)
@@ -1764,23 +1921,33 @@ function renderEntityProperties(mapDocument: MapDocument, selection: EditorSelec
   );
   entityPropertyProtectedLabel.hidden = !canProtectProperties;
   const protectedProperties = new Set(protectedEntityProperties(entity));
+  const definition = entityDefinitions.find(entity.properties.classname ?? '');
+  const definitionsByKey = new Map(
+    definition?.properties.map((property) => [property.key, property]),
+  );
+  const propertyKeys = [
+    ...Object.keys(entity.properties),
+    ...(definition?.properties.map(({ key }) => key) ?? []).filter(
+      (key) => !(key in entity.properties),
+    ),
+  ];
 
-  for (const [key, value] of Object.entries(entity.properties)) {
+  for (const key of propertyKeys) {
     if (key === '_tb_group' || key === '_tb_protected_properties') continue;
+    const propertyDefinition = definitionsByKey.get(key);
+    const value = entity.properties[key] ?? propertyDefinition?.defaultValue ?? '';
     const row = window.document.createElement('div');
     row.className = 'entity-property-row';
     const keyLabel = document.createElement('span');
-    keyLabel.textContent = key;
-    keyLabel.title = key;
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = value;
-    input.setAttribute('aria-label', `${key} value`);
-    input.addEventListener('change', () => setEntityProperty(key, input.value));
+    keyLabel.textContent = propertyDefinition?.label ?? key;
+    keyLabel.title = propertyDefinition?.description
+      ? `${key}: ${propertyDefinition.description}`
+      : key;
+    const input = typedEntityPropertyControl(key, value, propertyDefinition);
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.textContent = 'Remove';
-    remove.disabled = key === 'classname';
+    remove.disabled = key === 'classname' || !(key in entity.properties);
     remove.title = remove.disabled ? 'Every map entity needs a classname' : `Remove ${key}`;
     remove.addEventListener('click', () => setEntityProperty(key, null));
     if (canProtectProperties) {
@@ -1923,6 +2090,66 @@ function showCompiledPreview(show: boolean): void {
   else compiledViewer?.stop();
 }
 
+function buildArtifactText(result: MapCompileResult, kind: 'leak-path' | 'portal'): string | null {
+  const artifact = result.artifacts.find((candidate) => candidate.kind === kind);
+  return artifact ? new TextDecoder().decode(artifact.data) : null;
+}
+
+function updateDiagnosticOverlayVisibility(): void {
+  renderer?.setDiagnosticOverlays(
+    buildOverlays.filter(
+      (overlay) =>
+        (overlay.kind === 'leak-path' && leakOverlayVisible) ||
+        (overlay.kind === 'portal' && portalOverlayVisible),
+    ),
+  );
+  toggleLeakButton.classList.toggle('active', leakOverlayVisible && !toggleLeakButton.disabled);
+  togglePortalsButton.classList.toggle(
+    'active',
+    portalOverlayVisible && !togglePortalsButton.disabled,
+  );
+}
+
+function inspectBuildResult(result: MapCompileResult): void {
+  latestBuild = result;
+  void buildHistory.record(currentDocumentName.toLowerCase(), result);
+  const leakText = buildArtifactText(result, 'leak-path');
+  const portalText = buildArtifactText(result, 'portal');
+  const leak = leakText ? parseLeakPath(leakText) : null;
+  const portals = portalText ? parsePortalFile(portalText) : null;
+  buildOverlays = [
+    ...(leak && leak.points.length > 1
+      ? [{ id: `${result.buildId}:leak`, kind: 'leak-path' as const, points: leak.points }]
+      : []),
+    ...(portals
+      ? portals.polygons.map((points, index) => ({
+          id: `${result.buildId}:portal:${index}`,
+          kind: 'portal' as const,
+          points,
+        }))
+      : []),
+  ];
+  leakOverlayVisible = Boolean(leak?.points.length);
+  portalOverlayVisible = false;
+  toggleLeakButton.disabled = !buildOverlays.some((overlay) => overlay.kind === 'leak-path');
+  togglePortalsButton.disabled = !buildOverlays.some((overlay) => overlay.kind === 'portal');
+  buildLogButton.disabled = result.logs.length === 0 && result.diagnostics.length === 0;
+  buildLogOutput.textContent = [
+    ...result.diagnostics.map(
+      (diagnostic) =>
+        `[${diagnostic.severity.toUpperCase()}] ${diagnostic.stage}: ${diagnostic.message}`,
+    ),
+    ...result.logs.map(
+      (log) => `\n--- ${log.stage}${log.truncated ? ' (truncated)' : ''} ---\n${log.text}`,
+    ),
+  ].join('\n');
+  launchButton.disabled =
+    result.status !== 'succeeded' ||
+    !launchProfileId ||
+    result.sourceDocumentRevision !== session.document.revision;
+  updateDiagnosticOverlayVisibility();
+}
+
 async function installCompiledPreview(result: MapCompileResult): Promise<void> {
   const artifact = result.artifacts.find(
     (candidate) =>
@@ -1970,6 +2197,7 @@ async function compilePreview(): Promise<void> {
         mapName: 'worldview_preview',
         mapText: serializeCompileDocument(assets),
         quality: 'preview',
+        profileId: activeCompileProfileId,
         expectedDocumentRevision: session.document.revision,
         assets: assets.map(({ name, data }) => ({
           name,
@@ -1990,6 +2218,17 @@ async function compilePreview(): Promise<void> {
         'Compile finished, but the source changed. Result was not installed.';
       return;
     }
+    inspectBuildResult(outcome.result);
+    if (outcome.status === 'failed') {
+      showCompiledPreview(false);
+      setCompileState('COMPILE FAILED', 'offline');
+      const errors = outcome.result.diagnostics
+        .filter((diagnostic) => diagnostic.severity === 'error')
+        .map((diagnostic) => `${diagnostic.stage}: ${diagnostic.message}`);
+      statusMessage.textContent =
+        errors.slice(0, 3).join(' · ') || 'Compiler reported a failed build.';
+      return;
+    }
     await installCompiledPreview(outcome.result);
     setCompileState(`COMPILED R${outcome.result.sourceDocumentRevision}`, 'ready');
     statusMessage.textContent = `Compiled preview installed in ${Math.round(outcome.result.elapsedMilliseconds)} ms.${compiledPreviewWarning ?? ''}`;
@@ -2004,11 +2243,41 @@ async function compilePreview(): Promise<void> {
 
 async function checkCompilerService(): Promise<void> {
   try {
-    const health = new URL('/health', compilerEndpoint);
-    const response = await fetch(health);
-    if (response.ok) setCompileState('COMPILER READY', 'ready');
+    const capabilities = await buildService.capabilities();
+    let compileProfile = capabilities.compileProfiles.find((profile) => profile.id === 'default');
+    const logicalProfile = projectWorkspace?.manifest.buildProfiles.find(
+      ({ id }) => id === projectWorkspace?.manifest.defaultBuildProfile,
+    );
+    if (projectWorkspace && projectKey && logicalProfile) {
+      const local = await projectLocalState.load(projectKey);
+      const bound = local?.buildBindings[logicalProfile.id];
+      compileProfile =
+        capabilities.compileProfiles.find(({ id }) => id === bound) ??
+        capabilities.compileProfiles.find(
+          ({ game, qualities }) =>
+            game === projectWorkspace?.manifest.game && qualities.includes(logicalProfile.quality),
+        );
+      if (compileProfile && bound !== compileProfile.id) {
+        await projectLocalState.setBuildBinding(
+          projectKey,
+          projectWorkspace.handle,
+          logicalProfile.id,
+          compileProfile.id,
+        );
+      }
+    }
+    activeCompileProfileId = compileProfile?.id ?? 'default';
+    launchProfileId = capabilities.launchProfiles[0]?.id ?? null;
+    compileButton.disabled = !compileProfile;
+    launchButton.disabled =
+      !launchProfileId ||
+      latestBuild?.status !== 'succeeded' ||
+      latestBuild.sourceDocumentRevision !== session.document.revision;
+    if (compileProfile) setCompileState('COMPILER READY', 'ready');
     else setCompileState('COMPILER UNCONFIGURED', 'offline');
   } catch {
+    compileButton.disabled = true;
+    launchButton.disabled = true;
     setCompileState('COMPILER OFFLINE', 'offline');
   }
 }
@@ -3069,7 +3338,14 @@ function connectSession(): void {
   stopSubscription = session.subscribe((change) => {
     renderer?.setDocument(session.document, session.selection, effectiveObjectViewState());
     updateInspector();
-    if (change.kind !== 'selection' && change.kind !== 'view') updateSourceFromDocument();
+    if (change.kind !== 'selection' && change.kind !== 'view') {
+      updateSourceFromDocument();
+      lastRecoveryLabel = change.label;
+      if (!replacingDocument) {
+        setDocumentDirty(true);
+        recovery.schedule();
+      }
+    }
     if (change.kind === 'document' || change.kind === 'history') renderMaterialCatalog();
     else updateMaterialBrowserControls();
     if (
@@ -3080,11 +3356,25 @@ function connectSession(): void {
       showCompiledPreview(false);
       setCompileState(`PREVIEW R${compiledRevision} STALE`, 'stale');
     }
+    if (change.kind !== 'selection' && change.kind !== 'view') launchButton.disabled = true;
     statusMessage.textContent = `${change.label}. Document revision ${change.documentRevision}.`;
   });
 }
 
-function replaceDocument(document: MapDocument, label: string, name?: string): void {
+interface ReplaceDocumentOptions {
+  readonly name?: string;
+  readonly source?: MapSourceState;
+  readonly fileHandle?: EditorFileHandle | null;
+  readonly diskFingerprint?: string | null;
+  readonly dirty?: boolean;
+  readonly savedRevision?: number;
+}
+
+function replaceDocument(
+  document: MapDocument,
+  label: string,
+  options: ReplaceDocumentOptions = {},
+): void {
   openGroupId = null;
   selectedLayerId = null;
   layerPanelSignature = '';
@@ -3117,9 +3407,20 @@ function replaceDocument(document: MapDocument, label: string, name?: string): v
   renderer?.clearClipPlane();
   renderer?.clearHullPoints();
   renderer?.setSweepCaps([]);
-  session.replaceDocument(document, label);
-  if (name) setDocumentName(name);
-  sourceMessage.textContent = 'Source parsed and normalized successfully.';
+  currentMapSource = options.source ?? rebaseMapSource(document, serializeMap(document));
+  if (options.fileHandle !== undefined) currentFileHandle = options.fileHandle;
+  if (options.diskFingerprint !== undefined) lastDiskFingerprint = options.diskFingerprint;
+  replacingDocument = true;
+  try {
+    session.replaceDocument(document, label);
+  } finally {
+    replacingDocument = false;
+  }
+  savedDocumentRevision = options.savedRevision ?? document.revision;
+  lastRecoveryLabel = label;
+  setDocumentDirty(options.dirty ?? false);
+  if (options.name) setDocumentName(options.name);
+  sourceMessage.textContent = 'Source parsed successfully.';
   sourceMessage.classList.remove('error-text');
 }
 
@@ -3321,7 +3622,7 @@ function createPointEntityFromContext(
   classname: string,
 ): void {
   if (!context.pointEntityOrigin) throw new Error('No valid placement point under the cursor');
-  const definition = pointEntityDefinition(classname);
+  const definition = pointEntityDefinition(classname, entityDefinitions);
   const origin = [...context.pointer.point] as [number, number, number];
   if (context.viewport === 'perspective') {
     const normal = context.pointer.surfaceNormal ?? ([0, 0, 1] as const);
@@ -3560,12 +3861,14 @@ try {
     selection: session.selection,
     objectViewState: effectiveObjectViewState(),
     materials: materialCatalog.materials(),
+    entityDefinitions,
     referenceScenes,
     entityLinkMode,
     openGroupId,
     tool: activeTool,
     gridSize: activeGridSize,
-    entityPlacementBounds: pointEntityDefinition(pointEntityClassname.value).bounds,
+    entityPlacementBounds: pointEntityDefinition(pointEntityClassname.value, entityDefinitions)
+      .bounds,
     onCameraChange(event: EditorCameraChangeEvent) {
       if (event.viewport !== 'perspective') return;
       perspectiveCamera = event.camera;
@@ -4136,7 +4439,15 @@ try {
 }
 
 required<HTMLButtonElement>('[data-action="new"]').addEventListener('click', () => {
-  replaceDocument(createStarterDocument(), 'Create starter map', 'untitled.map');
+  const document = createStarterDocument();
+  replaceDocument(document, 'Create starter map', {
+    name: 'untitled.map',
+    source: rebaseMapSource(document, serializeMap(document)),
+    fileHandle: null,
+    diskFingerprint: null,
+    dirty: true,
+    savedRevision: -1,
+  });
 });
 
 required<HTMLButtonElement>('[data-action="show-source"]').addEventListener('click', () => {
@@ -4149,7 +4460,12 @@ required<HTMLButtonElement>('[data-action="close-source"]').addEventListener('cl
 });
 required<HTMLButtonElement>('[data-action="apply-source"]').addEventListener('click', () => {
   try {
-    replaceDocument(parseMap(source.value), 'Apply map source');
+    const parsed = parseMapSource(source.value, createSequentialIdFactory(`source-${Date.now()}`));
+    replaceDocument(parsed.document, 'Apply map source', {
+      source: parsed.source,
+      dirty: true,
+      savedRevision: savedDocumentRevision,
+    });
     sourceDialog.close();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -4159,35 +4475,266 @@ required<HTMLButtonElement>('[data-action="apply-source"]').addEventListener('cl
   }
 });
 
-required<HTMLButtonElement>('[data-action="open-file"]').addEventListener('click', () => {
-  mapFile.click();
+async function openEditorMap(
+  file: File,
+  handle: EditorFileHandle | null,
+  logicalName = file.name,
+): Promise<void> {
+  try {
+    const text = await file.text();
+    const parsed = parseMapSource(text, createSequentialIdFactory(`opened-${Date.now()}`));
+    const fingerprint = mapSourceFingerprint(text);
+    const recovered = await recovery.latest(logicalName.toLowerCase());
+    if (
+      recovered &&
+      recovered.updatedAt > file.lastModified &&
+      recovered.document.revision !== recovered.savedDocumentRevision &&
+      window.confirm(
+        `A newer recovery snapshot exists for ${logicalName}. Restore revision ${recovered.document.revision}?`,
+      )
+    ) {
+      replaceDocument(parsed.document, 'Open map before recovery', {
+        name: logicalName,
+        source: parsed.source,
+        fileHandle: handle,
+        diskFingerprint: fingerprint,
+        dirty: false,
+        savedRevision: parsed.document.revision,
+      });
+      session.restoreDocument(recovered.document, `Restore ${recovered.label}`);
+      statusMessage.textContent = `Restored recovery for ${logicalName}; the on-disk map is unchanged.`;
+      return;
+    }
+    replaceDocument(parsed.document, 'Open map', {
+      name: logicalName,
+      source: parsed.source,
+      fileHandle: handle,
+      diskFingerprint: fingerprint,
+      dirty: false,
+      savedRevision: parsed.document.revision,
+    });
+    statusMessage.textContent = `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`;
+  } catch (error) {
+    statusMessage.textContent = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+function refreshEntityDefinitionPresets(): void {
+  const definitions = new Map(
+    [
+      ...BUILTIN_POINT_ENTITY_DEFINITIONS,
+      ...entityDefinitions
+        .all()
+        .filter(({ kind }) => kind === 'point')
+        .map((definition) => ({
+          classname: definition.classname,
+          label: definition.label,
+          bounds: definition.bounds ?? { min: [-16, -16, -16], max: [16, 16, 16] },
+        })),
+    ].map((definition) => [definition.classname.toLowerCase(), definition]),
+  );
+  const selectedClassname = pointEntityClassname.value.trim().toLowerCase();
+  pointEntityPreset.replaceChildren(
+    ...[...definitions.values()]
+      .toSorted((left, right) => left.label.localeCompare(right.label))
+      .map((definition) => {
+        const option = document.createElement('option');
+        option.value = definition.classname;
+        option.textContent = definition.label;
+        return option;
+      }),
+  );
+  const selected = [...definitions.values()].find(
+    ({ classname }) => classname.toLowerCase() === selectedClassname,
+  );
+  if (selected) pointEntityPreset.value = selected.classname;
+}
+
+async function loadProjectResources(workspace: WorldviewProjectWorkspace): Promise<void> {
+  const stagedCatalog = new EditorMaterialCatalog();
+  const stagedWads = new Map<string, ArrayBuffer>();
+  let stagedPalette: Uint8Array | undefined;
+  for (const material of builtInMaterials) stagedCatalog.set(material);
+  const palettePath = workspace.manifest.resources.palette;
+  if (palettePath) {
+    const bytes = new Uint8Array(
+      await (await projectFile(workspace.handle, palettePath)).arrayBuffer(),
+    );
+    if (bytes.byteLength < 768) throw new Error(`${palettePath} is not a 768-byte Quake palette`);
+    stagedPalette = bytes.slice(0, 768);
+  }
+  const resourceMessages: string[] = [];
+  for (const path of workspace.manifest.resources.wads) {
+    const data = await (await projectFile(workspace.handle, path)).arrayBuffer();
+    const result = stagedCatalog.importWad(path, data, stagedPalette);
+    stagedWads.set(path, data);
+    resourceMessages.push(`${path}: ${result.added} added, ${result.replaced} replaced`);
+    const error = result.diagnostics.find(({ severity }) => severity === 'error');
+    if (error) throw new Error(error.message);
+  }
+  const [definitions, sprites] = await Promise.all([
+    loadProjectEntityDefinitions(workspace),
+    loadProjectSprites(workspace),
+  ]);
+  materialCatalog.clear();
+  for (const material of stagedCatalog.materials()) materialCatalog.set(material);
+  loadedWadSources.clear();
+  for (const [path, data] of stagedWads) loadedWadSources.set(path, data);
+  quakePalette = stagedPalette;
+  entityDefinitions = definitions.catalog;
+  projectSprites = sprites.sprites;
+  renderer?.setEntityDefinitions(entityDefinitions);
+  renderer?.setMaterials(materialCatalog.materials());
+  renderer?.setSprites(projectSprites);
+  refreshEntityDefinitionPresets();
+  renderMaterialCatalog();
+  const definitionErrors = definitions.diagnostics.filter(({ severity }) => severity === 'error');
+  materialMessage.textContent = [
+    `${workspace.manifest.name}: ${materialCatalog.size} textures and ${entityDefinitions.size} entity definitions`,
+    ...resourceMessages,
+    ...definitionErrors.map(({ message }) => message),
+    ...sprites.diagnostics,
+  ].join(' · ');
+  materialMessage.classList.toggle(
+    'error-text',
+    definitionErrors.length > 0 || sprites.diagnostics.length > 0,
+  );
+}
+
+required<HTMLButtonElement>('[data-action="open-project"]').addEventListener('click', async () => {
+  try {
+    const handle = await pickProjectDirectory();
+    if (!handle) {
+      statusMessage.textContent =
+        'Persistent project directories require a Chromium browser with File System Access.';
+      return;
+    }
+    const workspace = await openWorldviewProject(handle);
+    await loadProjectResources(workspace);
+    projectWorkspace = workspace;
+    projectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
+    await projectLocalState.remember(projectKey, handle);
+    projectMap.replaceChildren(
+      ...workspace.maps.map(({ path }) => {
+        const option = document.createElement('option');
+        option.value = path;
+        option.textContent = path;
+        return option;
+      }),
+    );
+    projectMap.hidden = workspace.maps.length === 0;
+    projectMap.selectedIndex = -1;
+    statusMessage.textContent = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${entityDefinitions.size} entity definitions.`;
+  } catch (error) {
+    statusMessage.textContent = `Project open failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+});
+
+projectMap.addEventListener('change', async () => {
+  const map = projectWorkspace?.maps.find(({ path }) => path === projectMap.value);
+  if (!map) return;
+  await openEditorMap(map.file, map.handle, map.path);
+});
+
+required<HTMLButtonElement>('[data-action="open-file"]').addEventListener('click', async () => {
+  try {
+    const opened = await pickMapFile(mapFile);
+    if (opened) await openEditorMap(opened.file, opened.handle);
+  } catch (error) {
+    statusMessage.textContent = error instanceof Error ? error.message : String(error);
+  }
 });
 mapFile.addEventListener('change', async () => {
   const file = mapFile.files?.[0];
   if (!file) return;
-  try {
-    replaceDocument(
-      parseMap(await file.text(), createSequentialIdFactory(`opened-${Date.now()}`)),
-      'Open map',
-      file.name,
-    );
-    statusMessage.textContent = `Opened ${file.name}.`;
-  } catch (error) {
-    statusMessage.textContent = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
-  }
+  await openEditorMap(file, null);
   mapFile.value = '';
 });
 
-required<HTMLButtonElement>('[data-action="download"]').addEventListener('click', () => {
-  const url = URL.createObjectURL(
-    new Blob([serializeMap(session.document)], { type: 'text/plain' }),
+required<HTMLButtonElement>('[data-action="download"]').addEventListener('click', async () => {
+  const plan = planMapSave(session.document, currentMapSource);
+  if (plan.status === 'blocked') {
+    statusMessage.textContent = `${plan.diagnostics.map(({ message }) => message).join(' ')} Use Export normalized to create a separate copy.`;
+    return;
+  }
+  if (!currentFileHandle || !lastDiskFingerprint) {
+    downloadMapCopy(currentDocumentName, plan.text);
+    statusMessage.textContent =
+      'Downloaded a source-preserving copy; the browser cannot confirm an on-disk save.';
+    return;
+  }
+  try {
+    lastDiskFingerprint = await saveMapFile(currentFileHandle, lastDiskFingerprint, plan.text);
+    currentMapSource = rebaseMapSource(session.document, plan.text);
+    savedDocumentRevision = session.document.revision;
+    setDocumentDirty(false);
+    lastRecoveryLabel = `Saved ${currentDocumentName}`;
+    await recovery.flush();
+    statusMessage.textContent = `Saved ${currentDocumentName} without normalizing untouched source.`;
+  } catch (error) {
+    if (error instanceof ExternalFileChangeError && currentFileHandle) {
+      const reload = window.confirm(
+        `${error.message}\n\nChoose OK to reload the disk version, or Cancel to download a source-preserving copy.`,
+      );
+      if (reload) await openEditorMap(await currentFileHandle.getFile(), currentFileHandle);
+      else {
+        downloadMapCopy(currentDocumentName.replace(/\.map$/i, '.copy.map'), plan.text);
+        statusMessage.textContent =
+          'Downloaded a copy; the externally changed file was not overwritten.';
+      }
+    } else {
+      statusMessage.textContent = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+});
+
+async function renderRecoveryVersions(): Promise<void> {
+  const snapshots = await recovery.list(currentDocumentName.toLowerCase());
+  recoveryList.replaceChildren(
+    ...snapshots.map((snapshot) => {
+      const row = document.createElement('div');
+      row.className = 'recovery-row';
+      const description = document.createElement('span');
+      description.textContent = `${snapshot.protected ? '★ ' : ''}${snapshot.label} · r${snapshot.document.revision} · ${new Date(snapshot.updatedAt).toLocaleString()}`;
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.textContent = 'Restore';
+      restore.addEventListener('click', () => {
+        session.restoreDocument(snapshot.document, `Restore ${snapshot.label}`);
+        recoveryDialog.close();
+        statusMessage.textContent = `Restored ${snapshot.label} as one undoable replacement.`;
+      });
+      const protect = document.createElement('button');
+      protect.type = 'button';
+      protect.textContent = snapshot.protected ? 'Unprotect' : 'Protect';
+      protect.addEventListener('click', async () => {
+        await recovery.setProtected(snapshot.snapshotId, !snapshot.protected);
+        await renderRecoveryVersions();
+      });
+      row.append(description, restore, protect);
+      return row;
+    }),
   );
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = currentDocumentName;
-  anchor.click();
-  URL.revokeObjectURL(url);
-  statusMessage.textContent = 'Downloaded normalized Valve 220 map source.';
+}
+
+required<HTMLButtonElement>('[data-action="checkpoint"]').addEventListener('click', async () => {
+  const label = window.prompt('Checkpoint label', `Checkpoint r${session.document.revision}`);
+  if (label === null) return;
+  const snapshot = await recovery.createCheckpoint(label);
+  statusMessage.textContent = `Protected checkpoint “${snapshot.label}” created.`;
+});
+required<HTMLButtonElement>('[data-action="versions"]').addEventListener('click', async () => {
+  await renderRecoveryVersions();
+  recoveryDialog.showModal();
+});
+required<HTMLButtonElement>('[data-action="close-recovery"]').addEventListener('click', () =>
+  recoveryDialog.close(),
+);
+
+required<HTMLButtonElement>('[data-action="export-normalized"]').addEventListener('click', () => {
+  const normalizedName = currentDocumentName.replace(/\.map$/i, '.normalized.map');
+  downloadMapCopy(normalizedName, serializeMap(session.document));
+  statusMessage.textContent = `Exported normalized source as ${normalizedName}; the original was not overwritten.`;
 });
 
 required<HTMLButtonElement>('[data-action="load-reference"]').addEventListener('click', () => {
@@ -4367,6 +4914,36 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-selecti
 }
 compileButton.addEventListener('click', () => void compilePreview());
 togglePreviewButton.addEventListener('click', () => showCompiledPreview(!showingCompiled));
+toggleLeakButton.addEventListener('click', () => {
+  leakOverlayVisible = !leakOverlayVisible;
+  updateDiagnosticOverlayVisibility();
+});
+togglePortalsButton.addEventListener('click', () => {
+  portalOverlayVisible = !portalOverlayVisible;
+  updateDiagnosticOverlayVisibility();
+});
+buildLogButton.addEventListener('click', () => buildLogDialog.showModal());
+required<HTMLButtonElement>('[data-action="close-build-log"]').addEventListener('click', () =>
+  buildLogDialog.close(),
+);
+launchButton.addEventListener('click', async () => {
+  if (!latestBuild || !launchProfileId) return;
+  launchButton.disabled = true;
+  try {
+    const result = await buildService.launch({
+      buildId: latestBuild.buildId,
+      profileId: launchProfileId,
+      expectedDocumentRevision: session.document.revision,
+    });
+    statusMessage.textContent = `Launched build ${result.buildId.slice(0, 8)} with ${result.profileId}.`;
+  } catch (error) {
+    statusMessage.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    launchButton.disabled =
+      latestBuild.status !== 'succeeded' ||
+      latestBuild.sourceDocumentRevision !== session.document.revision;
+  }
+});
 
 issueStatus.addEventListener('click', () => setIssueBrowserOpen(!issueBrowserOpen));
 required<HTMLButtonElement>('[data-action="close-issues"]').addEventListener('click', () =>
@@ -4655,11 +5232,15 @@ for (const input of [entityPropertyKey, entityPropertyValue]) {
 
 pointEntityPreset.addEventListener('change', () => {
   pointEntityClassname.value = pointEntityPreset.value;
-  renderer?.setEntityPlacementBounds(pointEntityDefinition(pointEntityClassname.value).bounds);
+  renderer?.setEntityPlacementBounds(
+    pointEntityDefinition(pointEntityClassname.value, entityDefinitions).bounds,
+  );
   if (activeTool === 'entity') setEditorTool('entity');
 });
 pointEntityClassname.addEventListener('input', () => {
-  renderer?.setEntityPlacementBounds(pointEntityDefinition(pointEntityClassname.value).bounds);
+  renderer?.setEntityPlacementBounds(
+    pointEntityDefinition(pointEntityClassname.value, entityDefinitions).bounds,
+  );
   if (activeTool === 'entity') {
     statusMessage.textContent = pointEntityClassname.value.trim()
       ? `Entity tool active. Click to place ${pointEntityClassname.value.trim()}.`
@@ -5224,7 +5805,7 @@ window.addEventListener('keydown', (event) => {
   }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'o') {
     event.preventDefault();
-    mapFile.click();
+    required<HTMLButtonElement>('[data-action="open-file"]').click();
     return;
   }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
@@ -5240,6 +5821,8 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('beforeunload', () => {
+  void recovery.flush();
+  recovery.dispose();
   compilerCoordinator.cancel();
   compiledViewer?.dispose();
   stopSubscription?.();

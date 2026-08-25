@@ -3,6 +3,7 @@ import type { MapCompileRequest, MapCompileResult, MapCompiler } from './compile
 export type MapCompileOutcome =
   | { readonly status: 'installed'; readonly result: MapCompileResult }
   | { readonly status: 'stale'; readonly result: MapCompileResult }
+  | { readonly status: 'failed'; readonly result: MapCompileResult }
   | { readonly status: 'cancelled' };
 
 function abortError(error: unknown): boolean {
@@ -32,6 +33,7 @@ export class MapCompileCoordinator {
       ) {
         return { status: 'stale', result };
       }
+      if (result.status === 'failed') return { status: 'failed', result };
       return { status: 'installed', result };
     } catch (error) {
       if (controller.signal.aborted || abortError(error)) return { status: 'cancelled' };

@@ -1077,9 +1077,12 @@ describe('compiler coordination', () => {
     session.translate(brush.id, [16, 0, 0]);
     finish({
       backend: 'wasm',
+      status: 'succeeded',
+      buildId: 'test-build',
       sourceDocumentRevision: 0,
       diagnostics: [],
       artifacts: [],
+      logs: [],
       elapsedMilliseconds: 10,
     });
 
@@ -1094,11 +1097,19 @@ describe('compiler coordination', () => {
         requestBody = JSON.parse(String(init?.body));
         return new Response(
           JSON.stringify({
+            status: 'succeeded',
+            buildId: 'remote-build',
             sourceDocumentRevision: 7,
             diagnostics: [],
             artifacts: [
-              { name: 'preview.bsp', mediaType: 'application/x-quake-bsp', base64: 'AQID' },
+              {
+                name: 'preview.bsp',
+                mediaType: 'application/x-quake-bsp',
+                base64: 'AQID',
+                kind: 'bsp',
+              },
             ],
+            logs: [],
             elapsedMilliseconds: 25,
           }),
           { headers: { 'content-type': 'application/json' } },
