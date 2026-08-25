@@ -68,7 +68,13 @@ function isLocalProjectState(value: unknown): value is LocalProjectState {
   );
 }
 
-export class ProjectLocalStateService {
+export interface ProjectLocalStateStorage {
+  load(projectKey: string): Promise<LocalProjectState | null>;
+  list(): Promise<readonly LocalProjectState[]>;
+  save(state: LocalProjectState): Promise<void>;
+}
+
+export class IndexedDbProjectLocalStateStorage implements ProjectLocalStateStorage {
   public async load(projectKey: string): Promise<LocalProjectState | null> {
     const database = await openDatabase();
     try {
@@ -82,9 +88,49 @@ export class ProjectLocalStateService {
     }
   }
 
+  public async list(): Promise<readonly LocalProjectState[]> {
+    const database = await openDatabase();
+    try {
+      const transaction = database.transaction(PROJECT_STORE, 'readonly');
+      const values: unknown[] = await requestResult(
+        transaction.objectStore(PROJECT_STORE).getAll(),
+      );
+      return values
+        .filter(isLocalProjectState)
+        .toSorted((left, right) => right.updatedAt - left.updatedAt);
+    } finally {
+      database.close();
+    }
+  }
+
+  public async save(state: LocalProjectState): Promise<void> {
+    const database = await openDatabase();
+    try {
+      const transaction = database.transaction(PROJECT_STORE, 'readwrite');
+      transaction.objectStore(PROJECT_STORE).put(state);
+      await transactionComplete(transaction);
+    } finally {
+      database.close();
+    }
+  }
+}
+
+export class ProjectLocalStateService {
+  public constructor(
+    private readonly storage: ProjectLocalStateStorage = new IndexedDbProjectLocalStateStorage(),
+  ) {}
+
+  public load(projectKey: string): Promise<LocalProjectState | null> {
+    return this.storage.load(projectKey);
+  }
+
+  public async latest(): Promise<LocalProjectState | null> {
+    return (await this.storage.list())[0] ?? null;
+  }
+
   public async remember(projectKey: string, handle: EditorDirectoryHandle): Promise<void> {
     const previous = await this.load(projectKey);
-    await this.save({
+    await this.storage.save({
       version: 1,
       projectKey,
       handle,
@@ -100,23 +146,12 @@ export class ProjectLocalStateService {
     capabilityId: string,
   ): Promise<void> {
     const previous = await this.load(projectKey);
-    await this.save({
+    await this.storage.save({
       version: 1,
       projectKey,
       handle,
       buildBindings: { ...previous?.buildBindings, [logicalProfileId]: capabilityId },
       updatedAt: Date.now(),
     });
-  }
-
-  private async save(state: LocalProjectState): Promise<void> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(PROJECT_STORE, 'readwrite');
-      transaction.objectStore(PROJECT_STORE).put(state);
-      await transactionComplete(transaction);
-    } finally {
-      database.close();
-    }
   }
 }

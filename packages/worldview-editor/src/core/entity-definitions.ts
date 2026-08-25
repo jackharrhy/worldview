@@ -232,9 +232,11 @@ function parseFgd(source: string, sourcePath?: string): ParsedEntityDefinitionFi
   }
   const classTokens = [...source.matchAll(/@(BaseClass|PointClass|SolidClass)\b/gi)].length;
   if (definitions.length < classTokens) {
+    const firstClass = /@(BaseClass|PointClass|SolidClass)\b/i.exec(source);
     diagnostics.push({
       severity: 'error',
       message: `Parsed ${definitions.length} of ${classTokens} FGD class declarations`,
+      ...(firstClass?.index === undefined ? {} : { line: lineAt(source, firstClass.index) }),
       ...(sourcePath ? { sourcePath } : {}),
     });
   }
@@ -283,9 +285,13 @@ function parseDef(source: string, sourcePath?: string): ParsedEntityDefinitionFi
   }
   const declarations = [...source.matchAll(/\/\*QUAKED\b/gi)].length;
   if (definitions.length < declarations) {
+    const firstDeclaration = /\/\*QUAKED\b/i.exec(source);
     diagnostics.push({
       severity: 'error',
       message: `Parsed ${definitions.length} of ${declarations} QUAKED declarations`,
+      ...(firstDeclaration?.index === undefined
+        ? {}
+        : { line: lineAt(source, firstDeclaration.index) }),
       ...(sourcePath ? { sourcePath } : {}),
     });
   }
@@ -355,10 +361,13 @@ function parseEnt(source: string, sourcePath?: string): ParsedEntityDefinitionFi
       ...(sourcePath ? { sourcePath } : {}),
     });
   }
-  if (/<(?:point|group)\b/i.test(source) && definitions.length === 0) {
+  const classTokens = [...source.matchAll(/<(?:point|group)\b/gi)].length;
+  if (definitions.length < classTokens) {
+    const firstClass = /<(?:point|group)\b/i.exec(source);
     diagnostics.push({
       severity: 'error',
-      message: 'ENT file contains no complete point or group classes',
+      message: `Parsed ${definitions.length} of ${classTokens} ENT class declarations`,
+      ...(firstClass?.index === undefined ? {} : { line: lineAt(source, firstClass.index) }),
       ...(sourcePath ? { sourcePath } : {}),
     });
   }

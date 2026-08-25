@@ -1,11 +1,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
+import { compileNativeMap, type NativeCompilerConfig } from './compiler.js';
+import { configuredLaunchProfile, launchBuild } from './launch.js';
 import {
-  compileNativeMap,
-  type NativeCompilerConfig,
-  type NativeCompilerRequest,
-} from './compiler.js';
-import { configuredLaunchProfile, launchBuild, type LaunchableBuild } from './launch.js';
+  BoundedBuildHistory,
+  helperCapabilities,
+  originAllowed,
+  parseCompileRequest,
+  parseLaunchRequest,
+} from './protocol.js';
 
 const host = process.env.WORLDVIEW_COMPILER_HOST ?? '127.0.0.1';
 const port = Number(process.env.WORLDVIEW_COMPILER_PORT ?? 8788);
@@ -34,8 +37,8 @@ const config: NativeCompilerConfig = {
 };
 const gameProfile = process.env.WORLDVIEW_GAME_PROFILE === 'goldsrc' ? 'goldsrc' : 'quake';
 const launchProfile = configuredLaunchProfile(process.env);
-const buildHistory = new Map<string, LaunchableBuild>();
 const maxBuildHistory = Math.max(1, Number(process.env.WORLDVIEW_COMPILER_HISTORY ?? 20));
+const buildHistory = new BoundedBuildHistory(maxBuildHistory);
 
 let activeCompiles = 0;
 
@@ -43,30 +46,10 @@ function compilerConfigured(): boolean {
   return Boolean(config.qbsp && config.vis && config.light);
 }
 
-function rememberBuild(
-  request: NativeCompilerRequest,
-  result: Awaited<ReturnType<typeof compileNativeMap>>,
-): void {
-  if (result.status !== 'succeeded') return;
-  const bsp = result.artifacts.find((artifact) => artifact.kind === 'bsp');
-  if (!bsp) return;
-  buildHistory.set(result.buildId, {
-    buildId: result.buildId,
-    mapName: request.mapName,
-    sourceDocumentRevision: result.sourceDocumentRevision,
-    bspBase64: bsp.base64,
-  });
-  while (buildHistory.size > maxBuildHistory) {
-    const oldest = buildHistory.keys().next().value as string | undefined;
-    if (!oldest) break;
-    buildHistory.delete(oldest);
-  }
-}
-
 function cors(request: IncomingMessage, response: ServerResponse): boolean {
   const origin = request.headers.origin;
+  if (!originAllowed(origin, allowedOrigins)) return false;
   if (!origin) return true;
-  if (!allowedOrigins.has(origin)) return false;
   response.setHeader('access-control-allow-origin', origin);
   response.setHeader('vary', 'origin');
   return true;
@@ -91,55 +74,6 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-function compileRequest(value: unknown): NativeCompilerRequest {
-  if (!value || typeof value !== 'object') throw new Error('Request must be a JSON object');
-  const request = value as Partial<NativeCompilerRequest>;
-  if (
-    typeof request.mapName !== 'string' ||
-    typeof request.mapText !== 'string' ||
-    (request.quality !== 'preview' && request.quality !== 'final') ||
-    !Number.isInteger(request.expectedDocumentRevision) ||
-    request.expectedDocumentRevision! < 0
-  ) {
-    throw new Error('Request contains invalid compile fields');
-  }
-  if (request.profileId !== undefined && request.profileId !== 'default') {
-    throw new Error('Unknown compile profile');
-  }
-  if (
-    request.assets !== undefined &&
-    (!Array.isArray(request.assets) ||
-      request.assets.some(
-        (asset) =>
-          !asset ||
-          typeof asset.name !== 'string' ||
-          typeof asset.mediaType !== 'string' ||
-          typeof asset.base64 !== 'string',
-      ))
-  ) {
-    throw new Error('Request contains invalid compile assets');
-  }
-  return request as NativeCompilerRequest;
-}
-
-function launchRequest(value: unknown): {
-  readonly buildId: string;
-  readonly profileId: string;
-  readonly expectedDocumentRevision: number;
-} {
-  if (!value || typeof value !== 'object') throw new Error('Request must be a JSON object');
-  const request = value as Record<string, unknown>;
-  if (
-    typeof request.buildId !== 'string' ||
-    typeof request.profileId !== 'string' ||
-    !Number.isInteger(request.expectedDocumentRevision) ||
-    Number(request.expectedDocumentRevision) < 0
-  ) {
-    throw new Error('Request contains invalid launch fields');
-  }
-  return request as ReturnType<typeof launchRequest>;
-}
-
 const server = createServer(async (request, response) => {
   if (!cors(request, response)) {
     json(response, 403, { error: 'Origin is not allowed' });
@@ -161,22 +95,7 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === 'GET' && request.url === '/capabilities') {
-    json(response, 200, {
-      protocolVersion: 1,
-      compileProfiles: compilerConfigured()
-        ? [
-            {
-              id: 'default',
-              label: 'Local ericw-tools',
-              game: gameProfile,
-              qualities: ['preview', 'final'],
-            },
-          ]
-        : [],
-      launchProfiles: launchProfile
-        ? [{ id: launchProfile.profileId, label: launchProfile.label, game: launchProfile.game }]
-        : [],
-    });
+    json(response, 200, helperCapabilities(compilerConfigured(), gameProfile, launchProfile));
     return;
   }
   if (request.method === 'POST' && request.url === '/launch') {
@@ -185,7 +104,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     try {
-      const requested = launchRequest(await readJson(request));
+      const requested = parseLaunchRequest(await readJson(request));
       if (requested.profileId !== launchProfile.profileId) {
         json(response, 400, { error: 'Unknown launch profile' });
         return;
@@ -222,9 +141,9 @@ const server = createServer(async (request, response) => {
   request.once('aborted', () => controller.abort());
   activeCompiles += 1;
   try {
-    const requested = compileRequest(await readJson(request));
+    const requested = parseCompileRequest(await readJson(request));
     const result = await compileNativeMap(requested, config, controller.signal);
-    rememberBuild(requested, result);
+    buildHistory.remember(requested, result);
     json(response, 200, result);
   } catch (error) {
     if (controller.signal.aborted) return;

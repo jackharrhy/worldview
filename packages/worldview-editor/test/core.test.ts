@@ -1138,6 +1138,129 @@ describe('compiler coordination', () => {
     expect(result.backend).toBe('remote');
     expect([...new Uint8Array(result.artifacts[0]!.data)]).toEqual([1, 2, 3]);
   });
+
+  it('cancels the active compiler request without installing a result', async () => {
+    const compiler: MapCompiler = {
+      backend: 'remote',
+      compile: ({ signal }) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(Object.assign(new Error('cancelled'), { name: 'AbortError' })),
+            { once: true },
+          );
+        }),
+    };
+    const coordinator = new MapCompileCoordinator(compiler);
+    const running = coordinator.compile(
+      {
+        mapName: 'cancelled',
+        mapText: '{}',
+        quality: 'preview',
+        expectedDocumentRevision: 0,
+      },
+      () => 0,
+    );
+
+    coordinator.cancel();
+
+    await expect(running).resolves.toEqual({ status: 'cancelled' });
+  });
+
+  it('discovers helper capabilities and launches only a build/profile/revision tuple', async () => {
+    const requests: { url: string; body?: unknown; signal?: AbortSignal | null }[] = [];
+    const compiler = new RemoteMapCompiler({
+      endpoint: 'http://127.0.0.1:8788/compile',
+      fetch: async (input, init) => {
+        const url = String(input);
+        requests.push({
+          url,
+          ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+          ...(init?.signal === undefined ? {} : { signal: init.signal }),
+        });
+        if (url.endsWith('/capabilities')) {
+          return Response.json({
+            protocolVersion: 1,
+            compileProfiles: [
+              {
+                id: 'default',
+                label: 'Local tools',
+                game: 'quake',
+                qualities: ['preview', 'final'],
+              },
+            ],
+            launchProfiles: [{ id: 'quake', label: 'Quake', game: 'quake' }],
+          });
+        }
+        return Response.json({
+          buildId: 'build-7',
+          profileId: 'quake',
+          sourceDocumentRevision: 7,
+          launchedAt: 123,
+        });
+      },
+    });
+    const controller = new AbortController();
+
+    await expect(compiler.capabilities(controller.signal)).resolves.toMatchObject({
+      protocolVersion: 1,
+      compileProfiles: [{ id: 'default', game: 'quake' }],
+    });
+    await expect(
+      compiler.launch({
+        buildId: 'build-7',
+        profileId: 'quake',
+        expectedDocumentRevision: 7,
+      }),
+    ).resolves.toMatchObject({ buildId: 'build-7', sourceDocumentRevision: 7 });
+    expect(requests).toEqual([
+      expect.objectContaining({
+        url: 'http://127.0.0.1:8788/capabilities',
+        signal: controller.signal,
+      }),
+      expect.objectContaining({
+        url: 'http://127.0.0.1:8788/launch',
+        body: { buildId: 'build-7', profileId: 'quake', expectedDocumentRevision: 7 },
+      }),
+    ]);
+  });
+
+  it('keeps structured failed-build diagnostics and artifacts available to the editor', async () => {
+    const compiler = new RemoteMapCompiler({
+      endpoint: 'https://compiler.invalid/compile',
+      fetch: async () =>
+        Response.json({
+          status: 'failed',
+          buildId: 'failed-build',
+          sourceDocumentRevision: 4,
+          diagnostics: [{ severity: 'error', stage: 'qbsp', message: 'MAP LEAKED' }],
+          artifacts: [
+            {
+              name: 'failed.pts',
+              mediaType: 'text/plain',
+              base64: 'MCAwIDAKMTYgMCAwCg==',
+              kind: 'leak-path',
+              stage: 'qbsp',
+            },
+          ],
+          logs: [{ stage: 'qbsp', text: 'MAP LEAKED', truncated: false }],
+          elapsedMilliseconds: 5,
+        }),
+    });
+
+    await expect(
+      compiler.compile({
+        mapName: 'failed',
+        mapText: '{}',
+        quality: 'preview',
+        expectedDocumentRevision: 4,
+      }),
+    ).resolves.toMatchObject({
+      status: 'failed',
+      diagnostics: [{ severity: 'error', stage: 'qbsp' }],
+      artifacts: [{ kind: 'leak-path', stage: 'qbsp' }],
+    });
+  });
 });
 
 describe('editor transactions', () => {

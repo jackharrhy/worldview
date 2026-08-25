@@ -268,6 +268,17 @@ export function planMapSave(document: MapDocument, state: MapSourceState): MapSa
       };
     }
     if (!current) {
+      if (span.opaque.length > 0) {
+        return {
+          status: 'blocked',
+          normalizedText,
+          diagnostics: [
+            unsafe(
+              `Entity ${original.id} owns unsupported source that cannot be reanchored after deletion`,
+            ),
+          ],
+        };
+      }
       patches.push({ start: span.start, end: span.end, text: '' });
       continue;
     }

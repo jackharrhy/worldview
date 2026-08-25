@@ -1,7 +1,33 @@
 import { describe, expect, it } from 'vitest';
 
-import { safeAssetName, safeMapName, stageArguments } from '../src/compiler.js';
+import { NativeCompileError, safeAssetName, safeMapName, stageArguments } from '../src/compiler.js';
 import { configuredLaunchProfile } from '../src/launch.js';
+import {
+  BoundedBuildHistory,
+  helperCapabilities,
+  originAllowed,
+  parseCompileRequest,
+  parseLaunchRequest,
+} from '../src/protocol.js';
+
+function successfulBuild(buildId: string, revision: number) {
+  return {
+    status: 'succeeded' as const,
+    buildId,
+    sourceDocumentRevision: revision,
+    diagnostics: [],
+    artifacts: [
+      {
+        name: 'test.bsp',
+        mediaType: 'application/x-quake-bsp',
+        base64: 'AQID',
+        kind: 'bsp' as const,
+      },
+    ],
+    logs: [],
+    elapsedMilliseconds: 1,
+  };
+}
 
 describe('native compiler planning', () => {
   it('uses fast vis and bounded light work for preview compiles', () => {
@@ -44,6 +70,16 @@ describe('native compiler planning', () => {
     expect(() => safeAssetName('payload.sh')).toThrow(/unsupported extension/);
   });
 
+  it('retains bounded-log truncation metadata when a compiler stage fails', () => {
+    const error = new NativeCompileError('qbsp', 'qbsp failed', 'bounded output', true);
+
+    expect(error).toMatchObject({
+      stage: 'qbsp',
+      output: 'bounded output',
+      truncated: true,
+    });
+  });
+
   it('accepts launch configuration only from machine-local absolute paths', () => {
     expect(
       configuredLaunchProfile({
@@ -64,5 +100,79 @@ describe('native compiler planning', () => {
         WORLDVIEW_LAUNCH_MAP_DIRECTORY: '/games/id1/maps',
       }),
     ).toThrow(/absolute paths/);
+  });
+
+  it('enforces loopback origin and configured-profile request boundaries', () => {
+    const origins = new Set(['http://127.0.0.1:5174']);
+    expect(originAllowed(undefined, origins)).toBe(true);
+    expect(originAllowed('http://127.0.0.1:5174', origins)).toBe(true);
+    expect(originAllowed('https://untrusted.invalid', origins)).toBe(false);
+    expect(() =>
+      parseCompileRequest({
+        mapName: 'test',
+        mapText: '{}',
+        quality: 'preview',
+        expectedDocumentRevision: 1,
+        profileId: 'arbitrary-command',
+      }),
+    ).toThrow(/Unknown compile profile/);
+  });
+
+  it('sanitizes browser requests to data and safe profile identifiers', () => {
+    const compile = parseCompileRequest({
+      mapName: 'test',
+      mapText: '{}',
+      quality: 'final',
+      expectedDocumentRevision: 9,
+      profileId: 'default',
+      executable: '/tmp/untrusted',
+      arguments: ['--delete-everything'],
+    });
+    const launch = parseLaunchRequest({
+      buildId: 'build-1',
+      profileId: 'launch-1',
+      expectedDocumentRevision: 9,
+      executable: '/tmp/untrusted',
+    });
+
+    expect(compile).toEqual({
+      mapName: 'test',
+      mapText: '{}',
+      quality: 'final',
+      expectedDocumentRevision: 9,
+      profileId: 'default',
+    });
+    expect(launch).toEqual({
+      buildId: 'build-1',
+      profileId: 'launch-1',
+      expectedDocumentRevision: 9,
+    });
+  });
+
+  it('advertises only configured capabilities and bounds launchable build retention', () => {
+    expect(helperCapabilities(false, 'quake', null)).toEqual({
+      protocolVersion: 1,
+      compileProfiles: [],
+      launchProfiles: [],
+    });
+    expect(helperCapabilities(true, 'goldsrc', null).compileProfiles[0]).toMatchObject({
+      id: 'default',
+      game: 'goldsrc',
+      qualities: ['preview', 'final'],
+    });
+
+    const history = new BoundedBuildHistory(2);
+    const request = parseCompileRequest({
+      mapName: 'test',
+      mapText: '{}',
+      quality: 'preview',
+      expectedDocumentRevision: 1,
+    });
+    history.remember(request, successfulBuild('one', 1));
+    history.remember(request, successfulBuild('two', 2));
+    history.remember(request, successfulBuild('three', 3));
+
+    expect(history.get('one')).toBeUndefined();
+    expect(history.get('three')).toMatchObject({ sourceDocumentRevision: 3 });
   });
 });

@@ -7,9 +7,11 @@ import {
 
 import {
   DocumentRecoveryService,
+  recoverySourceIdFactory,
   type DocumentRecoverySnapshot,
   type DocumentRecoveryStorage,
 } from '../src/document-recovery.js';
+import { parseMapSource } from '@jackharrhy/worldview-editor/core';
 
 class MemoryStorage implements DocumentRecoveryStorage {
   public readonly snapshots = new Map<string, DocumentRecoverySnapshot>();
@@ -58,6 +60,29 @@ function fixture(revision = 0) {
 }
 
 describe('document recovery', () => {
+  it('replays source-owned IDs when reopening the same disk bytes', () => {
+    const source = fixture(3);
+    const snapshot: DocumentRecoverySnapshot = {
+      version: 1,
+      snapshotId: 'snapshot',
+      ...source,
+      updatedAt: 1,
+      protected: false,
+    };
+    const reopened = parseMapSource(
+      snapshot.source.originalText,
+      recoverySourceIdFactory(snapshot),
+    );
+
+    expect(reopened.document.id).toBe(snapshot.source.originalDocument.id);
+    expect(reopened.document.entities.map(({ id }) => id)).toEqual(
+      snapshot.source.originalDocument.entities.map(({ id }) => id),
+    );
+    expect(reopened.document.entities[0]?.brushes[0]?.faces[0]?.id).toBe(
+      snapshot.source.originalDocument.entities[0]?.brushes[0]?.faces[0]?.id,
+    );
+  });
+
   it('debounces committed changes and retains the latest revision', async () => {
     vi.useFakeTimers();
     const storage = new MemoryStorage();

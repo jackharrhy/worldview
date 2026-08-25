@@ -1,4 +1,4 @@
-import type { MapDocument, MapSourceState } from '@jackharrhy/worldview-editor/core';
+import type { IdFactory, MapDocument, MapSourceState } from '@jackharrhy/worldview-editor/core';
 
 const DATABASE_NAME = 'worldview-editor-recovery';
 const DATABASE_VERSION = 1;
@@ -26,6 +26,32 @@ export interface DocumentRecoveryStorage {
   list(documentKey: string): Promise<readonly DocumentRecoverySnapshot[]>;
   removeSnapshot(snapshotId: string): Promise<void>;
   updateSnapshot(snapshot: DocumentRecoverySnapshot): Promise<void>;
+}
+
+/** Replays the source-owned IDs so a reopened disk file and its recovery snapshot share anchors. */
+export function recoverySourceIdFactory(snapshot: DocumentRecoverySnapshot): IdFactory {
+  const document = snapshot.source.originalDocument;
+  const entities = [...document.entities];
+  const brushes = document.entities.flatMap((entity) => entity.brushes);
+  const faces = brushes.flatMap((brush) => brush.faces);
+  return {
+    document: () => document.id,
+    entity: () => {
+      const entity = entities.shift();
+      if (!entity) throw new Error('Recovery source contains fewer entity IDs than the disk map');
+      return entity.id;
+    },
+    brush: () => {
+      const brush = brushes.shift();
+      if (!brush) throw new Error('Recovery source contains fewer brush IDs than the disk map');
+      return brush.id;
+    },
+    face: () => {
+      const face = faces.shift();
+      if (!face) throw new Error('Recovery source contains fewer face IDs than the disk map');
+      return face.id;
+    },
+  };
 }
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {

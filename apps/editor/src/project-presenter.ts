@@ -11,6 +11,8 @@ import {
   openWorldviewProject,
   pickProjectDirectory,
   projectFile,
+  ensureProjectDirectoryPermission,
+  type EditorDirectoryHandle,
   type WorldviewProjectWorkspace,
 } from './project-workspace.js';
 import {
@@ -26,6 +28,7 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorApplication } from './editor-application.js';
+import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
 import { required } from './editor-elements.js';
 
 export class ProjectPresenter {
@@ -44,7 +47,7 @@ export class ProjectPresenter {
   ): Promise<void> {
     try {
       const text = await file.text();
-      const parsed = parseMapSource(text, createSequentialIdFactory(`opened-${Date.now()}`));
+      let parsed = parseMapSource(text, createSequentialIdFactory(`opened-${Date.now()}`));
       const fingerprint = mapSourceFingerprint(text);
       const recovered = await this.state.recovery.latest(logicalName.toLowerCase());
       if (
@@ -55,16 +58,20 @@ export class ProjectPresenter {
           `A newer recovery snapshot exists for ${logicalName}. Restore revision ${recovered.document.revision}?`,
         )
       ) {
+        const sourceMatchesDisk = recovered.source.fingerprint === fingerprint;
+        if (sourceMatchesDisk) parsed = parseMapSource(text, recoverySourceIdFactory(recovered));
         this.app.session.replaceDocument(parsed.document, 'Open map before recovery', {
           name: logicalName,
-          source: parsed.source,
-          fileHandle: handle,
-          diskFingerprint: fingerprint,
+          source: sourceMatchesDisk ? recovered.source : parsed.source,
+          fileHandle: sourceMatchesDisk ? handle : null,
+          diskFingerprint: sourceMatchesDisk ? fingerprint : null,
           dirty: false,
           savedRevision: parsed.document.revision,
         });
         this.state.session.restoreDocument(recovered.document, `Restore ${recovered.label}`);
-        this.ui.statusMessage.textContent = `Restored recovery for ${logicalName}; the on-disk map is unchanged.`;
+        this.ui.statusMessage.textContent = sourceMatchesDisk
+          ? `Restored recovery for ${logicalName}; the on-disk map is unchanged.`
+          : `Restored recovery for ${logicalName} as a detached copy because the on-disk source changed.`;
         return;
       }
       this.app.session.replaceDocument(parsed.document, 'Open map', {
@@ -163,6 +170,33 @@ export class ProjectPresenter {
     );
   }
 
+  public async openProjectDirectory(handle: EditorDirectoryHandle): Promise<void> {
+    const workspace = await openWorldviewProject(handle);
+    await this.loadProjectResources(workspace);
+    this.state.projectWorkspace = workspace;
+    this.state.projectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
+    await this.state.projectLocalState.remember(this.state.projectKey, handle);
+    this.ui.projectMap.replaceChildren(
+      ...workspace.maps.map(({ path }) => {
+        const option = document.createElement('option');
+        option.value = path;
+        option.textContent = path;
+        return option;
+      }),
+    );
+    this.ui.projectMap.hidden = workspace.maps.length === 0;
+    this.ui.projectMap.selectedIndex = -1;
+    this.ui.statusMessage.textContent = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
+  }
+
+  private async projectDirectoryForOpen(): Promise<EditorDirectoryHandle | null> {
+    const remembered = await this.state.projectLocalState.latest().catch(() => null);
+    if (remembered && (await ensureProjectDirectoryPermission(remembered.handle, true))) {
+      return remembered.handle;
+    }
+    return pickProjectDirectory();
+  }
+
   public async renderRecoveryVersions(): Promise<void> {
     const snapshots = await this.state.recovery.list(this.state.currentDocumentName.toLowerCase());
     this.ui.recoveryList.replaceChildren(
@@ -175,7 +209,7 @@ export class ProjectPresenter {
         restore.type = 'button';
         restore.textContent = 'Restore';
         restore.addEventListener('click', () => {
-          this.state.session.restoreDocument(snapshot.document, `Restore ${snapshot.label}`);
+          this.restoreRecoverySnapshot(snapshot);
           this.ui.recoveryDialog.close();
           this.ui.statusMessage.textContent = `Restored ${snapshot.label} as one undoable replacement.`;
         });
@@ -190,6 +224,18 @@ export class ProjectPresenter {
         return row;
       }),
     );
+  }
+
+  private restoreRecoverySnapshot(snapshot: DocumentRecoverySnapshot): void {
+    this.state.currentMapSource = snapshot.source;
+    if (
+      this.state.lastDiskFingerprint !== null &&
+      this.state.lastDiskFingerprint !== snapshot.source.fingerprint
+    ) {
+      this.state.currentFileHandle = null;
+      this.state.lastDiskFingerprint = null;
+    }
+    this.state.session.restoreDocument(snapshot.document, `Restore ${snapshot.label}`);
   }
 
   public connect(): void {
@@ -237,28 +283,13 @@ export class ProjectPresenter {
       'click',
       async () => {
         try {
-          const handle = await pickProjectDirectory();
+          const handle = await this.projectDirectoryForOpen();
           if (!handle) {
             this.ui.statusMessage.textContent =
               'Persistent project directories require a Chromium browser with File System Access.';
             return;
           }
-          const workspace = await openWorldviewProject(handle);
-          await this.loadProjectResources(workspace);
-          this.state.projectWorkspace = workspace;
-          this.state.projectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
-          await this.state.projectLocalState.remember(this.state.projectKey, handle);
-          this.ui.projectMap.replaceChildren(
-            ...workspace.maps.map(({ path }) => {
-              const option = document.createElement('option');
-              option.value = path;
-              option.textContent = path;
-              return option;
-            }),
-          );
-          this.ui.projectMap.hidden = workspace.maps.length === 0;
-          this.ui.projectMap.selectedIndex = -1;
-          this.ui.statusMessage.textContent = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
+          await this.openProjectDirectory(handle);
         } catch (error) {
           this.ui.statusMessage.textContent = `Project open failed: ${error instanceof Error ? error.message : String(error)}`;
         }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { EntityDefinitionCatalog, parseEntityDefinitionFile } from '../src/core/index.js';
+import {
+  EntityDefinitionCatalog,
+  parseEntityDefinitionFile,
+  pointEntityDefinition,
+} from '../src/core/index.js';
 
 describe('entity definition catalogs', () => {
   it('parses FGD inheritance, bounds, colors, sprite metadata, choices, and flags', () => {
@@ -89,5 +93,34 @@ Detail brush.
       ],
     });
     expect(parsed.definitions[1]).toMatchObject({ classname: 'func_group', kind: 'brush' });
+  });
+
+  it.each([
+    ['fgd' as const, '\n\n@PointClass = broken [', 3],
+    ['def' as const, '\n/*QUAKED broken (1 0 0) incomplete', 2],
+    ['ent' as const, '\n<point color="1 0 0"></point>', 2],
+  ])('reports malformed %s declarations with source locations', (format, source, line) => {
+    const parsed = parseEntityDefinitionFile(format, source, `entities/broken.${format}`);
+
+    expect(parsed.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: 'error',
+          sourcePath: `entities/broken.${format}`,
+          line,
+        }),
+      ]),
+    );
+  });
+
+  it('keeps unknown classes usable through the raw point-entity fallback', () => {
+    const catalog = new EntityDefinitionCatalog();
+
+    expect(catalog.find('monster_custom')).toBeUndefined();
+    expect(pointEntityDefinition('monster_custom', catalog)).toEqual({
+      classname: 'monster_custom',
+      label: 'monster_custom',
+      bounds: { min: [-16, -16, -16], max: [16, 16, 16] },
+    });
   });
 });

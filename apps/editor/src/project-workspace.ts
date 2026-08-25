@@ -20,6 +20,18 @@ export interface EditorDirectoryHandle {
   entries(): AsyncIterableIterator<
     [string, EditorDirectoryHandle | (EditorFileHandle & { readonly kind: 'file' })]
   >;
+  queryPermission?(options: { readonly mode: 'readwrite' }): Promise<PermissionState>;
+  requestPermission?(options: { readonly mode: 'readwrite' }): Promise<PermissionState>;
+}
+
+export async function ensureProjectDirectoryPermission(
+  handle: EditorDirectoryHandle,
+  requestPermission: boolean,
+): Promise<boolean> {
+  const current = (await handle.queryPermission?.({ mode: 'readwrite' })) ?? 'granted';
+  if (current === 'granted') return true;
+  if (current === 'denied' || !requestPermission || !handle.requestPermission) return false;
+  return (await handle.requestPermission({ mode: 'readwrite' })) === 'granted';
 }
 
 interface DirectoryPickerWindow extends Window {
@@ -163,9 +175,9 @@ export async function loadProjectEntityDefinitions(
       });
     }
   };
-  await Promise.all(
-    workspace.manifest.resources.entityDefinitions.map(({ path, format }) => load(path, format)),
-  );
+  for (const { path, format } of workspace.manifest.resources.entityDefinitions) {
+    await load(path, format);
+  }
   return { catalog: new EntityDefinitionCatalog(parsed), diagnostics };
 }
 

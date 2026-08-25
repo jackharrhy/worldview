@@ -64,6 +64,7 @@ export class NativeCompileError extends Error {
     public readonly stage: string,
     message: string,
     public readonly output: string,
+    public readonly truncated = false,
   ) {
     super(message);
     this.name = 'NativeCompileError';
@@ -170,7 +171,9 @@ async function runStage(
       if (error) reject(error);
       else resolve(result!);
     };
-    child.once('error', (error) => finish(new NativeCompileError(stage, error.message, output)));
+    child.once('error', (error) =>
+      finish(new NativeCompileError(stage, error.message, output, truncated)),
+    );
     child.once('close', (code, closeSignal) => {
       if (signal?.aborted) finish(abortError());
       else if (timedOut) {
@@ -179,6 +182,7 @@ async function runStage(
             stage,
             `${stage} exceeded the ${config.timeoutMilliseconds}ms timeout`,
             output,
+            truncated,
           ),
         );
       } else if (code !== 0) {
@@ -187,6 +191,7 @@ async function runStage(
             stage,
             `${stage} exited with ${code ?? closeSignal ?? 'an unknown status'}`,
             output,
+            truncated,
           ),
         );
       } else finish(undefined, { stage, output, truncated });
@@ -301,7 +306,7 @@ export async function compileNativeMap(
       } catch (error) {
         if (error instanceof NativeCompileError) {
           failure = error;
-          stages.push({ stage: error.stage, output: error.output, truncated: false });
+          stages.push({ stage: error.stage, output: error.output, truncated: error.truncated });
           break;
         }
         throw error;
