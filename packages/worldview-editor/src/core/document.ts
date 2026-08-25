@@ -40,6 +40,14 @@ export interface BrushSequenceReplacement {
   readonly replacements: readonly MapBrush[];
 }
 
+function mapTriple<Input, Output>(
+  values: readonly Input[],
+  transform: (value: Input, index: 0 | 1 | 2) => Output,
+): readonly [Output, Output, Output] {
+  if (values.length !== 3) throw new Error(`Expected three values, received ${values.length}`);
+  return [transform(values[0]!, 0), transform(values[1]!, 1), transform(values[2]!, 2)];
+}
+
 export function insertEntity(
   document: MapDocument,
   entity: MapEntity,
@@ -247,11 +255,7 @@ export function cloneBrush(
     faces: source.faces.map((face) => ({
       ...face,
       id: ids.face(),
-      planePoints: face.planePoints.map((point) => [...point] as Vec3) as unknown as readonly [
-        Vec3,
-        Vec3,
-        Vec3,
-      ],
+      planePoints: mapTriple(face.planePoints, (point) => [point[0], point[1], point[2]]),
       projection: {
         ...face.projection,
         uAxis: [...face.projection.uAxis] as Vec3,
@@ -588,9 +592,11 @@ export function translateBrush(brush: MapBrush, delta: Vec3, textureLock = true)
       return {
         ...face,
         projection,
-        planePoints: face.planePoints.map(
-          (point) => [point[0] + delta[0], point[1] + delta[1], point[2] + delta[2]] as Vec3,
-        ) as unknown as readonly [Vec3, Vec3, Vec3],
+        planePoints: mapTriple(face.planePoints, (point) => [
+          point[0] + delta[0],
+          point[1] + delta[1],
+          point[2] + delta[2],
+        ]),
       };
     }),
   };
@@ -744,9 +750,9 @@ export function transformBrush(
     ...brush,
     revision: brush.revision + 1,
     faces: brush.faces.map((face) => {
-      const transformed = face.planePoints.map((point) =>
+      const transformed = mapTriple(face.planePoints, (point) =>
         transformPoint(point, matrix, pivot),
-      ) as unknown as readonly [Vec3, Vec3, Vec3];
+      );
       const planePoints: readonly [Vec3, Vec3, Vec3] =
         matrixDeterminant < 0 ? [transformed[0], transformed[2], transformed[1]] : transformed;
       return {
@@ -891,13 +897,7 @@ function projectionFromLockedVertices(
       const rightDistance = Math.abs(dot(sourcePlane.normal, right) - sourcePlane.distance);
       return leftDistance - rightDistance;
     })[0] ?? point.point;
-  const uv = points.map((point) =>
-    textureCoordinates(source, sourcePoint(point)),
-  ) as unknown as readonly [
-    readonly [number, number],
-    readonly [number, number],
-    readonly [number, number],
-  ];
+  const uv = mapTriple(points, (point) => textureCoordinates(source, sourcePoint(point)));
   const edge1 = subtract(points[1].point, points[0].point);
   const edge2 = subtract(points[2].point, points[0].point);
   const firstFirst = dot(edge1, edge1);
@@ -1004,11 +1004,7 @@ function rebuildBrushFromHullPoints(
     if (keepSourceId) usedIds.add(source.face.id);
     return Object.assign({}, source.face, {
       id: keepSourceId ? source.face.id : ids.face(),
-      planePoints: plane.points.map((point) => point.point) as unknown as readonly [
-        Vec3,
-        Vec3,
-        Vec3,
-      ],
+      planePoints: mapTriple(plane.points, (point) => point.point),
       projection: textureLock
         ? projectionFromLockedVertices(source.face, plane.normal, plane.points)
         : source.face.projection,
@@ -1200,9 +1196,11 @@ export function moveBrushFace(brush: MapBrush, faceId: FaceId, distance: number)
       face.id === faceId
         ? {
             ...face,
-            planePoints: face.planePoints.map(
-              (point) => [point[0] + delta[0], point[1] + delta[1], point[2] + delta[2]] as Vec3,
-            ) as unknown as readonly [Vec3, Vec3, Vec3],
+            planePoints: mapTriple(face.planePoints, (point) => [
+              point[0] + delta[0],
+              point[1] + delta[1],
+              point[2] + delta[2],
+            ]),
           }
         : face,
     ),
@@ -1404,7 +1402,7 @@ export function convexMergeBrushes(
           { normal: candidate.normal, distance: candidate.distance },
           brushes,
           ids,
-          candidate.points.map((point) => point.point) as unknown as readonly [Vec3, Vec3, Vec3],
+          mapTriple(candidate.points, (point) => point.point),
           currentMaterial,
         ),
       ),
@@ -1434,11 +1432,7 @@ export function createConvexHullBrush(
       revision: 0,
       faces: hull.map<MapFace>((candidate) => ({
         id: ids.face(),
-        planePoints: candidate.points.map((point) => point.point) as unknown as readonly [
-          Vec3,
-          Vec3,
-          Vec3,
-        ],
+        planePoints: mapTriple(candidate.points, (point) => point.point),
         material: normalizedMaterial,
         projection: defaultTextureProjection(candidate.normal),
         surface: {},
@@ -1532,11 +1526,7 @@ export function hollowBrush(
       return {
         ...face,
         id: ids.face(),
-        planePoints: face.planePoints.map((point) => add(point, delta)) as unknown as readonly [
-          Vec3,
-          Vec3,
-          Vec3,
-        ],
+        planePoints: mapTriple(face.planePoints, (point) => add(point, delta)),
       };
     }),
   };

@@ -30,10 +30,10 @@ export interface FaceAttributeClipboard {
 }
 
 function clonedVec3(value: Vec3): Vec3 {
-  return [...value] as unknown as Vec3;
+  return [value[0], value[1], value[2]];
 }
 
-function finiteTuple(candidate: unknown, length: number, label: string): number[] {
+function finiteTuple(candidate: unknown, length: number, label: string): readonly number[] {
   if (
     !Array.isArray(candidate) ||
     candidate.length !== length ||
@@ -42,6 +42,16 @@ function finiteTuple(candidate: unknown, length: number, label: string): number[
     throw new Error(`${label} must contain ${length} finite numbers`);
   }
   return [...candidate];
+}
+
+function finiteVec2(candidate: unknown, label: string): readonly [number, number] {
+  const values = finiteTuple(candidate, 2, label);
+  return [values[0]!, values[1]!];
+}
+
+function finiteVec3(candidate: unknown, label: string): Vec3 {
+  const values = finiteTuple(candidate, 3, label);
+  return [values[0]!, values[1]!, values[2]!];
 }
 
 function faceAttributeClipboardFromUnknown(value: unknown): FaceAttributeClipboard {
@@ -57,20 +67,19 @@ function faceAttributeClipboardFromUnknown(value: unknown): FaceAttributeClipboa
   if (!Array.isArray(record.planePoints) || record.planePoints.length !== 3) {
     throw new Error('Face attribute plane must contain three points');
   }
-  const planePoints = record.planePoints.map((point, index) =>
-    finiteTuple(point, 3, `Face attribute plane point ${index + 1}`),
-  ) as unknown as [Vec3, Vec3, Vec3];
+  const planePoints: readonly [Vec3, Vec3, Vec3] = [
+    finiteVec3(record.planePoints[0], 'Face attribute plane point 1'),
+    finiteVec3(record.planePoints[1], 'Face attribute plane point 2'),
+    finiteVec3(record.planePoints[2], 'Face attribute plane point 3'),
+  ];
   if (!record.projection || typeof record.projection !== 'object') {
     throw new Error('Face attribute projection must be an object');
   }
   const projectionRecord = record.projection as Record<string, unknown>;
-  const uAxis = finiteTuple(projectionRecord.uAxis, 3, 'Face attribute U axis') as unknown as Vec3;
-  const vAxis = finiteTuple(projectionRecord.vAxis, 3, 'Face attribute V axis') as unknown as Vec3;
-  const offset = finiteTuple(projectionRecord.offset, 2, 'Face attribute offset') as [
-    number,
-    number,
-  ];
-  const scale = finiteTuple(projectionRecord.scale, 2, 'Face attribute scale') as [number, number];
+  const uAxis = finiteVec3(projectionRecord.uAxis, 'Face attribute U axis');
+  const vAxis = finiteVec3(projectionRecord.vAxis, 'Face attribute V axis');
+  const offset = finiteVec2(projectionRecord.offset, 'Face attribute offset');
+  const scale = finiteVec2(projectionRecord.scale, 'Face attribute scale');
   if (scale.some((component) => Math.abs(component) <= Number.EPSILON)) {
     throw new Error('Face attribute scale must be non-zero');
   }
@@ -124,7 +133,11 @@ export function serializeFaceAttributeClipboard(
     type: 'worldview-face-attributes',
     version: 1,
     material: face.material,
-    planePoints: face.planePoints.map(clonedVec3) as unknown as [Vec3, Vec3, Vec3],
+    planePoints: [
+      clonedVec3(face.planePoints[0]),
+      clonedVec3(face.planePoints[1]),
+      clonedVec3(face.planePoints[2]),
+    ],
     projection: {
       uAxis: clonedVec3(face.projection.uAxis),
       vAxis: clonedVec3(face.projection.vAxis),

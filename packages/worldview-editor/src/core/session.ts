@@ -45,7 +45,6 @@ import {
   type FaceTextureTransformDelta,
   type TransformAxis,
   type BrushInsertion,
-  type BrushSequenceReplacement,
 } from './document.js';
 import { createObjectClipboardDocument, type FaceAttributeClipboard } from './clipboard.js';
 import { brushVertices, deriveBrush } from './geometry.js';
@@ -84,6 +83,7 @@ import {
   type EditorIssue,
 } from './issues.js';
 import { brushIdsWithMaterial, faceReferencesWithMaterial } from './material-usage.js';
+import { applyHistoryEntry, EditorHistory, type BrushClipEdit, type BrushEdit } from './history.js';
 import {
   createEditorLayer,
   deriveEditorLayers,
@@ -168,115 +168,6 @@ export interface SelectionBrushSelectionResult {
 
 type ChangeListener = (change: EditorSessionChange) => void;
 
-interface BrushHistoryEntry {
-  readonly kind: 'replace-brush';
-  readonly label: string;
-  readonly brushId: BrushId;
-  readonly before: MapBrush;
-  readonly after: MapBrush;
-}
-
-interface BrushBatchHistoryEntry {
-  readonly kind: 'replace-brushes';
-  readonly label: string;
-  readonly edits: readonly BrushEdit[];
-}
-
-interface BrushCreationHistoryEntry {
-  readonly kind: 'create-brush';
-  readonly label: string;
-  readonly entityId: EntityId;
-  readonly insertionIndex: number;
-  readonly brush: MapBrush;
-}
-
-interface BrushDeletionHistoryEntry {
-  readonly kind: 'delete-brush';
-  readonly label: string;
-  readonly entityId: EntityId;
-  readonly insertionIndex: number;
-  readonly brush: MapBrush;
-}
-
-interface BrushBatchCreationHistoryEntry {
-  readonly kind: 'create-brushes';
-  readonly label: string;
-  readonly insertions: readonly BrushInsertion[];
-  readonly selectionBefore?: EditorSelection | null;
-  readonly selectionAfter?: readonly BrushId[];
-}
-
-interface BrushBatchDeletionHistoryEntry {
-  readonly kind: 'delete-brushes';
-  readonly label: string;
-  readonly insertions: readonly BrushInsertion[];
-}
-
-interface BrushClipHistoryEntry {
-  readonly kind: 'clip-brush';
-  readonly label: string;
-  readonly entityId: EntityId;
-  readonly insertionIndex: number;
-  readonly before: MapBrush;
-  readonly after: readonly MapBrush[];
-}
-
-interface BrushBatchClipHistoryEntry {
-  readonly kind: 'clip-brushes';
-  readonly label: string;
-  readonly edits: readonly BrushClipEdit[];
-  readonly selectionBefore: readonly BrushId[];
-  readonly selectionAfter: readonly BrushId[];
-}
-
-interface BrushSequenceHistoryEntry {
-  readonly kind: 'replace-brush-sequences';
-  readonly label: string;
-  readonly edits: readonly BrushClipEdit[];
-  readonly selectionBefore: readonly BrushId[];
-  readonly selectionAfter: readonly BrushId[];
-}
-
-interface EntityPropertiesHistoryEntry {
-  readonly kind: 'replace-entity-properties';
-  readonly label: string;
-  readonly entityId: EntityId;
-  readonly before: Readonly<Record<string, string>>;
-  readonly after: Readonly<Record<string, string>>;
-}
-
-interface DocumentSnapshotHistoryEntry {
-  readonly kind: 'replace-document';
-  readonly label: string;
-  readonly before: MapDocument;
-  readonly after: MapDocument;
-  readonly selectionBefore: EditorSelection | null;
-  readonly selectionAfter: EditorSelection | null;
-}
-
-interface ObjectViewStateHistoryEntry {
-  readonly kind: 'view-state';
-  readonly label: string;
-  readonly before: EditorObjectViewState;
-  readonly after: EditorObjectViewState;
-  readonly selectionBefore: EditorSelection | null;
-  readonly selectionAfter: EditorSelection | null;
-}
-
-type HistoryEntry =
-  | BrushHistoryEntry
-  | BrushBatchHistoryEntry
-  | BrushCreationHistoryEntry
-  | BrushDeletionHistoryEntry
-  | BrushBatchCreationHistoryEntry
-  | BrushBatchDeletionHistoryEntry
-  | BrushClipHistoryEntry
-  | BrushBatchClipHistoryEntry
-  | BrushSequenceHistoryEntry
-  | EntityPropertiesHistoryEntry
-  | DocumentSnapshotHistoryEntry
-  | ObjectViewStateHistoryEntry;
-
 export interface BrushEditCandidate {
   readonly label: string;
   readonly brushId: BrushId;
@@ -288,12 +179,7 @@ export interface BrushEditCandidate {
   readonly document: MapDocument;
 }
 
-export interface BrushEdit {
-  readonly brushId: BrushId;
-  readonly baseBrushRevision: number;
-  readonly before: MapBrush;
-  readonly after: MapBrush;
-}
+export type { BrushClipEdit, BrushEdit } from './history.js';
 
 export interface BrushBatchEditCandidate {
   readonly label: string;
@@ -399,15 +285,6 @@ export interface BrushClipCandidate {
   readonly document: MapDocument;
 }
 
-export interface BrushClipEdit {
-  readonly entityId: EntityId;
-  readonly insertionIndex: number;
-  readonly afterInsertionIndex: number;
-  readonly baseBrushRevision: number;
-  readonly before: MapBrush;
-  readonly after: readonly MapBrush[];
-}
-
 export interface BrushBatchClipCandidate {
   readonly label: string;
   readonly mode: BrushClipMode;
@@ -427,10 +304,6 @@ export interface BrushSequenceCandidate {
   readonly selectionAfter: readonly BrushId[];
   /** A derived preview document. The session remains unchanged until commitSequenceCandidate. */
   readonly document: MapDocument;
-}
-
-function revisionForApply(current: MapBrush, content: MapBrush): MapBrush {
-  return { ...content, revision: current.revision + 1 };
 }
 
 function documentRevisionForApply(current: MapDocument, content: MapDocument): MapDocument {
@@ -556,8 +429,7 @@ function repeatableCommandLabel(command: EditorRepeatableCommand): string {
 
 export class EditorSession {
   private readonly listeners = new Set<ChangeListener>();
-  private readonly undoStack: HistoryEntry[] = [];
-  private readonly redoStack: HistoryEntry[] = [];
+  private readonly history = new EditorHistory();
   private currentDocument: MapDocument;
   private currentSelection: EditorSelection | null = null;
   private hiddenBrushIds = new Set<BrushId>();
@@ -732,19 +604,19 @@ export class EditorSession {
   }
 
   public get canUndo(): boolean {
-    return this.undoStack.length > 0;
+    return this.history.canUndo;
   }
 
   public get canRedo(): boolean {
-    return this.redoStack.length > 0;
+    return this.history.canRedo;
   }
 
   public get undoLabel(): string | null {
-    return this.undoStack.at(-1)?.label ?? null;
+    return this.history.undoLabel;
   }
 
   public get redoLabel(): string | null {
-    return this.redoStack.at(-1)?.label ?? null;
+    return this.history.redoLabel;
   }
 
   public get canRepeatCommands(): boolean {
@@ -890,8 +762,7 @@ export class EditorSession {
       lockedBrushIds: [],
       lockedEntityIds: [],
     });
-    this.undoStack.length = 0;
-    this.redoStack.length = 0;
+    this.history.clear();
     this.notify('document', label);
   }
 
@@ -2859,7 +2730,7 @@ export class EditorSession {
       candidate.after,
     );
     this.currentSelection = candidate.after[0] ? { brushId: candidate.after[0].id } : null;
-    this.undoStack.push({
+    this.history.record({
       kind: 'clip-brush',
       label: candidate.label,
       entityId: candidate.entityId,
@@ -2867,8 +2738,6 @@ export class EditorSession {
       before: candidate.before,
       after: candidate.after,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.notify('document', candidate.label);
   }
 
@@ -2911,15 +2780,13 @@ export class EditorSession {
       })),
     );
     this.currentSelection = createBrushSelection(candidate.selectionAfter);
-    this.undoStack.push({
+    this.history.record({
       kind: 'clip-brushes',
       label: candidate.label,
       edits: candidate.edits,
       selectionBefore: candidate.selectionBefore,
       selectionAfter: candidate.selectionAfter,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.notify('document', candidate.label);
   }
 
@@ -3007,15 +2874,13 @@ export class EditorSession {
       })),
     );
     this.currentSelection = createBrushSelection(candidate.selectionAfter);
-    this.undoStack.push({
+    this.history.record({
       kind: 'replace-brush-sequences',
       label: candidate.label,
       edits: candidate.edits,
       selectionBefore: candidate.selectionBefore,
       selectionAfter: candidate.selectionAfter,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.notify('document', candidate.label);
   }
 
@@ -3790,9 +3655,7 @@ export class EditorSession {
     }
     this.currentDocument = removeBrushes(this.currentDocument, brushIds);
     this.currentSelection = null;
-    this.undoStack.push({ kind: 'delete-brushes', label: 'Delete brushes', insertions });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
+    this.history.record({ kind: 'delete-brushes', label: 'Delete brushes', insertions });
     this.notify('document', 'Delete brushes');
     return true;
   }
@@ -3820,15 +3683,13 @@ export class EditorSession {
     }
     this.currentDocument = removeBrush(this.currentDocument, brushId);
     if (this.currentSelection?.brushId === brushId) this.currentSelection = null;
-    this.undoStack.push({
+    this.history.record({
       kind: 'delete-brush',
       label: 'Delete brush',
       entityId: owner.id,
       insertionIndex,
       brush,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.notify('document', 'Delete brush');
     return true;
   }
@@ -3885,15 +3746,13 @@ export class EditorSession {
       return true;
     }
     this.currentDocument = changedDocument;
-    this.undoStack.push({
+    this.history.record({
       kind: 'replace-entity-properties',
       label,
       entityId,
       before,
       after,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.notify('document', label);
     return true;
   }
@@ -4466,15 +4325,13 @@ export class EditorSession {
       return;
     }
     this.currentDocument = replaceBrush(this.currentDocument, candidate.after);
-    this.undoStack.push({
+    this.history.record({
       kind: 'replace-brush',
       label: candidate.label,
       brushId: candidate.brushId,
       before: candidate.before,
       after: candidate.after,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.notify('document', candidate.label);
   }
 
@@ -4508,13 +4365,11 @@ export class EditorSession {
       this.currentDocument,
       candidate.edits.map((edit) => edit.after),
     );
-    this.undoStack.push({
+    this.history.record({
       kind: 'replace-brushes',
       label: candidate.label,
       edits: candidate.edits,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.notify('document', candidate.label);
   }
 
@@ -4545,15 +4400,13 @@ export class EditorSession {
       candidate.insertionIndex,
     );
     this.currentSelection = { brushId: candidate.brush.id };
-    this.undoStack.push({
+    this.history.record({
       kind: 'create-brush',
       label: candidate.label,
       entityId: candidate.entityId,
       insertionIndex: candidate.insertionIndex,
       brush: candidate.brush,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.notify('document', candidate.label);
   }
 
@@ -4581,15 +4434,13 @@ export class EditorSession {
     }
     this.currentDocument = insertBrushes(this.currentDocument, candidate.insertions);
     this.currentSelection = createBrushSelection(candidate.selectionAfter);
-    this.undoStack.push({
+    this.history.record({
       kind: 'create-brushes',
       label: candidate.label,
       insertions: candidate.insertions,
       selectionBefore: candidate.selectionBefore,
       selectionAfter: candidate.selectionAfter,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.notify('document', candidate.label);
   }
 
@@ -4600,7 +4451,7 @@ export class EditorSession {
     const synchronizedAfter = this.synchronizeEditingGroup(candidate.after);
     this.currentDocument = documentRevisionForApply(this.currentDocument, synchronizedAfter);
     this.currentSelection = candidate.selectionAfter;
-    this.undoStack.push({
+    this.history.record({
       kind: 'replace-document',
       label: candidate.label,
       before: candidate.before,
@@ -4608,8 +4459,6 @@ export class EditorSession {
       selectionBefore: candidate.selectionBefore,
       selectionAfter: candidate.selectionAfter,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
     this.recordRepeatableCommand(candidate.repeatable);
     this.notify('document', candidate.label);
   }
@@ -4644,7 +4493,7 @@ export class EditorSession {
       before.lockedBrushIds.join('\u0000') === after.lockedBrushIds.join('\u0000') &&
       before.lockedEntityIds.join('\u0000') === after.lockedEntityIds.join('\u0000');
     if (unchanged) return false;
-    this.undoStack.push({
+    this.history.record({
       kind: 'view-state',
       label,
       before,
@@ -4652,9 +4501,7 @@ export class EditorSession {
       selectionBefore: this.currentSelection,
       selectionAfter,
     });
-    if (this.undoStack.length > 100) this.undoStack.shift();
     this.currentSelection = selectionAfter;
-    this.redoStack.length = 0;
     this.notify('view', label);
     return true;
   }
@@ -4674,224 +4521,38 @@ export class EditorSession {
     }
   }
 
-  public undo(): boolean {
-    const entry = this.undoStack.pop();
+  private applyHistory(direction: 'undo' | 'redo'): boolean {
+    const entry = direction === 'undo' ? this.history.takeUndo() : this.history.takeRedo();
     if (!entry) return false;
+
     this.discardRepeatableCommands();
-    if (entry.kind === 'replace-brush') {
-      const current = findBrush(this.currentDocument, entry.brushId);
-      if (!current) throw new Error(`Cannot undo change to missing brush ${entry.brushId}`);
-      this.currentDocument = replaceBrush(
-        this.currentDocument,
-        revisionForApply(current, entry.before),
-      );
-    } else if (entry.kind === 'replace-brushes') {
-      this.currentDocument = replaceBrushes(
-        this.currentDocument,
-        entry.edits.map((edit) => {
-          const current = findBrush(this.currentDocument, edit.brushId);
-          if (!current) throw new Error(`Cannot undo change to missing brush ${edit.brushId}`);
-          return revisionForApply(current, edit.before);
-        }),
-      );
-    } else if (entry.kind === 'create-brush') {
-      this.currentDocument = removeBrush(this.currentDocument, entry.brush.id);
-      if (this.currentSelection?.brushId === entry.brush.id) this.currentSelection = null;
-    } else if (entry.kind === 'delete-brush') {
-      this.currentDocument = insertBrush(
-        this.currentDocument,
-        entry.entityId,
-        entry.brush,
-        entry.insertionIndex,
-      );
-      this.currentSelection = { brushId: entry.brush.id };
-    } else if (entry.kind === 'create-brushes') {
-      this.currentDocument = removeBrushes(
-        this.currentDocument,
-        entry.insertions.map((insertion) => insertion.brush.id),
-      );
-      this.currentSelection = entry.selectionBefore ?? null;
-    } else if (entry.kind === 'delete-brushes') {
-      this.currentDocument = insertBrushes(this.currentDocument, entry.insertions);
-      this.currentSelection = createBrushSelection(
-        entry.insertions.map((insertion) => insertion.brush.id),
-      );
-    } else if (entry.kind === 'clip-brush') {
-      const currentOriginal = entry.after
-        .map((brush) => findBrush(this.currentDocument, brush.id))
-        .find((brush) => brush?.id === entry.before.id);
-      const restored = {
-        ...entry.before,
-        revision: (currentOriginal?.revision ?? entry.before.revision) + 1,
-      };
-      this.currentDocument = replaceBrushSequence(
-        this.currentDocument,
-        entry.entityId,
-        entry.insertionIndex,
-        entry.after.map((brush) => brush.id),
-        [restored],
-      );
-      this.currentSelection = { brushId: restored.id };
-    } else if (entry.kind === 'clip-brushes') {
-      const sequences: BrushSequenceReplacement[] = entry.edits.toReversed().map((edit) => {
-        const currentOriginal = edit.after
-          .map((brush) => findBrush(this.currentDocument, brush.id))
-          .find((brush) => brush?.id === edit.before.id);
-        return {
-          entityId: edit.entityId,
-          insertionIndex: edit.afterInsertionIndex,
-          expectedBrushIds: edit.after.map((brush) => brush.id),
-          replacements: [
-            {
-              ...edit.before,
-              revision: (currentOriginal?.revision ?? edit.before.revision) + 1,
-            },
-          ],
-        };
-      });
-      this.currentDocument = replaceBrushSequences(this.currentDocument, sequences);
-      this.currentSelection = createBrushSelection(entry.selectionBefore);
-    } else if (entry.kind === 'replace-brush-sequences') {
-      const sequences: BrushSequenceReplacement[] = entry.edits.toReversed().map((edit) => {
-        const currentOriginal = edit.after
-          .map((brush) => findBrush(this.currentDocument, brush.id))
-          .find((brush) => brush?.id === edit.before.id);
-        return {
-          entityId: edit.entityId,
-          insertionIndex: edit.afterInsertionIndex,
-          expectedBrushIds: edit.after.map((brush) => brush.id),
-          replacements: [
-            {
-              ...edit.before,
-              revision: (currentOriginal?.revision ?? edit.before.revision) + 1,
-            },
-          ],
-        };
-      });
-      this.currentDocument = replaceBrushSequences(this.currentDocument, sequences);
-      this.currentSelection = createBrushSelection(entry.selectionBefore);
-    } else if (entry.kind === 'replace-entity-properties') {
-      this.currentDocument = replaceEntityProperties(
-        this.currentDocument,
-        entry.entityId,
-        entry.before,
-      );
-    } else if (entry.kind === 'view-state') {
-      this.applyObjectViewState(entry.before);
-      this.currentSelection = entry.selectionBefore;
-    } else {
-      this.currentDocument = documentRevisionForApply(this.currentDocument, entry.before);
-      this.currentSelection = entry.selectionBefore;
-    }
-    this.redoStack.push(entry);
-    this.notify(entry.kind === 'view-state' ? 'view' : 'history', `Undo ${entry.label}`);
+    const next = applyHistoryEntry(
+      {
+        document: this.currentDocument,
+        selection: this.currentSelection,
+        objectViewState: this.snapshotObjectViewState(),
+      },
+      entry,
+      direction,
+    );
+    this.currentDocument = next.document;
+    this.currentSelection = next.selection;
+    this.applyObjectViewState(next.objectViewState);
+
+    if (direction === 'undo') this.history.completeUndo(entry);
+    else this.history.completeRedo(entry);
+    const changeKind = entry.kind === 'view-state' ? 'view' : 'history';
+    const action = direction === 'undo' ? 'Undo' : 'Redo';
+    this.notify(changeKind, `${action} ${entry.label}`);
     return true;
   }
 
+  public undo(): boolean {
+    return this.applyHistory('undo');
+  }
+
   public redo(): boolean {
-    const entry = this.redoStack.pop();
-    if (!entry) return false;
-    this.discardRepeatableCommands();
-    if (entry.kind === 'replace-brush') {
-      const current = findBrush(this.currentDocument, entry.brushId);
-      if (!current) throw new Error(`Cannot redo change to missing brush ${entry.brushId}`);
-      this.currentDocument = replaceBrush(
-        this.currentDocument,
-        revisionForApply(current, entry.after),
-      );
-    } else if (entry.kind === 'replace-brushes') {
-      this.currentDocument = replaceBrushes(
-        this.currentDocument,
-        entry.edits.map((edit) => {
-          const current = findBrush(this.currentDocument, edit.brushId);
-          if (!current) throw new Error(`Cannot redo change to missing brush ${edit.brushId}`);
-          return revisionForApply(current, edit.after);
-        }),
-      );
-    } else if (entry.kind === 'create-brush') {
-      this.currentDocument = insertBrush(
-        this.currentDocument,
-        entry.entityId,
-        entry.brush,
-        entry.insertionIndex,
-      );
-      this.currentSelection = { brushId: entry.brush.id };
-    } else if (entry.kind === 'delete-brush') {
-      this.currentDocument = removeBrush(this.currentDocument, entry.brush.id);
-      if (this.currentSelection?.brushId === entry.brush.id) this.currentSelection = null;
-    } else if (entry.kind === 'create-brushes') {
-      this.currentDocument = insertBrushes(this.currentDocument, entry.insertions);
-      this.currentSelection = createBrushSelection(
-        entry.selectionAfter ?? entry.insertions.map((insertion) => insertion.brush.id),
-      );
-    } else if (entry.kind === 'delete-brushes') {
-      this.currentDocument = removeBrushes(
-        this.currentDocument,
-        entry.insertions.map((insertion) => insertion.brush.id),
-      );
-      this.currentSelection = null;
-    } else if (entry.kind === 'clip-brush') {
-      const current = findBrush(this.currentDocument, entry.before.id);
-      if (!current) throw new Error(`Cannot redo clip of missing brush ${entry.before.id}`);
-      const reapplied = entry.after.map((brush) =>
-        brush.id === current.id ? revisionForApply(current, brush) : brush,
-      );
-      this.currentDocument = replaceBrushSequence(
-        this.currentDocument,
-        entry.entityId,
-        entry.insertionIndex,
-        [entry.before.id],
-        reapplied,
-      );
-      this.currentSelection = reapplied[0] ? { brushId: reapplied[0].id } : null;
-    } else if (entry.kind === 'clip-brushes') {
-      const sequences: BrushSequenceReplacement[] = entry.edits.map((edit) => {
-        const current = findBrush(this.currentDocument, edit.before.id);
-        if (!current) throw new Error(`Cannot redo clip of missing brush ${edit.before.id}`);
-        return {
-          entityId: edit.entityId,
-          insertionIndex: edit.insertionIndex,
-          expectedBrushIds: [edit.before.id],
-          replacements: edit.after.map((brush) =>
-            brush.id === current.id ? revisionForApply(current, brush) : brush,
-          ),
-        };
-      });
-      this.currentDocument = replaceBrushSequences(this.currentDocument, sequences);
-      this.currentSelection = createBrushSelection(entry.selectionAfter);
-    } else if (entry.kind === 'replace-brush-sequences') {
-      const sequences: BrushSequenceReplacement[] = entry.edits.map((edit) => {
-        const current = findBrush(this.currentDocument, edit.before.id);
-        if (!current) {
-          throw new Error(`Cannot redo brush replacement of missing brush ${edit.before.id}`);
-        }
-        return {
-          entityId: edit.entityId,
-          insertionIndex: edit.insertionIndex,
-          expectedBrushIds: [edit.before.id],
-          replacements: edit.after.map((brush) =>
-            brush.id === current.id ? revisionForApply(current, brush) : brush,
-          ),
-        };
-      });
-      this.currentDocument = replaceBrushSequences(this.currentDocument, sequences);
-      this.currentSelection = createBrushSelection(entry.selectionAfter);
-    } else if (entry.kind === 'replace-entity-properties') {
-      this.currentDocument = replaceEntityProperties(
-        this.currentDocument,
-        entry.entityId,
-        entry.after,
-      );
-    } else if (entry.kind === 'view-state') {
-      this.applyObjectViewState(entry.after);
-      this.currentSelection = entry.selectionAfter;
-    } else {
-      this.currentDocument = documentRevisionForApply(this.currentDocument, entry.after);
-      this.currentSelection = entry.selectionAfter;
-    }
-    this.undoStack.push(entry);
-    this.notify(entry.kind === 'view-state' ? 'view' : 'history', `Redo ${entry.label}`);
-    return true;
+    return this.applyHistory('redo');
   }
 
   private notify(kind: EditorSessionChange['kind'], label: string): void {

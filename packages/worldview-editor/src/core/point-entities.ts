@@ -110,18 +110,20 @@ function entityOrientation(entity: MapEntity): EntityOrientation | null {
 }
 
 function multiplyMatrixVector(matrix: Matrix3, vector: Vec3): Vec3 {
-  return matrix.map(
-    (row) => row[0] * vector[0] + row[1] * vector[1] + row[2] * vector[2],
-  ) as unknown as Vec3;
+  const multiplyRow = (row: Vec3) => row[0] * vector[0] + row[1] * vector[1] + row[2] * vector[2];
+  return [multiplyRow(matrix[0]), multiplyRow(matrix[1]), multiplyRow(matrix[2])];
 }
 
 function multiplyMatrices(left: Matrix3, right: Matrix3): Matrix3 {
-  return left.map((row) =>
-    [0, 1, 2].map(
-      (column) =>
-        row[0] * right[0][column]! + row[1] * right[1][column]! + row[2] * right[2][column]!,
-    ),
-  ) as unknown as Matrix3;
+  const cell = (row: 0 | 1 | 2, column: 0 | 1 | 2) =>
+    left[row][0] * right[0][column] +
+    left[row][1] * right[1][column] +
+    left[row][2] * right[2][column];
+  return [
+    [cell(0, 0), cell(0, 1), cell(0, 2)],
+    [cell(1, 0), cell(1, 1), cell(1, 2)],
+    [cell(2, 0), cell(2, 1), cell(2, 2)],
+  ];
 }
 
 function cross(left: Vec3, right: Vec3): Vec3 {

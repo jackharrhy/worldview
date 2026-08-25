@@ -143,6 +143,12 @@ and normalized tool state. Perspective and orthographic viewports adapt pointer 
 to the same tool controllers. The default application layout has perspective, XY, XZ, and YZ panes,
 but each pane can be maximized. Source geometry, materials, and GPU buffers are shared across the
 viewports while camera, grid, depth target, and tool overlays remain per viewport.
+History stack ownership and directional entry application are isolated from `EditorSession`, so
+undo and redo use one mutation path instead of mirrored command trees. Renderer scene-buffer
+assembly and reusable viewport geometry live outside the input-heavy viewport controller, while the
+browser application keeps its static shell and clipboard workflow outside the command coordinator.
+These are internal boundaries: the public editor entrypoints and authored map data flow are
+unchanged.
 The active grid size rebuilds the orthographic and horizontal construction grids immediately. In
 the perspective pane, a DOM-free dominant-axis projection clips world-aligned grid lines to every
 visible convex brush face; sloped faces therefore stretch the grid while every generated endpoint
