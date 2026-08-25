@@ -1,0 +1,716 @@
+import {
+  alignFaceTexture,
+  insertBrush,
+  insertBrushes,
+  replaceBrush,
+  replaceBrushes,
+  setBrushFaceMaterials,
+  setBrushMaterial,
+  setFaceTextureTransform,
+  transformFaceTexture,
+  transferFaceAttributes,
+  type FaceAttributeTransferMode,
+  type FaceTextureAlignmentOperation,
+  type FaceTextureAlignmentOptions,
+  type FaceTextureTransform,
+  type FaceTextureTransformDelta,
+} from './document.js';
+import { type FaceAttributeClipboard } from './clipboard.js';
+import { deriveBrush } from './geometry.js';
+import { applyHistoryEntry, type BrushEdit } from './history.js';
+import {
+  createBrushSelection,
+  selectedBrushIds,
+  selectedFaceReferences,
+  selectedPointEntityIds,
+} from './selection.js';
+import type {
+  BrushId,
+  EditorObjectViewState,
+  EditorSelection,
+  FaceSelection,
+  MapBrush,
+  Vec3,
+} from './types.js';
+import { findBrush } from './types.js';
+import {
+  documentRevisionForApply,
+  faceSelectionKey,
+  type BrushEditCandidate,
+  type BrushBatchEditCandidate,
+  type BrushCreationCandidate,
+  type BrushBatchCreationCandidate,
+  type DocumentEditCandidate,
+  type EditorSessionChange,
+} from './session-common.js';
+import { EditorSessionObjects } from './session-objects.js';
+export class EditorSession extends EditorSessionObjects {
+  public createMaterialCandidate(
+    material: string,
+    selection = this.currentSelection,
+  ): BrushEditCandidate | BrushBatchEditCandidate | null {
+    if (!selection) return null;
+    const selectedFaces = selectedFaceReferences(selection);
+    const byBrush = new Map<BrushId, FaceSelection[]>();
+    if (selectedFaces.length === 0) {
+      for (const brushId of selectedBrushIds(selection)) byBrush.set(brushId, []);
+    } else {
+      for (const face of selectedFaces) {
+        const entries = byBrush.get(face.brushId) ?? [];
+        entries.push(face);
+        byBrush.set(face.brushId, entries);
+      }
+    }
+    const edits: BrushEdit[] = [];
+    for (const [brushId, faceSelections] of byBrush) {
+      const before = findBrush(this.currentDocument, brushId);
+      if (!before) continue;
+      const affectedFaces =
+        faceSelections.length === 0
+          ? before.faces
+          : before.faces.filter((face) =>
+              faceSelections.some((selected) => selected.faceId === face.id),
+            );
+      if (affectedFaces.every((face) => face.material === material.trim())) continue;
+      const after =
+        faceSelections.length === 0
+          ? setBrushMaterial(before, material)
+          : setBrushFaceMaterials(
+              before,
+              material,
+              faceSelections.map((face) => face.faceId),
+            );
+      edits.push({
+        brushId,
+        baseBrushRevision: before.revision,
+        before,
+        after,
+      });
+    }
+    if (edits.length === 0) return null;
+    const document = replaceBrushes(
+      this.currentDocument,
+      edits.map((edit) => edit.after),
+    );
+    if (edits.length > 1) {
+      return {
+        label: 'Apply material',
+        baseDocumentRevision: this.currentDocument.revision,
+        edits,
+        document,
+      };
+    }
+    const edit = edits[0]!;
+    return {
+      label: 'Apply material',
+      brushId: edit.brushId,
+      baseDocumentRevision: this.currentDocument.revision,
+      baseBrushRevision: edit.baseBrushRevision,
+      before: edit.before,
+      after: edit.after,
+      document,
+    };
+  }
+
+  public applyTextureTransform(
+    transform: FaceTextureTransform,
+    selection = this.currentSelection,
+  ): boolean {
+    const candidate = this.createTextureTransformCandidate(transform, selection);
+    if (!candidate) return false;
+    this.commitCandidate(candidate);
+    return true;
+  }
+
+  public alignTexture(
+    operation: FaceTextureAlignmentOperation,
+    options: FaceTextureAlignmentOptions = {},
+    selection = this.currentSelection,
+  ): boolean {
+    const candidate = this.createTextureAlignmentCandidate(operation, options, selection);
+    if (!candidate) return false;
+    this.commitCandidate(candidate);
+    return true;
+  }
+
+  public createTextureAlignmentCandidate(
+    operation: FaceTextureAlignmentOperation,
+    options: FaceTextureAlignmentOptions = {},
+    selection = this.currentSelection,
+  ): BrushEditCandidate | BrushBatchEditCandidate | null {
+    if (!selection) return null;
+    const selectedFaces = selectedFaceReferences(selection);
+    const faces =
+      selectedFaces.length > 0
+        ? selectedFaces
+        : selectedBrushIds(selection).flatMap((brushId) => {
+            const brush = findBrush(this.currentDocument, brushId);
+            return brush?.faces.map((face) => ({ brushId, faceId: face.id })) ?? [];
+          });
+    if (faces.length === 0) return null;
+    const byBrush = new Map<BrushId, FaceSelection[]>();
+    for (const face of faces) {
+      const entries = byBrush.get(face.brushId) ?? [];
+      entries.push(face);
+      byBrush.set(face.brushId, entries);
+    }
+    const edits = [...byBrush].map<BrushEdit>(([brushId, targets]) => {
+      const before = findBrush(this.currentDocument, brushId)!;
+      const after = targets.reduce(
+        (brush, target) => alignFaceTexture(brush, target.faceId, operation, options),
+        before,
+      );
+      return { brushId, baseBrushRevision: before.revision, before, after };
+    });
+    const labels: Record<FaceTextureAlignmentOperation, string> = {
+      reset: 'Reset texture alignment',
+      world: 'Reset world texture alignment',
+      'flip-u': 'Flip texture horizontally',
+      'flip-v': 'Flip texture vertically',
+      'rotate-ccw': 'Rotate texture counterclockwise',
+      'rotate-cw': 'Rotate texture clockwise',
+      'align-edge': 'Align texture to face edge',
+      'justify-u-min': 'Justify texture left',
+      'justify-u-max': 'Justify texture right',
+      'justify-v-min': 'Justify texture top',
+      'justify-v-max': 'Justify texture bottom',
+      'fit-u': 'Fit texture horizontally',
+      'fit-v': 'Fit texture vertically',
+      'auto-fit': 'Auto-fit texture',
+    };
+    const label = labels[operation];
+    const document = replaceBrushes(
+      this.currentDocument,
+      edits.map((edit) => edit.after),
+    );
+    if (edits.length > 1) {
+      return { label, baseDocumentRevision: this.currentDocument.revision, edits, document };
+    }
+    const edit = edits[0]!;
+    return {
+      label,
+      brushId: edit.brushId,
+      baseDocumentRevision: this.currentDocument.revision,
+      baseBrushRevision: edit.baseBrushRevision,
+      before: edit.before,
+      after: edit.after,
+      document,
+    };
+  }
+
+  public transferFaceAttributes(
+    source: FaceSelection,
+    targets: readonly FaceSelection[],
+    mode: FaceAttributeTransferMode,
+  ): boolean {
+    const candidate = this.createFaceAttributeTransferCandidate(source, targets, mode);
+    if (!candidate) return false;
+    this.commitCandidate(candidate);
+    return true;
+  }
+
+  /** Applies a standalone face-attribute clipboard payload to the current face selection. */
+  public pasteFaceAttributes(
+    source: FaceAttributeClipboard,
+    selection: EditorSelection | null = this.currentSelection,
+  ): boolean {
+    const candidate = this.createFaceAttributePasteCandidate(source, selection);
+    if (!candidate) return false;
+    this.commitCandidate(candidate);
+    return true;
+  }
+
+  public createFaceAttributePasteCandidate(
+    source: FaceAttributeClipboard,
+    selection: EditorSelection | null = this.currentSelection,
+  ): BrushEditCandidate | BrushBatchEditCandidate | null {
+    const targets = selectedFaceReferences(selection);
+    if (targets.length === 0) return null;
+    const afterByBrush = new Map<BrushId, MapBrush>();
+    for (const target of targets) {
+      const before =
+        afterByBrush.get(target.brushId) ?? findBrush(this.currentDocument, target.brushId);
+      if (!before) throw new Error(`Unknown target brush ${target.brushId}`);
+      afterByBrush.set(
+        target.brushId,
+        transferFaceAttributes(before, target.faceId, source, 'project'),
+      );
+    }
+    const edits = [...afterByBrush].map<BrushEdit>(([brushId, after]) => {
+      const before = findBrush(this.currentDocument, brushId)!;
+      return { brushId, baseBrushRevision: before.revision, before, after };
+    });
+    const document = replaceBrushes(
+      this.currentDocument,
+      edits.map((edit) => edit.after),
+    );
+    if (edits.length > 1) {
+      return {
+        label: 'Paste face attributes',
+        baseDocumentRevision: this.currentDocument.revision,
+        edits,
+        document,
+      };
+    }
+    const edit = edits[0]!;
+    return {
+      label: 'Paste face attributes',
+      brushId: edit.brushId,
+      baseDocumentRevision: this.currentDocument.revision,
+      baseBrushRevision: edit.baseBrushRevision,
+      before: edit.before,
+      after: edit.after,
+      document,
+    };
+  }
+
+  public createFaceAttributeTransferCandidate(
+    source: FaceSelection,
+    targets: readonly FaceSelection[],
+    mode: FaceAttributeTransferMode,
+  ): BrushEditCandidate | BrushBatchEditCandidate | null {
+    const sourceBrush = findBrush(this.currentDocument, source.brushId);
+    let chainSource = sourceBrush?.faces.find((face) => face.id === source.faceId);
+    if (!chainSource) throw new Error(`Unknown source face ${source.faceId}`);
+    const normalizedTargets = targets.filter(
+      (target, index, all) =>
+        faceSelectionKey(target) !== faceSelectionKey(source) &&
+        all.findIndex((candidate) => faceSelectionKey(candidate) === faceSelectionKey(target)) ===
+          index,
+    );
+    if (normalizedTargets.length === 0) return null;
+    const afterByBrush = new Map<BrushId, MapBrush>();
+    for (const target of normalizedTargets) {
+      const before =
+        afterByBrush.get(target.brushId) ?? findBrush(this.currentDocument, target.brushId);
+      if (!before) throw new Error(`Unknown target brush ${target.brushId}`);
+      const after = transferFaceAttributes(before, target.faceId, chainSource, mode);
+      afterByBrush.set(target.brushId, after);
+      chainSource = after.faces.find((face) => face.id === target.faceId);
+      if (!chainSource) throw new Error(`Unknown transferred face ${target.faceId}`);
+    }
+    const edits = [...afterByBrush].map<BrushEdit>(([brushId, after]) => {
+      const before = findBrush(this.currentDocument, brushId)!;
+      return { brushId, baseBrushRevision: before.revision, before, after };
+    });
+    const label = mode === 'material' ? 'Transfer material' : 'Transfer face attributes';
+    const document = replaceBrushes(
+      this.currentDocument,
+      edits.map((edit) => edit.after),
+    );
+    if (edits.length > 1) {
+      return { label, baseDocumentRevision: this.currentDocument.revision, edits, document };
+    }
+    const edit = edits[0]!;
+    return {
+      label,
+      brushId: edit.brushId,
+      baseDocumentRevision: this.currentDocument.revision,
+      baseBrushRevision: edit.baseBrushRevision,
+      before: edit.before,
+      after: edit.after,
+      document,
+    };
+  }
+
+  public createTextureTransformCandidate(
+    transform: FaceTextureTransform,
+    selection = this.currentSelection,
+  ): BrushEditCandidate | BrushBatchEditCandidate | null {
+    const faces = selectedFaceReferences(selection);
+    if (faces.length === 0) return null;
+    const byBrush = new Map<BrushId, FaceSelection[]>();
+    for (const face of faces) {
+      const entries = byBrush.get(face.brushId) ?? [];
+      entries.push(face);
+      byBrush.set(face.brushId, entries);
+    }
+    const edits: BrushEdit[] = [];
+    for (const [brushId, faceSelections] of byBrush) {
+      const before = findBrush(this.currentDocument, brushId);
+      if (!before) continue;
+      let after = before;
+      for (const face of faceSelections) {
+        after = setFaceTextureTransform(after, face.faceId, transform);
+      }
+      edits.push({
+        brushId,
+        baseBrushRevision: before.revision,
+        before,
+        after,
+      });
+    }
+    if (edits.length === 0) return null;
+    const document = replaceBrushes(
+      this.currentDocument,
+      edits.map((edit) => edit.after),
+    );
+    if (edits.length > 1) {
+      return {
+        label: 'Adjust texture',
+        baseDocumentRevision: this.currentDocument.revision,
+        edits,
+        document,
+      };
+    }
+    const edit = edits[0]!;
+    return {
+      label: 'Adjust texture',
+      brushId: edit.brushId,
+      baseDocumentRevision: this.currentDocument.revision,
+      baseBrushRevision: edit.baseBrushRevision,
+      before: edit.before,
+      after: edit.after,
+      document,
+    };
+  }
+
+  public createTextureTransformDeltaCandidate(
+    transform: FaceTextureTransformDelta,
+    primary: FaceSelection,
+    primaryPivot: Vec3,
+    selection = this.currentSelection,
+  ): BrushEditCandidate | BrushBatchEditCandidate | null {
+    const identity =
+      transform.offset.every((value) => Math.abs(value) <= Number.EPSILON) &&
+      Math.abs(transform.rotationDegrees) <= Number.EPSILON &&
+      transform.scale.every((value) => Math.abs(value - 1) <= Number.EPSILON);
+    if (identity) return null;
+    const faces = selectedFaceReferences(selection);
+    const primaryKey = `${primary.brushId}\u0000${primary.faceId}`;
+    if (
+      faces.length === 0 ||
+      !faces.some((face) => `${face.brushId}\u0000${face.faceId}` === primaryKey)
+    ) {
+      return null;
+    }
+    const byBrush = new Map<BrushId, FaceSelection[]>();
+    for (const face of faces) {
+      const entries = byBrush.get(face.brushId) ?? [];
+      entries.push(face);
+      byBrush.set(face.brushId, entries);
+    }
+    const edits: BrushEdit[] = [];
+    for (const [brushId, faceSelections] of byBrush) {
+      const before = findBrush(this.currentDocument, brushId);
+      if (!before) continue;
+      const derived = deriveBrush(before);
+      let after = before;
+      for (const face of faceSelections) {
+        const derivedFace = derived.faces.find((candidate) => candidate.faceId === face.faceId);
+        if (!derivedFace || derivedFace.vertices.length === 0) {
+          throw new Error(`Cannot transform missing face ${face.faceId}`);
+        }
+        const pivot =
+          `${face.brushId}\u0000${face.faceId}` === primaryKey
+            ? primaryPivot
+            : ((): Vec3 => {
+                const sum = derivedFace.vertices.reduce<Vec3>(
+                  (value, point) => [value[0] + point[0], value[1] + point[1], value[2] + point[2]],
+                  [0, 0, 0],
+                );
+                return [
+                  sum[0] / derivedFace.vertices.length,
+                  sum[1] / derivedFace.vertices.length,
+                  sum[2] / derivedFace.vertices.length,
+                ];
+              })();
+        after = transformFaceTexture(after, face.faceId, transform, pivot);
+      }
+      edits.push({
+        brushId,
+        baseBrushRevision: before.revision,
+        before,
+        after,
+      });
+    }
+    if (edits.length === 0) return null;
+    const changingScale = transform.scale.some((value) => Math.abs(value - 1) > Number.EPSILON);
+    const label = changingScale
+      ? 'Scale texture'
+      : Math.abs(transform.rotationDegrees) > Number.EPSILON
+        ? 'Rotate texture'
+        : 'Pan texture';
+    const document = replaceBrushes(
+      this.currentDocument,
+      edits.map((edit) => edit.after),
+    );
+    if (edits.length > 1) {
+      return { label, baseDocumentRevision: this.currentDocument.revision, edits, document };
+    }
+    const edit = edits[0]!;
+    return {
+      label,
+      brushId: edit.brushId,
+      baseDocumentRevision: this.currentDocument.revision,
+      baseBrushRevision: edit.baseBrushRevision,
+      before: edit.before,
+      after: edit.after,
+      document,
+    };
+  }
+
+  public commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void {
+    if ('edits' in candidate) {
+      this.commitBatchCandidate(candidate);
+      return;
+    }
+    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+      throw new Error('Cannot commit an edit candidate created from a stale document revision');
+    }
+    const current = findBrush(this.currentDocument, candidate.brushId);
+    if (!current || current.revision !== candidate.baseBrushRevision) {
+      throw new Error('Cannot commit an edit candidate created from a stale brush revision');
+    }
+    const derived = deriveBrush(candidate.after);
+    if (!derived.valid) {
+      throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
+    }
+    if (this.hasLinkedEditingGroup(candidate.document)) {
+      this.commitDocumentCandidate({
+        label: candidate.label,
+        baseDocumentRevision: candidate.baseDocumentRevision,
+        before: this.currentDocument,
+        after: candidate.document,
+        selectionBefore: this.currentSelection,
+        selectionAfter: this.currentSelection,
+        document: candidate.document,
+      });
+      return;
+    }
+    this.currentDocument = replaceBrush(this.currentDocument, candidate.after);
+    this.history.record({
+      kind: 'replace-brush',
+      label: candidate.label,
+      brushId: candidate.brushId,
+      before: candidate.before,
+      after: candidate.after,
+    });
+    this.notify('document', candidate.label);
+  }
+
+  protected commitBatchCandidate(candidate: BrushBatchEditCandidate): void {
+    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+      throw new Error('Cannot commit an edit candidate created from a stale document revision');
+    }
+    for (const edit of candidate.edits) {
+      const current = findBrush(this.currentDocument, edit.brushId);
+      if (!current || current.revision !== edit.baseBrushRevision) {
+        throw new Error('Cannot commit an edit candidate created from a stale brush revision');
+      }
+      const derived = deriveBrush(edit.after);
+      if (!derived.valid) {
+        throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
+      }
+    }
+    if (this.hasLinkedEditingGroup(candidate.document)) {
+      this.commitDocumentCandidate({
+        label: candidate.label,
+        baseDocumentRevision: candidate.baseDocumentRevision,
+        before: this.currentDocument,
+        after: candidate.document,
+        selectionBefore: this.currentSelection,
+        selectionAfter: this.currentSelection,
+        document: candidate.document,
+      });
+      return;
+    }
+    this.currentDocument = replaceBrushes(
+      this.currentDocument,
+      candidate.edits.map((edit) => edit.after),
+    );
+    this.history.record({
+      kind: 'replace-brushes',
+      label: candidate.label,
+      edits: candidate.edits,
+    });
+    this.notify('document', candidate.label);
+  }
+
+  public commitCreationCandidate(candidate: BrushCreationCandidate): void {
+    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+      throw new Error('Cannot commit a creation candidate from a stale document revision');
+    }
+    const derived = deriveBrush(candidate.brush);
+    if (!derived.valid) {
+      throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
+    }
+    if (this.hasLinkedEditingGroup(candidate.document)) {
+      this.commitDocumentCandidate({
+        label: candidate.label,
+        baseDocumentRevision: candidate.baseDocumentRevision,
+        before: this.currentDocument,
+        after: candidate.document,
+        selectionBefore: this.currentSelection,
+        selectionAfter: { brushId: candidate.brush.id },
+        document: candidate.document,
+      });
+      return;
+    }
+    this.currentDocument = insertBrush(
+      this.currentDocument,
+      candidate.entityId,
+      candidate.brush,
+      candidate.insertionIndex,
+    );
+    this.currentSelection = { brushId: candidate.brush.id };
+    this.history.record({
+      kind: 'create-brush',
+      label: candidate.label,
+      entityId: candidate.entityId,
+      insertionIndex: candidate.insertionIndex,
+      brush: candidate.brush,
+    });
+    this.notify('document', candidate.label);
+  }
+
+  public commitBatchCreationCandidate(candidate: BrushBatchCreationCandidate): void {
+    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+      throw new Error('Cannot commit a batch creation candidate from a stale document revision');
+    }
+    for (const insertion of candidate.insertions) {
+      const derived = deriveBrush(insertion.brush);
+      if (!derived.valid) {
+        throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
+      }
+    }
+    if (this.hasLinkedEditingGroup(candidate.document)) {
+      this.commitDocumentCandidate({
+        label: candidate.label,
+        baseDocumentRevision: candidate.baseDocumentRevision,
+        before: this.currentDocument,
+        after: candidate.document,
+        selectionBefore: candidate.selectionBefore,
+        selectionAfter: createBrushSelection(candidate.selectionAfter),
+        document: candidate.document,
+      });
+      return;
+    }
+    this.currentDocument = insertBrushes(this.currentDocument, candidate.insertions);
+    this.currentSelection = createBrushSelection(candidate.selectionAfter);
+    this.history.record({
+      kind: 'create-brushes',
+      label: candidate.label,
+      insertions: candidate.insertions,
+      selectionBefore: candidate.selectionBefore,
+      selectionAfter: candidate.selectionAfter,
+    });
+    this.notify('document', candidate.label);
+  }
+
+  public commitDocumentCandidate(candidate: DocumentEditCandidate): void {
+    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+      throw new Error('Cannot commit a document candidate from a stale document revision');
+    }
+    const synchronizedAfter = this.synchronizeEditingGroup(candidate.after);
+    this.currentDocument = documentRevisionForApply(this.currentDocument, synchronizedAfter);
+    this.currentSelection = candidate.selectionAfter;
+    this.history.record({
+      kind: 'replace-document',
+      label: candidate.label,
+      before: candidate.before,
+      after: synchronizedAfter,
+      selectionBefore: candidate.selectionBefore,
+      selectionAfter: candidate.selectionAfter,
+    });
+    this.recordRepeatableCommand(candidate.repeatable);
+    this.notify('document', candidate.label);
+  }
+
+  protected snapshotObjectViewState(): EditorObjectViewState {
+    return {
+      hiddenBrushIds: [...this.hiddenBrushIds].toSorted(),
+      hiddenEntityIds: [...this.hiddenEntityIds].toSorted(),
+      lockedBrushIds: [...this.lockedBrushIds].toSorted(),
+      lockedEntityIds: [...this.lockedEntityIds].toSorted(),
+    };
+  }
+
+  protected applyObjectViewState(state: EditorObjectViewState): void {
+    this.hiddenBrushIds = new Set(state.hiddenBrushIds);
+    this.hiddenEntityIds = new Set(state.hiddenEntityIds);
+    this.lockedBrushIds = new Set(state.lockedBrushIds);
+    this.lockedEntityIds = new Set(state.lockedEntityIds);
+  }
+
+  protected commitObjectViewState(
+    label: string,
+    state: EditorObjectViewState,
+    selectionAfter: EditorSelection | null,
+  ): boolean {
+    const before = this.snapshotObjectViewState();
+    this.applyObjectViewState(state);
+    const after = this.snapshotObjectViewState();
+    const unchanged =
+      before.hiddenBrushIds.join('\u0000') === after.hiddenBrushIds.join('\u0000') &&
+      before.hiddenEntityIds.join('\u0000') === after.hiddenEntityIds.join('\u0000') &&
+      before.lockedBrushIds.join('\u0000') === after.lockedBrushIds.join('\u0000') &&
+      before.lockedEntityIds.join('\u0000') === after.lockedEntityIds.join('\u0000');
+    if (unchanged) return false;
+    this.history.record({
+      kind: 'view-state',
+      label,
+      before,
+      after,
+      selectionBefore: this.currentSelection,
+      selectionAfter,
+    });
+    this.currentSelection = selectionAfter;
+    this.notify('view', label);
+    return true;
+  }
+
+  protected assertSelectionAvailable(selection: EditorSelection): void {
+    const hiddenOrLockedBrush = selectedBrushIds(selection).find((brushId) =>
+      this.isBrushUnavailable(brushId),
+    );
+    if (hiddenOrLockedBrush) {
+      throw new Error(`Cannot select hidden or locked brush ${hiddenOrLockedBrush}`);
+    }
+    const hiddenOrLockedEntity = selectedPointEntityIds(selection).find((entityId) =>
+      this.isEntityUnavailable(entityId),
+    );
+    if (hiddenOrLockedEntity) {
+      throw new Error(`Cannot select hidden or locked point entity ${hiddenOrLockedEntity}`);
+    }
+  }
+
+  protected applyHistory(direction: 'undo' | 'redo'): boolean {
+    const entry = direction === 'undo' ? this.history.takeUndo() : this.history.takeRedo();
+    if (!entry) return false;
+
+    this.discardRepeatableCommands();
+    const next = applyHistoryEntry(
+      {
+        document: this.currentDocument,
+        selection: this.currentSelection,
+        objectViewState: this.snapshotObjectViewState(),
+      },
+      entry,
+      direction,
+    );
+    this.currentDocument = next.document;
+    this.currentSelection = next.selection;
+    this.applyObjectViewState(next.objectViewState);
+
+    if (direction === 'undo') this.history.completeUndo(entry);
+    else this.history.completeRedo(entry);
+    const changeKind = entry.kind === 'view-state' ? 'view' : 'history';
+    const action = direction === 'undo' ? 'Undo' : 'Redo';
+    this.notify(changeKind, `${action} ${entry.label}`);
+    return true;
+  }
+
+  public undo(): boolean {
+    return this.applyHistory('undo');
+  }
+
+  public redo(): boolean {
+    return this.applyHistory('redo');
+  }
+
+  protected notify(kind: EditorSessionChange['kind'], label: string): void {
+    const change = { kind, label, documentRevision: this.currentDocument.revision } as const;
+    for (const listener of this.listeners) listener(change);
+  }
+}
