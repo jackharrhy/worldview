@@ -762,6 +762,7 @@ export class EditorSourceRenderer {
         ),
       );
     }
+    this.sceneVersion += 1;
   }
 
   public setSprites(sprites: readonly EditorSpriteMaterial[]): void {
@@ -947,7 +948,7 @@ export class EditorSourceRenderer {
       this.materialResources.get(name.trim().toLowerCase())?.bindGroup ??
       this.fallbackMaterial.bindGroup;
     for (const viewport of this.viewports) {
-      viewport.render(this.scene, materialBindGroup, this.clearColor);
+      viewport.render(this.scene, materialBindGroup, this.clearColor, this.sceneVersion);
     }
   }
 

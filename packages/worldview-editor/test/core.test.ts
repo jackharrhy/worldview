@@ -251,6 +251,11 @@ function issueFixture() {
     properties: { classname: 'trigger_once', origin: '96 0 16', target: 'missing_door' },
     brushes: [],
   };
+  const emptyBrushEntity = {
+    id: ids.entity(),
+    properties: { classname: 'func_door' },
+    brushes: [],
+  };
   const emptyGroup = {
     id: ids.entity(),
     properties: {
@@ -268,6 +273,7 @@ function issueFixture() {
       invalidOrigin,
       missingOrigin,
       unresolved,
+      emptyBrushEntity,
       emptyGroup,
     ],
   };
@@ -3895,7 +3901,73 @@ describe('live issue diagnostics', () => {
       unresolved.id,
     ]);
     expect(issues.some((issue) => issue.type === 'empty-brush-entity')).toBe(true);
+    expect(
+      issues.some(
+        (issue) => issue.type === 'empty-brush-entity' && issue.entityIds.includes(unresolved.id),
+      ),
+    ).toBe(false);
     expect(issues.some((issue) => issue.type === 'empty-group')).toBe(true);
+  });
+
+  it('does not flag engine, wildcard, sentinel, or generated target references as unresolved', () => {
+    const ids = createSequentialIdFactory('dynamic-targets');
+    const starter = createStarterDocument();
+    const document: MapDocument = {
+      ...starter,
+      entities: [
+        starter.entities[0]!,
+        {
+          id: ids.entity(),
+          properties: {
+            classname: 'trigger_relay',
+            origin: '0 0 0',
+            target: '!activator',
+            killtarget: 'temporary_*',
+          },
+          brushes: [],
+        },
+        {
+          id: ids.entity(),
+          properties: {
+            classname: 'multi_watcher',
+            origin: '16 0 0',
+            target: '<rotatable_brush.1',
+          },
+          brushes: [],
+        },
+        {
+          id: ids.entity(),
+          properties: {
+            classname: 'monstermaker',
+            origin: '32 0 0',
+            netname: 'spawned_monster',
+          },
+          brushes: [],
+        },
+        {
+          id: ids.entity(),
+          properties: {
+            classname: 'trigger_changekeyvalue',
+            origin: '64 0 0',
+            target: 'spawned_monster',
+          },
+          brushes: [],
+        },
+        {
+          id: ids.entity(),
+          properties: {
+            classname: 'trigger_relay',
+            origin: '96 0 0',
+            target: 'nothing',
+          },
+          brushes: [],
+        },
+      ],
+    };
+
+    expect(deriveEditorIssues(document).some((issue) => issue.type === 'unresolved-target')).toBe(
+      false,
+    );
   });
 
   it('selects an invalid brush and applies its quick fix as one undoable edit', () => {

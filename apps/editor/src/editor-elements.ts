@@ -72,6 +72,8 @@ export function bindEditorElements() {
   const buildHistory = required<HTMLSelectElement>('#build-history');
   const recoveryDialog = required<HTMLDialogElement>('#recovery-dialog');
   const recoveryList = required<HTMLDivElement>('#recovery-list');
+  const checkpointDialog = required<HTMLDialogElement>('#checkpoint-dialog');
+  const checkpointLabel = required<HTMLInputElement>('#checkpoint-label');
   const compileState = required<HTMLDivElement>('.compile-state');
   const perspectiveMode = required<HTMLElement>('#perspective-mode');
   const compiledCanvas = required<HTMLCanvasElement>('.compiled-canvas');
@@ -116,6 +118,10 @@ export function bindEditorElements() {
   const hullPointCount = required<HTMLElement>('#hull-point-count');
   const createHullButton = required<HTMLButtonElement>('[data-action="create-hull"]');
   const discardHullButton = required<HTMLButtonElement>('[data-action="discard-hull"]');
+  const selectionIdLabel = required<HTMLElement>('#selection-id-label');
+  const selectionRevisionLabel = required<HTMLElement>('#selection-revision-label');
+  const selectionFacesLabel = required<HTMLElement>('#selection-faces-label');
+  const selectionMaterialLabel = required<HTMLElement>('#selection-material-label');
   const brushId = required<HTMLElement>('#brush-id');
   const brushRevision = required<HTMLElement>('#brush-revision');
   const brushFaces = required<HTMLElement>('#brush-faces');
@@ -311,6 +317,8 @@ export function bindEditorElements() {
     buildHistory,
     recoveryDialog,
     recoveryList,
+    checkpointDialog,
+    checkpointLabel,
     compileState,
     perspectiveMode,
     compiledCanvas,
@@ -353,6 +361,10 @@ export function bindEditorElements() {
     hullPointCount,
     createHullButton,
     discardHullButton,
+    selectionIdLabel,
+    selectionRevisionLabel,
+    selectionFacesLabel,
+    selectionMaterialLabel,
     brushId,
     brushRevision,
     brushFaces,

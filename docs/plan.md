@@ -104,8 +104,10 @@ work because a browser cannot delegate them to a native operating-system menu ba
 Renderer solids are partitioned by material and spatial cell. Structural-sharing signatures reuse
 unchanged GPU buffers across revisions, conservative frustum tests skip invisible batches, and an
 immutable median-split AABB index supplies broad-phase picking and region queries. Dense documents
-avoid generating unselected projected face grids. Performance measures are published as
-`worldview.editor.scene-rebuild` and `worldview.editor.change-presentation` entries.
+avoid generating unselected projected face grids. Immutable-document query indexes memoize brush,
+group, and layer lookup, while each viewport redraws only when its camera, dimensions, grid, or the
+shared scene version changes. Performance measures cover scene rebuild, change presentation, and
+material-catalog reconciliation.
 
 ## Public editor contracts
 
@@ -209,14 +211,14 @@ into canonical `.map` geometry or the portable project manifest.
 
 ## Delivery milestones
 
-| Milestone                         | Status   | Delivered evidence                                                                                                                                  |
-| --------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Architecture hardening         | Complete | Composition root, focused presenters/domain modules, explicit gesture lifecycle, split renderer/document/CSS, enforced 1,000-line ceiling           |
-| 2. Source and persistence safety  | Complete | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                 |
-| 3. Game-aware authoring           | Complete | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                   |
-| 4. Daily build loop               | Complete | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch  |
-| 5. Scale and dependable-solo gate | Complete | Spatial picking, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates |
-| 6. After dependable solo          | Deferred | Collision-aware editor walk mode first; then the explicitly deferred features listed under Product boundaries                                       |
+| Milestone                         | Status   | Delivered evidence                                                                                                                                                                      |
+| --------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Architecture hardening         | Complete | Composition root, focused presenters/domain modules, explicit gesture lifecycle, split renderer/document/CSS, enforced 1,000-line ceiling                                               |
+| 2. Source and persistence safety  | Complete | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                     |
+| 3. Game-aware authoring           | Complete | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                       |
+| 4. Daily build loop               | Complete | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                      |
+| 5. Scale and dependable-solo gate | Complete | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates |
+| 6. After dependable solo          | Deferred | Collision-aware editor walk mode first; then the explicitly deferred features listed under Product boundaries                                                                           |
 
 Worker parsing/catalog work and list virtualization remain available optimizations rather than
 mandatory architecture: the fixed scale gate passes without them, so the roadmap's “as required”
@@ -252,8 +254,17 @@ all 63 GPL-republished [original Quake map sources](https://rome.ro/resources) p
 diagnostics and round-tripped byte-for-byte (43,988 brushes total). All 54 maps in the
 [LibreQuake mapper archive](https://github.com/lavenderdotpet/LibreQuake/releases) also parsed and
 round-tripped byte-for-byte (92,492 brushes total); its largest production map contains 7,710
-brushes. The pinned TrenchBroom Quake FGD parsed all 111 declarations without diagnostics. These
-third-party test assets remain outside the repository under `apps/viewer/public/local`.
+brushes. That 8,082,853-byte map opened visibly in 0.90 seconds with 1,928 resolved textures and
+110 entity definitions; its only issue was a genuine empty layer, and a brush edit followed by undo
+restored the exact original source hash and byte count. The pinned TrenchBroom Quake FGD parsed all
+111 declarations without diagnostics.
+
+GoldSrc coverage includes 42 maps from the MIT-licensed
+[Half-Life Unified SDK assets](https://github.com/twhl-community/halflife-unified-sdk-assets/tree/38d1718cae8a1b867fa0f1e65a11f6ec74a1dc2f)
+(1,883 brushes and 321 primary FGD definitions). A local PrimeXT checkout at `46fb05b4` adds 15 maps,
+6,589 brushes, a 6,150-brush terrain map, 290 unique FGD definitions, and 80 textures from three
+WADs as a behavior-only oracle because no repository license was identified. These third-party test
+assets remain outside the repository under `apps/viewer/public/local`.
 
 The fixed performance command is `npm run test:editor-performance`. It generates an 8,000
 six-face-brush map, runs Chromium at 2560×1440/DPR 1 on the reference development Mac, and asserts:

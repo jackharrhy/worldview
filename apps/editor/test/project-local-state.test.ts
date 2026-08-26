@@ -71,4 +71,15 @@ describe('machine-local project state', () => {
 
     expect((await projects.latest())?.projectKey).toBe('new');
   });
+
+  it('keeps a project usable when local handle storage fails', async () => {
+    const storage: ProjectLocalStateStorage = {
+      load: () => Promise.reject(new Error('IndexedDB unavailable')),
+      list: () => Promise.resolve([]),
+      save: () => Promise.reject(new Error('IndexedDB unavailable')),
+    };
+    const projects = new ProjectLocalStateService(storage);
+
+    expect(await projects.remember('volatile', handle('volatile'))).toBe(false);
+  });
 });

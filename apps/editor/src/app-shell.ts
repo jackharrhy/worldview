@@ -106,6 +106,17 @@ export function renderEditorShell(): string {
       <header><strong>Recovery versions</strong><button type="button" data-action="close-recovery">Close</button></header>
       <div id="recovery-list" class="recovery-list"></div>
     </dialog>
+    <dialog id="checkpoint-dialog" class="build-log-dialog checkpoint-dialog">
+      <header><strong>Protect recovery checkpoint</strong><button type="button" data-action="close-checkpoint">Close</button></header>
+      <div class="checkpoint-body">
+        <label>Label<input id="checkpoint-label" type="text" autocomplete="off" spellcheck="false"></label>
+        <p>Protected checkpoints are retained until you explicitly remove them.</p>
+        <div class="checkpoint-actions">
+          <button type="button" data-action="cancel-checkpoint">Cancel</button>
+          <button type="button" data-action="create-checkpoint">Protect checkpoint</button>
+        </div>
+      </div>
+    </dialog>
 
     <aside id="view-filter-popover" class="view-filter-popover" aria-label="Viewport filters" hidden>
       <header><div><strong>View filters</strong><span>Non-serialized</span></div><button type="button" data-action="close-view-filters">Close</button></header>
@@ -201,11 +212,11 @@ export function renderEditorShell(): string {
             </div>
             <div id="selection-inspector" hidden>
               <dl class="property-list">
-                <div><dt>Brush</dt><dd id="brush-id"></dd></div>
-                <div><dt>Revision</dt><dd id="brush-revision"></dd></div>
-                <div><dt>Faces</dt><dd id="brush-faces"></dd></div>
+                <div><dt id="selection-id-label">Brush</dt><dd id="brush-id"></dd></div>
+                <div><dt id="selection-revision-label">Revision</dt><dd id="brush-revision"></dd></div>
+                <div><dt id="selection-faces-label">Faces</dt><dd id="brush-faces"></dd></div>
                 <div><dt>Bounds</dt><dd id="brush-bounds"></dd></div>
-                <div><dt>Material</dt><dd id="face-material"></dd></div>
+                <div><dt id="selection-material-label">Material</dt><dd id="face-material"></dd></div>
               </dl>
               <div id="group-section" class="group-section inspector-section" hidden>
                 <div class="section-heading"><h3>Group</h3><span id="group-state">Selection</span></div>

@@ -562,11 +562,11 @@ test.describe('3D source authoring', () => {
     await page.getByRole('button', { name: 'Apply source', exact: true }).click();
 
     const issueStatus = page.locator('#issue-status');
-    await expect(issueStatus).toHaveText('Issues 4');
+    await expect(issueStatus).toHaveText('Issues 3');
     await expect(issueStatus).toHaveAttribute('data-state', 'error');
     await issueStatus.click();
     await expect(page.locator('#issue-browser')).toBeVisible();
-    await expect(page.locator('#issue-summary')).toHaveText('2 errors · 2 warnings');
+    await expect(page.locator('#issue-summary')).toHaveText('2 errors · 1 warning');
 
     const invalid = page.locator('[data-issue-type="invalid-brush"]');
     await expect(invalid).toHaveCount(1);

@@ -97,6 +97,57 @@ describe('project workspaces', () => {
     expect(await (await projectFile(root, 'maps/one.map')).text()).toContain('worldspawn');
   });
 
+  it('does not read map contents until a discovered map is selected', async () => {
+    let mapRead = false;
+    const manifest = JSON.stringify({
+      schemaVersion: 1,
+      name: 'Lazy maps',
+      game: 'quake',
+      mapRoots: ['maps'],
+      resources: { wads: [], spriteRoots: [], entityDefinitions: [] },
+      buildProfiles: [],
+    });
+    const mapHandle = {
+      kind: 'file' as const,
+      name: 'large.map',
+      getFile: () => {
+        mapRead = true;
+        return Promise.resolve(new File(['large map source'], 'large.map'));
+      },
+      createWritable: () =>
+        Promise.resolve({ write: () => Promise.resolve(), close: () => Promise.resolve() }),
+    };
+    const maps = {
+      kind: 'directory' as const,
+      name: 'maps',
+      getFileHandle: () => Promise.resolve(mapHandle),
+      getDirectoryHandle: () => Promise.reject(new Error('unused')),
+      async *entries() {
+        yield ['large.map', mapHandle] as const;
+      },
+    };
+    const lazyRoot: EditorDirectoryHandle = {
+      kind: 'directory',
+      name: 'lazy',
+      getFileHandle: async (name) => {
+        if (name !== 'worldview.project.json') throw new Error(`Missing file ${name}`);
+        return { getFile: () => Promise.resolve(new File([manifest], name)) };
+      },
+      getDirectoryHandle: async (name) => {
+        if (name !== 'maps') throw new Error(`Missing directory ${name}`);
+        return maps;
+      },
+      async *entries() {},
+    };
+
+    const workspace = await openWorldviewProject(lazyRoot);
+
+    expect(mapRead).toBe(false);
+    expect(workspace.maps.map(({ path }) => path)).toEqual(['maps/large.map']);
+    expect(await (await workspace.maps[0]!.handle.getFile()).text()).toBe('large map source');
+    expect(mapRead).toBe(true);
+  });
+
   it('loads contained FGD includes into one resolved catalog', async () => {
     const workspace = await openWorldviewProject(root);
     const definitions = await loadProjectEntityDefinitions(workspace);

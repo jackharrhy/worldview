@@ -15,6 +15,7 @@ import type {
   MapDocument,
   MapEntity,
 } from './types.js';
+import { brushesInDocument } from './types.js';
 
 export const TRENCHBROOM_GROUP_TYPE = '_tb_group';
 
@@ -120,8 +121,12 @@ function entityWithLayer(entity: MapEntity, layerId: string | null): MapEntity {
   return { ...entity, properties };
 }
 
+const editorGroupsByDocument = new WeakMap<MapDocument, readonly EditorGroup[]>();
+
 /** Reads regular and nested groups from TrenchBroom's documented func_group metadata. */
 export function deriveEditorGroups(document: MapDocument): readonly EditorGroup[] {
+  const cachedGroups = editorGroupsByDocument.get(document);
+  if (cachedGroups) return cachedGroups;
   const mutable = new Map<string, MutableGroup>();
   for (const entity of document.entities) {
     if (!isGroupEntity(entity)) continue;
@@ -151,6 +156,7 @@ export function deriveEditorGroups(document: MapDocument): readonly EditorGroup[
   }
 
   const entityById = new Map(document.entities.map((entity) => [entity.id, entity] as const));
+  const brushById = new Map(brushesInDocument(document).map((brush) => [brush.id, brush] as const));
   const resolved = new Map<string, EditorGroup>();
   const resolve = (groupId: string, ancestors: ReadonlySet<string>): EditorGroup => {
     const cached = resolved.get(groupId);
@@ -169,11 +175,8 @@ export function deriveEditorGroups(document: MapDocument): readonly EditorGroup[
       ...directEntities.flatMap((entity) => entity.brushes),
       ...children.flatMap((child) =>
         child.brushIds.flatMap((brushId) => {
-          for (const entity of document.entities) {
-            const brush = entity.brushes.find((candidate) => candidate.id === brushId);
-            if (brush) return [brush];
-          }
-          return [];
+          const brush = brushById.get(brushId);
+          return brush ? [brush] : [];
         }),
       ),
     ];
@@ -214,7 +217,9 @@ export function deriveEditorGroups(document: MapDocument): readonly EditorGroup[
     return group;
   };
 
-  return [...mutable.keys()].map((groupId) => resolve(groupId, new Set()));
+  const groups = [...mutable.keys()].map((groupId) => resolve(groupId, new Set()));
+  editorGroupsByDocument.set(document, groups);
+  return groups;
 }
 
 function groupPrimary(selection: EditorSelection | null): ObjectSelectionPrimary | null {

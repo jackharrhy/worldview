@@ -59,6 +59,8 @@ export abstract class ViewportBase {
   protected transformReadoutPivot: Vec3 | null = null;
   protected readonly flyKeys = new Set<string>();
   protected lastRenderTime = performance.now();
+  private renderRequested = true;
+  private lastRenderedVersion = -1;
 
   protected get dragState(): PointerDrag | null {
     return this.gestures.current;
@@ -165,6 +167,7 @@ export abstract class ViewportBase {
   }
 
   protected notifyCamera(mode: EditorCameraNavigationMode): void {
+    this.renderRequested = true;
     this.interaction.cameraChanged(this.kind, mode, this.camera);
   }
 
@@ -251,18 +254,21 @@ export abstract class ViewportBase {
     const grid = gridVertices(this.kind, next);
     this.grid = upload(this.device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
+    this.renderRequested = true;
   }
 
   public render(
     scene: SceneBuffers,
     materialBindGroup: (name: string) => GPUBindGroup,
     clearColor: readonly [number, number, number, number],
+    renderVersion: number,
   ): void {
     if (this.disposed) return;
     this.updateFlyCamera();
     this.resize();
     this.positionTransformReadout();
     if (!this.depth || this.width === 0 || this.height === 0) return;
+    if (!this.renderRequested && this.lastRenderedVersion === renderVersion) return;
     this.updateScaleOverlay(scene);
     const matrix = this.projectionView();
     this.device.queue.writeBuffer(
@@ -316,6 +322,8 @@ export abstract class ViewportBase {
     }
     pass.end();
     this.device.queue.submit([encoder.finish()]);
+    this.renderRequested = false;
+    this.lastRenderedVersion = renderVersion;
   }
 
   public dispose(): void {
@@ -369,6 +377,7 @@ export abstract class ViewportBase {
     const width = Math.max(1, Math.round(this.canvas.clientWidth * ratio));
     const height = Math.max(1, Math.round(this.canvas.clientHeight * ratio));
     if (width === this.width && height === this.height) return;
+    this.renderRequested = true;
     this.width = width;
     this.height = height;
     this.canvas.width = width;

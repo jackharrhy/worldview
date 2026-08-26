@@ -170,14 +170,22 @@ export function createSequentialIdFactory(prefix = 'worldview'): IdFactory {
   };
 }
 
+const documentBrushes = new WeakMap<MapDocument, readonly MapBrush[]>();
+const documentBrushesById = new WeakMap<MapDocument, ReadonlyMap<BrushId, MapBrush>>();
+
 export function brushesInDocument(document: MapDocument): readonly MapBrush[] {
-  return document.entities.flatMap((entity) => entity.brushes);
+  const cached = documentBrushes.get(document);
+  if (cached) return cached;
+  const brushes = document.entities.flatMap((entity) => entity.brushes);
+  documentBrushes.set(document, brushes);
+  return brushes;
 }
 
 export function findBrush(document: MapDocument, brushId: BrushId): MapBrush | null {
-  for (const entity of document.entities) {
-    const brush = entity.brushes.find((candidate) => candidate.id === brushId);
-    if (brush) return brush;
+  let brushesById = documentBrushesById.get(document);
+  if (!brushesById) {
+    brushesById = new Map(brushesInDocument(document).map((brush) => [brush.id, brush] as const));
+    documentBrushesById.set(document, brushesById);
   }
-  return null;
+  return brushesById.get(brushId) ?? null;
 }

@@ -316,6 +316,33 @@ textarea:focus-visible {
   border: 1px solid var(--border);
 }
 
+.checkpoint-dialog {
+  width: min(440px, calc(100vw - 48px));
+}
+
+.checkpoint-body {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.checkpoint-body label {
+  display: grid;
+  gap: 6px;
+}
+
+.checkpoint-body p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.checkpoint-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .compile-state[data-state='ready'] {
   color: var(--success);
 }

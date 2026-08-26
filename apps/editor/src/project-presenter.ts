@@ -17,6 +17,7 @@ import {
 } from './project-workspace.js';
 import {
   EditorMaterialCatalog,
+  EntityDefinitionCatalog,
   BUILTIN_POINT_ENTITY_DEFINITIONS,
   createStarterDocument,
   createSequentialIdFactory,
@@ -46,6 +47,31 @@ export class ProjectPresenter {
     return this.app.ui;
   }
 
+  private detachProjectContext(): void {
+    if (!this.state.projectWorkspace) return;
+    this.state.projectWorkspace = null;
+    this.state.projectKey = null;
+    this.ui.projectMap.replaceChildren();
+    this.ui.projectMap.hidden = true;
+    this.ui.buildProfile.replaceChildren();
+    this.ui.buildProfile.hidden = true;
+    this.state.entityDefinitions = new EntityDefinitionCatalog();
+    this.state.projectSprites = [];
+    this.state.materialCatalog.clear();
+    for (const material of this.state.builtInMaterials) this.state.materialCatalog.set(material);
+    this.state.loadedWadSources.clear();
+    this.state.quakePalette = undefined;
+    this.state.renderer?.setEntityDefinitions(this.state.entityDefinitions);
+    this.state.renderer?.setSprites([]);
+    this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
+    this.refreshEntityDefinitionPresets();
+    this.app.materials.renderMaterialCatalog();
+    this.ui.materialMessage.textContent =
+      'Standalone map opened without the previous project’s resources.';
+    this.ui.materialMessage.classList.remove('error-text');
+    void this.app.build.checkCompilerService();
+  }
+
   public async openEditorMap(
     file: File,
     handle: EditorFileHandle | null,
@@ -53,6 +79,12 @@ export class ProjectPresenter {
     options: OpenEditorMapOptions = {},
   ): Promise<void> {
     try {
+      const belongsToCurrentProject = Boolean(
+        handle &&
+        this.state.projectWorkspace?.maps.some(
+          (map) => map.handle === handle && map.path === logicalName,
+        ),
+      );
       const assertExpectedDocument = (): void => {
         if (
           options.expectedDocumentId !== undefined &&
@@ -86,6 +118,7 @@ export class ProjectPresenter {
         ),
       );
       assertExpectedDocument();
+      if (!belongsToCurrentProject) this.detachProjectContext();
       if (recovered && restoreRecovery) {
         const sourceMatchesDisk = recovered.source.fingerprint === fingerprint;
         if (sourceMatchesDisk) parsed = parseMapSource(text, recoverySourceIdFactory(recovered));
@@ -99,6 +132,7 @@ export class ProjectPresenter {
           focusView: true,
         });
         this.state.session.restoreDocument(recovered.document, `Restore ${recovered.label}`);
+        this.app.session.setEditorTool('select');
         this.ui.statusMessage.textContent = sourceMatchesDisk
           ? `Restored recovery for ${logicalName}; the on-disk map is unchanged.`
           : `Restored recovery for ${logicalName} as a detached copy because the on-disk source changed.`;
@@ -114,6 +148,7 @@ export class ProjectPresenter {
         savedRevision: parsed.document.revision,
         focusView: true,
       });
+      this.app.session.setEditorTool('select');
       this.ui.statusMessage.textContent = `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`;
     } catch (error) {
       this.ui.statusMessage.textContent = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
@@ -208,7 +243,7 @@ export class ProjectPresenter {
     await this.loadProjectResources(workspace);
     this.state.projectWorkspace = workspace;
     this.state.projectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
-    await this.state.projectLocalState.remember(this.state.projectKey, handle);
+    const remembered = await this.state.projectLocalState.remember(this.state.projectKey, handle);
     this.ui.projectMap.replaceChildren(
       ...workspace.maps.map(({ path }) => {
         const option = document.createElement('option');
@@ -231,7 +266,16 @@ export class ProjectPresenter {
     this.ui.buildProfile.value =
       workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? '';
     await this.app.build.checkCompilerService();
-    this.ui.statusMessage.textContent = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
+    const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
+    if (!remembered) {
+      const warning =
+        'The project is open, but its directory binding could not be saved; choose the directory again after reload.';
+      this.ui.materialMessage.textContent = `${this.ui.materialMessage.textContent} · ${warning}`;
+      this.ui.materialMessage.classList.add('error-text');
+      this.ui.statusMessage.textContent = `${summary} ${warning}`;
+      return;
+    }
+    this.ui.statusMessage.textContent = summary;
   }
 
   private async projectDirectoryForOpen(): Promise<EditorDirectoryHandle | null> {
@@ -347,7 +391,7 @@ export class ProjectPresenter {
         ({ path }) => path === this.ui.projectMap.value,
       );
       if (!map) return;
-      await this.openEditorMap(map.file, map.handle, map.path);
+      await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
     });
     this.ui.buildProfile.addEventListener(
       'change',
@@ -417,18 +461,42 @@ export class ProjectPresenter {
       }
     });
 
-    required<HTMLButtonElement>('[data-action="checkpoint"]').addEventListener(
-      'click',
-      async () => {
-        const label = window.prompt(
-          'Checkpoint label',
-          `Checkpoint r${this.state.session.document.revision}`,
-        );
-        if (label === null) return;
+    const closeCheckpointDialog = () => this.ui.checkpointDialog.close();
+    const createCheckpoint = async () => {
+      const label =
+        this.ui.checkpointLabel.value.trim() ||
+        `Checkpoint r${this.state.session.document.revision}`;
+      try {
         const snapshot = await this.state.recovery.createCheckpoint(label);
+        closeCheckpointDialog();
         this.ui.statusMessage.textContent = `Protected checkpoint “${snapshot.label}” created.`;
-      },
+      } catch (error) {
+        this.ui.statusMessage.textContent = `Checkpoint failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    };
+    required<HTMLButtonElement>('[data-action="checkpoint"]').addEventListener('click', () => {
+      this.ui.checkpointLabel.value = `Checkpoint r${this.state.session.document.revision}`;
+      this.ui.checkpointDialog.showModal();
+      this.ui.checkpointLabel.focus();
+      this.ui.checkpointLabel.select();
+    });
+    required<HTMLButtonElement>('[data-action="create-checkpoint"]').addEventListener(
+      'click',
+      () => void createCheckpoint(),
     );
+    required<HTMLButtonElement>('[data-action="close-checkpoint"]').addEventListener(
+      'click',
+      closeCheckpointDialog,
+    );
+    required<HTMLButtonElement>('[data-action="cancel-checkpoint"]').addEventListener(
+      'click',
+      closeCheckpointDialog,
+    );
+    this.ui.checkpointLabel.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      void createCheckpoint();
+    });
     required<HTMLButtonElement>('[data-action="versions"]').addEventListener('click', async () => {
       await this.renderRecoveryVersions();
       this.ui.recoveryDialog.showModal();

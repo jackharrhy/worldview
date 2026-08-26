@@ -128,15 +128,20 @@ export class ProjectLocalStateService {
     return (await this.storage.list())[0] ?? null;
   }
 
-  public async remember(projectKey: string, handle: EditorDirectoryHandle): Promise<void> {
-    const previous = await this.load(projectKey);
-    await this.storage.save({
-      version: 1,
-      projectKey,
-      handle,
-      buildBindings: previous?.buildBindings ?? {},
-      updatedAt: Date.now(),
-    });
+  public async remember(projectKey: string, handle: EditorDirectoryHandle): Promise<boolean> {
+    try {
+      const previous = await this.load(projectKey);
+      await this.storage.save({
+        version: 1,
+        projectKey,
+        handle,
+        buildBindings: previous?.buildBindings ?? {},
+        updatedAt: Date.now(),
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   public async setBuildBinding(

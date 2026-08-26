@@ -2,6 +2,8 @@ import {
   materialUsageInDocument,
   selectedBrushIds,
   selectedFaceReferences,
+  type EditorMaterial,
+  type EditorMaterialUsage,
   type EditorReferenceScene,
   type MapDocument,
 } from '@jackharrhy/worldview-editor';
@@ -9,6 +11,13 @@ import {
 import type { EditorApplication } from './editor-application.js';
 
 export class MaterialsPresenter {
+  private readonly materialIdentityTokens = new WeakMap<object, number>();
+  private readonly materialTiles = new Map<string, HTMLButtonElement>();
+  private materialIdentitySequence = 0;
+  private materialLayoutSignature = '';
+  private materialUsageSignature = '';
+  private presentedActiveMaterial = '';
+
   public constructor(private readonly app: EditorApplication) {}
   private get state() {
     return this.app.state;
@@ -19,6 +28,29 @@ export class MaterialsPresenter {
 
   public selectedMaterialToken(): string {
     return this.ui.materialName.value.trim() || this.state.activeMaterialName;
+  }
+
+  private materialIdentityToken(material: object): number {
+    const existing = this.materialIdentityTokens.get(material);
+    if (existing !== undefined) return existing;
+    const token = ++this.materialIdentitySequence;
+    this.materialIdentityTokens.set(material, token);
+    return token;
+  }
+
+  private updateMaterialTile(
+    button: HTMLButtonElement,
+    material: EditorMaterial,
+    usage: EditorMaterialUsage | undefined,
+  ): void {
+    button.classList.toggle(
+      'active',
+      material.name.toLowerCase() === this.state.activeMaterialName.toLowerCase(),
+    );
+    button.classList.toggle('in-use', Boolean(usage));
+    button.title = usage
+      ? `${material.name} · ${material.width}×${material.height} · ${usage.faceCount} ${usage.faceCount === 1 ? 'face' : 'faces'} in ${usage.brushCount} ${usage.brushCount === 1 ? 'brush' : 'brushes'} · ${material.sourceName}`
+      : `${material.name} · ${material.width}×${material.height} · unused · ${material.sourceName}`;
   }
 
   public updateMaterialBrowserControls(): void {
@@ -52,6 +84,12 @@ export class MaterialsPresenter {
   }
 
   public renderMaterialCatalog(): void {
+    const started = performance.now();
+    const finish = () =>
+      performance.measure('worldview.editor.material-catalog', {
+        start: started,
+        end: performance.now(),
+      });
     const queryTokens = this.ui.materialFilter.value
       .trim()
       .toLowerCase()
@@ -59,15 +97,13 @@ export class MaterialsPresenter {
       .filter(Boolean);
     const usages = materialUsageInDocument(this.state.session.document);
     const usageByName = new Map(usages.map((usage) => [usage.material.toLowerCase(), usage]));
-    const loadedNames = new Set(
-      this.state.materialCatalog.materials().map((material) => material.name.toLowerCase()),
-    );
+    const catalogMaterials = this.state.materialCatalog.materials();
+    const loadedNames = new Set(catalogMaterials.map((material) => material.name.toLowerCase()));
     const missingMaterials = usages
       .filter((usage) => !loadedNames.has(usage.material.toLowerCase()))
       .map((usage) => usage.material)
       .toSorted((left, right) => left.localeCompare(right));
-    const materials = this.state.materialCatalog
-      .materials()
+    const materials = catalogMaterials
       .filter((material) =>
         queryTokens.every((token) => material.name.toLowerCase().includes(token)),
       )
@@ -90,20 +126,53 @@ export class MaterialsPresenter {
       missingMaterials.length === 0
         ? ''
         : `Missing ${missingMaterials.length} of ${usages.length} map materials: ${missingMaterials.slice(0, 8).join(', ')}${missingMaterials.length > 8 ? `, +${missingMaterials.length - 8} more` : ''}. Load the matching WAD to render them.`;
+
+    const usageSignature = usages
+      .map((usage) => `${usage.material.toLowerCase()}:${usage.faceCount}:${usage.brushCount}`)
+      .toSorted()
+      .join('|');
+    const catalogSignature = catalogMaterials
+      .map((material) => `${this.materialIdentityToken(material)}:${material.name}`)
+      .join('|');
+    const layoutSignature = JSON.stringify({
+      catalog: catalogSignature,
+      query: queryTokens,
+      usedOnly: this.ui.materialUsedOnly.checked,
+      sort: this.ui.materialSort.value,
+      usage:
+        this.ui.materialUsedOnly.checked || this.ui.materialSort.value === 'usage'
+          ? usageSignature
+          : '',
+    });
+    if (layoutSignature === this.materialLayoutSignature) {
+      if (
+        usageSignature !== this.materialUsageSignature ||
+        this.state.activeMaterialName !== this.presentedActiveMaterial
+      ) {
+        for (const material of materials) {
+          const button = this.materialTiles.get(material.name.toLowerCase());
+          if (button)
+            this.updateMaterialTile(button, material, usageByName.get(material.name.toLowerCase()));
+        }
+      }
+      this.materialUsageSignature = usageSignature;
+      this.presentedActiveMaterial = this.state.activeMaterialName;
+      this.updateMaterialBrowserControls();
+      finish();
+      return;
+    }
+
+    this.materialLayoutSignature = layoutSignature;
+    this.materialUsageSignature = usageSignature;
+    this.presentedActiveMaterial = this.state.activeMaterialName;
+    this.materialTiles.clear();
     this.ui.materialGrid.replaceChildren();
     for (const material of materials) {
       const usage = usageByName.get(material.name.toLowerCase());
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'material-tile';
-      button.classList.toggle(
-        'active',
-        material.name.toLowerCase() === this.state.activeMaterialName.toLowerCase(),
-      );
-      button.classList.toggle('in-use', Boolean(usage));
-      button.title = usage
-        ? `${material.name} · ${material.width}×${material.height} · ${usage.faceCount} ${usage.faceCount === 1 ? 'face' : 'faces'} in ${usage.brushCount} ${usage.brushCount === 1 ? 'brush' : 'brushes'} · ${material.sourceName}`
-        : `${material.name} · ${material.width}×${material.height} · unused · ${material.sourceName}`;
+      this.updateMaterialTile(button, material, usage);
 
       const canvas = document.createElement('canvas');
       canvas.width = material.width;
@@ -124,9 +193,11 @@ export class MaterialsPresenter {
         this.renderMaterialCatalog();
       });
       button.addEventListener('dblclick', () => this.applySelectedMaterial());
+      this.materialTiles.set(material.name.toLowerCase(), button);
       this.ui.materialGrid.append(button);
     }
     this.updateMaterialBrowserControls();
+    finish();
   }
 
   public updateReferenceScene(id: string, update: Partial<EditorReferenceScene>): void {

@@ -40,7 +40,6 @@ interface DirectoryPickerWindow extends Window {
 
 export interface ProjectMapFile {
   readonly path: string;
-  readonly file: File;
   readonly handle: EditorFileHandle;
 }
 
@@ -100,7 +99,7 @@ async function mapsInDirectory(
     const path = prefix ? `${prefix}/${name}` : name;
     if (handle.kind === 'directory') maps.push(...(await mapsInDirectory(handle, path)));
     else if (name.toLowerCase().endsWith('.map')) {
-      maps.push({ path, file: await handle.getFile(), handle });
+      maps.push({ path, handle });
     }
   }
   return maps;

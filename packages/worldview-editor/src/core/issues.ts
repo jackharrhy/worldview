@@ -132,6 +132,17 @@ function isLikelyBrushEntity(classname: string): boolean {
   return normalized.startsWith('func_') || normalized.startsWith('trigger_');
 }
 
+function isDynamicTargetReference(targetName: string): boolean {
+  const normalized = targetName.toLowerCase();
+  return (
+    ['!', '<', '>'].some((prefix) => targetName.startsWith(prefix)) ||
+    targetName.includes('*') ||
+    targetName.includes('?') ||
+    normalized === 'none' ||
+    normalized === 'nothing'
+  );
+}
+
 function entityLabel(entity: MapEntity): string {
   return entity.properties.targetname?.trim() || entity.properties.classname?.trim() || entity.id;
 }
@@ -257,8 +268,9 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
   );
   const targetNames = new Set(
     document.entities.flatMap((entity) => {
-      const value = entity.properties.targetname?.trim();
-      return value ? [value] : [];
+      const targetname = entity.properties.targetname?.trim();
+      const generatedTargetname = entity.properties.netname?.trim();
+      return [targetname, generatedTargetname].filter((value): value is string => Boolean(value));
     }),
   );
 
@@ -288,7 +300,25 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
 
     if (!isWorldspawn && !isMetadata && entity.brushes.length === 0 && classname) {
       const hasOrigin = 'origin' in entity.properties;
-      if (isLikelyBrushEntity(classname)) {
+      if (hasOrigin && !parseEntityOrigin(entity)) {
+        issues.push(
+          createEditorIssue(
+            'invalid-origin',
+            'error',
+            entity.id,
+            `${entityLabel(entity)} has an invalid origin: ${entity.properties.origin}.`,
+            [],
+            [entity.id],
+            {
+              kind: 'set-entity-property',
+              entityId: entity.id,
+              key: 'origin',
+              value: '0 0 0',
+              label: 'Reset invalid origin',
+            },
+          ),
+        );
+      } else if (!hasOrigin && isLikelyBrushEntity(classname)) {
         issues.push(
           createEditorIssue(
             'empty-brush-entity',
@@ -315,24 +345,6 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
               key: 'origin',
               value: '0 0 0',
               label: 'Set origin to 0 0 0',
-            },
-          ),
-        );
-      } else if (!parseEntityOrigin(entity)) {
-        issues.push(
-          createEditorIssue(
-            'invalid-origin',
-            'error',
-            entity.id,
-            `${entityLabel(entity)} has an invalid origin: ${entity.properties.origin}.`,
-            [],
-            [entity.id],
-            {
-              kind: 'set-entity-property',
-              entityId: entity.id,
-              key: 'origin',
-              value: '0 0 0',
-              label: 'Reset invalid origin',
             },
           ),
         );
@@ -379,7 +391,9 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
     }
     for (const property of ['target', 'killtarget'] as const) {
       const targetName = entity.properties[property]?.trim();
-      if (!targetName || targetNames.has(targetName)) continue;
+      if (!targetName || targetNames.has(targetName) || isDynamicTargetReference(targetName)) {
+        continue;
+      }
       issues.push(
         createEditorIssue(
           'unresolved-target',

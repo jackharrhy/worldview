@@ -112,8 +112,12 @@ function descendantGroupIds(
   ];
 }
 
+const editorLayersByDocument = new WeakMap<MapDocument, readonly EditorLayer[]>();
+
 /** Derives the implicit default layer and every TrenchBroom-compatible custom layer. */
 export function deriveEditorLayers(document: MapDocument): readonly EditorLayer[] {
+  const cached = editorLayersByDocument.get(document);
+  if (cached) return cached;
   const worldspawn = document.entities.find(
     (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
   );
@@ -141,6 +145,7 @@ export function deriveEditorLayers(document: MapDocument): readonly EditorLayer[
     ),
   );
   const entityById = new Map(document.entities.map((entity) => [entity.id, entity] as const));
+  const brushById = new Map(brushesInDocument(document).map((brush) => [brush.id, brush] as const));
 
   const buildLayer = (id: EditorLayerId, metadata: MapEntity, sortIndex: number): EditorLayer => {
     const layerGroups = rootGroups.filter((group) => rootGroupLayer.get(group.id) === id);
@@ -168,7 +173,7 @@ export function deriveEditorLayers(document: MapDocument): readonly EditorLayer[
     const directStructuralBrushes = id === null ? worldspawn.brushes : metadata.brushes;
     const groupBrushes = layerGroups.flatMap((group) =>
       group.brushIds.flatMap((brushId) => {
-        const brush = brushesInDocument(document).find((candidate) => candidate.id === brushId);
+        const brush = brushById.get(brushId);
         return brush ? [brush] : [];
       }),
     );
@@ -223,7 +228,9 @@ export function deriveEditorLayers(document: MapDocument): readonly EditorLayer[
     (left, right) =>
       left.layer.sortIndex - right.layer.sortIndex || left.fileIndex - right.fileIndex,
   );
-  return [defaultLayer, ...customLayers.map(({ layer }) => layer)];
+  const layers = [defaultLayer, ...customLayers.map(({ layer }) => layer)];
+  editorLayersByDocument.set(document, layers);
+  return layers;
 }
 
 export function findEditorLayer(document: MapDocument, layerId: EditorLayerId): EditorLayer | null {

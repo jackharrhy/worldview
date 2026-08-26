@@ -30,10 +30,20 @@ export class InspectorPresenter {
     document: MapDocument = this.state.session.document,
     selection = this.state.session.selection,
   ): void {
+    let presentationCheckpoint = performance.now();
+    const measurePresentationStep = (name: string) => {
+      const end = performance.now();
+      performance.measure(`worldview.editor.inspector.${name}`, {
+        start: presentationCheckpoint,
+        end,
+      });
+      presentationCheckpoint = end;
+    };
     const brushes = brushesInDocument(document);
     const invalid = brushes
       .flatMap((brush) => deriveBrush(brush).diagnostics)
       .filter((diagnostic) => diagnostic.severity === 'error');
+    measurePresentationStep('geometry');
     this.ui.documentRevision.textContent = String(document.revision);
     this.ui.entityCount.textContent = String(
       document.entities.filter(
@@ -46,8 +56,11 @@ export class InspectorPresenter {
     this.ui.geometryState.textContent = invalid.length === 0 ? 'valid' : `${invalid.length} errors`;
     this.ui.geometryState.classList.toggle('error-text', invalid.length > 0);
     this.app.organization.renderIssues();
+    measurePresentationStep('issues');
     this.app.organization.renderViewFilters();
+    measurePresentationStep('filters');
     const objectViewState = this.app.organization.effectiveObjectViewState(document);
+    measurePresentationStep('view-state');
     this.ui.hiddenObjectCount.textContent = String(
       objectViewState.hiddenBrushIds.length + objectViewState.hiddenEntityIds.length,
     );
@@ -56,6 +69,7 @@ export class InspectorPresenter {
     );
     this.app.organization.renderLayers(document, selection);
     this.app.organization.updateEntityLinkSummary(document, selection);
+    measurePresentationStep('organization');
     this.ui.undoButton.disabled = !this.state.session.canUndo;
     this.ui.undoButton.title = this.state.session.undoLabel
       ? `Undo ${this.state.session.undoLabel}`
@@ -335,6 +349,10 @@ export class InspectorPresenter {
       this.ui.textureUAxis.textContent = 'Select a face';
       this.ui.textureVAxis.textContent = 'Select a face';
       if (pointEntity) {
+        this.ui.selectionIdLabel.textContent = 'Entity';
+        this.ui.selectionRevisionLabel.textContent = 'Type';
+        this.ui.selectionFacesLabel.textContent = 'Brushes';
+        this.ui.selectionMaterialLabel.textContent = 'Classname';
         const bounds = pointEntityBounds(pointEntity);
         this.ui.brushId.textContent =
           objectEntityIds.length > 1
@@ -349,6 +367,10 @@ export class InspectorPresenter {
       }
       return;
     }
+    this.ui.selectionIdLabel.textContent = 'Brush';
+    this.ui.selectionRevisionLabel.textContent = 'Revision';
+    this.ui.selectionFacesLabel.textContent = 'Faces';
+    this.ui.selectionMaterialLabel.textContent = 'Material';
     const derived = deriveBrush(brush);
     const derivedFace = face
       ? derived.faces.find((candidate) => candidate.faceId === face.id)

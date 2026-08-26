@@ -90,7 +90,7 @@ export function createWebMcpDocumentTools(host: WebMcpDocumentToolHost): readonl
         (candidate) => candidate.path === path,
       );
       if (!map) throw new Error(`Unknown project map ${path}`);
-      await host.app.project.openEditorMap(map.file, map.handle, map.path, {
+      await host.app.project.openEditorMap(await map.handle.getFile(), map.handle, map.path, {
         expectedDocumentId,
         expectedRevision,
         throwOnError: true,
