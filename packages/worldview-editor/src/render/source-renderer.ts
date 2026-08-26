@@ -34,11 +34,7 @@ import type {
 import { buildSceneBuffers, objectSelectionBounds, type SceneBuffers } from './scene-buffers.js';
 import { buildEditorObjectSpatialIndex, type IndexedEditorObject } from './object-spatial-index.js';
 import type { BoundsSpatialIndex } from '../core/index.js';
-import {
-  createMaterialResource,
-  destroyMaterialResource,
-  type MaterialResource,
-} from './material-resources.js';
+import { SourceMaterialResources } from './materials/source-material-resources.js';
 import {
   addScaled,
   dedupeHullPoints,
@@ -87,18 +83,17 @@ export class EditorSourceRenderer {
   private referenceScenes: readonly EditorReferenceScene[];
   private diagnosticOverlays: readonly EditorDiagnosticOverlay[];
   private sprites: readonly EditorSpriteMaterial[];
-  private materials: readonly EditorMaterial[];
   private entityLinkMode: EntityLinkMode;
   private entityDefinitions: EditorSourceRendererOptions['entityDefinitions'];
   private objectSpatialIndex: BoundsSpatialIndex<IndexedEditorObject>;
   private openGroupId: string | null;
   private tool: EditorTool;
-  private readonly materialResources = new Map<string, MaterialResource>();
-  private readonly fallbackMaterial: MaterialResource;
+  private readonly materialResources: SourceMaterialResources;
   private readonly viewports: readonly Viewport[];
   private readonly onClipPlaneChange: EditorSourceRendererOptions['onClipPlaneChange'];
   private readonly onHullCreate: EditorSourceRendererOptions['onHullCreate'];
   private readonly onTopologySelectionChange: EditorSourceRendererOptions['onTopologySelectionChange'];
+  private readonly onRenderRequest: EditorSourceRendererOptions['onRenderRequest'];
   private sceneVersion = 0;
   private disposed = false;
 
@@ -107,8 +102,8 @@ export class EditorSourceRenderer {
     format: GPUTextureFormat,
     pipelines: Pipelines,
     bindGroupLayout: GPUBindGroupLayout,
-    private readonly materialBindGroupLayout: GPUBindGroupLayout,
-    private readonly materialSampler: GPUSampler,
+    materialBindGroupLayout: GPUBindGroupLayout,
+    materialSampler: GPUSampler,
     options: EditorSourceRendererOptions,
     private readonly clearColor: readonly [number, number, number, number],
   ) {
@@ -129,7 +124,6 @@ export class EditorSourceRenderer {
     this.referenceScenes = options.referenceScenes ?? [];
     this.diagnosticOverlays = options.diagnosticOverlays ?? [];
     this.sprites = options.sprites ?? [];
-    this.materials = options.materials ?? [];
     this.entityLinkMode = options.entityLinkMode ?? 'direct';
     this.entityDefinitions = options.entityDefinitions;
     this.objectSpatialIndex = buildEditorObjectSpatialIndex(this.document, this.entityDefinitions);
@@ -138,6 +132,7 @@ export class EditorSourceRenderer {
     this.onClipPlaneChange = options.onClipPlaneChange;
     this.onHullCreate = options.onHullCreate;
     this.onTopologySelectionChange = options.onTopologySelectionChange;
+    this.onRenderRequest = options.onRenderRequest;
     this.scene = buildSceneBuffers(
       device,
       this.document,
@@ -163,12 +158,13 @@ export class EditorSourceRenderer {
       this.diagnosticOverlays,
       this.sprites,
     );
-    this.fallbackMaterial = createMaterialResource(
+    this.materialResources = new SourceMaterialResources(
       device,
-      this.materialBindGroupLayout,
-      this.materialSampler,
+      materialBindGroupLayout,
+      materialSampler,
+      options.materials ?? [],
+      this.sprites,
     );
-    this.rebuildMaterialResources();
     const hitTests = (origin: Vec3, direction: Vec3): readonly EditorObjectRayHit[] =>
       this.objectSpatialIndex
         .queryRay(origin, direction)
@@ -501,8 +497,10 @@ export class EditorSourceRenderer {
         options.onTransformPivotDrag?.(event);
         this.rebuildScene();
       },
-      cameraChanged: (viewport, mode, camera) =>
-        options.onCameraChange?.({ viewport, mode, camera }),
+      cameraChanged: (viewport, mode, camera) => {
+        this.onRenderRequest?.();
+        options.onCameraChange?.({ viewport, mode, camera });
+      },
       sweepCaps: () => this.sweepCaps,
       sweep: (event) => options.onSweepDrag?.(event),
     };
@@ -519,6 +517,7 @@ export class EditorSourceRenderer {
           bindGroupLayout,
           interaction,
           this.gridSize,
+          () => this.onRenderRequest?.(),
         ),
     );
     for (const viewport of this.viewports) {
@@ -736,39 +735,20 @@ export class EditorSourceRenderer {
       start: started,
       end: performance.now(),
     });
+    this.onRenderRequest?.();
   }
 
   public setMaterials(materials: readonly EditorMaterial[]): void {
     if (this.disposed) return;
-    this.materials = materials;
-    this.rebuildMaterialResources();
-  }
-
-  private rebuildMaterialResources(): void {
-    for (const resource of this.materialResources.values()) destroyMaterialResource(resource);
-    this.materialResources.clear();
-    const spriteMaterials = this.sprites.map((sprite) => sprite.material);
-    for (const material of [...this.materials, ...spriteMaterials]) {
-      const key = material.name.trim().toLowerCase();
-      const previous = this.materialResources.get(key);
-      if (previous) destroyMaterialResource(previous);
-      this.materialResources.set(
-        key,
-        createMaterialResource(
-          this.device,
-          this.materialBindGroupLayout,
-          this.materialSampler,
-          material,
-        ),
-      );
-    }
+    this.materialResources.setMaterials(materials);
     this.sceneVersion += 1;
+    this.onRenderRequest?.();
   }
 
   public setSprites(sprites: readonly EditorSpriteMaterial[]): void {
     if (this.disposed) return;
     this.sprites = sprites;
-    this.rebuildMaterialResources();
+    this.materialResources.setSprites(sprites);
     this.rebuildScene();
   }
 
@@ -942,14 +922,13 @@ export class EditorSourceRenderer {
     this.rebuildScene();
   }
 
-  public render(): void {
-    if (this.disposed) return;
-    const materialBindGroup = (name: string) =>
-      this.materialResources.get(name.trim().toLowerCase())?.bindGroup ??
-      this.fallbackMaterial.bindGroup;
+  public render(): boolean {
+    if (this.disposed) return false;
+    const materialBindGroup = (name: string) => this.materialResources.bindGroup(name);
     for (const viewport of this.viewports) {
       viewport.render(this.scene, materialBindGroup, this.clearColor, this.sceneVersion);
     }
+    return this.viewports.some((viewport) => viewport.requiresContinuousRender);
   }
 
   public viewportCamera(kind: EditorViewportKind): EditorViewportCameraState | null {
@@ -987,9 +966,7 @@ export class EditorSourceRenderer {
     for (const batch of this.scene.solids) batch.buffer.destroy();
     this.scene.lines.destroy();
     this.scene.perspectiveGrid.destroy();
-    for (const resource of this.materialResources.values()) destroyMaterialResource(resource);
-    this.materialResources.clear();
-    destroyMaterialResource(this.fallbackMaterial);
+    this.materialResources.dispose();
     for (const viewport of this.viewports) viewport.dispose();
     this.device.destroy();
   }

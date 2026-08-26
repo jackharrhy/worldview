@@ -26,6 +26,7 @@ import {
 
 import type { EditorApplication } from './editor-application.js';
 import { required } from './editor-elements.js';
+import { OnDemandRenderScheduler } from './render-scheduler.js';
 
 export class RendererPresenter {
   public constructor(private readonly app: EditorApplication) {}
@@ -35,7 +36,8 @@ export class RendererPresenter {
     const state = app.state;
     const ui = app.ui;
     try {
-      state.renderer = await EditorSourceRenderer.create({
+      const renderScheduler = new OnDemandRenderScheduler();
+      const renderer = await EditorSourceRenderer.create({
         canvases: ui.canvases,
         document: state.session.document,
         selection: state.session.selection,
@@ -51,6 +53,7 @@ export class RendererPresenter {
           ui.pointEntityClassname.value,
           state.entityDefinitions,
         ).bounds,
+        onRenderRequest: () => renderScheduler.request(),
         onCameraChange(event: EditorCameraChangeEvent) {
           if (event.viewport !== 'perspective') return;
           state.perspectiveCamera = event.camera;
@@ -630,12 +633,9 @@ export class RendererPresenter {
           }
         },
       });
+      state.renderer = renderer;
+      renderScheduler.setTarget(renderer);
       ui.statusMessage.textContent = 'Source renderer ready. Select a brush in any viewport.';
-      const frame = () => {
-        state.renderer?.render();
-        if (state.renderer) requestAnimationFrame(frame);
-      };
-      requestAnimationFrame(frame);
     } catch (error) {
       ui.viewportError.hidden = false;
       ui.viewportError.textContent = error instanceof Error ? error.message : String(error);

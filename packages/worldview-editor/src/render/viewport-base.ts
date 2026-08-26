@@ -34,6 +34,7 @@ import {
   initialState,
 } from './viewport-common.js';
 import { GestureController } from './gesture-controller.js';
+import { FlyCameraController } from './viewport/fly-camera-controller.js';
 export abstract class ViewportBase {
   protected abstract connectInput(): void;
   protected abstract cancelDrag(): void;
@@ -57,10 +58,10 @@ export abstract class ViewportBase {
   protected lassoElement: HTMLDivElement | null = null;
   protected transformReadout: HTMLDivElement | null = null;
   protected transformReadoutPivot: Vec3 | null = null;
-  protected readonly flyKeys = new Set<string>();
-  protected lastRenderTime = performance.now();
+  private readonly flyCamera: FlyCameraController;
   private renderRequested = true;
   private lastRenderedVersion = -1;
+  private readonly resizeObserver: ResizeObserver;
 
   protected get dragState(): PointerDrag | null {
     return this.gestures.current;
@@ -87,29 +88,6 @@ export abstract class ViewportBase {
   protected readonly clearInsertionOnModifierRelease = (event: KeyboardEvent) => {
     if (event.key === 'Shift' && !this.dragState) this.interaction.hoverTopology(null);
   };
-  protected readonly cameraKeyDown = (event: KeyboardEvent) => {
-    if (this.kind !== 'perspective') return;
-    const key = event.key.toLowerCase();
-    if (!['w', 's', 'a', 'd', 'q', 'x'].includes(key)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    this.flyKeys.add(key);
-  };
-  protected readonly cameraKeyUp = (event: KeyboardEvent) => {
-    const key = event.key.toLowerCase();
-    if (!this.flyKeys.has(key)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    this.flyKeys.delete(key);
-  };
-  protected readonly cameraBlur = () => {
-    this.flyKeys.clear();
-    this.canvas.closest('.viewport-pane')?.classList.remove('camera-focused');
-  };
-  protected readonly cameraFocus = () => {
-    this.canvas.closest('.viewport-pane')?.classList.add('camera-focused');
-  };
-
   public constructor(
     private readonly device: GPUDevice,
     private readonly format: GPUTextureFormat,
@@ -119,6 +97,7 @@ export abstract class ViewportBase {
     bindGroupLayout: GPUBindGroupLayout,
     protected readonly interaction: ViewportInteraction,
     protected gridSize: number,
+    private readonly requestRender: () => void,
   ) {
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('WebGPU canvas context is unavailable');
@@ -137,13 +116,24 @@ export abstract class ViewportBase {
     this.grid = upload(device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
     this.state = initialState(kind);
+    this.flyCamera = new FlyCameraController({
+      kind,
+      canvas,
+      forward: () => this.perspectiveForward(),
+      speed: () => this.state.flySpeed,
+      translate: (delta) => this.translatePerspectiveCamera(delta),
+      changed: () => this.notifyCamera('fly'),
+      requestFrame: () => this.requestRender(),
+    });
     this.connectInput();
-    this.canvas.addEventListener('keydown', this.cameraKeyDown);
-    this.canvas.addEventListener('keyup', this.cameraKeyUp);
-    this.canvas.addEventListener('blur', this.cameraBlur);
-    this.canvas.addEventListener('focus', this.cameraFocus);
     window.addEventListener('keydown', this.cancelOnEscape);
     window.addEventListener('keyup', this.clearInsertionOnModifierRelease);
+    this.resizeObserver = new ResizeObserver(() => this.requestRender());
+    this.resizeObserver.observe(this.canvas);
+  }
+
+  public get requiresContinuousRender(): boolean {
+    return !this.disposed && this.flyCamera.active;
   }
 
   protected perspectiveForward(): Vec3 {
@@ -168,37 +158,8 @@ export abstract class ViewportBase {
 
   protected notifyCamera(mode: EditorCameraNavigationMode): void {
     this.renderRequested = true;
+    this.requestRender();
     this.interaction.cameraChanged(this.kind, mode, this.camera);
-  }
-
-  protected updateFlyCamera(): void {
-    const now = performance.now();
-    const seconds = Math.min(0.05, Math.max(0, (now - this.lastRenderTime) / 1000));
-    this.lastRenderTime = now;
-    if (this.kind !== 'perspective' || this.flyKeys.size === 0 || seconds === 0) return;
-    const forward = this.perspectiveForward();
-    const right = normalize(cross(forward, [0, 0, 1]));
-    const movement: [number, number, number] = [0, 0, 0];
-    const accumulate = (direction: Vec3, amount: number) => {
-      movement[0] += direction[0] * amount;
-      movement[1] += direction[1] * amount;
-      movement[2] += direction[2] * amount;
-    };
-    if (this.flyKeys.has('w')) accumulate(forward, 1);
-    if (this.flyKeys.has('s')) accumulate(forward, -1);
-    if (this.flyKeys.has('d')) accumulate(right, 1);
-    if (this.flyKeys.has('a')) accumulate(right, -1);
-    if (this.flyKeys.has('q')) accumulate([0, 0, 1], 1);
-    if (this.flyKeys.has('x')) accumulate([0, 0, 1], -1);
-    if (Math.hypot(...movement) <= Number.EPSILON) return;
-    const direction = normalize(movement);
-    const distance = this.state.flySpeed * seconds;
-    this.translatePerspectiveCamera([
-      direction[0] * distance,
-      direction[1] * distance,
-      direction[2] * distance,
-    ]);
-    this.notifyCamera('fly');
   }
 
   public get camera(): EditorViewportCameraState {
@@ -264,7 +225,7 @@ export abstract class ViewportBase {
     renderVersion: number,
   ): void {
     if (this.disposed) return;
-    this.updateFlyCamera();
+    this.flyCamera.update();
     this.resize();
     this.positionTransformReadout();
     if (!this.depth || this.width === 0 || this.height === 0) return;
@@ -296,7 +257,9 @@ export abstract class ViewportBase {
       },
     });
     pass.setBindGroup(0, this.bindGroup);
-    if (scene.solids.length > 0) {
+    // Match the source-editor convention: textured faces belong to 3D, while orthographic views
+    // remain uncluttered projected wireframes.
+    if (this.kind === 'perspective' && scene.solids.length > 0) {
       pass.setPipeline(this.pipelines.solid);
       for (const batch of scene.solids) {
         if (!boundsVisible(matrix, batch.bounds)) continue;
@@ -338,10 +301,8 @@ export abstract class ViewportBase {
     if (this.pendingFaceTransferClick !== null) window.clearTimeout(this.pendingFaceTransferClick);
     if (this.faceTransferSequenceReset !== null)
       window.clearTimeout(this.faceTransferSequenceReset);
-    this.canvas.removeEventListener('keydown', this.cameraKeyDown);
-    this.canvas.removeEventListener('keyup', this.cameraKeyUp);
-    this.canvas.removeEventListener('blur', this.cameraBlur);
-    this.canvas.removeEventListener('focus', this.cameraFocus);
+    this.flyCamera.dispose();
+    this.resizeObserver.disconnect();
     window.removeEventListener('keydown', this.cancelOnEscape);
     window.removeEventListener('keyup', this.clearInsertionOnModifierRelease);
   }

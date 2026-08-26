@@ -166,6 +166,10 @@ but each pane can be maximized. Source geometry, materials, and GPU buffers are 
 viewports while camera, grid, depth target, and tool overlays remain per viewport. Immutable
 documents cache their brush, group, and layer indexes by identity, and independent viewport dirty
 versions prevent a moving perspective camera from redrawing three unchanged orthographic panes.
+Like TrenchBroom's render-mode policy, the perspective view renders material faces and edges while
+XY, XZ, and YZ render projected wireframes and tool overlays without textured face fill. Rendering
+is invalidation-driven and continues frame-to-frame only while fly-camera input remains active; this
+uses TrenchBroom's behavior and ownership boundaries as an oracle without adapting GPL code.
 History stack ownership and directional entry application are isolated from `EditorSession`, so
 undo and redo use one mutation path instead of mirrored command trees. Renderer scene-buffer
 assembly and reusable viewport geometry live outside the input-heavy viewport controller, while the

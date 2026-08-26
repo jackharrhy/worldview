@@ -90,10 +90,18 @@ presentation.
 
 `EditorSession` is the singular transaction and history coordinator. Focused DOM-free domains own
 selection/view state, object transforms, topology, geometry/CSG, entities/materials, and
-organization. Renderer gesture controllers implement explicit `begin`, `update`, `commit`, and
-`cancel` states; GPU scene ownership stays outside controllers. Document mutations, validation,
-derived queries, source parsing, and serialization are separate modules without circular domain
-dependencies.
+organization. The remaining architecture hardening replaces the inherited viewport input chain
+with an ordered set of composed gesture controllers. One router owns the active gesture's explicit
+`begin`, `update`, `commit`, and `cancel` lifecycle; GPU scene ownership stays outside controllers.
+Document mutations, validation, derived queries, source parsing, and serialization remain separate
+DOM-free modules.
+
+Scene construction will become an assembler over focused solid, object-line, tool, entity, and
+diagnostic contributions so invalidation can rebuild only affected buffers. App presenters will
+receive narrow state, UI, command, and event ports instead of the complete `EditorApplication`
+service locator. Physical `viewport`, `scene`, `materials`, project/persistence, and core-domain
+subdirectories follow those ownership changes. The pinned behavior and architecture comparison is
+recorded in [`trenchbroom-conformance.md`](./trenchbroom-conformance.md).
 
 The browser shell gives the viewports visual priority. A compact, consistently sized icon toolbar
 groups file, mode, selection/history, visibility, and build commands; document and build-profile
@@ -106,7 +114,8 @@ unchanged GPU buffers across revisions, conservative frustum tests skip invisibl
 immutable median-split AABB index supplies broad-phase picking and region queries. Dense documents
 avoid generating unselected projected face grids. Immutable-document query indexes memoize brush,
 group, and layer lookup, while each viewport redraws only when its camera, dimensions, grid, or the
-shared scene version changes. Performance measures cover scene rebuild, change presentation, and
+shared scene version changes. The application schedules frames on demand and runs continuously only
+during fly-camera movement. Performance measures cover scene rebuild, change presentation, and
 material-catalog reconciliation.
 
 ## Public editor contracts
@@ -211,14 +220,14 @@ into canonical `.map` geometry or the portable project manifest.
 
 ## Delivery milestones
 
-| Milestone                         | Status   | Delivered evidence                                                                                                                                                                      |
-| --------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Architecture hardening         | Complete | Composition root, focused presenters/domain modules, explicit gesture lifecycle, split renderer/document/CSS, enforced 1,000-line ceiling                                               |
-| 2. Source and persistence safety  | Complete | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                     |
-| 3. Game-aware authoring           | Complete | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                       |
-| 4. Daily build loop               | Complete | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                      |
-| 5. Scale and dependable-solo gate | Complete | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates |
-| 6. After dependable solo          | Deferred | Collision-aware editor walk mode first; then the explicitly deferred features listed under Product boundaries                                                                           |
+| Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                  |
+| --------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Architecture hardening         | In progress | Composition root, domain modules, split document/CSS, and the 1,000-line ceiling are delivered; composed viewport controllers, scene contributions, narrow presenter ports, and stronger architecture checks remain |
+| 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                 |
+| 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                   |
+| 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                  |
+| 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                             |
+| 6. After dependable solo          | Deferred    | Collision-aware editor walk mode first; then the explicitly deferred features listed under Product boundaries                                                                                                       |
 
 Worker parsing/catalog work and list virtualization remain available optimizations rather than
 mandatory architecture: the fixed scale gate passes without them, so the roadmap's “as required”

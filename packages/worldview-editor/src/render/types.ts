@@ -316,6 +316,8 @@ export interface EditorSourceRendererOptions {
   readonly onTransformPivotDrag?: (event: EditorTransformPivotDragEvent) => void;
   readonly onSweepDrag?: (event: EditorSweepDragEvent) => void;
   readonly onCameraChange?: (event: EditorCameraChangeEvent) => void;
+  /** Requests one browser animation frame after renderer state or viewport input changes. */
+  readonly onRenderRequest?: () => void;
 }
 
 export interface EditorViewportCameraState {
