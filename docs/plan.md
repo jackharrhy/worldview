@@ -65,11 +65,12 @@ third-party distributions listed in `THIRD_PARTY_NOTICES.md`.
 
 - `packages/worldview`: published viewer, GPU-independent BSP core, custom element, and walkability
   APIs.
-- `apps/viewer`: development/static viewer and generated license-compatible fixtures.
+- `apps/viewer`: React development/static viewer, framework-neutral viewer controller/store bridge,
+  and generated license-compatible fixtures.
 - `packages/worldview-editor`: DOM-free map document, source preservation, project, definition,
   build contracts, commands, sessions, gesture controllers, spatial queries, and WebGPU rendering.
-- `apps/editor`: browser composition root, focused presenters, filesystem/project and WebMCP
-  adapters, IndexedDB services, dialogs, and four-view authoring UI.
+- `apps/editor`: React browser composition root and shell components, focused presenters,
+  filesystem/project and WebMCP adapters, IndexedDB services, dialogs, and four-view authoring UI.
 - `apps/compiler-service`: loopback adapter around explicitly configured compile and launch
   profiles.
 
@@ -78,15 +79,29 @@ public package entrypoints. `packages/worldview-editor/src/core` remains DOM-fre
 does not bypass package entrypoints. npm workspaces and the committed `package-lock.json` define the
 dependency graph.
 
-Every hand-written production TypeScript or CSS file beneath `apps/editor/src` and
+Every hand-written production TypeScript, TSX, or CSS file beneath `apps/editor/src` and
 `packages/worldview-editor/src` is limited to 1,000 physical lines by
 `scripts/check-editor-architecture.mjs`.
 
+React is an application-shell dependency, not an engine dependency. Published viewer and editor
+packages remain framework-independent. Stable canvas elements outlive shell-state updates; pointer,
+camera, gesture, and per-frame GPU state do not flow through React. Immutable external snapshots
+cross into React through `useSyncExternalStore`.
+
+The viewer and editor share GPU-independent Quake-family camera vectors and the same on-demand
+`AnimationFrameScheduler`. The development viewer also uses the package-level `SnapshotStore` for
+coarse application state. The standalone viewer owns compiled BSP spawn and fallback camera policy,
+including Quake and GoldSrc eye heights; the editor's compiled preview delegates to that policy.
+Editable source rendering stays in `worldview-editor` because its four cameras, picking IDs, tool
+overlays, and mutable source geometry have different ownership from the BSP/lightmap renderer.
+
 ## Editor architecture
 
-The application entrypoint is composition-only. Presenters own project/files, commands, tools,
-inspectors, materials, organization, build UI, dialogs, WebMCP registration, and session-to-view
-presentation.
+The application entrypoint is composition-only. React shell components are split into chrome,
+dialogs, workspace, and focused inspector panels. Presenters currently own project/files, commands,
+tools, inspector mutations, materials, organization, build UI, dialogs, WebMCP registration, and
+session-to-view presentation. Those imperative presenter seams are compatibility boundaries for
+incremental store-backed component migration, not a second UI framework.
 
 `EditorSession` is the singular transaction and history coordinator. Focused DOM-free domains own
 selection/view state, object transforms, topology, geometry/CSG, entities/materials, and
@@ -220,14 +235,14 @@ into canonical `.map` geometry or the portable project manifest.
 
 ## Delivery milestones
 
-| Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                  |
-| --------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Architecture hardening         | In progress | Composition root, domain modules, split document/CSS, and the 1,000-line ceiling are delivered; composed viewport controllers, scene contributions, narrow presenter ports, and stronger architecture checks remain |
-| 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                 |
-| 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                   |
-| 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                  |
-| 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                             |
-| 6. After dependable solo          | Deferred    | Collision-aware editor walk mode first; then the explicitly deferred features listed under Product boundaries                                                                                                       |
+| Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                                                                                                  |
+| --------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Architecture hardening         | In progress | React app shells, composition roots, shared frame/camera runtime, domain modules, split document/CSS/TSX, and the 1,000-line ceiling are delivered; composed viewport controllers, scene contributions, narrow presenter ports, and migration of remaining imperative inspector presentation remain |
+| 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                                                                                                 |
+| 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                                                                                                   |
+| 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                                                                                                  |
+| 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                                                                                                             |
+| 6. After dependable solo          | Deferred    | Collision-aware editor walk mode first; then the explicitly deferred features listed under Product boundaries                                                                                                                                                                                       |
 
 Worker parsing/catalog work and list virtualization remain available optimizations rather than
 mandatory architecture: the fixed scale gate passes without them, so the roadmap's “as required”

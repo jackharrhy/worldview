@@ -1,5 +1,7 @@
 import {
+  cameraRight,
   copyWaveChannel,
+  perspectiveForward,
   traceWorldSegment,
   WorldviewError,
   type AmbientSoundModulation,
@@ -107,14 +109,9 @@ export function ambientPlaybackState(
 }
 
 function cameraAxes(camera: CameraState): { forward: Vec3Tuple; right: Vec3Tuple } {
-  const horizontal = Math.cos(camera.pitch);
   return {
-    forward: [
-      Math.cos(camera.yaw) * horizontal,
-      Math.sin(camera.yaw) * horizontal,
-      Math.sin(camera.pitch),
-    ],
-    right: [Math.sin(camera.yaw), -Math.cos(camera.yaw), 0],
+    forward: perspectiveForward(camera.yaw, camera.pitch),
+    right: cameraRight(camera.yaw),
   };
 }
 

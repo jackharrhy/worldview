@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    "jsx": "react-jsx",
     "types": ["@webgpu/types", "node"]
   },
   "include": ["src", "local-fixtures.ts", "local-fixtures.test.ts", "vite.config.ts"]

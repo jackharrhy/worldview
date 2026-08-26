@@ -1,4 +1,5 @@
 import { tracePlayerHull, type PlayerHullTraceResult } from './collision.js';
+import { cameraRight } from './camera.js';
 import type { ParsedWorld, Vec3Tuple } from './types.js';
 
 type MutableVec3 = [number, number, number];
@@ -116,7 +117,7 @@ function wishVelocity(
   const forwardAmount = Math.min(1, Math.max(-1, input.forward));
   const sideAmount = Math.min(1, Math.max(-1, input.side));
   const forward = [Math.cos(input.yaw), Math.sin(input.yaw), 0] as const;
-  const right = [Math.sin(input.yaw), -Math.cos(input.yaw), 0] as const;
+  const right = cameraRight(input.yaw);
   let x = forward[0] * forwardAmount + right[0] * sideAmount;
   let y = forward[1] * forwardAmount + right[1] * sideAmount;
   const magnitude = Math.hypot(x, y);

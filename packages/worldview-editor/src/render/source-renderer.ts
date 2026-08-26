@@ -20,6 +20,7 @@ import {
   type MapDocument,
   type Vec3,
 } from '../core/index.js';
+import { perspectiveForward } from '@jackharrhy/worldview/core';
 import type {
   EditorSourceRendererOptions,
   EditorSpriteMaterial,
@@ -42,7 +43,6 @@ import {
   encodedTopologyPoint,
   inferClipPlane,
   isTransformTool,
-  normalize,
   topologyHandleBounds,
   topologyHandleKey,
   topologyHandleVertices,
@@ -893,11 +893,7 @@ export class EditorSourceRenderer {
           : this.lastClipViewport === 'yz'
             ? ([-1, 0, 0] as const)
             : viewport?.camera
-              ? normalize([
-                  Math.cos(viewport.camera.yaw) * Math.cos(viewport.camera.pitch),
-                  Math.sin(viewport.camera.yaw) * Math.cos(viewport.camera.pitch),
-                  Math.sin(viewport.camera.pitch),
-                ])
+              ? perspectiveForward(viewport.camera.yaw, viewport.camera.pitch)
               : ([0, 1, 0] as const);
     this.clipPlanePoints = inferClipPlane(this.clipPoints, direction);
     this.rebuildScene();

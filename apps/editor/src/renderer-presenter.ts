@@ -23,10 +23,10 @@ import {
   type EditorTransformDragEvent,
   type EditorTransformPivotDragEvent,
 } from '@jackharrhy/worldview-editor';
+import { AnimationFrameScheduler } from '@jackharrhy/worldview';
 
 import type { EditorApplication } from './editor-application.js';
 import { required } from './editor-elements.js';
-import { OnDemandRenderScheduler } from './render-scheduler.js';
 
 export class RendererPresenter {
   public constructor(private readonly app: EditorApplication) {}
@@ -36,7 +36,7 @@ export class RendererPresenter {
     const state = app.state;
     const ui = app.ui;
     try {
-      const renderScheduler = new OnDemandRenderScheduler();
+      const renderScheduler = new AnimationFrameScheduler();
       const renderer = await EditorSourceRenderer.create({
         canvases: ui.canvases,
         document: state.session.document,
@@ -635,6 +635,7 @@ export class RendererPresenter {
       });
       state.renderer = renderer;
       renderScheduler.setTarget(renderer);
+      renderScheduler.start();
       ui.statusMessage.textContent = 'Source renderer ready. Select a brush in any viewport.';
     } catch (error) {
       ui.viewportError.hidden = false;

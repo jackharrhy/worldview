@@ -1,12 +1,8 @@
 import {
-  brushesInDocument,
-  deriveBrush,
   parseLeakPath,
   parsePortalFile,
   type EditorBrushDragEvent,
   type MapCompileResult,
-  type MapDocument,
-  type Vec3,
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorApplication } from './editor-application.js';
@@ -41,58 +37,6 @@ export class BuildPresenter {
   public setCompileState(label: string, state: 'offline' | 'ready' | 'busy' | 'stale'): void {
     this.ui.compileState.textContent = label;
     this.ui.compileState.dataset.state = state;
-  }
-
-  public compiledPreviewCamera(document: MapDocument): {
-    readonly position: Vec3;
-    readonly yaw: number;
-    readonly pitch: number;
-  } {
-    const playerStart = document.entities.find((entity) => {
-      const classname = entity.properties.classname?.toLowerCase();
-      return classname === 'info_player_start' || classname === 'info_player_deathmatch';
-    });
-    const origin = playerStart?.properties.origin?.trim().split(/\s+/).map(Number);
-    if (origin?.length === 3 && origin.every(Number.isFinite)) {
-      const yawDegrees = Number(playerStart?.properties.angle ?? 0);
-      return {
-        position: [origin[0]!, origin[1]!, origin[2]! + 22],
-        yaw: (Number.isFinite(yawDegrees) ? yawDegrees : 0) * (Math.PI / 180),
-        pitch: -0.12,
-      };
-    }
-    const bounds = brushesInDocument(document)
-      .map((brush) => deriveBrush(brush).bounds)
-      .filter((candidate) => candidate !== null);
-    if (bounds.length === 0) return { position: [-256, -256, 192], yaw: Math.PI / 4, pitch: -0.35 };
-    const minimum: [number, number, number] = [...bounds[0]!.min];
-    const maximum: [number, number, number] = [...bounds[0]!.max];
-    for (const bound of bounds.slice(1)) {
-      for (let axis = 0; axis < 3; axis += 1) {
-        minimum[axis] = Math.min(minimum[axis]!, bound.min[axis]!);
-        maximum[axis] = Math.max(maximum[axis]!, bound.max[axis]!);
-      }
-    }
-    const center: Vec3 = [
-      (minimum[0] + maximum[0]) / 2,
-      (minimum[1] + maximum[1]) / 2,
-      (minimum[2] + maximum[2]) / 2,
-    ];
-    const distance = Math.max(
-      maximum[0] - minimum[0],
-      maximum[1] - minimum[1],
-      maximum[2] - minimum[2],
-      128,
-    );
-    return {
-      position: [
-        center[0] - distance * 1.8,
-        center[1] - distance * 1.8,
-        center[2] + distance * 1.1,
-      ],
-      yaw: Math.PI / 4,
-      pitch: -0.38,
-    };
   }
 
   public showCompiledPreview(show: boolean): void {
@@ -237,7 +181,6 @@ export class BuildPresenter {
       textureFiltering: 'nearest',
       clearColor: [0.105, 0.12, 0.145, 1],
     });
-    this.state.compiledViewer.setCamera(this.compiledPreviewCamera(this.state.session.document));
     this.state.compiledRevision = result.sourceDocumentRevision;
     this.ui.togglePreviewButton.disabled = false;
     this.showCompiledPreview(true);

@@ -1,6 +1,11 @@
 import { mat4 } from 'wgpu-matrix';
 
-import { entityValue, type ParsedWorld, type Vec3Tuple } from '../core/index.js';
+import {
+  entityValue,
+  perspectiveForward,
+  type ParsedWorld,
+  type Vec3Tuple,
+} from '../core/index.js';
 import type { CameraState, CameraUpdate } from './types.js';
 
 function parseOrigin(value: string | undefined): Vec3Tuple | undefined {
@@ -81,12 +86,7 @@ export class WorldCamera {
 
   public projectionView(aspect: number): Float32Array {
     const { position, yaw, pitch, fieldOfView } = this.state;
-    const horizontal = Math.cos(pitch);
-    const forward: Vec3Tuple = [
-      Math.cos(yaw) * horizontal,
-      Math.sin(yaw) * horizontal,
-      Math.sin(pitch),
-    ];
+    const forward = perspectiveForward(yaw, pitch);
     const target: Vec3Tuple = [
       position[0] + forward[0],
       position[1] + forward[1],

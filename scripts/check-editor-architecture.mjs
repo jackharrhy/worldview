@@ -12,8 +12,12 @@ async function sourceFiles(directory) {
     entries.map(async (entry) => {
       const target = path.join(directory, entry.name);
       if (entry.isDirectory()) return sourceFiles(target);
-      if (!entry.isFile() || (!target.endsWith('.ts') && !target.endsWith('.css'))) return [];
-      if (/\.(?:test|spec)\.ts$|\.d\.ts$/.test(target)) return [];
+      if (
+        !entry.isFile() ||
+        (!target.endsWith('.ts') && !target.endsWith('.tsx') && !target.endsWith('.css'))
+      )
+        return [];
+      if (/\.(?:test|spec)\.tsx?$|\.d\.ts$/.test(target)) return [];
       return [target];
     }),
   );
@@ -34,7 +38,7 @@ for (const file of files) {
   }
 }
 
-const compositionRoot = 'apps/editor/src/main.ts';
+const compositionRoot = 'apps/editor/src/main.tsx';
 const compositionRootLines = physicalLines(await readFile(compositionRoot, 'utf8'));
 if (compositionRootLines > MAX_COMPOSITION_ROOT_LINES) {
   violations.push(

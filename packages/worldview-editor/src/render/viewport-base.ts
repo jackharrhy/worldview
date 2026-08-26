@@ -1,4 +1,5 @@
 import { mat4 } from 'wgpu-matrix';
+import { perspectiveForward as forwardFromAngles } from '@jackharrhy/worldview/core';
 
 import {
   isBrushSelected,
@@ -137,11 +138,7 @@ export abstract class ViewportBase {
   }
 
   protected perspectiveForward(): Vec3 {
-    return normalize([
-      Math.cos(this.state.yaw) * Math.cos(this.state.pitch),
-      Math.sin(this.state.yaw) * Math.cos(this.state.pitch),
-      Math.sin(this.state.pitch),
-    ]);
+    return forwardFromAngles(this.state.yaw, this.state.pitch);
   }
 
   protected perspectiveEye(): Vec3 {
@@ -358,11 +355,7 @@ export abstract class ViewportBase {
     let up: Vec3;
     let projection: Float32Array;
     if (this.kind === 'perspective') {
-      const forward: Vec3 = [
-        Math.cos(this.state.yaw) * Math.cos(this.state.pitch),
-        Math.sin(this.state.yaw) * Math.cos(this.state.pitch),
-        Math.sin(this.state.pitch),
-      ];
+      const forward = forwardFromAngles(this.state.yaw, this.state.pitch);
       target = this.state.center;
       eye = addScaled(target, forward, -this.state.distance);
       up = [0, 0, 1];

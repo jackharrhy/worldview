@@ -26,7 +26,9 @@ body,
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -155,45 +157,182 @@ input {
 }
 
 .control-dock {
-  --tp-base-background-color: rgb(29 31 28 / 96%);
-  --tp-base-border-radius: 3px;
-  --tp-base-font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
-  --tp-base-shadow-color: rgb(13 14 12 / 34%);
-  --tp-blade-border-radius: 2px;
-  --tp-blade-value-width: 160px;
-  --tp-button-background-color: #9db272;
-  --tp-button-background-color-active: #bdd18f;
-  --tp-button-background-color-focus: #b0c582;
-  --tp-button-background-color-hover: #aabd7c;
-  --tp-button-foreground-color: #1c2414;
-  --tp-container-background-color: rgb(194 204 183 / 8%);
-  --tp-container-background-color-active: rgb(194 204 183 / 18%);
-  --tp-container-background-color-focus: rgb(194 204 183 / 14%);
-  --tp-container-background-color-hover: rgb(194 204 183 / 11%);
-  --tp-container-foreground-color: #e1e5da;
-  --tp-groove-foreground-color: rgb(194 204 183 / 12%);
-  --tp-input-background-color: rgb(8 9 8 / 38%);
-  --tp-input-background-color-active: rgb(8 9 8 / 62%);
-  --tp-input-background-color-focus: rgb(8 9 8 / 54%);
-  --tp-input-background-color-hover: rgb(8 9 8 / 46%);
-  --tp-input-foreground-color: #e8ebe1;
-  --tp-label-foreground-color: #acb2a5;
-  --tp-monitor-background-color: rgb(8 9 8 / 34%);
-  --tp-monitor-foreground-color: #c5cabf;
   position: absolute;
   top: 0.75rem;
   right: 0.75rem;
   z-index: 2;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   width: 20rem;
   max-height: calc(100dvh - 1.5rem);
+  overflow: hidden;
+  border: 1px solid rgb(194 204 183 / 16%);
+  border-radius: 4px;
+  color: #e1e5da;
+  background: rgb(29 31 28 / 96%);
+  box-shadow: 0 8px 30px rgb(13 14 12 / 34%);
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.6875rem;
 }
 
-.control-dock > .tp-dfwv {
-  position: static;
-  width: 100%;
-  max-height: calc(100dvh - 1.5rem);
+.control-dock__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  min-height: 2rem;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid rgb(194 204 183 / 12%);
+}
+
+.control-dock__header strong {
+  color: #f0f2ec;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.control-dock__header span {
+  color: #858c80;
+  font-size: 0.625rem;
+}
+
+.control-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid rgb(194 204 183 / 12%);
+}
+
+.control-tabs button,
+.control-dock button {
+  min-height: 1.75rem;
+  border: 0;
+  border-radius: 2px;
+  color: #1c2414;
+  background: #9db272;
+  cursor: pointer;
+}
+
+.control-tabs button {
+  border-radius: 0;
+  color: #aeb4a8;
+  background: transparent;
+}
+
+.control-tabs button[aria-pressed='true'] {
+  color: #eff2e9;
+  background: rgb(194 204 183 / 12%);
+  box-shadow: inset 0 -2px #a5bd78;
+}
+
+.control-dock button:hover:not(:disabled) {
+  background: #aabd7c;
+}
+
+.control-tabs button:hover:not(:disabled) {
+  color: #eff2e9;
+  background: rgb(194 204 183 / 10%);
+}
+
+.control-dock button:focus-visible,
+.control-dock input:focus-visible,
+.control-dock select:focus-visible,
+.control-dock textarea:focus-visible {
+  outline: 2px solid #b0c582;
+  outline-offset: -1px;
+}
+
+.control-dock button:disabled,
+.control-dock input:disabled,
+.control-dock select:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.control-dock__scroll {
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+}
+
+.control-page {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem;
+}
+
+.viewer-field {
+  display: grid;
+  grid-template-columns: minmax(5.75rem, 0.8fr) minmax(0, 1.25fr);
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+  color: #acb2a5;
+}
+
+.viewer-field input,
+.viewer-field select,
+.viewer-field textarea {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 0.25rem 0.35rem;
+  color: #e8ebe1;
+  background: rgb(8 9 8 / 38%);
+}
+
+.viewer-field textarea {
+  resize: vertical;
+  line-height: 1.35;
+}
+
+.viewer-field input[readonly],
+.viewer-field textarea[readonly] {
+  color: #c5cabf;
+  background: rgb(8 9 8 / 26%);
+}
+
+.viewer-field--checkbox input {
+  justify-self: end;
+  width: 1rem;
+  height: 1rem;
+  accent-color: #9db272;
+}
+
+.viewer-section {
+  display: grid;
+  gap: 0.35rem;
+  border-radius: 2px;
+  background: rgb(194 204 183 / 6%);
+}
+
+.viewer-section__toggle.viewer-section__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem;
+  padding: 0.25rem 0.45rem;
+  color: #e1e5da;
+  background: rgb(194 204 183 / 7%);
+  text-align: left;
+}
+
+.viewer-section__toggle > span {
+  width: 0.75rem;
+  color: #9db272;
+  text-align: center;
+}
+
+.viewer-section__body {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0 0.45rem 0.45rem;
+}
+
+.viewer-button-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
 }
 
 .visually-hidden {
@@ -212,27 +351,32 @@ input {
   }
 
   .control-dock {
-    --tp-base-background-color: rgb(238 240 234 / 97%);
-    --tp-base-shadow-color: rgb(37 40 34 / 22%);
-    --tp-button-background-color: #667d43;
-    --tp-button-background-color-active: #425a24;
-    --tp-button-background-color-focus: #4e672d;
-    --tp-button-background-color-hover: #597238;
-    --tp-button-foreground-color: #f2f4ee;
-    --tp-container-background-color: rgb(65 72 58 / 8%);
-    --tp-container-background-color-active: rgb(65 72 58 / 18%);
-    --tp-container-background-color-focus: rgb(65 72 58 / 14%);
-    --tp-container-background-color-hover: rgb(65 72 58 / 11%);
-    --tp-container-foreground-color: #30352c;
-    --tp-groove-foreground-color: rgb(65 72 58 / 13%);
-    --tp-input-background-color: rgb(54 61 48 / 10%);
-    --tp-input-background-color-active: rgb(54 61 48 / 20%);
-    --tp-input-background-color-focus: rgb(54 61 48 / 17%);
-    --tp-input-background-color-hover: rgb(54 61 48 / 14%);
-    --tp-input-foreground-color: #252a22;
-    --tp-label-foreground-color: #5b6255;
-    --tp-monitor-background-color: rgb(54 61 48 / 8%);
-    --tp-monitor-foreground-color: #4b5246;
+    border-color: rgb(65 72 58 / 18%);
+    color: #30352c;
+    background: rgb(238 240 234 / 97%);
+    box-shadow: 0 8px 30px rgb(37 40 34 / 22%);
+  }
+
+  .control-dock__header strong,
+  .control-tabs button[aria-pressed='true'],
+  .viewer-section__toggle.viewer-section__toggle {
+    color: #30352c;
+  }
+
+  .control-dock button:not(.viewer-section__toggle, [aria-pressed]) {
+    color: #f2f4ee;
+    background: #667d43;
+  }
+
+  .viewer-field {
+    color: #5b6255;
+  }
+
+  .viewer-field input,
+  .viewer-field select,
+  .viewer-field textarea {
+    color: #252a22;
+    background: rgb(54 61 48 / 10%);
   }
 }
 
@@ -253,10 +397,6 @@ input {
     bottom: 0.5rem;
     left: 0.5rem;
     width: auto;
-    max-height: min(47dvh, 28rem);
-  }
-
-  .control-dock > .tp-dfwv {
     max-height: min(47dvh, 28rem);
   }
 }

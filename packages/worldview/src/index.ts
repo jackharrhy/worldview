@@ -13,6 +13,8 @@ export {
   type WorldviewErrorCode,
 } from './core/index.js';
 export { createWorldview } from './viewer/viewer.js';
+export { AnimationFrameScheduler, type AnimationFrameTarget } from './runtime/frame-scheduler.js';
+export { SnapshotStore, type SnapshotStoreListener } from './runtime/snapshot-store.js';
 export type {
   BinarySource,
   AudioChangeDetail,

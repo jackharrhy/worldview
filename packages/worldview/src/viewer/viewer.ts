@@ -1,6 +1,7 @@
 import tgpu, { type TgpuRoot } from 'typegpu';
 
 import { planOverview, WorldviewError, type ParsedWorld } from '../core/index.js';
+import { AnimationFrameScheduler } from '../runtime/frame-scheduler.js';
 import { TypeGpuWorldRenderer } from '../render/renderer.js';
 import {
   assertWalkabilityCompatible,
@@ -61,6 +62,7 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
   private readonly textureFiltering;
   private readonly creationSignal: AbortSignal | undefined;
   private readonly audioRuntime: WorldAudio;
+  private readonly frameScheduler = new AnimationFrameScheduler();
   private readonly enableAudioOnInteraction: boolean;
   private renderer: TypeGpuWorldRenderer | null = null;
   private parsedWorld: ParsedWorld | null = null;
@@ -71,7 +73,6 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
   private walkabilityMap: WalkabilityMap | null = null;
   private walkabilityVisibleValue = false;
   private loadGeneration = 0;
-  private animationFrame = 0;
   private lastFrameTime = 0;
   private visible = true;
   private isRunning = false;
@@ -140,9 +141,15 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
     this.intersectionObserver = new IntersectionObserver((entries) => {
       this.visible = entries.at(-1)?.isIntersecting ?? true;
       this.updateAudioActiveState();
-      if (this.visible) this.requestFrame();
+      if (this.visible && this.isRunning) {
+        this.lastFrameTime = performance.now();
+        this.frameScheduler.start();
+      } else {
+        this.frameScheduler.stop();
+      }
     });
     this.intersectionObserver.observe(this.canvas);
+    this.frameScheduler.setTarget({ render: this.renderFrame });
     void root.device.lost.then((info) => {
       if (this.disposed) return;
       const error = new WorldviewError(
@@ -319,15 +326,15 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
     if (this.isRunning) return;
     this.isRunning = true;
     this.lastFrameTime = performance.now();
+    this.frameScheduler.start();
     this.updateAudioActiveState();
     this.requestFrame();
   }
 
   public stop(): void {
     this.isRunning = false;
+    this.frameScheduler.stop();
     this.updateAudioActiveState();
-    if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
-    this.animationFrame = 0;
   }
 
   public render(): void {
@@ -528,6 +535,7 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.frameScheduler.dispose();
     this.loadGeneration += 1;
     this.loadController?.abort(new DOMException('Worldview viewer disposed', 'AbortError'));
     this.loadController = null;
@@ -586,26 +594,17 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
   }
 
   private requestFrame(): void {
-    if (
-      this.disposed ||
-      !this.isRunning ||
-      !this.visible ||
-      !this.canvas.isConnected ||
-      this.animationFrame
-    ) {
-      return;
-    }
-    this.animationFrame = requestAnimationFrame(this.onFrame);
+    if (this.disposed || !this.isRunning || !this.visible || !this.canvas.isConnected) return;
+    if (this.frameScheduler.request()) this.lastFrameTime = performance.now();
   }
 
-  private readonly onFrame = (time: number): void => {
-    this.animationFrame = 0;
-    if (!this.isRunning || !this.visible || this.disposed) return;
+  private readonly renderFrame = (time: number): boolean => {
+    if (!this.isRunning || !this.visible || this.disposed || !this.canvas.isConnected) return false;
     const delta = Math.min(0.1, Math.max(0, (time - this.lastFrameTime) / 1000));
     this.lastFrameTime = time;
     const moved = this.controls?.update(this.cameraController, delta) ?? false;
     this.render();
-    if (moved || this.controls?.active || this.renderer?.continuouslyAnimated) this.requestFrame();
+    return Boolean(moved || this.controls?.active || this.renderer?.continuouslyAnimated);
   };
 
   private updateAudioActiveState(): void {

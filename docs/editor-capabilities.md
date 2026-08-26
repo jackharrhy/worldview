@@ -61,9 +61,9 @@ contents and do not belong in `THIRD_PARTY_NOTICES.md`.
 
 ## Workspace
 
-- `apps/viewer`: full-screen Vite and vanilla TypeScript viewer with a Tweakpane control dock.
+- `apps/viewer`: full-screen Vite and React viewer with an accessible native control dock.
 - `packages/worldview`: ESM package published as `@jackharrhy/worldview`.
-- `apps/editor`: browser authoring shell with synchronized perspective, XY, XZ, and YZ views.
+- `apps/editor`: React browser authoring shell with synchronized perspective, XY, XZ, and YZ views.
 - `apps/compiler-service`: local native compile adapter for explicitly configured ericw-tools
   executables; it is not an Internet-facing sandbox.
 - `packages/worldview-editor`: DOM-free source-map document, geometry, command, tool, and editor
@@ -173,9 +173,22 @@ uses TrenchBroom's behavior and ownership boundaries as an oracle without adapti
 History stack ownership and directional entry application are isolated from `EditorSession`, so
 undo and redo use one mutation path instead of mirrored command trees. Renderer scene-buffer
 assembly and reusable viewport geometry live outside the input-heavy viewport controller, while the
-browser application keeps its static shell and clipboard workflow outside the command coordinator.
+browser application keeps its React shell and clipboard workflow outside the command coordinator.
 These are internal boundaries: the public editor entrypoints and authored map data flow are
 unchanged.
+
+Both application shells are React composition roots over framework-independent packages. The
+viewer bridges an immutable package-level snapshot store with `useSyncExternalStore`; React owns
+its load/map controls and readouts but never per-frame camera or GPU state. The editor renders its
+chrome, dialogs, viewports, and inspector panels as focused TSX components, then binds the existing
+presenters while their state surfaces migrate incrementally. Canvas identity remains stable for the
+lifetime of either application.
+
+Both render paths use the package's on-demand animation-frame scheduler and Quake-family camera
+vector helpers. The editor's compiled BSP preview uses the standalone viewer's version-aware spawn
+camera directly instead of maintaining a second Quake-only approximation. Editable `.map` scene
+rendering remains editor-specific because it owns four views, picking, tool geometry, and source
+revisions rather than compiled visibility, lightmaps, and audio.
 The application chrome uses one icon family and fixed-size grouped actions so modes and common
 commands remain scannable without competing with the viewports. Context-bearing map, grid, and
 build-profile controls stay textual. Icon actions retain accessible names, tooltips, keyboard
