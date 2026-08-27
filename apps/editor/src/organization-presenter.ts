@@ -57,25 +57,20 @@ export class OrganizationPresenter {
     }
     const editableBrushes = new Set(group.brushIds);
     const editableEntities = new Set(group.pointEntityIds);
+    const lockedBrushIds = new Set(base.lockedBrushIds);
+    for (const brush of brushesInDocument(document)) {
+      if (!editableBrushes.has(brush.id)) lockedBrushIds.add(brush.id);
+    }
+    const lockedEntityIds = new Set(base.lockedEntityIds);
+    for (const entity of document.entities) {
+      if (pointEntityBounds(entity) !== null && !editableEntities.has(entity.id)) {
+        lockedEntityIds.add(entity.id);
+      }
+    }
     return {
       ...base,
-      lockedBrushIds: [
-        ...new Set([
-          ...base.lockedBrushIds,
-          ...brushesInDocument(document)
-            .map((brush) => brush.id)
-            .filter((candidateBrushId) => !editableBrushes.has(candidateBrushId)),
-        ]),
-      ],
-      lockedEntityIds: [
-        ...new Set([
-          ...base.lockedEntityIds,
-          ...document.entities
-            .filter((entity) => pointEntityBounds(entity) !== null)
-            .map((entity) => entity.id)
-            .filter((entityId) => !editableEntities.has(entityId)),
-        ]),
-      ],
+      lockedBrushIds: [...lockedBrushIds],
+      lockedEntityIds: [...lockedEntityIds],
     };
   }
 
@@ -214,6 +209,7 @@ export class OrganizationPresenter {
     this.state.layerPanelSignature = signature;
     this.ui.layerList.replaceChildren();
 
+    const activeLayerId = this.state.session.activeLayerId;
     for (const layer of layers) {
       const row = window.document.createElement('div');
       row.className = 'layer-row';
@@ -235,16 +231,11 @@ export class OrganizationPresenter {
       const activeButton = window.document.createElement('button');
       activeButton.type = 'button';
       activeButton.className = 'layer-active';
-      activeButton.textContent = layer.id === this.state.session.activeLayerId ? 'A' : '·';
-      activeButton.setAttribute(
-        'aria-pressed',
-        String(layer.id === this.state.session.activeLayerId),
-      );
+      activeButton.textContent = layer.id === activeLayerId ? 'A' : '·';
+      activeButton.setAttribute('aria-pressed', String(layer.id === activeLayerId));
       activeButton.setAttribute('aria-label', `Make ${layer.name} active`);
       activeButton.title =
-        layer.id === this.state.session.activeLayerId
-          ? 'Active insertion layer'
-          : 'Make active layer';
+        layer.id === activeLayerId ? 'Active insertion layer' : 'Make active layer';
       activeButton.addEventListener('click', () => {
         if (this.state.openGroupId) this.closeEditorGroup(false);
         this.state.selectedLayerId = layer.id;

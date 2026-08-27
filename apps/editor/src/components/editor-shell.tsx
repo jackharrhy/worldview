@@ -15,7 +15,7 @@ export function EditorShell({ shellState, onReady }: EditorShellProps) {
     <main ref={onReady} className="editor-shell">
       <EditorChrome shellState={shellState} />
       <EditorDialogs />
-      <EditorWorkspace />
+      <EditorWorkspace shellState={shellState} />
       <EditorAuxiliary shellState={shellState} />
     </main>
   );

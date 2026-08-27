@@ -183,11 +183,11 @@ its load/map controls and readouts but never per-frame camera or GPU state. Pack
 snapshot readers isolate the 100 ms camera readout from the rest of the control tree. User-initiated
 async commands use React Query mutations. The editor renders its chrome, dialogs, viewports, and
 inspector panels as focused TSX components, then binds the existing presenters while their state
-surfaces migrate incrementally. Document name, live status, compiler state, and pointer context
-already flow through narrow immutable stores and `useSyncExternalStore`; the presenters reach them
-through typed ports instead of mutating React-owned nodes. Both roots run in Strict Mode, and stable
-callback refs own external canvas/application startup without component effects. Canvas identity
-remains stable for the lifetime of either application.
+surfaces migrate incrementally. Document name, live status, compiler state, pointer context, and the
+read-only document summary already flow through narrow immutable stores and `useSyncExternalStore`;
+the presenters reach them through typed ports instead of mutating React-owned nodes. Both roots run
+in Strict Mode, and stable callback refs own external canvas/application startup without component
+effects. Canvas identity remains stable for the lifetime of either application.
 
 Both render paths use the package's on-demand animation-frame scheduler and Quake-family camera
 vector helpers. The editor's compiled BSP preview uses the standalone viewer's version-aware spawn

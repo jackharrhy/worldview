@@ -158,18 +158,19 @@ export class ProjectPresenter {
 
   public refreshEntityDefinitionPresets(): void {
     const definitions = new Map(
-      [
-        ...BUILTIN_POINT_ENTITY_DEFINITIONS,
-        ...this.state.entityDefinitions
-          .all()
-          .filter(({ kind }) => kind === 'point')
-          .map((definition) => ({
-            classname: definition.classname,
-            label: definition.label,
-            bounds: definition.bounds ?? { min: [-16, -16, -16], max: [16, 16, 16] },
-          })),
-      ].map((definition) => [definition.classname.toLowerCase(), definition]),
+      BUILTIN_POINT_ENTITY_DEFINITIONS.map((definition) => [
+        definition.classname.toLowerCase(),
+        definition,
+      ]),
     );
+    for (const definition of this.state.entityDefinitions.all()) {
+      if (definition.kind !== 'point') continue;
+      definitions.set(definition.classname.toLowerCase(), {
+        classname: definition.classname,
+        label: definition.label,
+        bounds: definition.bounds ?? { min: [-16, -16, -16], max: [16, 16, 16] },
+      });
+    }
     const selectedClassname = this.ui.pointEntityClassname.value.trim().toLowerCase();
     this.ui.pointEntityPreset.replaceChildren(
       ...[...definitions.values()]
@@ -201,8 +202,13 @@ export class ProjectPresenter {
       stagedPalette = bytes.slice(0, 768);
     }
     const resourceMessages: string[] = [];
-    for (const path of workspace.manifest.resources.wads) {
-      const data = await (await projectFile(workspace.handle, path)).arrayBuffer();
+    const wadPaths = workspace.manifest.resources.wads;
+    const wadData = await Promise.all(
+      wadPaths.map(async (path) => (await projectFile(workspace.handle, path)).arrayBuffer()),
+    );
+    for (const [index, path] of wadPaths.entries()) {
+      const data = wadData[index];
+      if (!data) throw new Error(`${path} could not be read`);
       const result = stagedCatalog.importWad(path, data, stagedPalette);
       stagedWads.set(path, data);
       resourceMessages.push(`${path}: ${result.added} added, ${result.replaced} replaced`);

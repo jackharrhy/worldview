@@ -183,35 +183,55 @@ export async function loadProjectEntityDefinitions(
 export async function loadProjectSprites(
   workspace: WorldviewProjectWorkspace,
 ): Promise<ProjectSprites> {
+  const roots = await Promise.all(
+    workspace.manifest.resources.spriteRoots.map(async (root): Promise<ProjectSprites> => {
+      const rootSprites: EditorSpriteMaterial[] = [];
+      const rootDiagnostics: string[] = [];
+      try {
+        const prefix = root === '.' ? '' : root;
+        const directory = await directoryAt(workspace.handle, prefix ? prefix.split('/') : []);
+        const files = await spriteFilesInDirectory(directory, prefix);
+        const parsed = await Promise.all(
+          files.map(async ({ path, file }) => {
+            try {
+              const sprite = parseGoldSrcSprite(await file.arrayBuffer());
+              const frame = sprite.frames[0]?.frames[0];
+              if (!frame) throw new Error('sprite has no displayable frame');
+              return {
+                sprite: {
+                  path,
+                  material: {
+                    name: `__worldview_sprite__${path.toLowerCase()}`,
+                    sourceName: path,
+                    width: frame.width,
+                    height: frame.height,
+                    rgba: frame.rgba,
+                    alphaTest: true,
+                  },
+                } satisfies EditorSpriteMaterial,
+              };
+            } catch (error) {
+              return {
+                diagnostic: `${path}: ${error instanceof Error ? error.message : String(error)}`,
+              };
+            }
+          }),
+        );
+        for (const result of parsed) {
+          if ('sprite' in result) rootSprites.push(result.sprite);
+          else rootDiagnostics.push(result.diagnostic);
+        }
+      } catch (error) {
+        rootDiagnostics.push(`${root}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return { sprites: rootSprites, diagnostics: rootDiagnostics };
+    }),
+  );
   const sprites: EditorSpriteMaterial[] = [];
   const diagnostics: string[] = [];
-  for (const root of workspace.manifest.resources.spriteRoots) {
-    try {
-      const prefix = root === '.' ? '' : root;
-      const directory = await directoryAt(workspace.handle, prefix ? prefix.split('/') : []);
-      for (const { path, file } of await spriteFilesInDirectory(directory, prefix)) {
-        try {
-          const sprite = parseGoldSrcSprite(await file.arrayBuffer());
-          const frame = sprite.frames[0]?.frames[0];
-          if (!frame) throw new Error('sprite has no displayable frame');
-          sprites.push({
-            path,
-            material: {
-              name: `__worldview_sprite__${path.toLowerCase()}`,
-              sourceName: path,
-              width: frame.width,
-              height: frame.height,
-              rgba: frame.rgba,
-              alphaTest: true,
-            },
-          });
-        } catch (error) {
-          diagnostics.push(`${path}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    } catch (error) {
-      diagnostics.push(`${root}: ${error instanceof Error ? error.message : String(error)}`);
-    }
+  for (const root of roots) {
+    sprites.push(...root.sprites);
+    diagnostics.push(...root.diagnostics);
   }
   return { sprites, diagnostics };
 }

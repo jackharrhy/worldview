@@ -118,12 +118,13 @@ export class EntityPresenter {
     if (!entity) return;
 
     const groups = deriveEditorGroups(mapDocument);
+    const groupsById = new Map(groups.map((group) => [group.id, group]));
     const openGroup = groups.find((group) => group.id === this.state.openGroupId);
     let containingGroup =
       groups.find((group) => group.id === entity.properties['_tb_group']) ?? null;
     let insideOpenGroup = containingGroup?.id === openGroup?.id;
     while (!insideOpenGroup && containingGroup?.parentGroupId) {
-      containingGroup = groups.find((group) => group.id === containingGroup!.parentGroupId) ?? null;
+      containingGroup = groupsById.get(containingGroup.parentGroupId) ?? null;
       insideOpenGroup = containingGroup?.id === openGroup?.id;
     }
     const canProtectProperties = Boolean(

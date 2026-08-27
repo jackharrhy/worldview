@@ -15,6 +15,7 @@ export function bindEditorElements(shellState: EditorShellState) {
   const viewportContextMenu = required<HTMLElement>('#viewport-context-menu');
   const statusMessage = shellState.statusMessage;
   const cameraPointerContext = shellState.pointerContext;
+  const documentSummary = shellState.documentSummary;
   const editorShell = required<HTMLElement>('.editor-shell');
   const issueBrowser = required<HTMLElement>('#issue-browser');
   const issueSummary = required<HTMLElement>('#issue-summary');
@@ -202,13 +203,6 @@ export function bindEditorElements(shellState: EditorShellState) {
   const applyTextureTransformButton = required<HTMLButtonElement>(
     '[data-action="apply-texture-transform"]',
   );
-  const documentRevision = required<HTMLElement>('#document-revision');
-  const entityCount = required<HTMLElement>('#entity-count');
-  const brushCount = required<HTMLElement>('#brush-count');
-  const groupCount = required<HTMLElement>('#group-count');
-  const hiddenObjectCount = required<HTMLElement>('#hidden-object-count');
-  const lockedObjectCount = required<HTMLElement>('#locked-object-count');
-  const geometryState = required<HTMLElement>('#geometry-state');
   const materialCount = required<HTMLElement>('#material-count');
   const materialCoverage = required<HTMLParagraphElement>('#material-coverage');
   const materialGrid = required<HTMLDivElement>('#material-grid');
@@ -435,13 +429,7 @@ export function bindEditorElements(shellState: EditorShellState) {
     uvEditorStatus,
     uvResetPivot,
     applyTextureTransformButton,
-    documentRevision,
-    entityCount,
-    brushCount,
-    groupCount,
-    hiddenObjectCount,
-    lockedObjectCount,
-    geometryState,
+    documentSummary,
     materialCount,
     materialCoverage,
     materialGrid,

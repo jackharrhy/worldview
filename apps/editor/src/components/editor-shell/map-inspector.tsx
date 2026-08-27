@@ -1,4 +1,63 @@
-export function MapInspector() {
+import { useSyncExternalStore } from 'react';
+
+import type { EditorShellState } from '../../editor-shell-state.js';
+
+interface MapInspectorProps {
+  readonly shellState: EditorShellState;
+}
+
+function DocumentSummary({ shellState }: MapInspectorProps) {
+  const summary = useSyncExternalStore(
+    shellState.documentSummary.subscribe,
+    shellState.documentSummary.getSnapshot,
+    shellState.documentSummary.getSnapshot,
+  );
+  const geometryLabel =
+    summary.geometryErrorCount === 0 ? 'valid' : `${summary.geometryErrorCount} errors`;
+
+  return (
+    <div className="document-section inspector-section">
+      <h3>Document</h3>
+      <dl className="property-list compact">
+        <div>
+          <dt>Revision</dt>
+          <dd id="document-revision">{summary.revision}</dd>
+        </div>
+        <div>
+          <dt>Entities</dt>
+          <dd id="entity-count">{summary.entityCount}</dd>
+        </div>
+        <div>
+          <dt>Brushes</dt>
+          <dd id="brush-count">{summary.brushCount}</dd>
+        </div>
+        <div>
+          <dt>Groups</dt>
+          <dd id="group-count">{summary.groupCount}</dd>
+        </div>
+        <div>
+          <dt>Hidden</dt>
+          <dd id="hidden-object-count">{summary.hiddenObjectCount}</dd>
+        </div>
+        <div>
+          <dt>Locked</dt>
+          <dd id="locked-object-count">{summary.lockedObjectCount}</dd>
+        </div>
+        <div>
+          <dt>Geometry</dt>
+          <dd
+            id="geometry-state"
+            className={summary.geometryErrorCount > 0 ? 'error-text' : undefined}
+          >
+            {geometryLabel}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+export function MapInspector({ shellState }: MapInspectorProps) {
   return (
     <section data-inspector-panel="map" hidden>
       <div className="panel-heading">
@@ -63,39 +122,7 @@ export function MapInspector() {
           excluded from picking; omitted layers stay in source but are removed from compile export.
         </p>
       </div>
-      <div className="document-section inspector-section">
-        <h3>Document</h3>
-        <dl className="property-list compact">
-          <div>
-            <dt>Revision</dt>
-            <dd id="document-revision">0</dd>
-          </div>
-          <div>
-            <dt>Entities</dt>
-            <dd id="entity-count">0</dd>
-          </div>
-          <div>
-            <dt>Brushes</dt>
-            <dd id="brush-count">0</dd>
-          </div>
-          <div>
-            <dt>Groups</dt>
-            <dd id="group-count">0</dd>
-          </div>
-          <div>
-            <dt>Hidden</dt>
-            <dd id="hidden-object-count">0</dd>
-          </div>
-          <div>
-            <dt>Locked</dt>
-            <dd id="locked-object-count">0</dd>
-          </div>
-          <div>
-            <dt>Geometry</dt>
-            <dd id="geometry-state">valid</dd>
-          </div>
-        </dl>
-      </div>
+      <DocumentSummary shellState={shellState} />
       <div className="entity-link-section inspector-section">
         <div className="section-heading">
           <h3>Entity links</h3>

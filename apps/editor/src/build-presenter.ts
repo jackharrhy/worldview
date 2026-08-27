@@ -222,9 +222,12 @@ export class BuildPresenter {
       if (outcome.status === 'failed') {
         this.showCompiledPreview(false);
         this.setCompileState('COMPILE FAILED', 'offline');
-        const errors = outcome.result.diagnostics
-          .filter((diagnostic) => diagnostic.severity === 'error')
-          .map((diagnostic) => `${diagnostic.stage}: ${diagnostic.message}`);
+        const errors: string[] = [];
+        for (const diagnostic of outcome.result.diagnostics) {
+          if (diagnostic.severity === 'error') {
+            errors.push(`${diagnostic.stage}: ${diagnostic.message}`);
+          }
+        }
         this.ui.statusMessage.textContent =
           errors.slice(0, 3).join(' · ') || 'Compiler reported a failed build.';
         return;

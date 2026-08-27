@@ -13,16 +13,13 @@ export function sourceFromFiles(files: FileList): WorldSource | undefined {
   if (!bsp) return undefined;
   const palette = list.find((file) => /\.(lmp|pal)$/i.test(file.name));
   const wads = list.filter((file) => file.name.toLowerCase().endsWith('.wad'));
-  const sprites = Object.fromEntries(
-    list
-      .filter((file) => file.name.toLowerCase().endsWith('.spr'))
-      .map((file) => [file.name.toLowerCase(), file]),
-  );
-  const sounds = Object.fromEntries(
-    list
-      .filter((file) => /\.(wav|mp3|ogg)$/i.test(file.name))
-      .map((file) => [file.name.toLowerCase(), file]),
-  );
+  const sprites: Record<string, File> = {};
+  const sounds: Record<string, File> = {};
+  for (const file of list) {
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith('.spr')) sprites[lowerName] = file;
+    if (/\.(wav|mp3|ogg)$/.test(lowerName)) sounds[lowerName] = file;
+  }
   const skyboxFile = (suffix: string) =>
     list.find((file) => file.name.toLowerCase().endsWith(`${suffix}.tga`));
   const [rt, bk, lf, ft, up, dn] = ['rt', 'bk', 'lf', 'ft', 'up', 'dn'].map(skyboxFile);

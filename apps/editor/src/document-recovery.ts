@@ -303,8 +303,10 @@ export class DocumentRecoveryService {
   private async prune(documentKey: string): Promise<void> {
     const snapshots = await this.storage.list(documentKey);
     const removable = snapshots.filter((snapshot) => !snapshot.protected);
-    for (const snapshot of removable.slice(this.retentionLimit)) {
-      await this.storage.removeSnapshot(snapshot.snapshotId);
-    }
+    await Promise.all(
+      removable
+        .slice(this.retentionLimit)
+        .map((snapshot) => this.storage.removeSnapshot(snapshot.snapshotId)),
+    );
   }
 }

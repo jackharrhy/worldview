@@ -287,22 +287,24 @@ export class WebMcpPresenter {
             names.set(material.name.toLowerCase(), material.name);
           }
         }
-        const materials = [...names]
-          .map(([key, name]) => {
-            const loaded = this.state.materialCatalog.find(name);
-            const usage = usages.get(key);
-            return {
-              name,
-              loaded: Boolean(loaded),
-              sourceName: loaded?.sourceName ?? null,
-              width: loaded?.width ?? null,
-              height: loaded?.height ?? null,
-              faceCount: usage?.faceCount ?? 0,
-              brushCount: usage?.brushCount ?? 0,
-            };
-          })
-          .filter((material) => !query || JSON.stringify(material).toLowerCase().includes(query))
-          .toSorted((left, right) => left.name.localeCompare(right.name));
+        const materials = [];
+        for (const [key, name] of names) {
+          const loaded = this.state.materialCatalog.find(name);
+          const usage = usages.get(key);
+          const material = {
+            name,
+            loaded: Boolean(loaded),
+            sourceName: loaded?.sourceName ?? null,
+            width: loaded?.width ?? null,
+            height: loaded?.height ?? null,
+            faceCount: usage?.faceCount ?? 0,
+            brushCount: usage?.brushCount ?? 0,
+          };
+          if (!query || JSON.stringify(material).toLowerCase().includes(query)) {
+            materials.push(material);
+          }
+        }
+        materials.sort((left, right) => left.name.localeCompare(right.name));
         return result(
           `Listed ${Math.min(limit, Math.max(0, materials.length - offset))} materials.`,
           {
@@ -908,18 +910,20 @@ export class WebMcpPresenter {
       root.dataset.worldviewSiteToolCount = '0';
       return;
     }
-    let registered = 0;
-    try {
-      for (const tool of this.tools()) {
-        await modelContext.registerTool(tool);
-        registered += 1;
-      }
-      root.dataset.worldviewSiteTools = 'ready';
-      root.dataset.worldviewSiteToolCount = String(registered);
-    } catch (error) {
+    const tools = this.tools();
+    const registrations = await Promise.allSettled(
+      tools.map(async (tool) => modelContext.registerTool(tool)),
+    );
+    const registered = registrations.filter(
+      (registration) => registration.status === 'fulfilled',
+    ).length;
+    const failure = registrations.find((registration) => registration.status === 'rejected');
+    root.dataset.worldviewSiteToolCount = String(registered);
+    if (failure?.status === 'rejected') {
       root.dataset.worldviewSiteTools = 'error';
-      root.dataset.worldviewSiteToolCount = String(registered);
-      this.app.ui.statusMessage.textContent = `Site tool registration failed after ${registered} tools: ${error instanceof Error ? error.message : String(error)}`;
+      this.app.ui.statusMessage.textContent = `Site tool registration failed; ${registered} of ${tools.length} tools are available: ${failure.reason instanceof Error ? failure.reason.message : String(failure.reason)}`;
+      return;
     }
+    root.dataset.worldviewSiteTools = 'ready';
   }
 }

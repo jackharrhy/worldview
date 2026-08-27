@@ -40,33 +40,33 @@ export class InspectorPresenter {
       presentationCheckpoint = end;
     };
     const brushes = brushesInDocument(document);
-    const invalid = brushes
-      .flatMap((brush) => deriveBrush(brush).diagnostics)
-      .filter((diagnostic) => diagnostic.severity === 'error');
+    let geometryErrorCount = 0;
+    for (const brush of brushes) {
+      for (const diagnostic of deriveBrush(brush).diagnostics) {
+        if (diagnostic.severity === 'error') geometryErrorCount += 1;
+      }
+    }
     measurePresentationStep('geometry');
-    this.ui.documentRevision.textContent = String(document.revision);
-    this.ui.entityCount.textContent = String(
-      document.entities.filter(
-        (entity) => !isEditorGroupEntity(entity) && !isEditorLayerEntity(entity),
-      ).length,
-    );
-    this.ui.brushCount.textContent = String(brushes.length);
     const groups = deriveEditorGroups(document);
-    this.ui.groupCount.textContent = String(groups.length);
-    this.ui.geometryState.textContent = invalid.length === 0 ? 'valid' : `${invalid.length} errors`;
-    this.ui.geometryState.classList.toggle('error-text', invalid.length > 0);
     this.app.organization.renderIssues();
     measurePresentationStep('issues');
     this.app.organization.renderViewFilters();
     measurePresentationStep('filters');
     const objectViewState = this.app.organization.effectiveObjectViewState(document);
     measurePresentationStep('view-state');
-    this.ui.hiddenObjectCount.textContent = String(
-      objectViewState.hiddenBrushIds.length + objectViewState.hiddenEntityIds.length,
-    );
-    this.ui.lockedObjectCount.textContent = String(
-      objectViewState.lockedBrushIds.length + objectViewState.lockedEntityIds.length,
-    );
+    this.ui.documentSummary.set({
+      revision: document.revision,
+      entityCount: document.entities.filter(
+        (entity) => !isEditorGroupEntity(entity) && !isEditorLayerEntity(entity),
+      ).length,
+      brushCount: brushes.length,
+      groupCount: groups.length,
+      hiddenObjectCount:
+        objectViewState.hiddenBrushIds.length + objectViewState.hiddenEntityIds.length,
+      lockedObjectCount:
+        objectViewState.lockedBrushIds.length + objectViewState.lockedEntityIds.length,
+      geometryErrorCount,
+    });
     this.app.organization.renderLayers(document, selection);
     this.app.organization.updateEntityLinkSummary(document, selection);
     measurePresentationStep('organization');

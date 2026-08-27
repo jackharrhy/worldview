@@ -11,6 +11,23 @@ import {
 import type { EditorApplication } from './editor-application.js';
 import { required } from './editor-elements.js';
 
+const FACE_TEXTURE_ALIGNMENT_OPERATIONS = new Set<FaceTextureAlignmentOperation>([
+  'reset',
+  'world',
+  'flip-u',
+  'flip-v',
+  'rotate-ccw',
+  'rotate-cw',
+  'align-edge',
+  'justify-u-min',
+  'justify-u-max',
+  'justify-v-min',
+  'justify-v-max',
+  'fit-u',
+  'fit-v',
+  'auto-fit',
+]);
+
 export class ToolEvents {
   public constructor(private readonly app: EditorApplication) {}
   private get state() {
@@ -206,26 +223,7 @@ export class ToolEvents {
         const operation = (button.dataset.textureAlign ?? button.dataset.textureLayout) as
           | FaceTextureAlignmentOperation
           | undefined;
-        if (
-          !operation ||
-          ![
-            'reset',
-            'world',
-            'flip-u',
-            'flip-v',
-            'rotate-ccw',
-            'rotate-cw',
-            'align-edge',
-            'justify-u-min',
-            'justify-u-max',
-            'justify-v-min',
-            'justify-v-max',
-            'fit-u',
-            'fit-v',
-            'auto-fit',
-          ].includes(operation)
-        )
-          return;
+        if (!operation || !FACE_TEXTURE_ALIGNMENT_OPERATIONS.has(operation)) return;
         try {
           if (
             !this.state.session.alignTexture(operation, {
@@ -508,15 +506,19 @@ export class ToolEvents {
       if (files.length === 0) return;
       const summaries: string[] = [];
       let hasErrors = false;
-      for (const file of files) {
+      const wadData = await Promise.allSettled(files.map((file) => file.arrayBuffer()));
+      for (const [index, file] of files.entries()) {
         try {
-          const data = await file.arrayBuffer();
+          const data = wadData[index];
+          if (!data || data.status === 'rejected') {
+            throw data?.reason ?? new Error('WAD file could not be read');
+          }
           const result = this.state.materialCatalog.importWad(
             file.name,
-            data,
+            data.value,
             this.state.quakePalette,
           );
-          this.state.loadedWadSources.set(file.name, data);
+          this.state.loadedWadSources.set(file.name, data.value);
           summaries.push(
             `${file.name}: ${result.added} added, ${result.replaced} replaced, ${result.skipped} skipped`,
           );

@@ -80,11 +80,41 @@ export class PointerContextPort {
   }
 }
 
+export interface DocumentSummarySnapshot {
+  readonly revision: number;
+  readonly entityCount: number;
+  readonly brushCount: number;
+  readonly groupCount: number;
+  readonly hiddenObjectCount: number;
+  readonly lockedObjectCount: number;
+  readonly geometryErrorCount: number;
+}
+
+export class DocumentSummaryPort {
+  private readonly store = new SnapshotStore<DocumentSummarySnapshot>({
+    revision: 0,
+    entityCount: 0,
+    brushCount: 0,
+    groupCount: 0,
+    hiddenObjectCount: 0,
+    lockedObjectCount: 0,
+    geometryErrorCount: 0,
+  });
+
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+
+  public set(snapshot: DocumentSummarySnapshot): void {
+    this.store.set(snapshot);
+  }
+}
+
 export interface EditorShellState {
   readonly statusMessage: StatusMessagePort;
   readonly documentName: DocumentNamePort;
   readonly compileState: CompileStatePort;
   readonly pointerContext: PointerContextPort;
+  readonly documentSummary: DocumentSummaryPort;
 }
 
 export function createEditorShellState(): EditorShellState {
@@ -93,5 +123,6 @@ export function createEditorShellState(): EditorShellState {
     documentName: new DocumentNamePort(),
     compileState: new CompileStatePort(),
     pointerContext: new PointerContextPort(),
+    documentSummary: new DocumentSummaryPort(),
   };
 }

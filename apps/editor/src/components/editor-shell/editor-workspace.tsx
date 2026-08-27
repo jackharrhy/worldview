@@ -2,7 +2,13 @@ import { MapInspector } from './map-inspector.js';
 import { ObjectInspector } from './object-inspector.js';
 import { TextureInspector } from './texture-inspector.js';
 
-export function EditorWorkspace() {
+import type { EditorShellState } from '../../editor-shell-state.js';
+
+interface EditorWorkspaceProps {
+  readonly shellState: EditorShellState;
+}
+
+export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
   return (
     <section className="workspace">
       <section className="viewport-grid" aria-label="Map viewports">
@@ -58,7 +64,7 @@ export function EditorWorkspace() {
         <div className="inspector-scroll">
           <ObjectInspector />
           <TextureInspector />
-          <MapInspector />
+          <MapInspector shellState={shellState} />
         </div>
       </aside>
     </section>

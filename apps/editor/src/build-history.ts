@@ -143,9 +143,11 @@ export class MapBuildHistoryService {
         return;
       }
       const existing = await this.storage.list(mapKey);
-      for (const expired of existing.slice(Math.max(0, Math.floor(this.retentionLimit / 2)))) {
-        await this.storage.remove(expired.buildId);
-      }
+      await Promise.all(
+        existing
+          .slice(Math.max(0, Math.floor(this.retentionLimit / 2)))
+          .map((expired) => this.storage.remove(expired.buildId)),
+      );
       try {
         await this.storage.save(record);
       } catch (retryError) {
@@ -154,9 +156,9 @@ export class MapBuildHistoryService {
       }
     }
     const records = await this.storage.list(mapKey);
-    for (const expired of records.slice(this.retentionLimit)) {
-      await this.storage.remove(expired.buildId);
-    }
+    await Promise.all(
+      records.slice(this.retentionLimit).map((expired) => this.storage.remove(expired.buildId)),
+    );
   }
 
   public list(mapKey: string): Promise<readonly MapBuildHistoryRecord[]> {

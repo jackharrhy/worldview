@@ -66,15 +66,19 @@ async function metadataForBsp(filename: string): Promise<FixtureMetadata> {
 
 async function bspFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
-  const nested = await Promise.all(
-    entries
-      .filter((entry) => !entry.name.startsWith('.'))
-      .map(async (entry) => {
-        const filename = path.join(directory, entry.name);
-        if (entry.isDirectory()) return bspFiles(filename);
-        return entry.isFile() && entry.name.toLowerCase().endsWith('.bsp') ? [filename] : [];
-      }),
-  );
+  const pending: Promise<string[]>[] = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const filename = path.join(directory, entry.name);
+    pending.push(
+      entry.isDirectory()
+        ? bspFiles(filename)
+        : Promise.resolve(
+            entry.isFile() && entry.name.toLowerCase().endsWith('.bsp') ? [filename] : [],
+          ),
+    );
+  }
+  const nested = await Promise.all(pending);
   return nested.flat();
 }
 

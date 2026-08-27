@@ -99,27 +99,27 @@ export class MaterialsPresenter {
     const usageByName = new Map(usages.map((usage) => [usage.material.toLowerCase(), usage]));
     const catalogMaterials = this.state.materialCatalog.materials();
     const loadedNames = new Set(catalogMaterials.map((material) => material.name.toLowerCase()));
-    const missingMaterials = usages
-      .filter((usage) => !loadedNames.has(usage.material.toLowerCase()))
-      .map((usage) => usage.material)
-      .toSorted((left, right) => left.localeCompare(right));
-    const materials = catalogMaterials
-      .filter((material) =>
-        queryTokens.every((token) => material.name.toLowerCase().includes(token)),
-      )
-      .filter(
-        (material) =>
-          !this.ui.materialUsedOnly.checked || usageByName.has(material.name.toLowerCase()),
-      )
-      .toSorted((left, right) => {
-        if (this.ui.materialSort.value === 'usage') {
-          const usageDifference =
-            (usageByName.get(right.name.toLowerCase())?.faceCount ?? 0) -
-            (usageByName.get(left.name.toLowerCase())?.faceCount ?? 0);
-          if (usageDifference !== 0) return usageDifference;
-        }
-        return left.name.localeCompare(right.name);
-      });
+    const missingMaterials: string[] = [];
+    for (const usage of usages) {
+      if (!loadedNames.has(usage.material.toLowerCase())) missingMaterials.push(usage.material);
+    }
+    missingMaterials.sort((left, right) => left.localeCompare(right));
+    const materials = catalogMaterials.filter((material) => {
+      const normalizedName = material.name.toLowerCase();
+      return (
+        queryTokens.every((token) => normalizedName.includes(token)) &&
+        (!this.ui.materialUsedOnly.checked || usageByName.has(normalizedName))
+      );
+    });
+    materials.sort((left, right) => {
+      if (this.ui.materialSort.value === 'usage') {
+        const usageDifference =
+          (usageByName.get(right.name.toLowerCase())?.faceCount ?? 0) -
+          (usageByName.get(left.name.toLowerCase())?.faceCount ?? 0);
+        if (usageDifference !== 0) return usageDifference;
+      }
+      return left.name.localeCompare(right.name);
+    });
     this.ui.materialCount.textContent = `${this.state.materialCatalog.size} loaded · ${usages.length} in use`;
     this.ui.materialCoverage.hidden = missingMaterials.length === 0;
     this.ui.materialCoverage.textContent =

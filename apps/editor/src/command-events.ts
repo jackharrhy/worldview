@@ -41,10 +41,15 @@ export class CommandEvents {
     }
     this.ui.referenceFiles.addEventListener('change', async () => {
       const files = [...(this.ui.referenceFiles.files ?? [])];
-      for (const file of files) {
+      const sources = await Promise.allSettled(files.map((file) => file.text()));
+      for (const [index, file] of files.entries()) {
         try {
+          const source = sources[index];
+          if (!source || source.status === 'rejected') {
+            throw source?.reason ?? new Error('Reference file could not be read');
+          }
           const document = parseMap(
-            await file.text(),
+            source.value,
             createSequentialIdFactory(`reference-source-${this.state.referenceSequence + 1}`),
           );
           this.app.materials.addReferenceDocument(file.name, document);
