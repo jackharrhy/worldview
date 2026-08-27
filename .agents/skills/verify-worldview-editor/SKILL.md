@@ -52,7 +52,7 @@ internals or test-only setters.
 Useful invocations:
 
 ```bash
-# Starter-map inspection, edit, visible proof, and exact undo
+# Empty-map inspection, semantic box creation, edit, visible proof, and exact undo
 node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs
 
 # A real local .map source, including a LibreQuake mapper source

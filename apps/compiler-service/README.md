@@ -15,6 +15,11 @@ configured; `GET /capabilities`, `POST /compile`, and `POST /launch` implement t
 protocol consumed by `RemoteMapCompiler`. Expected compiler failures return structured failed-build
 results with bounded per-stage logs and any BSP, PRT, PTS, LIN, or log artifacts produced before the
 failure.
+
+The editor selects the helper in this order: its `compiler` URL query parameter,
+`VITE_WORLDVIEW_COMPILER_ENDPOINT` at Vite build/dev startup, then the loopback development default.
+Use the environment override when serving the editor and helper through separate trusted origins;
+the helper must also include the editor origin in `WORLDVIEW_COMPILER_ORIGINS`.
 Preview compiles use `qbsp -nofill`, fast vis, and bounded light work so partially constructed maps
 remain inspectable. Final compiles restore outside filling, detailed vis, and extra light sampling.
 Uploaded WADs and related compile assets live only in the request's temporary directory. The editor

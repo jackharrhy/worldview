@@ -1,4 +1,4 @@
-import type { Bounds, Vec3 } from '../core/index.js';
+import type { Bounds, MapBrush, Vec3 } from '../core/index.js';
 
 export interface SolidBatch {
   readonly cacheKey: string;
@@ -18,6 +18,38 @@ interface PendingSolidBatch {
 }
 
 const SPATIAL_BATCH_SIZE = 512;
+const floatBits = new DataView(new ArrayBuffer(8));
+
+/** Identifies the actual GPU input, including same-revision transient drag previews. */
+export function brushSolidSignature(brush: MapBrush, offset: Vec3): string {
+  let hash = 2166136261;
+  const mixInteger = (value: number) => {
+    hash ^= value;
+    hash = Math.imul(hash, 16777619);
+  };
+  const mixString = (value: string) => {
+    for (const character of value) mixInteger(character.charCodeAt(0));
+  };
+  const mixNumber = (value: number) => {
+    floatBits.setFloat64(0, value, true);
+    mixInteger(floatBits.getUint32(0, true));
+    mixInteger(floatBits.getUint32(4, true));
+  };
+  mixString(brush.id);
+  mixInteger(brush.revision);
+  for (const component of offset) mixNumber(component);
+  for (const face of brush.faces) {
+    mixString(face.id);
+    mixString(face.material);
+    for (const point of face.planePoints) for (const component of point) mixNumber(component);
+    for (const component of face.projection.uAxis) mixNumber(component);
+    for (const component of face.projection.vAxis) mixNumber(component);
+    for (const component of face.projection.offset) mixNumber(component);
+    mixNumber(face.projection.rotationDegrees);
+    for (const component of face.projection.scale) mixNumber(component);
+  }
+  return `${brush.id}:${brush.revision}:${(hash >>> 0).toString(16)}`;
+}
 
 function translatedBounds(bounds: Bounds, offset: Vec3): Bounds {
   return {

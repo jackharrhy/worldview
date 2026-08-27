@@ -59,9 +59,11 @@ import {
   type ViewportInteraction,
 } from './viewport-common.js';
 import { createRendererGpuRuntime } from './renderer-gpu.js';
+import { DEFAULT_EDITOR_RENDER_THEME, type EditorRenderTheme } from './theme.js';
 import { Viewport } from './viewport.js';
 export class EditorSourceRenderer {
   private scene: SceneBuffers;
+  private readonly theme: EditorRenderTheme;
   private document: MapDocument;
   private selection: EditorSelection | null;
   private objectViewState: EditorObjectViewState;
@@ -108,6 +110,7 @@ export class EditorSourceRenderer {
     private readonly clearColor: readonly [number, number, number, number],
   ) {
     this.document = options.document;
+    this.theme = options.theme ?? DEFAULT_EDITOR_RENDER_THEME;
     this.selection = options.selection ?? null;
     this.objectViewState = options.objectViewState ?? {
       hiddenBrushIds: [],
@@ -157,6 +160,7 @@ export class EditorSourceRenderer {
       this.entityDefinitions,
       this.diagnosticOverlays,
       this.sprites,
+      this.theme,
     );
     this.materialResources = new SourceMaterialResources(
       device,
@@ -498,6 +502,11 @@ export class EditorSourceRenderer {
         this.rebuildScene();
       },
       cameraChanged: (viewport, mode, camera) => {
+        if (viewport !== 'perspective' && (mode === 'pan' || mode === 'zoom')) {
+          for (const linkedViewport of this.viewports) {
+            linkedViewport.synchronizeOrthographicCamera(viewport, camera, mode === 'zoom');
+          }
+        }
         this.onRenderRequest?.();
         options.onCameraChange?.({ viewport, mode, camera });
       },
@@ -518,6 +527,7 @@ export class EditorSourceRenderer {
           interaction,
           this.gridSize,
           () => this.onRenderRequest?.(),
+          this.theme,
         ),
     );
     for (const viewport of this.viewports) {
@@ -540,7 +550,7 @@ export class EditorSourceRenderer {
       materialBindGroupLayout,
       materialSampler,
       options,
-      options.clearColor ?? [0.105, 0.12, 0.145, 1],
+      options.clearColor ?? options.theme?.background ?? DEFAULT_EDITOR_RENDER_THEME.background,
     );
   }
 
@@ -724,6 +734,7 @@ export class EditorSourceRenderer {
       this.entityDefinitions,
       this.diagnosticOverlays,
       this.sprites,
+      this.theme,
       previous.solids,
     );
     const retainedBuffers = new Set(this.scene.solids.map(({ buffer }) => buffer));

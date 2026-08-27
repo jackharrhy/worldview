@@ -30,7 +30,8 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "check:architecture": "node scripts/check-editor-architecture.mjs",
-    "check": "npm run format:check && npm run check:architecture && npm run lint && npm run typecheck && npm run test && npm run test:collaboration-bakeoff && npm run test:collaboration-celld-compat && npm run build && npm run test:consumer && npm run test:package"
+    "check:theme": "node scripts/check-editor-theme.mjs",
+    "check": "npm run format:check && npm run check:architecture && npm run check:theme && npm run lint && npm run typecheck && npm run test && npm run test:collaboration-bakeoff && npm run test:collaboration-celld-compat && npm run build && npm run test:consumer && npm run test:package"
   },
   "devDependencies": {
     "@automerge/automerge": "^3.4.1",

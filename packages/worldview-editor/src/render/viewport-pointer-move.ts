@@ -101,9 +101,13 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
       drag.y = event.clientY;
       drag.moved = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
       if (drag.cameraMode === 'look' && drag.cameraEye && drag.moved >= 5) {
+        // Preserve the live eye rather than the eye captured on pointer-down. Keyboard fly can
+        // translate the camera while this look gesture is held; rebuilding from drag.cameraEye
+        // would otherwise snap that movement away on every subsequent pointer event.
+        const cameraEye = this.perspectiveEye();
         this.state.yaw -= deltaX * 0.006;
-        this.state.pitch = Math.max(-1.45, Math.min(1.45, this.state.pitch + deltaY * 0.006));
-        const center = addScaled(drag.cameraEye, this.perspectiveForward(), this.state.distance);
+        this.state.pitch = Math.max(-1.45, Math.min(1.45, this.state.pitch - deltaY * 0.006));
+        const center = addScaled(cameraEye, this.perspectiveForward(), this.state.distance);
         this.state.center = [center[0], center[1], center[2]];
         this.canvas.closest('.viewport-pane')?.classList.add('camera-looking');
         this.notifyCamera('look');
@@ -118,7 +122,7 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
           drag.cameraOrbitInitialized = true;
         }
         this.state.yaw -= deltaX * 0.006;
-        this.state.pitch = Math.max(-1.45, Math.min(1.45, this.state.pitch + deltaY * 0.006));
+        this.state.pitch = Math.max(-1.45, Math.min(1.45, this.state.pitch - deltaY * 0.006));
         this.canvas.closest('.viewport-pane')?.classList.add('camera-orbiting');
         this.notifyCamera('orbit');
       } else if (drag.cameraMode === 'pan' && (drag.button === 1 || drag.moved >= 5)) {

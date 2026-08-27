@@ -56,7 +56,7 @@ async function availablePort() {
 async function waitForHttp(url, child) {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    if (child?.exitCode !== null)
+    if (child && child.exitCode !== null)
       throw new Error(`Vite exited before readiness (${child.exitCode})`);
     try {
       if ((await fetch(url)).ok) return;
@@ -235,6 +235,21 @@ try {
   }
   report.actions.push({ action: 'inspect-loaded', result: inspection });
   await page.screenshot({ path: `${evidence}/01-loaded.png`, fullPage: true });
+
+  if (!options.map) {
+    if (inspection.counts?.brushes !== 0) {
+      throw new Error(`New document contains ${inspection.counts?.brushes} placeholder brushes`);
+    }
+    const created = await executeTool(page, 'worldview_create_box', {
+      expectedDocumentId: inspection.documentId,
+      expectedRevision: inspection.revision,
+      min: [-64, -64, 0],
+      max: [64, 64, 64],
+      material: 'DEV_FLOOR',
+    });
+    report.actions.push({ action: 'create-verification-box', result: created });
+    inspection = await executeTool(page, 'worldview_inspect_editor');
+  }
 
   const before = await sourceDigest(page);
   const listed = await executeTool(page, 'worldview_list_objects', { kind: 'brush', limit: 1 });

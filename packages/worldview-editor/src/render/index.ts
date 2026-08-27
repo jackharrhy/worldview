@@ -1,4 +1,5 @@
 export { EditorSourceRenderer } from './renderer.js';
+export { DEFAULT_EDITOR_RENDER_THEME, type EditorRenderTheme } from './theme.js';
 export type {
   EditorBrushCreateEvent,
   EditorBrushDragEvent,

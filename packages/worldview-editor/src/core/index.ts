@@ -92,6 +92,7 @@ export {
   createBoxBrush,
   createConvexHullBrush,
   createBrushEntity,
+  createEmptyDocument,
   createStarterDocument,
   deleteBrushVertices,
   flipBrush,

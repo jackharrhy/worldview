@@ -48,7 +48,8 @@ import {
   type ScaleSide,
   type TopologyHandle,
 } from './viewport-geometry.js';
-import { SolidBatchBuilder, type SolidBatch } from './scene-solid-batches.js';
+import { brushSolidSignature, SolidBatchBuilder, type SolidBatch } from './scene-solid-batches.js';
+import { DEFAULT_EDITOR_RENDER_THEME, type EditorRenderTheme } from './theme.js';
 
 export interface SceneBuffers {
   readonly solids: readonly SolidBatch[];
@@ -57,18 +58,6 @@ export interface SceneBuffers {
   readonly perspectiveGrid: GPUBuffer;
   readonly perspectiveGridCount: number;
   readonly scaleBounds: Bounds | null;
-}
-
-function materialColor(name: string): readonly [number, number, number] {
-  let hash = 2166136261;
-  for (const character of name.toLowerCase()) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  const red = 0.32 + (((hash >>> 0) & 255) / 255) * 0.38;
-  const green = 0.34 + (((hash >>> 8) & 255) / 255) * 0.34;
-  const blue = 0.38 + (((hash >>> 16) & 255) / 255) * 0.36;
-  return [red, green, blue];
 }
 
 export function boundsCenter(bounds: Bounds): Vec3 {
@@ -138,7 +127,11 @@ function appendTransformMarker(
   }
 }
 
-export function scaleOverlayVertices(bounds: Bounds, kind: EditorViewportKind): Float32Array {
+export function scaleOverlayVertices(
+  bounds: Bounds,
+  kind: EditorViewportKind,
+  theme: EditorRenderTheme = DEFAULT_EDITOR_RENDER_THEME,
+): Float32Array {
   const size = bounds.max.map((component, axis) => component - bounds.min[axis]!) as [
     number,
     number,
@@ -157,10 +150,10 @@ export function scaleOverlayVertices(bounds: Bounds, kind: EditorViewportKind): 
   for (const handle of scaleHandles(bounds, activeAxes)) {
     const color =
       handle.axes.length === 1
-        ? ([0.94, 0.55, 0.16] as const)
+        ? theme.faceHandle
         : handle.axes.length === 2
-          ? ([1, 0.68, 0.18] as const)
-          : ([1, 0.8, 0.24] as const);
+          ? theme.accent
+          : theme.faceHover;
     appendTransformMarker(lines, handle.point, color, markerRadius);
   }
   return new Float32Array(lines);
@@ -172,6 +165,7 @@ function appendTransformOverlay(
   tool: EditorTool,
   transformPivot: Vec3 | null = null,
   transformPivotHovered = false,
+  theme: EditorRenderTheme = DEFAULT_EDITOR_RENDER_THEME,
 ): void {
   const center = tool === 'rotate' && transformPivot ? transformPivot : boundsCenter(bounds);
   const size: Vec3 = [
@@ -183,9 +177,9 @@ function appendTransformOverlay(
   if (tool === 'rotate') {
     const radius = Math.max(...size) * 0.62 + markerRadius;
     const axes = [
-      { first: 1, second: 2, color: [0.94, 0.25, 0.2] as const },
-      { first: 0, second: 2, color: [0.3, 0.86, 0.38] as const },
-      { first: 0, second: 1, color: [0.25, 0.52, 1] as const },
+      { first: 1, second: 2, color: theme.axisX },
+      { first: 0, second: 2, color: theme.axisY },
+      { first: 0, second: 1, color: theme.axisZ },
     ] as const;
     for (const { first, second, color } of axes) {
       let previous: Vec3 | null = null;
@@ -199,9 +193,9 @@ function appendTransformOverlay(
       }
     }
     if (transformPivotHovered) {
-      appendTransformMarker(lines, center, [1, 0.18, 0.08], markerRadius * 1.65);
+      appendTransformMarker(lines, center, theme.danger, markerRadius * 1.65);
     }
-    appendTransformMarker(lines, center, [1, 0.76, 0.2], markerRadius);
+    appendTransformMarker(lines, center, theme.accent, markerRadius);
     return;
   }
   if (tool === 'shear') {
@@ -209,17 +203,21 @@ function appendTransformOverlay(
       for (const side of [bounds.min[axis], bounds.max[axis]]) {
         const point = [...center] as [number, number, number];
         point[axis] = side!;
-        appendTransformMarker(lines, point, [0.88, 0.42, 0.88], markerRadius);
+        appendTransformMarker(lines, point, theme.special, markerRadius);
       }
     }
   }
 }
 
-function appendMovementTrace(lines: number[], trace: MovementTrace): void {
-  const color = [1, 0.76, 0.2] as const;
+function appendMovementTrace(
+  lines: number[],
+  trace: MovementTrace,
+  theme: EditorRenderTheme,
+): void {
+  const color = theme.accent;
   lines.push(...trace.start, ...color, ...trace.end, ...color);
   appendTransformMarker(lines, trace.start, color, 2.5);
-  appendTransformMarker(lines, trace.end, [1, 0.28, 0.12], 3.5);
+  appendTransformMarker(lines, trace.end, theme.danger, 3.5);
   if (trace.axisRestriction === null) return;
   for (const axis of [0, 1, 2] as const) {
     if (axis === trace.axisRestriction) continue;
@@ -238,16 +236,17 @@ function appendProjectedFaceGrid(
   face: DerivedFace,
   gridSize: number,
   emphasized: boolean,
+  theme: EditorRenderTheme,
 ): void {
   const offset = 0.035;
   for (const segment of projectedFaceGridSegments(face, gridSize)) {
     const color = emphasized
       ? segment.major
-        ? ([0.92, 0.68, 0.25] as const)
-        : ([0.52, 0.42, 0.24] as const)
+        ? theme.accent
+        : theme.faceHandle
       : segment.major
-        ? ([0.4, 0.46, 0.53] as const)
-        : ([0.27, 0.31, 0.36] as const);
+        ? theme.gridMajor
+        : theme.gridMinor;
     const start: Vec3 = [
       segment.start[0] + face.normal[0] * offset,
       segment.start[1] + face.normal[1] * offset,
@@ -297,10 +296,14 @@ export function sweepScaleHandle(bounds: Bounds): Vec3 {
   return handle;
 }
 
-function appendSweepOverlay(lines: number[], caps: readonly (readonly Vec3[])[]): void {
+function appendSweepOverlay(
+  lines: number[],
+  caps: readonly (readonly Vec3[])[],
+  theme: EditorRenderTheme,
+): void {
   const bounds = sweepCapsBounds(caps);
   if (!bounds) return;
-  const capColor = [0.2, 0.9, 0.68] as const;
+  const capColor = theme.success;
   const center = boundsCenter(bounds);
   const size: Vec3 = [
     bounds.max[0] - bounds.min[0],
@@ -313,13 +316,13 @@ function appendSweepOverlay(lines: number[], caps: readonly (readonly Vec3[])[])
       lines.push(...cap[index]!, ...capColor, ...cap[(index + 1) % cap.length]!, ...capColor);
     }
   }
-  appendTransformMarker(lines, center, [1, 0.82, 0.22], markerRadius);
+  appendTransformMarker(lines, center, theme.accent, markerRadius);
 
   const radius = Math.max(12, Math.max(...size) * 0.62 + markerRadius);
   const rings = [
-    { first: 1, second: 2, color: [0.94, 0.25, 0.2] as const },
-    { first: 0, second: 2, color: [0.3, 0.86, 0.38] as const },
-    { first: 0, second: 1, color: [0.25, 0.52, 1] as const },
+    { first: 1, second: 2, color: theme.axisX },
+    { first: 0, second: 2, color: theme.axisY },
+    { first: 0, second: 1, color: theme.axisZ },
   ] as const;
   for (const { first, second, color } of rings) {
     let previous: Vec3 | null = null;
@@ -334,7 +337,7 @@ function appendSweepOverlay(lines: number[], caps: readonly (readonly Vec3[])[])
   }
   const scaleHandle = sweepScaleHandle(bounds);
   lines.push(...center, ...capColor, ...scaleHandle, ...capColor);
-  appendTransformMarker(lines, scaleHandle, [0.25, 1, 0.58], markerRadius * 1.35);
+  appendTransformMarker(lines, scaleHandle, theme.success, markerRadius * 1.35);
 }
 
 function appendTopologyMarker(
@@ -561,6 +564,7 @@ export function buildSceneBuffers(
   entityDefinitions?: EntityDefinitionCatalog,
   diagnosticOverlays: readonly EditorDiagnosticOverlay[] = [],
   sprites: readonly EditorSpriteMaterial[] = [],
+  theme: EditorRenderTheme = DEFAULT_EDITOR_RENDER_THEME,
   previousSolids: readonly SolidBatch[] = [],
 ): SceneBuffers {
   const solidBatches = new SolidBatchBuilder(previousSolids);
@@ -598,23 +602,22 @@ export function buildSceneBuffers(
       const selectedObject = !reference && isBrushSelected(selection, brush.id);
       const hoveredObject =
         !reference && !hoverSelection?.faceId && isBrushSelected(hoverSelection, brush.id);
+      const solidSignature = brushSolidSignature(brush, offset);
+      const faceOverlayLines: number[] = [];
       for (const face of derived.faces) {
+        const selectedFace = !reference && isFaceSelected(selection, brush.id, face.faceId);
+        const hoveredFace =
+          !reference &&
+          hoverSelection?.brushId === brush.id &&
+          hoverSelection.faceId === face.faceId;
+        const activeFace = hoveredFace && selectedObject && !selection?.faceId;
         const materialName = reference
           ? '__worldview_reference__'
           : locked
             ? '__worldview_locked__'
             : face.material;
-        const solid = solidBatches.vertices(
-          materialName,
-          derived.bounds!,
-          offset,
-          `${brush.id}:${brush.revision}:${offset.join(',')}`,
-        );
-        const base = reference
-          ? ([0.25, 0.48, 0.58] as const)
-          : locked
-            ? ([0.18, 0.4, 0.82] as const)
-            : materialColor(face.material);
+        const solid = solidBatches.vertices(materialName, derived.bounds!, offset, solidSignature);
+        const base = reference ? theme.reference : locked ? theme.edgeLocked : theme.material;
         for (let index = 1; index < face.vertices.length - 1; index += 1) {
           for (const vertexIndex of [0, index, index + 1]) {
             const point = face.vertices[vertexIndex]!;
@@ -632,11 +635,6 @@ export function buildSceneBuffers(
           }
         }
         const showFaceHandle = !reference && tool === 'face' && faceToolBrushIds.has(brush.id);
-        const selectedFace = !reference && isFaceSelected(selection, brush.id, face.faceId);
-        const hoveredFace =
-          !reference &&
-          hoverSelection?.brushId === brush.id &&
-          hoverSelection.faceId === face.faceId;
         if (
           !reference &&
           (!denseDocument || selectedFace || hoveredFace) &&
@@ -646,19 +644,20 @@ export function buildSceneBuffers(
             perspectiveGridLines,
             face,
             gridSize,
-            selectedFace || hoveredFace,
+            selectedFace || (hoveredFace && !activeFace),
+            theme,
           );
         }
         if (showFaceHandle || selectedFace || hoveredFace) {
           const color = selectedFace
-            ? ([1, 0.3, 0.12] as const)
+            ? theme.faceSelected
             : hoveredFace
-              ? ([1, 0.78, 0.25] as const)
-              : ([0.9, 0.62, 0.18] as const);
+              ? theme.faceHover
+              : theme.faceHandle;
           for (let index = 0; index < face.vertices.length; index += 1) {
             const start = face.vertices[index]!;
             const end = face.vertices[(index + 1) % face.vertices.length]!;
-            lines.push(...start, ...color, ...end, ...color);
+            faceOverlayLines.push(...start, ...color, ...end, ...color);
           }
           if (showFaceHandle) {
             const center = face.vertices
@@ -673,22 +672,24 @@ export function buildSceneBuffers(
               const end = [...center] as [number, number, number];
               start[axis] = start[axis]! - radius;
               end[axis] = end[axis]! + radius;
-              lines.push(...start, ...color, ...end, ...color);
+              faceOverlayLines.push(...start, ...color, ...end, ...color);
             }
           }
         }
       }
+      // Follow TrenchBroom's dark-theme hierarchy: ordinary edges must remain the brightest
+      // wireframe element, with red selection and blue locking carrying object state.
       const edgeColor = reference
-        ? ([0.42, 0.72, 0.82] as const)
+        ? theme.referenceEdge
         : locked
-          ? ([0.28, 0.64, 1] as const)
+          ? theme.edgeLocked
           : selectedObject && tool === 'edge'
-            ? ([0.94, 0.72, 0.18] as const)
+            ? theme.edgeSelected
             : selectedObject && tool !== 'face'
-              ? ([1, 0.76, 0.2] as const)
+              ? theme.edgeSelected
               : hoveredObject
-                ? ([0.36, 0.7, 1] as const)
-                : ([0.08, 0.11, 0.14] as const);
+                ? theme.edgeHover
+                : theme.edge;
       for (const edge of derived.edges) {
         lines.push(
           edge.start[0] + offset[0],
@@ -701,8 +702,18 @@ export function buildSceneBuffers(
           ...edgeColor,
         );
       }
+      // Face targeting is an overlay. The selected brush stays red, then the prospective face's
+      // coincident perimeter is drawn amber on top.
+      lines.push(...faceOverlayLines);
       if (primaryBrush && selectedBounds && isTransformTool(tool) && tool !== 'scale') {
-        appendTransformOverlay(lines, selectedBounds, tool, transformPivot, transformPivotHovered);
+        appendTransformOverlay(
+          lines,
+          selectedBounds,
+          tool,
+          transformPivot,
+          transformPivotHovered,
+          theme,
+        );
       }
       if (
         !reference &&
@@ -738,10 +749,10 @@ export function buildSceneBuffers(
           if (renderedTopologyKeys.has(handle.key)) continue;
           renderedTopologyKeys.add(handle.key);
           const color = selectedKeys.has(handle.key)
-            ? ([1, 0.24, 0.12] as const)
+            ? theme.danger
             : topologyHover?.key === handle.key
-              ? ([1, 0.82, 0.3] as const)
-              : ([0.96, 0.72, 0.14] as const);
+              ? theme.accent
+              : theme.faceHandle;
           appendTopologyMarker(lines, handle.center, color, selectedKeys.has(handle.key) ? 6 : 4);
         }
       }
@@ -760,18 +771,18 @@ export function buildSceneBuffers(
         | undefined;
       const locked = !reference && lockedEntityIds.has(entity.id);
       const color = reference
-        ? ([0.42, 0.72, 0.82] as const)
+        ? theme.referenceEdge
         : locked
-          ? ([0.28, 0.64, 1] as const)
+          ? theme.axisZ
           : selected
-            ? ([1, 0.76, 0.2] as const)
+            ? theme.edgeHover
             : hovered
-              ? ([1, 0.45, 0.2] as const)
+              ? theme.faceSelected
               : classname === 'light'
-                ? ([1, 0.92, 0.25] as const)
+                ? theme.accent
                 : classname.startsWith('info_player')
-                  ? ([0.2, 0.92, 0.92] as const)
-                  : (definitionColor ?? ([0.9, 0.35, 0.82] as const));
+                  ? theme.info
+                  : (definitionColor ?? theme.special);
       appendBoundsWireframe(lines, bounds, color, offset);
       const center: Vec3 = [
         (bounds.min[0] + bounds.max[0]) / 2 + offset[0],
@@ -824,7 +835,14 @@ export function buildSceneBuffers(
         isTransformTool(tool) &&
         tool !== 'scale'
       ) {
-        appendTransformOverlay(lines, selectedBounds, tool, transformPivot, transformPivotHovered);
+        appendTransformOverlay(
+          lines,
+          selectedBounds,
+          tool,
+          transformPivot,
+          transformPivotHovered,
+          theme,
+        );
       }
     }
   };
@@ -843,14 +861,14 @@ export function buildSceneBuffers(
     if (!visible) continue;
     const color =
       group.id === openGroupId
-        ? ([0.2, 0.9, 1] as const)
+        ? theme.info
         : group.id === selectedGroupId
-          ? ([1, 0.76, 0.2] as const)
+          ? theme.edgeHover
           : group.id === hoveredGroupId
-            ? ([0.42, 0.76, 1] as const)
+            ? theme.referenceEdge
             : group.linkedGroupId
-              ? ([0.72, 0.32, 1] as const)
-              : ([0.28, 0.58, 1] as const);
+              ? theme.special
+              : theme.axisZ;
     appendBoundsWireframe(lines, group.bounds, color);
   }
   const linkedArrowSource = editorGroups.find(
@@ -866,7 +884,7 @@ export function buildSceneBuffers(
         continue;
       }
       const end = linkedGroupCenter(sibling);
-      if (end) appendEntityLinkArrow(lines, linkedArrowStart, end, [0.78, 0.34, 1]);
+      if (end) appendEntityLinkArrow(lines, linkedArrowStart, end, theme.special);
     }
   }
   const selectedLinkEntities = selectedEntityIdsForLinks(document, selection);
@@ -892,23 +910,23 @@ export function buildSceneBuffers(
       lines,
       link.sourceAnchor,
       link.targetAnchor,
-      selected ? [1, 0.24, 0.14] : [0.28, 0.95, 0.38],
+      selected ? theme.danger : theme.success,
     );
   }
   if (tool === 'rotate' && transformPivotTrace) {
-    appendMovementTrace(lines, transformPivotTrace);
+    appendMovementTrace(lines, transformPivotTrace, theme);
   }
-  for (const trace of movementTraces) appendMovementTrace(lines, trace);
+  for (const trace of movementTraces) appendMovementTrace(lines, trace, theme);
   if (isTransformTool(tool)) {
     for (const handle of topologySelection) {
-      appendTopologyMarker(lines, handle.center, [1, 0.24, 0.12], 6);
+      appendTopologyMarker(lines, handle.center, theme.danger, 6);
     }
   }
   if (tool === 'vertex' && topologyHover?.insertion) {
-    appendTopologyMarker(lines, topologyHover.center, [0.25, 1, 0.58], 6);
+    appendTopologyMarker(lines, topologyHover.center, theme.success, 6);
   }
   if (tool === 'clip') {
-    const color = [1, 0.48, 0.08] as const;
+    const color = theme.faceSelected;
     const radius = 5;
     for (const point of clipPoints) {
       for (let axis = 0; axis < 3; axis += 1) {
@@ -927,8 +945,8 @@ export function buildSceneBuffers(
     }
   }
   if (tool === 'hull') {
-    const committedColor = [0.25, 1, 0.58] as const;
-    const previewColor = [0.2, 0.78, 1] as const;
+    const committedColor = theme.success;
+    const previewColor = theme.info;
     for (const point of hullPoints) appendTopologyMarker(lines, point, committedColor, 5);
     for (const point of hullPreviewPoints) appendTopologyMarker(lines, point, previewColor, 5);
     if (hullPreviewPoints.length >= 3) {
@@ -949,10 +967,9 @@ export function buildSceneBuffers(
       }
     }
   }
-  if (tool === 'sweep') appendSweepOverlay(lines, sweepCaps);
+  if (tool === 'sweep') appendSweepOverlay(lines, sweepCaps, theme);
   for (const overlay of diagnosticOverlays) {
-    const color =
-      overlay.kind === 'leak-path' ? ([1, 0.12, 0.1] as const) : ([0.1, 0.92, 1] as const);
+    const color = overlay.kind === 'leak-path' ? theme.danger : theme.info;
     for (let index = 1; index < overlay.points.length; index += 1) {
       lines.push(...overlay.points[index - 1]!, ...color, ...overlay.points[index]!, ...color);
     }
@@ -968,29 +985,4 @@ export function buildSceneBuffers(
     perspectiveGridCount: perspectiveGridLines.length / 6,
     scaleBounds: tool === 'scale' ? selectedBounds : null,
   };
-}
-
-export function gridVertices(kind: EditorViewportKind, requestedSpacing: number): Float32Array {
-  const vertices: number[] = [];
-  const extent = 4096;
-  let spacing = Math.max(1, requestedSpacing);
-  while ((extent * 2) / spacing > 4096) spacing *= 2;
-  const push = (start: Vec3, end: Vec3, major: boolean) => {
-    const color = major ? ([0.31, 0.36, 0.42] as const) : ([0.19, 0.22, 0.27] as const);
-    vertices.push(...start, ...color, ...end, ...color);
-  };
-  for (let offset = -extent; offset <= extent; offset += spacing) {
-    const major = offset === 0 || offset % (spacing * 8) === 0;
-    if (kind === 'xy' || kind === 'perspective') {
-      push([-extent, offset, 0], [extent, offset, 0], major);
-      push([offset, -extent, 0], [offset, extent, 0], major);
-    } else if (kind === 'xz') {
-      push([-extent, 0, offset], [extent, 0, offset], major);
-      push([offset, 0, -extent], [offset, 0, extent], major);
-    } else {
-      push([0, -extent, offset], [0, extent, offset], major);
-      push([0, offset, -extent], [0, offset, extent], major);
-    }
-  }
-  return new Float32Array(vertices);
 }

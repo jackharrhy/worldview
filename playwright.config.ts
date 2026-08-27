@@ -16,6 +16,7 @@ const ciChromiumArguments = [
   '--disable-vulkan-surface',
   '--enable-unsafe-webgpu',
 ];
+const useHeadlessWebGpu = Boolean(process.env.CI || process.env.WORLDVIEW_HEADLESS_WEBGPU);
 
 export default defineConfig({
   testDir: './tests/browser',
@@ -40,7 +41,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:5173',
     viewport: { width: 1440, height: 900 },
     launchOptions: {
-      args: process.env.CI
+      args: useHeadlessWebGpu
         ? ciChromiumArguments
         : process.env.WORLDVIEW_PERF_GATE === '1'
           ? performanceChromiumArguments

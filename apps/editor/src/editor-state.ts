@@ -8,7 +8,7 @@ import {
   EntityDefinitionCatalog,
   MapCompileCoordinator,
   RemoteMapCompiler,
-  createStarterDocument,
+  createEmptyDocument,
   rebaseMapSource,
   serializeMap,
   type BrushBatchClipCandidate,
@@ -63,11 +63,11 @@ export interface EditorStateHost {
 type MapDocumentSelection = Parameters<EditorSession['select']>[0];
 
 export class EditorState {
-  public readonly starterDocument = createStarterDocument();
-  public session = new EditorSession(this.starterDocument);
+  public readonly initialDocument = createEmptyDocument();
+  public session = new EditorSession(this.initialDocument);
   public currentMapSource: MapSourceState = rebaseMapSource(
-    this.starterDocument,
-    serializeMap(this.starterDocument),
+    this.initialDocument,
+    serializeMap(this.initialDocument),
   );
   public currentFileHandle: EditorFileHandle | null = null;
   public lastDiskFingerprint: string | null = null;
@@ -171,8 +171,10 @@ export class EditorState {
   public readonly projectLocalState = new ProjectLocalStateService();
   public readonly materialCatalog = new EditorMaterialCatalog();
   public readonly builtInMaterials = [
-    createDeveloperMaterial('DEV_FLOOR', [99, 126, 103], [137, 164, 140]),
-    createDeveloperMaterial('DEV_PILLAR', [111, 87, 116], [151, 117, 155]),
+    createDeveloperMaterial('DEV_FLOOR', [143, 66, 18], [222, 112, 28]),
+    createDeveloperMaterial('DEV_PILLAR', [48, 52, 57], [112, 121, 128]),
+    createDeveloperMaterial('DEV_ORANGE_128', [89, 37, 10], [238, 112, 18], [255, 170, 72]),
+    createDeveloperMaterial('DEV_GREY_128', [34, 37, 41], [102, 108, 114], [205, 211, 214]),
   ] as const;
   public readonly uvEditor: TextureUvEditor;
   public readonly loadedWadSources = new Map<string, ArrayBuffer>();
@@ -193,6 +195,7 @@ export class EditorState {
     this.activeGridSize = Number(ui.gridSizeSelect.value);
     const compilerEndpoint =
       new URLSearchParams(window.location.search).get('compiler') ??
+      import.meta.env.VITE_WORLDVIEW_COMPILER_ENDPOINT ??
       'http://127.0.0.1:8788/compile';
     this.buildService = new RemoteMapCompiler({ endpoint: compilerEndpoint });
     this.compilerCoordinator = new MapCompileCoordinator(this.buildService);

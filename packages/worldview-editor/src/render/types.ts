@@ -14,6 +14,7 @@ import type {
   TransformAxis,
   Vec3,
 } from '../core/index.js';
+import type { EditorRenderTheme } from './theme.js';
 
 export type EditorViewportKind = 'perspective' | 'xy' | 'xz' | 'yz';
 export type EditorTool =
@@ -282,6 +283,7 @@ export interface EditorSourceRendererOptions {
   /** Persistent ID of the group currently opened for component editing. */
   readonly openGroupId?: string | null;
   readonly clearColor?: readonly [number, number, number, number];
+  readonly theme?: EditorRenderTheme;
   readonly gridSize?: number;
   readonly tool?: EditorTool;
   /** Optional object/component pivot shared by rotate overlays, gestures, and exact controls. */
@@ -340,6 +342,7 @@ export type EditorCameraNavigationMode =
   | 'dolly'
   | 'zoom'
   | 'fly'
+  | 'linked'
   | 'focus';
 
 export interface EditorCameraChangeEvent {

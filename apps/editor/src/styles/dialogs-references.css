@@ -1,6 +1,6 @@
 .reference-row {
   padding: 7px 0;
-  border-bottom: 1px solid #292e34;
+  border-bottom: 1px solid var(--wv-292e34);
 }
 
 .reference-row-heading {
@@ -38,7 +38,7 @@
   min-height: 0;
   overflow: hidden;
   border-top: 1px solid var(--line-strong);
-  background: #14171b;
+  background: var(--wv-14171b);
 }
 
 .issue-browser-toolbar {
@@ -108,7 +108,7 @@
   padding: 8px;
   border: 1px solid var(--line-strong);
   background: var(--surface-raised);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  box-shadow: 0 8px 24px var(--wv-rgb-0-0-0-45);
 }
 
 .issue-filter-list label,
@@ -150,13 +150,13 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   min-height: 44px;
-  border-bottom: 1px solid #292e34;
-  background: #171a1e;
+  border-bottom: 1px solid var(--wv-292e34);
+  background: var(--wv-171a1e);
 }
 
 .issue-row:hover,
 .issue-row:focus-within {
-  background: #1d2126;
+  background: var(--wv-1d2126);
 }
 
 .issue-row.hidden-issue {
@@ -180,7 +180,7 @@
   padding: 2px 4px;
   border: 1px solid currentColor;
   border-radius: 2px;
-  color: #d6ba79;
+  color: var(--wv-d6ba79);
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 8px;
   text-align: center;
@@ -229,7 +229,7 @@
 }
 
 .issue-actions .issue-fix {
-  border-color: #876435;
+  border-color: var(--wv-876435);
   color: var(--accent-bright);
 }
 
@@ -248,11 +248,11 @@
 }
 
 #issue-status[data-state='error'] {
-  color: #ef938c;
+  color: var(--wv-ef938c);
 }
 
 #issue-status[data-state='warning'] {
-  color: #d6ba79;
+  color: var(--wv-d6ba79);
 }
 
 #issue-status[data-state='clean'] {
@@ -297,11 +297,11 @@
   border-radius: 2px;
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 18px 60px rgb(0 0 0 / 0.5);
+  box-shadow: 0 18px 60px var(--wv-rgb-0-0-0-0-5);
 }
 
 .source-dialog::backdrop {
-  background: rgb(5 7 9 / 0.68);
+  background: var(--wv-rgb-5-7-9-0-68);
 }
 
 .dialog-shell {
@@ -345,8 +345,8 @@
   resize: none;
   border: 0;
   border-radius: 0;
-  background: #101317;
-  color: #cbd0d5;
+  background: var(--wv-101317);
+  color: var(--wv-cbd0d5);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   font-size: 11px;
   line-height: 1.5;
@@ -413,6 +413,6 @@
     right: 0;
     bottom: 0;
     width: min(288px, calc(100vw - 48px));
-    box-shadow: -10px 0 28px rgb(0 0 0 / 0.42);
+    box-shadow: -10px 0 28px var(--wv-rgb-0-0-0-0-42);
   }
 }

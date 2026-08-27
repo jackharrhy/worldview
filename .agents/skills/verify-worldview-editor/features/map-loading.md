@@ -2,12 +2,13 @@
 
 ## Sub-features
 
-Starter maps, standalone `.map` source replacement, Quake classic/Valve 220 parsing, visible
+Empty new maps, standalone `.map` source replacement, Quake classic/Valve 220 parsing, visible
 document framing, issue reporting, and exact source-preserving save text.
 
 ## How to get to it (user POV)
 
-Open the editor, use Open map for a local source file, or open Source, paste map text, and apply it.
+Open the editor to a worldspawn-only map, use Open map for a local source file, or open Source,
+paste map text, and apply it.
 The document summary, four viewports, status, and issue indicator update together.
 
 ## Driving it with WebMCP and Playwright

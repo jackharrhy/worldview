@@ -20,6 +20,27 @@ Worldview now follows that default. Solid material batches are submitted only in
 viewport; orthographic panes draw the shared projected edge buffer and their own grid/tool overlays.
 A future view preference may make faces configurable, but the default stays wireframe.
 
+### Visual selection audit
+
+| TrenchBroom convention                                 | Worldview status |
+| ------------------------------------------------------ | ---------------- |
+| Selected object edges remain red                       | Matched          |
+| Prospective face perimeter overlays the red brush edge | Matched          |
+| Selected 3D faces receive a subtle tint                | Open             |
+| Locked objects use blue edges and tint                 | Matched          |
+| Hovered selection bounds show corner spikes            | Open             |
+| Selected bounds show viewport dimensions               | Partial          |
+| XYZ compass appears in each viewport                   | Open             |
+
+The prospective face overlay does not replace or recolor its material or projected grid. It is
+submitted after the selected brush wireframe so its amber perimeter wins on coincident edges while
+all other edges remain red.
+
+The default dark wireframe palette follows the same contrast hierarchy as TrenchBroom's current
+preferences: a 38/255 neutral background, 0.9 ordinary brush edges, red selected edges, blue locked
+edges, and subordinate minor/major grids. Worldview retains entity-definition colors, cyan
+reference geometry, and yellow hover feedback so different semantic object kinds remain legible.
+
 TrenchBroom's render views request repaints after input, resource, document, and view changes. They
 do not run a permanent idle frame loop. Its perspective view requests the next frame only while fly
 keys remain down. Worldview now uses the same scheduling contract: invalidations coalesce into one
@@ -32,7 +53,8 @@ The current camera interactions conform closely:
 | Interaction                | TrenchBroom behavior                             | Worldview status |
 | -------------------------- | ------------------------------------------------ | ---------------- |
 | Orthographic wheel         | Zoom around the cursor's world point             | Matched          |
-| Orthographic drag          | Pan in projected world space                     | Matched          |
+| Orthographic linked zoom   | Keep the same zoom across visible 2D panes       | Matched          |
+| Orthographic linked pan    | Share the axes common to visible 2D panes        | Matched          |
 | Perspective right drag     | Look while preserving the camera eye             | Matched          |
 | Perspective Alt-right drag | Orbit around a hit point, with a fallback pivot  | Matched          |
 | Perspective middle drag    | Pan on the camera plane                          | Matched          |
@@ -40,10 +62,33 @@ The current camera interactions conform closely:
 | Perspective Shift-wheel    | Change field of view                             | Matched          |
 | Wheel while looking        | Change fly speed                                 | Matched          |
 | First fly key              | Reset the frame timer to prevent a movement jump | Matched          |
+| Focus follows pointer      | Transfer focus after a viewport was focused      | Matched          |
 
 TrenchBroom also applies fast/slow modifiers to keyboard fly motion and offers an alternate vertical
 middle-drag behavior. Those are useful follow-ups, but they should enter through the focused camera
 controller rather than adding more branches to the inherited viewport implementation.
+
+Viewport focus also follows TrenchBroom's pointer policy: after any source viewport receives focus,
+crossing into another source viewport transfers keyboard focus there. Merely hovering the editor
+from an inspector or dialog does not steal focus.
+
+### Selection and manipulation audit
+
+| Interaction                                   | Worldview status |
+| --------------------------------------------- | ---------------- |
+| Click object; click void to clear             | Matched          |
+| Modifier-click adds or removes objects        | Matched          |
+| Modifier-click selects a face in perspective  | Matched          |
+| Modifier-double-click selects all brush faces | Matched          |
+| Paint/lasso object and face selection         | Matched          |
+| Selection drilling beneath the pointer        | Matched          |
+| Drag selected objects on the viewport plane   | Matched          |
+| Vertical modifier-drag in perspective         | Matched          |
+| Duplicate-and-move feedback flash             | Partial          |
+| Configurable keyboard shortcut preferences    | Deferred         |
+
+Worldview keeps browser-safe fixed shortcuts for now. A future shortcut preference surface must
+resolve conflicts by viewport/tool context rather than adding global window handlers.
 
 ## Controller ownership
 

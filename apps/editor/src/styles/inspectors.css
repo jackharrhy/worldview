@@ -24,7 +24,7 @@
 }
 
 .entity-properties {
-  border: 1px solid #292e34;
+  border: 1px solid var(--wv-292e34);
   border-bottom: 0;
 }
 
@@ -53,7 +53,7 @@
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr) auto;
   min-height: 28px;
-  border-bottom: 1px solid #292e34;
+  border-bottom: 1px solid var(--wv-292e34);
 }
 
 .entity-property-row:has(.entity-property-protection) {
@@ -64,7 +64,7 @@
   align-self: stretch;
   overflow: hidden;
   padding: 7px 6px;
-  border-right: 1px solid #292e34;
+  border-right: 1px solid var(--wv-292e34);
   color: var(--quiet);
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 9px;
@@ -80,7 +80,7 @@
   padding: 3px 6px;
   border-width: 0 1px 0 0;
   border-radius: 0;
-  border-color: #292e34;
+  border-color: var(--wv-292e34);
   background: var(--surface-input);
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 9px;
@@ -104,7 +104,7 @@
   place-self: center;
   width: 13px;
   height: 13px;
-  accent-color: #b46cff;
+  accent-color: var(--wv-b46cff);
 }
 
 .entity-property-row button {
@@ -119,7 +119,7 @@
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr) auto auto;
   margin-top: 6px;
-  border: 1px solid #292e34;
+  border: 1px solid var(--wv-292e34);
 }
 
 .entity-property-protected {
@@ -127,8 +127,8 @@
   align-items: center;
   gap: 4px;
   padding: 0 7px;
-  border-right: 1px solid #292e34;
-  color: #c89aff;
+  border-right: 1px solid var(--wv-292e34);
+  color: var(--wv-c89aff);
   font-size: 8px;
   white-space: nowrap;
 }
@@ -136,7 +136,7 @@
 .entity-property-protected input {
   width: 12px;
   height: 12px;
-  accent-color: #b46cff;
+  accent-color: var(--wv-b46cff);
 }
 
 .entity-property-add button {
@@ -188,9 +188,9 @@
 
 .uv-editor-frame {
   overflow: hidden;
-  border: 1px solid #303740;
-  background: #101419;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 2%);
+  border: 1px solid var(--wv-303740);
+  background: var(--wv-101419);
+  box-shadow: inset 0 0 0 1px var(--wv-rgb-255-255-255-2);
 }
 
 #uv-editor {
@@ -207,7 +207,7 @@
 }
 
 #uv-editor.empty text {
-  fill: #4f5964;
+  fill: var(--wv-4f5964);
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 9px;
   letter-spacing: 0.16em;
@@ -215,38 +215,38 @@
 }
 
 .uv-background {
-  fill: #11161b;
+  fill: var(--wv-11161b);
 }
 
 .uv-grid line {
-  stroke: #39434d;
+  stroke: var(--wv-39434d);
   stroke-width: 0.8;
   vector-effect: non-scaling-stroke;
 }
 
 .uv-face {
   cursor: grab;
-  stroke: #f2b760;
+  stroke: var(--wv-f2b760);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
 
 .uv-vertices circle {
-  fill: #f4c273;
-  stroke: #16191d;
+  fill: var(--wv-f4c273);
+  stroke: var(--wv-16191d);
   stroke-width: 1.5;
 }
 
 .uv-rotation-ring {
   fill: none;
-  stroke: rgb(242 183 96 / 72%);
+  stroke: var(--wv-rgb-242-183-96-72);
   stroke-width: 8;
   stroke-dasharray: 1 5;
   cursor: crosshair;
 }
 
 .uv-rotation-ring:hover {
-  stroke: #ffd28d;
+  stroke: var(--wv-ffd28d);
 }
 
 .uv-axis {
@@ -255,37 +255,37 @@
 }
 
 .uv-axis-u {
-  stroke: #d96565;
+  stroke: var(--wv-d96565);
 }
 
 .uv-axis-v {
-  stroke: #67b27c;
+  stroke: var(--wv-67b27c);
 }
 
 .uv-scale-handle {
-  stroke: #101419;
+  stroke: var(--wv-101419);
   stroke-width: 1.5;
   cursor: ew-resize;
 }
 
 .uv-scale-u {
-  fill: #e36d6d;
+  fill: var(--wv-e36d6d);
 }
 
 .uv-scale-v {
-  fill: #71c68a;
+  fill: var(--wv-71c68a);
   cursor: ns-resize;
 }
 
 .uv-pivot {
-  fill: #f6c55f;
-  stroke: #171b20;
+  fill: var(--wv-f6c55f);
+  stroke: var(--wv-171b20);
   stroke-width: 2;
   cursor: move;
 }
 
 .uv-pivot-center {
-  fill: #161a1f;
+  fill: var(--wv-161a1f);
 }
 
 .uv-editor-status {
@@ -305,11 +305,11 @@
 }
 
 .uv-editor-status b:first-child {
-  color: #e36d6d;
+  color: var(--wv-e36d6d);
 }
 
 .uv-editor-status b:last-child {
-  color: #71c68a;
+  color: var(--wv-71c68a);
 }
 
 .uv-editor-help {
@@ -412,7 +412,7 @@
 
 .texture-axes {
   margin: 9px 0 0;
-  border: 1px solid #292e34;
+  border: 1px solid var(--wv-292e34);
   border-bottom: 0;
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 9px;
@@ -488,8 +488,8 @@
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 .material-tile.in-use:not(.active) {
-  border-color: #a18735;
-  box-shadow: inset 0 0 0 1px #6e5d25;
+  border-color: var(--wv-a18735);
+  box-shadow: inset 0 0 0 1px var(--wv-6e5d25);
 }
 .material-tile canvas {
   width: 100%;
@@ -559,9 +559,9 @@
 
 .material-coverage {
   padding: 7px 8px;
-  border: 1px solid rgb(224 111 103 / 42%);
-  background: rgb(224 111 103 / 8%);
-  color: #e7a19b;
+  border: 1px solid var(--wv-rgb-224-111-103-42);
+  background: var(--wv-rgb-224-111-103-8);
+  color: var(--wv-e7a19b);
 }
 
 .entity-link-mode {

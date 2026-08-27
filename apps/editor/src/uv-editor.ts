@@ -449,7 +449,7 @@ export class TextureUvEditor {
       rawSvgElement('rect', {
         width: patternWidth,
         height: patternHeight,
-        fill: '#68727d',
+        fill: 'var(--uv-grid)',
       }),
     );
     if (state.material && patternWidth >= 3 && patternHeight >= 3) {
@@ -465,7 +465,7 @@ export class TextureUvEditor {
       pattern.append(
         rawSvgElement('path', {
           d: `M 0 0 H ${patternWidth} V ${patternHeight} H 0 Z M 0 0 L ${patternWidth} ${patternHeight} M ${patternWidth} 0 L 0 ${patternHeight}`,
-          stroke: '#7e8994',
+          stroke: 'var(--uv-grid-major)',
           'stroke-width': 1,
         }),
       );

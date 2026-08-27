@@ -42,13 +42,16 @@ export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
     minFilter: 'nearest',
     mipmapFilter: 'nearest',
   });
-  const pipelineLayout = device.createPipelineLayout({
+  const solidPipelineLayout = device.createPipelineLayout({
     bindGroupLayouts: [bindGroupLayout, materialBindGroupLayout],
+  });
+  const linePipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [bindGroupLayout],
   });
   const solidModule = device.createShaderModule({ code: SOLID_SHADER });
   const lineModule = device.createShaderModule({ code: LINE_SHADER });
   const solid = device.createRenderPipeline({
-    layout: pipelineLayout,
+    layout: solidPipelineLayout,
     vertex: {
       module: solidModule,
       entryPoint: 'vertexMain',
@@ -68,7 +71,7 @@ export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
     depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' },
   });
   const lines = device.createRenderPipeline({
-    layout: pipelineLayout,
+    layout: linePipelineLayout,
     vertex: {
       module: lineModule,
       entryPoint: 'vertexMain',

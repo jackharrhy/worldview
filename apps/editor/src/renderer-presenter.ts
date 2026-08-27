@@ -28,6 +28,7 @@ import { AnimationFrameScheduler } from '@jackharrhy/worldview';
 import type { BuildPresenter } from './build-presenter.js';
 import type { ContextMenuPresenter } from './context-menu-presenter.js';
 import type { DocumentPresenter } from './document-presenter.js';
+import { resolveEditorRenderTheme } from './render-theme.js';
 import type { EditorElements } from './editor-elements.js';
 import type { EditorState } from './editor-state.js';
 import type { GeometryToolPresenter } from './geometry-tool-presenter.js';
@@ -57,6 +58,7 @@ export class RendererPresenter {
     try {
       const renderScheduler = new AnimationFrameScheduler();
       const renderer = await EditorSourceRenderer.create({
+        theme: resolveEditorRenderTheme(),
         canvases: ui.canvases,
         document: state.session.document,
         selection: state.session.selection,
@@ -74,6 +76,7 @@ export class RendererPresenter {
         ).bounds,
         onRenderRequest: () => renderScheduler.request(),
         onCameraChange(event: EditorCameraChangeEvent) {
+          ui.canvases[event.viewport].dataset.camera = JSON.stringify(event.camera);
           if (event.viewport !== 'perspective') return;
           state.perspectiveCamera = event.camera;
           ui.perspectiveMode.dataset.camera = JSON.stringify(event.camera);

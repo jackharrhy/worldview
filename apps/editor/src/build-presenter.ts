@@ -8,6 +8,7 @@ import {
 import type { DocumentPresenter } from './document-presenter.js';
 import type { EditorElements } from './editor-elements.js';
 import type { EditorState } from './editor-state.js';
+import { resolveEditorRenderTheme } from './render-theme.js';
 
 export class BuildPresenter {
   public constructor(
@@ -181,7 +182,7 @@ export class BuildPresenter {
       autoStart: true,
       audio: false,
       textureFiltering: 'nearest',
-      clearColor: [0.105, 0.12, 0.145, 1],
+      clearColor: resolveEditorRenderTheme().background,
     });
     this.state.compiledRevision = result.sourceDocumentRevision;
     this.ui.togglePreviewButton.disabled = false;

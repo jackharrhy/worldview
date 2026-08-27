@@ -269,10 +269,16 @@ function dotTestVectors(left: readonly number[], right: readonly number[]): numb
   return left.reduce((sum, component, index) => sum + component * right[index]!, 0);
 }
 
-async function openEditor(page: Page): Promise<void> {
+async function openEditor(page: Page, options: { empty?: boolean } = {}): Promise<void> {
   await page.goto('http://127.0.0.1:5174/');
   await expect(page.locator('#status-message')).toContainText('Source renderer ready');
   await expect(page.locator('.viewport-error')).toBeHidden();
+  if (!options.empty) {
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(serializeMap(createStarterDocument()));
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await expect(page.locator('#status-message')).toContainText('Apply map source');
+  }
 }
 
 interface BrowserSiteToolResult {
@@ -434,6 +440,14 @@ async function perspectiveCamera(page: Page): Promise<CameraSnapshot> {
   return JSON.parse(value) as CameraSnapshot;
 }
 
+async function viewportCamera(page: Page, viewport: 'xy' | 'xz' | 'yz'): Promise<CameraSnapshot> {
+  const canvas = page.locator(`[data-viewport="${viewport}"] .source-canvas`);
+  await expect(canvas).toHaveAttribute('data-camera');
+  const value = await canvas.getAttribute('data-camera');
+  if (!value) throw new Error(`${viewport} camera state was not published`);
+  return JSON.parse(value) as CameraSnapshot;
+}
+
 function cameraDistance(left: readonly number[], right: readonly number[]): number {
   return Math.hypot(left[0]! - right[0]!, left[1]! - right[1]!, left[2]! - right[2]!);
 }
@@ -452,7 +466,7 @@ test.describe('WebMCP site authoring', () => {
     page,
   }) => {
     await installSiteToolRegistry(page);
-    await openEditor(page);
+    await openEditor(page, { empty: true });
     await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tools', 'ready');
     await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tool-count', '21');
 
@@ -476,8 +490,16 @@ test.describe('WebMCP site authoring', () => {
 
     const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
     expect(inspection.revision).toBe(0);
-    expect(inspection.counts).toMatchObject({ brushes: 3, faces: 18 });
+    expect(inspection.counts).toMatchObject({ entities: 1, brushes: 0, faces: 0 });
     const documentId = inspection.documentId as string;
+    const initialBox = await executeSiteTool(page, 'worldview_create_box', {
+      expectedDocumentId: documentId,
+      expectedRevision: 0,
+      min: [-64, -64, 0],
+      max: [64, 64, 64],
+      material: 'DEV_FLOOR',
+    });
+    expect(initialBox.revision).toBe(1);
     const listed = await executeSiteTool(page, 'worldview_list_objects', {
       kind: 'brush',
       limit: 10,
@@ -490,7 +512,7 @@ test.describe('WebMCP site authoring', () => {
 
     await executeSiteTool(page, 'worldview_select', {
       expectedDocumentId: documentId,
-      expectedRevision: 0,
+      expectedRevision: 1,
       mode: 'objects',
       brushIds: [firstBrush.id],
     });
@@ -508,12 +530,12 @@ test.describe('WebMCP site authoring', () => {
 
     const translated = await executeSiteTool(page, 'worldview_translate_selection', {
       expectedDocumentId: documentId,
-      expectedRevision: 0,
+      expectedRevision: 1,
       delta: [16, 0, 0],
       textureLock: true,
     });
-    expect(translated.revision).toBe(1);
-    await expect(page.locator('#document-revision')).toHaveText('1');
+    expect(translated.revision).toBe(2);
+    await expect(page.locator('#document-revision')).toHaveText('2');
     await expect(page.locator('#status-message')).toContainText('Site tool: translated');
 
     await expect(
@@ -523,11 +545,11 @@ test.describe('WebMCP site authoring', () => {
         delta: [16, 0, 0],
       }),
     ).rejects.toThrow('Stale document revision');
-    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#document-revision')).toHaveText('2');
 
     const undone = await executeSiteTool(page, 'worldview_history', {
       expectedDocumentId: documentId,
-      expectedRevision: 1,
+      expectedRevision: 2,
       action: 'undo',
     });
     const undoRevision = undone.revision as number;
@@ -549,6 +571,11 @@ test.describe('WebMCP site authoring', () => {
     expect(created.revision).toBeGreaterThan(undoRevision);
     expect(created.brushId).toEqual(expect.any(String));
     await expect(page.locator('#status-message')).toContainText('Site tool: created brush');
+
+    await page.getByRole('button', { name: 'New', exact: true }).click();
+    const blank = await executeSiteTool(page, 'worldview_inspect_editor');
+    expect(blank.revision).toBe(0);
+    expect(blank.counts).toMatchObject({ entities: 1, brushes: 0, faces: 0 });
   });
 });
 
@@ -1110,7 +1137,22 @@ test.describe('3D source authoring', () => {
     const lookEnd = await perspectiveCamera(page);
     expect(cameraDistance(lookEnd.position, lookStart.position)).toBeLessThan(0.001);
     expect(Math.abs(lookEnd.yaw - lookStart.yaw)).toBeGreaterThan(0.1);
+    expect(lookEnd.pitch).toBeLessThan(lookStart.pitch);
     await expect(page.locator('#perspective-mode')).toContainText('LOOK');
+
+    // Looking and keyboard flight must compose. The look gesture used to retain the eye from
+    // pointer-down and snap back to it after WASD translated the camera.
+    await page.mouse.move(lookPoint.x, lookPoint.y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(lookPoint.x + 12, lookPoint.y + 6);
+    await page.keyboard.down('w');
+    await page.waitForTimeout(180);
+    await page.keyboard.up('w');
+    const combinedFlyEnd = await perspectiveCamera(page);
+    await page.mouse.move(lookPoint.x + 36, lookPoint.y + 18);
+    const combinedLookEnd = await perspectiveCamera(page);
+    await page.mouse.up({ button: 'right' });
+    expect(cameraDistance(combinedLookEnd.position, combinedFlyEnd.position)).toBeLessThan(0.001);
 
     const panStart = await perspectiveCamera(page);
     await page.mouse.down({ button: 'middle' });
@@ -1160,6 +1202,35 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#status-message')).toContainText('Framed the selection');
     await expect(page.locator('#perspective-mode')).toContainText('FOCUS');
     await expect(page.locator('#document-revision')).toHaveText('0');
+  });
+
+  test('links orthographic navigation and follows viewport focus under the pointer', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const xyCanvas = page.locator('[data-viewport="xy"] .source-canvas');
+    const xzCanvas = page.locator('[data-viewport="xz"] .source-canvas');
+    const xyBounds = await xyCanvas.boundingBox();
+    const xzBounds = await xzCanvas.boundingBox();
+    if (!xyBounds || !xzBounds) throw new Error('Orthographic viewport bounds are unavailable');
+
+    await xyCanvas.focus();
+    await page.mouse.move(xzBounds.x + xzBounds.width / 2, xzBounds.y + xzBounds.height / 2);
+    await expect(xzCanvas).toBeFocused();
+
+    const beforeXy = await viewportCamera(page, 'xy');
+    const beforeXz = await viewportCamera(page, 'xz');
+    const beforeYz = await viewportCamera(page, 'yz');
+    await page.mouse.move(xyBounds.x + xyBounds.width * 0.65, xyBounds.y + xyBounds.height * 0.4);
+    await page.mouse.wheel(0, -160);
+    const afterXy = await viewportCamera(page, 'xy');
+    const afterXz = await viewportCamera(page, 'xz');
+    const afterYz = await viewportCamera(page, 'yz');
+    expect(afterXy.orthographicSpan).toBeLessThan(beforeXy.orthographicSpan);
+    expect(afterXz.orthographicSpan).toBeCloseTo(afterXy.orthographicSpan);
+    expect(afterYz.orthographicSpan).toBeCloseTo(afterXy.orthographicSpan);
+    expect(afterXz.center[0]).not.toBe(beforeXz.center[0]);
+    expect(afterYz.center[1]).not.toBe(beforeYz.center[1]);
   });
 
   test('frames a newly opened map instead of leaving distant geometry off-screen', async ({
@@ -2563,7 +2634,7 @@ test.describe('3D source authoring', () => {
 
     const editor = page.locator('#uv-editor');
     await expect(editor).toBeVisible();
-    await expect(page.locator('#uv-editor-status')).toContainText('DEV_FLOOR · 64×64 · 1 face');
+    await expect(page.locator('#uv-editor-status')).toContainText('DEV_FLOOR · 128×128 · 1 face');
     const bounds = await editor.boundingBox();
     if (!bounds) throw new Error('The UV editor has no bounds');
     const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
@@ -2822,9 +2893,22 @@ test.describe('3D source authoring', () => {
   test('brush dragging uses XY, live Shift axis locking, and Alt vertical movement', async ({
     page,
   }) => {
+    await installSiteToolRegistry(page);
     await openEditor(page);
-    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
-    await page.mouse.click(brushPoint.x, brushPoint.y);
+    const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
+    const listed = await executeSiteTool(page, 'worldview_list_objects', {
+      kind: 'brush',
+      limit: 1,
+    });
+    const brush = (listed.objects as readonly { readonly id: string }[])[0]!;
+    await executeSiteTool(page, 'worldview_select', {
+      expectedDocumentId: inspection.documentId,
+      expectedRevision: inspection.revision,
+      mode: 'objects',
+      brushIds: [brush.id],
+      entityIds: [],
+    });
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
     const originalBounds = '-128 -128 -32 to 128 128 0';
 
     const start = await topWorldPoint(page, 0, 0);

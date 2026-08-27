@@ -19,7 +19,7 @@ import {
   EditorMaterialCatalog,
   EntityDefinitionCatalog,
   BUILTIN_POINT_ENTITY_DEFINITIONS,
-  createStarterDocument,
+  createEmptyDocument,
   createSequentialIdFactory,
   mapSourceFingerprint,
   parseMapSource,
@@ -343,8 +343,8 @@ export class ProjectPresenter {
 
   public connect(): void {
     required<HTMLButtonElement>('[data-action="new"]').addEventListener('click', () => {
-      const document = createStarterDocument();
-      this.session.replaceDocument(document, 'Create starter map', {
+      const document = createEmptyDocument();
+      this.session.replaceDocument(document, 'Create empty map', {
         name: 'untitled.map',
         source: rebaseMapSource(document, serializeMap(document)),
         fileHandle: null,

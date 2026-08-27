@@ -286,6 +286,22 @@ export function createStarterDocument(): MapDocument {
   };
 }
 
+export function createEmptyDocument(): MapDocument {
+  const ids = createSequentialIdFactory('empty');
+  return {
+    id: ids.document(),
+    revision: 0,
+    format: 'valve-220',
+    entities: [
+      {
+        id: ids.entity(),
+        properties: { classname: 'worldspawn' },
+        brushes: [],
+      },
+    ],
+  };
+}
+
 export function replaceBrush(document: MapDocument, replacement: MapBrush): MapDocument {
   let found = false;
   const entities = document.entities.map((entity) => {

@@ -14,7 +14,8 @@ import type {
   EditorViewportCameraState,
   EditorViewportKind,
 } from './types.js';
-import { gridVertices, scaleOverlayVertices, upload, type SceneBuffers } from './scene-buffers.js';
+import { scaleOverlayVertices, upload, type SceneBuffers } from './scene-buffers.js';
+import { gridVertices } from './scene-grid.js';
 import { boundsVisible } from './scene-visibility.js';
 import {
   addScaled,
@@ -40,6 +41,7 @@ import {
   type PointerGestureTracker,
 } from './viewport-gesture-controllers.js';
 import { FlyCameraController } from './viewport/fly-camera-controller.js';
+import type { EditorRenderTheme } from './theme.js';
 export abstract class ViewportBase {
   protected abstract connectInput(): void;
   protected abstract cancelDrag(): void;
@@ -108,6 +110,7 @@ export abstract class ViewportBase {
     protected readonly interaction: ViewportInteraction,
     protected gridSize: number,
     private readonly requestRender: () => void,
+    private readonly theme: EditorRenderTheme,
   ) {
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('WebGPU canvas context is unavailable');
@@ -122,7 +125,7 @@ export abstract class ViewportBase {
       layout: bindGroupLayout,
       entries: [{ binding: 0, resource: { buffer: this.uniform } }],
     });
-    const grid = gridVertices(kind, gridSize);
+    const grid = gridVertices(kind, gridSize, theme);
     this.grid = upload(device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
     this.state = initialState(kind);
@@ -136,6 +139,7 @@ export abstract class ViewportBase {
       requestFrame: () => this.requestRender(),
     });
     this.connectInput();
+    this.canvas.addEventListener('pointerenter', this.followFocusedViewport);
     window.addEventListener('keydown', this.cancelOnEscape);
     window.addEventListener('keyup', this.clearInsertionOnModifierRelease);
     this.resizeObserver = new ResizeObserver(() => this.requestRender());
@@ -182,6 +186,21 @@ export abstract class ViewportBase {
     };
   }
 
+  public synchronizeOrthographicCamera(
+    source: EditorViewportKind,
+    camera: EditorViewportCameraState,
+    synchronizeZoom: boolean,
+  ): void {
+    if (this.kind === 'perspective' || this.kind === source) return;
+    const sharedAxes: readonly TransformAxis[] =
+      source === 'xy' ? [0, 1] : source === 'xz' ? [0, 2] : source === 'yz' ? [1, 2] : [];
+    for (const axis of sharedAxes) this.state.center[axis] = camera.center[axis];
+    if (synchronizeZoom) this.state.orthographicSpan = camera.orthographicSpan;
+    this.renderRequested = true;
+    this.requestRender();
+    this.interaction.cameraChanged(this.kind, 'linked', this.camera);
+  }
+
   public focusBounds(bounds: Bounds): void {
     const center: [number, number, number] = [
       (bounds.min[0] + bounds.max[0]) / 2,
@@ -218,7 +237,7 @@ export abstract class ViewportBase {
     if (next === this.gridSize) return;
     this.gridSize = next;
     this.grid.destroy();
-    const grid = gridVertices(this.kind, next);
+    const grid = gridVertices(this.kind, next, this.theme);
     this.grid = upload(this.device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
     this.renderRequested = true;
@@ -308,10 +327,19 @@ export abstract class ViewportBase {
     if (this.faceTransferSequenceReset !== null)
       window.clearTimeout(this.faceTransferSequenceReset);
     this.flyCamera.dispose();
+    this.canvas.removeEventListener('pointerenter', this.followFocusedViewport);
     this.resizeObserver.disconnect();
     window.removeEventListener('keydown', this.cancelOnEscape);
     window.removeEventListener('keyup', this.clearInsertionOnModifierRelease);
   }
+
+  private readonly followFocusedViewport = () => {
+    const focused = document.activeElement;
+    if (!(focused instanceof HTMLCanvasElement) || !focused.classList.contains('source-canvas')) {
+      return;
+    }
+    this.canvas.focus({ preventScroll: true });
+  };
 
   public cancelInteraction(): void {
     if (this.pendingFaceTransferClick !== null) {
@@ -333,7 +361,7 @@ export abstract class ViewportBase {
     this.scaleOverlay = null;
     this.scaleOverlayCount = 0;
     if (!scene.scaleBounds) return;
-    const vertices = scaleOverlayVertices(scene.scaleBounds, this.kind);
+    const vertices = scaleOverlayVertices(scene.scaleBounds, this.kind, this.theme);
     if (vertices.length === 0) return;
     this.scaleOverlay = upload(this.device, vertices, GPUBufferUsage.VERTEX);
     this.scaleOverlayCount = vertices.length / 6;

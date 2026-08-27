@@ -8,7 +8,8 @@ has two related products:
 - A WebGPU static-exhibit viewer for Quake BSP29 and GoldSrc BSP30 maps.
 - A serious solo map editor whose canonical authoring format is `.map` source.
 
-The editor defaults new maps to Valve 220. Classic Quake face syntax remains classic until the user
+The editor opens and creates new maps as an empty `worldspawn`, with no sample brushes or point
+entities. New maps default to Valve 220. Classic Quake face syntax remains classic until the user
 explicitly converts it. An optional loopback helper provides configured native compilation and
 external-game launch; the browser remains useful without it through import/download, local browser
 resources, and recovery.
@@ -148,6 +149,16 @@ groups file, mode, selection/history, visibility, and build commands; document a
 selectors retain text where context matters. Every icon action keeps an accessible text name,
 keyboard path, focus treatment, and descriptive tooltip. Rare-command menus remain future shell
 work because a browser cannot delegate them to a native operating-system menu bar.
+
+Source viewport navigation follows the TrenchBroom editing model: once a viewport has keyboard
+focus, focus follows the pointer between source panes; orthographic panes share zoom and synchronize
+their common pan axes. Inspector and dialog focus is never stolen merely by crossing a viewport.
+
+Editor theming has one CSS-owned color source. Shell, panel, inspector, dialog, border, SVG, and
+viewport-chrome colors consume custom properties whose concrete palette values use OKLCH. The app
+resolves semantic `--renderer-*` properties through the browser color engine and injects a typed RGB
+theme into the framework-neutral WebGPU renderer; source rendering and compiled-preview clear colors
+therefore follow the same theme without importing DOM or CSS APIs into the package.
 
 Renderer solids are partitioned by material and spatial cell. Structural-sharing signatures reuse
 unchanged GPU buffers across revisions, conservative frustum tests skip invisible batches, and an
