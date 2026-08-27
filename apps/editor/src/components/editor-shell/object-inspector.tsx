@@ -1,7 +1,7 @@
 import { BUILTIN_POINT_ENTITY_DEFINITIONS } from '@jackharrhy/worldview-editor';
 
-export function ObjectInspector() {
-  return (
+const objectInspector = (
+  <>
     <section data-inspector-panel="object">
       <div className="panel-heading">
         <h2>Selection</h2>
@@ -642,5 +642,9 @@ export function ObjectInspector() {
         </div>
       </div>
     </section>
-  );
+  </>
+);
+
+export function ObjectInspector() {
+  return objectInspector;
 }

@@ -197,8 +197,9 @@ export class EditorState {
     this.buildService = new RemoteMapCompiler({ endpoint: compilerEndpoint });
     this.compilerCoordinator = new MapCompileCoordinator(this.buildService);
     this.buildHistory = new MapBuildHistoryService(undefined, (error) => {
-      ui.statusMessage.textContent = `Build history storage failed: ${error instanceof Error ? error.message : String(error)}`;
-      ui.statusMessage.classList.add('error-text');
+      ui.statusMessage.setError(
+        `Build history storage failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     });
     for (const material of this.builtInMaterials) this.materialCatalog.set(material);
     this.uvEditor = new TextureUvEditor({
@@ -276,8 +277,9 @@ export class EditorState {
       }),
       undefined,
       (error) => {
-        ui.statusMessage.textContent = `Recovery storage failed: ${error instanceof Error ? error.message : String(error)}`;
-        ui.statusMessage.classList.add('error-text');
+        ui.statusMessage.setError(
+          `Recovery storage failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       },
     );
   }

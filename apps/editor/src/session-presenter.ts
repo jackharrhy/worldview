@@ -9,7 +9,6 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorApplication } from './editor-application.js';
-import { required } from './editor-elements.js';
 
 interface ReplaceDocumentOptions {
   readonly name?: string;
@@ -163,8 +162,7 @@ export class SessionPresenter {
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
     }
-    required<HTMLElement>('#pointer-context').textContent =
-      `${tool === 'create' ? 'CREATE' : tool === 'entity' ? 'ENTITY' : tool === 'hull' ? 'HULL' : tool === 'face' ? 'FACE' : tool === 'sweep' ? 'SWEEP' : tool === 'clip' ? 'CLIP' : this.app.transform.isTopologyTool(tool) || this.app.transform.isTransformTool(tool) ? tool.toUpperCase() : 'PERSPECTIVE'} / edit`;
+    this.ui.cameraPointerContext.textContent = `${tool === 'create' ? 'CREATE' : tool === 'entity' ? 'ENTITY' : tool === 'hull' ? 'HULL' : tool === 'face' ? 'FACE' : tool === 'sweep' ? 'SWEEP' : tool === 'clip' ? 'CLIP' : this.app.transform.isTopologyTool(tool) || this.app.transform.isTransformTool(tool) ? tool.toUpperCase() : 'PERSPECTIVE'} / edit`;
     this.ui.statusMessage.textContent =
       tool === 'create'
         ? `Simple Shape tool active. Drag in any viewport to draw a ${this.app.geometry.simpleShapeLabel(this.state.simpleShapeOptions.kind)}; use the Object inspector for shape options.`

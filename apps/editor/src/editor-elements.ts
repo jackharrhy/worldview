@@ -1,22 +1,24 @@
 import type { EditorViewportCanvases } from '@jackharrhy/worldview-editor';
 
+import type { EditorShellState } from './editor-shell-state.js';
+
 export function required<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
   if (!element) throw new Error(`Missing editor element: ${selector}`);
   return element;
 }
 
-export function bindEditorElements() {
+export function bindEditorElements(shellState: EditorShellState) {
   const source = required<HTMLTextAreaElement>('#map-source');
   const sourceMessage = required<HTMLParagraphElement>('#source-message');
   const sourceDialog = required<HTMLDialogElement>('#source-dialog');
   const viewportContextMenu = required<HTMLElement>('#viewport-context-menu');
-  const statusMessage = required<HTMLSpanElement>('#status-message');
-  const cameraPointerContext = required<HTMLSpanElement>('#pointer-context');
+  const statusMessage = shellState.statusMessage;
+  const cameraPointerContext = shellState.pointerContext;
   const editorShell = required<HTMLElement>('.editor-shell');
   const issueBrowser = required<HTMLElement>('#issue-browser');
   const issueSummary = required<HTMLElement>('#issue-summary');
-  const issueList = required<HTMLDivElement>('#issue-list');
+  const issueList = required<HTMLUListElement>('#issue-list');
   const issueStatus = required<HTMLButtonElement>('#issue-status');
   const showHiddenIssues = required<HTMLInputElement>('#show-hidden-issues');
   const viewFilterToggle = required<HTMLButtonElement>('[data-action="toggle-view-filters"]');
@@ -74,7 +76,7 @@ export function bindEditorElements() {
   const recoveryList = required<HTMLDivElement>('#recovery-list');
   const checkpointDialog = required<HTMLDialogElement>('#checkpoint-dialog');
   const checkpointLabel = required<HTMLInputElement>('#checkpoint-label');
-  const compileState = required<HTMLDivElement>('.compile-state');
+  const compileState = shellState.compileState;
   const perspectiveMode = required<HTMLElement>('#perspective-mode');
   const compiledCanvas = required<HTMLCanvasElement>('.compiled-canvas');
   const selectionKind = required<HTMLSpanElement>('#selection-kind');
@@ -246,7 +248,7 @@ export function bindEditorElements() {
   const inspectorToggle = required<HTMLButtonElement>('[data-action="toggle-inspector"]');
   const gridSizeSelect = required<HTMLSelectElement>('#grid-size');
   const textureLock = required<HTMLInputElement>('#texture-lock');
-  const documentName = required<HTMLElement>('#document-name');
+  const documentName = shellState.documentName;
 
   const canvases: EditorViewportCanvases = {
     xy: required<HTMLCanvasElement>('[data-viewport="xy"] .source-canvas'),

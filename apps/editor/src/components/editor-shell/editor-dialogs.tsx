@@ -3,9 +3,13 @@ import { EDITOR_SPECIAL_BRUSH_FILTER_INFO } from '@jackharrhy/worldview-editor';
 export function EditorDialogs() {
   return (
     <>
-      <dialog id="build-log-dialog" className="build-log-dialog">
+      <dialog
+        id="build-log-dialog"
+        className="build-log-dialog"
+        aria-labelledby="build-log-dialog-title"
+      >
         <header>
-          <strong>Build diagnostics</strong>
+          <strong id="build-log-dialog-title">Build diagnostics</strong>
           <select id="build-history" aria-label="Build history" />
           <button type="button" data-action="close-build-log">
             Close
@@ -13,18 +17,26 @@ export function EditorDialogs() {
         </header>
         <pre id="build-log-output" />
       </dialog>
-      <dialog id="recovery-dialog" className="build-log-dialog recovery-dialog">
+      <dialog
+        id="recovery-dialog"
+        className="build-log-dialog recovery-dialog"
+        aria-labelledby="recovery-dialog-title"
+      >
         <header>
-          <strong>Recovery versions</strong>
+          <strong id="recovery-dialog-title">Recovery versions</strong>
           <button type="button" data-action="close-recovery">
             Close
           </button>
         </header>
         <div id="recovery-list" className="recovery-list" />
       </dialog>
-      <dialog id="checkpoint-dialog" className="build-log-dialog checkpoint-dialog">
+      <dialog
+        id="checkpoint-dialog"
+        className="build-log-dialog checkpoint-dialog"
+        aria-labelledby="checkpoint-dialog-title"
+      >
         <header>
-          <strong>Protect recovery checkpoint</strong>
+          <strong id="checkpoint-dialog-title">Protect recovery checkpoint</strong>
           <button type="button" data-action="close-checkpoint">
             Close
           </button>

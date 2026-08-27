@@ -1,6 +1,13 @@
 import { EDITOR_ISSUE_TYPE_INFO } from '@jackharrhy/worldview-editor';
 
-export function EditorAuxiliary() {
+import type { EditorShellState } from '../../editor-shell-state.js';
+import { StatusBar } from './status-bar.js';
+
+interface EditorAuxiliaryProps {
+  readonly shellState: EditorShellState;
+}
+
+export function EditorAuxiliary({ shellState }: EditorAuxiliaryProps) {
   return (
     <>
       <section id="issue-browser" className="issue-browser" aria-label="Issue browser" hidden>
@@ -27,25 +34,14 @@ export function EditorAuxiliary() {
             Close
           </button>
         </header>
-        <div id="issue-list" className="issue-list" role="list" />
+        <ul id="issue-list" className="issue-list" />
       </section>
-      <footer className="statusbar">
-        <span id="status-message" aria-live="polite">
-          Starting WebGPU source renderer...
-        </span>
-        <button id="issue-status" type="button" data-action="toggle-issues" aria-expanded="false">
-          Issues 0
-        </button>
-        <div className="compile-state" title="Compiler service state">
-          COMPILER OFFLINE
-        </div>
-        <span id="pointer-context">Perspective / edit</span>
-      </footer>
-      <dialog id="source-dialog" className="source-dialog">
+      <StatusBar shellState={shellState} />
+      <dialog id="source-dialog" className="source-dialog" aria-labelledby="source-dialog-title">
         <div className="dialog-shell">
           <header>
             <div>
-              <strong>Map source</strong>
+              <strong id="source-dialog-title">Map source</strong>
               <span>Valve 220</span>
             </div>
             <button type="button" data-action="close-source" aria-label="Close source">
@@ -54,6 +50,7 @@ export function EditorAuxiliary() {
           </header>
           <textarea
             id="map-source"
+            aria-label="Map source"
             spellCheck="false"
             aria-describedby="source-message"
             defaultValue={''}
@@ -68,7 +65,7 @@ export function EditorAuxiliary() {
           </footer>
         </div>
       </dialog>
-      <aside
+      <div
         id="viewport-context-menu"
         className="viewport-context-menu"
         role="menu"

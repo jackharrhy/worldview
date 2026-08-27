@@ -1,26 +1,35 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
-
-import type { SnapshotStore } from '@jackharrhy/worldview';
+import { useRef, useSyncExternalStore } from 'react';
+import { useMutation } from '@tanstack/react-query';
 
 import type { ViewerController } from '../viewer-controller.js';
-import type { ViewerSnapshot } from '../viewer-state.js';
+import type { ViewerSnapshotReaders } from '../viewer-state.js';
 import { ControlDock } from './control-dock.js';
 
 interface ViewerAppProps {
   readonly controller: ViewerController;
-  readonly store: SnapshotStore<ViewerSnapshot>;
+  readonly readers: ViewerSnapshotReaders;
 }
 
-export function ViewerApp({ controller, store }: ViewerAppProps) {
-  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const canvas = useRef<HTMLCanvasElement>(null);
+export function ViewerApp({ controller, readers }: ViewerAppProps) {
+  const snapshot = useSyncExternalStore(
+    readers.shell.subscribe,
+    readers.shell.getSnapshot,
+    readers.shell.getSnapshot,
+  );
   const localFiles = useRef<HTMLInputElement>(null);
   const walkabilityFile = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (canvas.current) void controller.start(canvas.current);
-    return () => controller.dispose();
-  }, [controller]);
+  const dropMutation = useMutation({
+    mutationKey: ['viewer', 'load', 'drop'],
+    mutationFn: (files: FileList) => controller.loadDroppedFiles(files),
+  });
+  const localFileMutation = useMutation({
+    mutationKey: ['viewer', 'load', 'local-files'],
+    mutationFn: (files: FileList | null) => controller.loadLocalFiles(files),
+  });
+  const walkabilityFileMutation = useMutation({
+    mutationKey: ['viewer', 'walkability', 'load-file'],
+    mutationFn: (file: File | undefined) => controller.loadWalkabilityFile(file),
+  });
 
   return (
     <main
@@ -38,10 +47,15 @@ export function ViewerApp({ controller, store }: ViewerAppProps) {
       }}
       onDrop={(event) => {
         event.preventDefault();
-        controller.loadDroppedFiles(event.dataTransfer.files);
+        dropMutation.mutate(event.dataTransfer.files);
       }}
     >
-      <canvas ref={canvas} id="map-canvas" aria-label="Worldview map viewport" tabIndex={0} />
+      <canvas
+        ref={controller.attachCanvas}
+        id="map-canvas"
+        aria-label="Worldview map viewport"
+        tabIndex={0}
+      />
 
       <div className="map-readout" aria-live="polite">
         <strong data-map-name>{snapshot.mapName}</strong>
@@ -61,7 +75,8 @@ export function ViewerApp({ controller, store }: ViewerAppProps) {
 
       <ControlDock
         controller={controller}
-        snapshot={snapshot}
+        store={readers.controls}
+        cameraStore={readers.camera}
         openLocalFiles={() => localFiles.current?.click()}
         openWalkabilityFile={() => walkabilityFile.current?.click()}
       />
@@ -71,17 +86,19 @@ export function ViewerApp({ controller, store }: ViewerAppProps) {
         className="visually-hidden"
         data-local-files
         type="file"
+        aria-label="Choose BSP and related asset files"
         accept=".bsp,.wad,.spr,.wav,.mp3,.ogg,.lmp,.pal,.tga,application/octet-stream,audio/wav,audio/mpeg,audio/ogg"
         multiple
-        onChange={(event) => controller.loadLocalFiles(event.currentTarget.files)}
+        onChange={(event) => localFileMutation.mutate(event.currentTarget.files)}
       />
       <input
         ref={walkabilityFile}
         className="visually-hidden"
         data-walkability-file
         type="file"
+        aria-label="Choose a walkability sidecar"
         accept=".json,application/json"
-        onChange={(event) => controller.loadWalkabilityFile(event.currentTarget.files?.[0])}
+        onChange={(event) => walkabilityFileMutation.mutate(event.currentTarget.files?.[0])}
       />
       <output data-metrics hidden>
         {snapshot.metrics}

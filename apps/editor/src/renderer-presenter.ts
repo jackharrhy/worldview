@@ -26,7 +26,6 @@ import {
 import { AnimationFrameScheduler } from '@jackharrhy/worldview';
 
 import type { EditorApplication } from './editor-application.js';
-import { required } from './editor-elements.js';
 
 export class RendererPresenter {
   public constructor(private readonly app: EditorApplication) {}
@@ -81,8 +80,7 @@ export class RendererPresenter {
               : null;
             if (selection && intent.objectExpansion === 'activate' && containingGroup) {
               app.organization.openEditorGroup(containingGroup.id, selection);
-              required<HTMLElement>('#pointer-context').textContent =
-                `${viewport.toUpperCase()} / editing group`;
+              ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / editing group`;
               return;
             }
             if (selection && containingGroup) {
@@ -197,12 +195,10 @@ export class RendererPresenter {
                       ? 'object'
                       : 'objects';
             ui.statusMessage.textContent = `Paint selected ${count} ${subject}.`;
-            required<HTMLElement>('#pointer-context').textContent =
-              `${viewport.toUpperCase()} / ${faces.length > 0 ? 'face' : 'object'} paint ${count}`;
+            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / ${faces.length > 0 ? 'face' : 'object'} paint ${count}`;
           } else if (intent.drill) {
             ui.statusMessage.textContent = `Drilled selection ${intent.drill} in the 3D view.`;
-            required<HTMLElement>('#pointer-context').textContent =
-              `PERSPECTIVE / drill ${intent.drill}`;
+            ui.cameraPointerContext.textContent = `PERSPECTIVE / drill ${intent.drill}`;
           } else if (
             selection &&
             !selection.faceId &&
@@ -214,8 +210,7 @@ export class RendererPresenter {
               state.openGroupId,
             )!;
             ui.statusMessage.textContent = `Selected group ${group.name}.`;
-            required<HTMLElement>('#pointer-context').textContent =
-              `${viewport.toUpperCase()} / group ${group.name}`;
+            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / group ${group.name}`;
           } else if (
             selection?.brushId &&
             (intent.objectExpansion === 'siblings' || intent.objectExpansion === 'activate')
@@ -223,11 +218,9 @@ export class RendererPresenter {
             const count = selectedBrushIds(state.session.selection).length;
             ui.statusMessage.textContent =
               count > 1 ? `Selected ${count} sibling brushes.` : 'Selected brush.';
-            required<HTMLElement>('#pointer-context').textContent =
-              `${viewport.toUpperCase()} / siblings ${count}`;
+            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / siblings ${count}`;
           } else {
-            required<HTMLElement>('#pointer-context').textContent =
-              `${viewport.toUpperCase()} / edit`;
+            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / edit`;
           }
         },
         onPointEntityPlace(event) {
@@ -247,8 +240,7 @@ export class RendererPresenter {
               state.openGroupId ? { _tb_group: state.openGroupId } : {},
             );
             ui.statusMessage.textContent = `Placed ${classname} at ${app.build.formatVector(event.origin)}.`;
-            required<HTMLElement>('#pointer-context').textContent =
-              `${event.viewport.toUpperCase()} / placed ${classname}`;
+            ui.cameraPointerContext.textContent = `${event.viewport.toUpperCase()} / placed ${classname}`;
           } catch (error) {
             ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
           }
@@ -259,8 +251,7 @@ export class RendererPresenter {
         },
         onContextMenu(event) {
           app.contextMenu.showViewportContextMenu(event);
-          required<HTMLElement>('#pointer-context').textContent =
-            `${event.viewport.toUpperCase()} / context ${app.build.formatVector(event.pointer.point)}`;
+          ui.cameraPointerContext.textContent = `${event.viewport.toUpperCase()} / context ${app.build.formatVector(event.pointer.point)}`;
         },
         onFaceLasso(faces, viewport, ensureSelected) {
           if (faces.length === 0) {
@@ -269,8 +260,7 @@ export class RendererPresenter {
           }
           state.session.selectFacesWithLasso(faces, ensureSelected);
           const count = selectedFaceReferences(state.session.selection).length;
-          required<HTMLElement>('#pointer-context').textContent =
-            `${viewport.toUpperCase()} / face lasso ${count}`;
+          ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / face lasso ${count}`;
         },
         onClipPlaneChange(event: EditorClipPlaneEvent) {
           app.geometry.handleClipPlaneChange(event);
@@ -286,8 +276,7 @@ export class RendererPresenter {
                   ? `Clip point ${event.movingPointIndex + 1} move cancelled.`
                   : `Clip point ${event.movingPointIndex + 1} preview${constraint}. Release to place it.`;
           }
-          required<HTMLElement>('#pointer-context').textContent =
-            `${event.viewport.toUpperCase()} / clip ${event.points.length}`;
+          ui.cameraPointerContext.textContent = `${event.viewport.toUpperCase()} / clip ${event.points.length}`;
         },
         onTransformDrag(event: EditorTransformDragEvent) {
           app.transform.handleTransformDrag(event);
@@ -308,7 +297,7 @@ export class RendererPresenter {
           if (app.transform.isTransformTool(state.activeTool)) app.inspector.updateInspector();
         },
         onBrushDrag(event: EditorBrushDragEvent) {
-          const pointerContext = required<HTMLElement>('#pointer-context');
+          const pointerContext = ui.cameraPointerContext;
           if (event.phase === 'cancel') {
             state.moveCandidate = null;
             state.duplicationBase = null;
@@ -397,7 +386,7 @@ export class RendererPresenter {
           }
         },
         onFaceTransfer(event: EditorFaceTransferEvent) {
-          const pointerContext = required<HTMLElement>('#pointer-context');
+          const pointerContext = ui.cameraPointerContext;
           if (event.phase === 'cancel') {
             state.faceTransferCandidate = null;
             state.renderer?.setDocument(state.session.document, state.session.selection);
@@ -440,7 +429,7 @@ export class RendererPresenter {
           }
         },
         onFaceDrag(event: EditorFaceDragEvent) {
-          const pointerContext = required<HTMLElement>('#pointer-context');
+          const pointerContext = ui.cameraPointerContext;
           const hasMovement =
             event.mode === 'translate'
               ? event.delta.some((component) => Math.abs(component) > Number.EPSILON)
@@ -536,7 +525,7 @@ export class RendererPresenter {
           }
         },
         onHullCreate(event: EditorHullCreateEvent) {
-          const pointerContext = required<HTMLElement>('#pointer-context');
+          const pointerContext = ui.cameraPointerContext;
           state.hullBuildPoints = event.points;
           pointerContext.textContent = 'PERSPECTIVE / hull';
           if (event.phase === 'cancel') {
@@ -581,7 +570,7 @@ export class RendererPresenter {
           }
         },
         onBrushCreate(event: EditorBrushCreateEvent) {
-          const pointerContext = required<HTMLElement>('#pointer-context');
+          const pointerContext = ui.cameraPointerContext;
           if (event.phase === 'cancel' || !event.bounds) {
             state.creationCandidate = null;
             state.creationSequence += 1;

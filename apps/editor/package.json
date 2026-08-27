@@ -12,6 +12,7 @@
     "@jackharrhy/worldview": "*",
     "@jackharrhy/worldview-editor": "*",
     "@phosphor-icons/web": "^2.1.2",
+    "@tanstack/react-query": "^5.102.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

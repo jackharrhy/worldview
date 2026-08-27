@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview';
+import { SnapshotStore, selectSnapshot, type SnapshotReader } from '@jackharrhy/worldview';
 
 export interface ViewerMusicOption {
   readonly label: string;
@@ -76,6 +76,73 @@ export interface ViewerSnapshot {
   readonly walkabilityVisible: boolean;
   readonly walkabilityStatus: string;
   readonly walkabilityNodes: string;
+}
+
+export type ViewerControlSnapshot = Omit<ViewerSnapshot, 'position' | 'angles'>;
+
+export type ViewerShellSnapshot = Pick<
+  ViewerSnapshot,
+  | 'dropActive'
+  | 'formatLabel'
+  | 'mapName'
+  | 'metrics'
+  | 'movementMode'
+  | 'readySequence'
+  | 'reticle'
+  | 'shellState'
+  | 'status'
+>;
+
+export type ViewerCameraSnapshot = Pick<ViewerSnapshot, 'angles' | 'position'>;
+
+export interface ViewerSnapshotReaders {
+  readonly shell: SnapshotReader<ViewerShellSnapshot>;
+  readonly controls: SnapshotReader<ViewerControlSnapshot>;
+  readonly camera: SnapshotReader<ViewerCameraSnapshot>;
+}
+
+function shallowEqual<T extends object>(left: T, right: T): boolean {
+  const leftKeys = Object.keys(left) as Array<keyof T>;
+  if (leftKeys.length !== Object.keys(right).length) return false;
+  return leftKeys.every((key) => Object.is(left[key], right[key]));
+}
+
+export function createViewerSnapshotReaders(
+  store: SnapshotReader<ViewerSnapshot>,
+): ViewerSnapshotReaders {
+  return {
+    shell: selectSnapshot(
+      store,
+      ({
+        dropActive,
+        formatLabel,
+        mapName,
+        metrics,
+        movementMode,
+        readySequence,
+        reticle,
+        shellState,
+        status,
+      }) => ({
+        dropActive,
+        formatLabel,
+        mapName,
+        metrics,
+        movementMode,
+        readySequence,
+        reticle,
+        shellState,
+        status,
+      }),
+      shallowEqual,
+    ),
+    controls: selectSnapshot(
+      store,
+      ({ position: _position, angles: _angles, ...controls }) => controls,
+      shallowEqual,
+    ),
+    camera: selectSnapshot(store, ({ angles, position }) => ({ angles, position }), shallowEqual),
+  };
 }
 
 export function createViewerStore(defaultFixture: string): SnapshotStore<ViewerSnapshot> {

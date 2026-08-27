@@ -447,7 +447,7 @@ export class OrganizationPresenter {
     );
     this.ui.issueList.replaceChildren();
     if (visible.length === 0) {
-      const empty = window.document.createElement('div');
+      const empty = window.document.createElement('li');
       empty.className = 'issue-list-empty';
       empty.textContent =
         issues.length === 0
@@ -458,12 +458,11 @@ export class OrganizationPresenter {
     }
 
     for (const issue of visible) {
-      const row = window.document.createElement('article');
+      const row = window.document.createElement('li');
       row.className = `issue-row ${issue.severity}`;
       row.dataset.issueId = issue.id;
       row.dataset.issueType = issue.type;
       row.classList.toggle('hidden-issue', this.state.hiddenIssueIds.has(issue.id));
-      row.setAttribute('role', 'listitem');
 
       const select = window.document.createElement('button');
       select.type = 'button';

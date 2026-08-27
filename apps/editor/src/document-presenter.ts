@@ -88,8 +88,10 @@ export class DocumentPresenter {
 
   public setDocumentName(name: string): void {
     this.state.currentDocumentName = name.toLowerCase().endsWith('.map') ? name : `${name}.map`;
-    this.ui.documentName.textContent = `${this.state.documentDirty ? '• ' : ''}${this.state.currentDocumentName}`;
-    this.ui.documentName.title = this.state.currentDocumentName;
+    this.ui.documentName.set(
+      `${this.state.documentDirty ? '• ' : ''}${this.state.currentDocumentName}`,
+      this.state.currentDocumentName,
+    );
   }
 
   public setDocumentDirty(dirty: boolean): void {

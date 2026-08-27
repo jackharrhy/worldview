@@ -38,6 +38,8 @@ export class ViewerController {
   private warningMessages: string[] = [];
   private mapLoadSequence = 0;
   private cameraTimer: number | null = null;
+  private attachedCanvas: HTMLCanvasElement | null = null;
+  private attachmentGeneration = 0;
   private disposed = false;
 
   public constructor(private readonly store: SnapshotStore<ViewerSnapshot>) {}
@@ -46,7 +48,22 @@ export class ViewerController {
     this.store.update((current) => ({ ...current, [key]: value }));
   }
 
-  public async start(canvas: HTMLCanvasElement): Promise<void> {
+  /** React callback ref: canvas attachment owns the WebGPU runtime without a component effect. */
+  public readonly attachCanvas = (canvas: HTMLCanvasElement | null): void | (() => void) => {
+    if (!canvas) return;
+    const generation = ++this.attachmentGeneration;
+    this.releaseViewer();
+    this.attachedCanvas = canvas;
+    void this.start(canvas, generation);
+    return () => {
+      if (this.attachedCanvas !== canvas) return;
+      this.attachmentGeneration += 1;
+      this.attachedCanvas = null;
+      this.releaseViewer();
+    };
+  };
+
+  private async start(canvas: HTMLCanvasElement, generation: number): Promise<void> {
     if (this.disposed || this.viewer) return;
     if (!navigator.gpu) {
       this.patch({
@@ -59,7 +76,11 @@ export class ViewerController {
     }
     try {
       const viewer = await createWorldview({ canvas, controls: 'walk', maxDevicePixelRatio: 2 });
-      if (this.disposed) {
+      if (
+        this.disposed ||
+        generation !== this.attachmentGeneration ||
+        this.attachedCanvas !== canvas
+      ) {
         viewer.dispose();
         return;
       }
@@ -126,6 +147,13 @@ export class ViewerController {
       this.cameraTimer = window.setInterval(() => this.updateCameraReadout(), 100);
       this.loadInitialRequest();
     } catch (error) {
+      if (
+        this.disposed ||
+        generation !== this.attachmentGeneration ||
+        this.attachedCanvas !== canvas
+      ) {
+        return;
+      }
       this.patch({ controlsDisabled: true, formatLabel: 'WebGPU setup failed' });
       this.setStatus(error instanceof Error ? error.message : String(error), 'error');
     }
@@ -134,22 +162,33 @@ export class ViewerController {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.cameraTimer !== null) window.clearInterval(this.cameraTimer);
+    this.attachmentGeneration += 1;
+    this.attachedCanvas = null;
+    this.releaseViewer();
+  }
+
+  private releaseViewer(): void {
+    if (this.cameraTimer !== null) {
+      window.clearInterval(this.cameraTimer);
+      this.cameraTimer = null;
+    }
     this.viewer?.dispose();
     this.viewer = null;
+    this.spawnCamera = null;
+    this.pendingCamera = null;
   }
 
   public setDropActive(active: boolean): void {
     this.patch({ dropActive: active });
   }
 
-  public loadFixture(id = this.snapshot.fixture): void {
+  public async loadFixture(id = this.snapshot.fixture): Promise<void> {
     const fixture = fixtureById(id);
-    if (fixture) void this.load(fixture.source, fixture.camera, fixture.walkability);
+    if (fixture) await this.load(fixture.source, fixture.camera, fixture.walkability);
     else this.setStatus(`Fixture ${id} was not found`, 'error');
   }
 
-  public loadUrl(): void {
+  public async loadUrl(): Promise<void> {
     const state = this.snapshot;
     const bsp = state.bspUrl.trim();
     if (!bsp) return;
@@ -162,30 +201,29 @@ export class ViewerController {
       ...(state.spriteBaseUrl.trim() ? { spriteBaseUrl: state.spriteBaseUrl.trim() } : {}),
       ...(state.soundBaseUrl.trim() ? { soundBaseUrl: state.soundBaseUrl.trim() } : {}),
     };
-    void this.load(source);
+    await this.load(source);
   }
 
-  public loadLocalFiles(files: FileList | null): void {
+  public async loadLocalFiles(files: FileList | null): Promise<void> {
     const source = files ? sourceFromFiles(files) : undefined;
-    if (source) void this.load(source);
+    if (source) await this.load(source);
     else this.setStatus('Choose at least one BSP file', 'error');
   }
 
-  public loadDroppedFiles(files: FileList | null): void {
+  public async loadDroppedFiles(files: FileList | null): Promise<void> {
     this.setDropActive(false);
     const source = files ? sourceFromFiles(files) : undefined;
-    if (source) void this.load(source);
+    if (source) await this.load(source);
     else this.setStatus('The drop did not include a BSP file', 'error');
   }
 
-  public loadWalkabilityFile(file: File | undefined): void {
+  public async loadWalkabilityFile(file: File | undefined): Promise<void> {
     if (!file) return;
-    void file
-      .text()
-      .then((text) => this.applyWalkability(parseWalkability(text)))
-      .catch((error) => {
-        this.patch({ walkabilityStatus: error instanceof Error ? error.message : String(error) });
-      });
+    try {
+      this.applyWalkability(parseWalkability(await file.text()));
+    } catch (error) {
+      this.patch({ walkabilityStatus: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   public async generateWalkability(): Promise<void> {
@@ -294,8 +332,8 @@ export class ViewerController {
     this.viewer?.setCamera({ fieldOfView });
   }
 
-  public enableAudio(): void {
-    void this.viewer?.enableAudio();
+  public async enableAudio(): Promise<void> {
+    await this.viewer?.enableAudio();
   }
 
   public setAudioMuted(muted: boolean): void {
@@ -314,17 +352,19 @@ export class ViewerController {
     this.viewer?.setMusicVolume(volume);
   }
 
-  public playMusic(): void {
+  public async playMusic(): Promise<void> {
     const option = this.snapshot.musicOptions.find(
       (candidate) => candidate.label === this.snapshot.musicTrack,
     );
     if (!option) return;
-    void this.viewer?.playMusic(option.entityIndex).catch((error) => {
+    try {
+      await this.viewer?.playMusic(option.entityIndex);
+    } catch (error) {
       this.setWarnings([
         ...this.warningMessages,
         error instanceof Error ? error.message : String(error),
       ]);
-    });
+    }
   }
 
   public stopMusic(): void {

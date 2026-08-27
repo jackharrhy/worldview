@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 interface FieldProps {
   readonly label: string;
@@ -66,7 +66,12 @@ interface NumberFieldProps {
   readonly dataAttribute?: string;
 }
 
-export function NumberField({
+export function NumberField(props: NumberFieldProps) {
+  const resetKey = `${props.fractionDigits ?? 'natural'}:${props.value}`;
+  return <NumberFieldDraft key={resetKey} {...props} />;
+}
+
+function NumberFieldDraft({
   label,
   value,
   onCommit,
@@ -79,7 +84,6 @@ export function NumberField({
   const format = (number: number) =>
     fractionDigits === undefined ? String(number) : number.toFixed(fractionDigits);
   const [draft, setDraft] = useState(() => format(value));
-  useEffect(() => setDraft(format(value)), [fractionDigits, value]);
   const commit = () => {
     const parsed = Number(draft);
     if (!Number.isFinite(parsed)) {

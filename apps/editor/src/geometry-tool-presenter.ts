@@ -18,7 +18,6 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorApplication } from './editor-application.js';
-import { required } from './editor-elements.js';
 
 export class GeometryToolPresenter {
   public constructor(private readonly app: EditorApplication) {}
@@ -522,8 +521,7 @@ export class GeometryToolPresenter {
         : event.mode === 'rotate'
           ? `${['X', 'Y', 'Z'][event.axis]} ${event.angleDegrees}°`
           : `×${event.factor}`;
-    required<HTMLElement>('#pointer-context').textContent =
-      `PERSPECTIVE / sweep ${event.mode} ${detail}`;
+    this.ui.cameraPointerContext.textContent = `PERSPECTIVE / sweep ${event.mode} ${detail}`;
     this.ui.statusMessage.textContent =
       event.phase === 'commit'
         ? `Sweep destination ${event.mode} set. Press Enter to generate the brushes.`

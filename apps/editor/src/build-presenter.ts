@@ -35,8 +35,7 @@ export class BuildPresenter {
   }
 
   public setCompileState(label: string, state: 'offline' | 'ready' | 'busy' | 'stale'): void {
-    this.ui.compileState.textContent = label;
-    this.ui.compileState.dataset.state = state;
+    this.ui.compileState.set(label, state);
   }
 
   public showCompiledPreview(show: boolean): void {

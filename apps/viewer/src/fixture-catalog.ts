@@ -121,10 +121,6 @@ export const selectableFixtures: readonly ViewerFixture[] = fixtures.filter(
   (fixture) => fixture.selectable,
 );
 
-export function fixtureOptions(): Record<string, string> {
-  return Object.fromEntries(selectableFixtures.map((fixture) => [fixture.label, fixture.id]));
-}
-
 export function fixtureById(id: string): ViewerFixture | undefined {
   return fixtures.find((fixture) => fixture.id === id || fixture.aliases.includes(id));
 }

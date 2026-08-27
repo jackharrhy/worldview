@@ -1,25 +1,43 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { useMutation } from '@tanstack/react-query';
+
+import type { SnapshotReader } from '@jackharrhy/worldview';
 
 import { selectableFixtures } from '../fixture-catalog.js';
 import type { ViewerController } from '../viewer-controller.js';
-import type { ViewerSnapshot } from '../viewer-state.js';
+import type {
+  ViewerCameraSnapshot,
+  ViewerControlSnapshot,
+  ViewerSnapshot,
+} from '../viewer-state.js';
 import { Field, PanelSection, TextField } from './form-controls.js';
 import { MapControls } from './map-controls.js';
 
 interface ControlDockProps {
   readonly controller: ViewerController;
-  readonly snapshot: ViewerSnapshot;
+  readonly store: SnapshotReader<ViewerControlSnapshot>;
+  readonly cameraStore: SnapshotReader<ViewerCameraSnapshot>;
   readonly openLocalFiles: () => void;
   readonly openWalkabilityFile: () => void;
 }
 
 export function ControlDock({
   controller,
-  snapshot,
+  store,
+  cameraStore,
   openLocalFiles,
   openWalkabilityFile,
 }: ControlDockProps) {
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [tab, setTab] = useState<'load' | 'map'>('load');
+  const fixtureMutation = useMutation({
+    mutationKey: ['viewer', 'load', 'fixture'],
+    mutationFn: (id: string) => controller.loadFixture(id),
+  });
+  const urlMutation = useMutation({
+    mutationKey: ['viewer', 'load', 'url'],
+    mutationFn: () => controller.loadUrl(),
+  });
   const field = <Key extends keyof ViewerSnapshot>(key: Key, value: ViewerSnapshot[Key]) =>
     controller.setField(key, value);
 
@@ -43,88 +61,90 @@ export function ControlDock({
       </div>
 
       <div className="control-dock__scroll">
-        <div className="control-page" hidden={tab !== 'load'}>
-          <Field label="Fixture">
-            <select
-              value={snapshot.fixture}
-              onChange={(event) => field('fixture', event.currentTarget.value)}
-            >
-              {selectableFixtures.map((fixture) => (
-                <option key={fixture.id} value={fixture.id}>
-                  {fixture.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <button
-            type="button"
-            data-fixture
-            disabled={selectableFixtures.length === 0}
-            onClick={() => controller.loadFixture()}
-          >
-            Load fixture
-          </button>
-
-          <PanelSection title="URL">
-            <TextField
-              label="BSP"
-              value={snapshot.bspUrl}
-              onChange={(value) => field('bspUrl', value)}
-            />
-            <TextField
-              label="Game root"
-              value={snapshot.gameBaseUrl}
-              onChange={(value) => field('gameBaseUrl', value)}
-            />
-            <PanelSection title="Overrides">
-              <TextField
-                label="Palette"
-                value={snapshot.paletteUrl}
-                onChange={(value) => field('paletteUrl', value)}
-              />
-              <TextField
-                label="WAD base"
-                value={snapshot.wadBaseUrl}
-                onChange={(value) => field('wadBaseUrl', value)}
-              />
-              <TextField
-                label="Skybox base"
-                value={snapshot.skyboxBaseUrl}
-                onChange={(value) => field('skyboxBaseUrl', value)}
-              />
-              <TextField
-                label="Sprite base"
-                value={snapshot.spriteBaseUrl}
-                onChange={(value) => field('spriteBaseUrl', value)}
-              />
-              <TextField
-                label="Sound base"
-                value={snapshot.soundBaseUrl}
-                onChange={(value) => field('soundBaseUrl', value)}
-              />
-            </PanelSection>
+        {tab === 'load' ? (
+          <div className="control-page">
+            <Field label="Fixture">
+              <select
+                value={snapshot.fixture}
+                onChange={(event) => field('fixture', event.currentTarget.value)}
+              >
+                {selectableFixtures.map((fixture) => (
+                  <option key={fixture.id} value={fixture.id}>
+                    {fixture.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <button
               type="button"
-              disabled={!snapshot.bspUrl.trim()}
-              onClick={() => controller.loadUrl()}
+              data-fixture
+              disabled={selectableFixtures.length === 0 || fixtureMutation.isPending}
+              onClick={() => fixtureMutation.mutate(snapshot.fixture)}
             >
-              Load URL
+              Load fixture
             </button>
-          </PanelSection>
 
-          <PanelSection title="Local files">
-            <button type="button" onClick={openLocalFiles}>
-              Choose BSP and assets
-            </button>
-          </PanelSection>
-        </div>
-        <div hidden={tab !== 'map'}>
+            <PanelSection title="URL">
+              <TextField
+                label="BSP"
+                value={snapshot.bspUrl}
+                onChange={(value) => field('bspUrl', value)}
+              />
+              <TextField
+                label="Game root"
+                value={snapshot.gameBaseUrl}
+                onChange={(value) => field('gameBaseUrl', value)}
+              />
+              <PanelSection title="Overrides">
+                <TextField
+                  label="Palette"
+                  value={snapshot.paletteUrl}
+                  onChange={(value) => field('paletteUrl', value)}
+                />
+                <TextField
+                  label="WAD base"
+                  value={snapshot.wadBaseUrl}
+                  onChange={(value) => field('wadBaseUrl', value)}
+                />
+                <TextField
+                  label="Skybox base"
+                  value={snapshot.skyboxBaseUrl}
+                  onChange={(value) => field('skyboxBaseUrl', value)}
+                />
+                <TextField
+                  label="Sprite base"
+                  value={snapshot.spriteBaseUrl}
+                  onChange={(value) => field('spriteBaseUrl', value)}
+                />
+                <TextField
+                  label="Sound base"
+                  value={snapshot.soundBaseUrl}
+                  onChange={(value) => field('soundBaseUrl', value)}
+                />
+              </PanelSection>
+              <button
+                type="button"
+                disabled={!snapshot.bspUrl.trim() || urlMutation.isPending}
+                onClick={() => urlMutation.mutate()}
+              >
+                Load URL
+              </button>
+            </PanelSection>
+
+            <PanelSection title="Local files">
+              <button type="button" onClick={openLocalFiles}>
+                Choose BSP and assets
+              </button>
+            </PanelSection>
+          </div>
+        ) : (
           <MapControls
             controller={controller}
             snapshot={snapshot}
+            cameraStore={cameraStore}
             openWalkabilityFile={openWalkabilityFile}
           />
-        </div>
+        )}
       </div>
     </aside>
   );

@@ -21,7 +21,6 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorApplication } from './editor-application.js';
-import { required } from './editor-elements.js';
 
 export class TransformToolPresenter {
   public constructor(private readonly app: EditorApplication) {}
@@ -41,7 +40,7 @@ export class TransformToolPresenter {
   }
 
   public handleTopologyDrag(event: EditorTopologyDragEvent): void {
-    const pointerContext = required<HTMLElement>('#pointer-context');
+    const pointerContext = this.ui.cameraPointerContext;
     const insertion = event.operation === 'insert';
     const snapping = event.operation === 'snap';
     const label = insertion
@@ -132,8 +131,7 @@ export class TransformToolPresenter {
       this.state.renderer?.translateTopologySelection(delta);
       this.state.session.commitCandidate({ ...candidate, label });
       this.state.topologySequence += 1;
-      required<HTMLElement>('#pointer-context').textContent =
-        `${viewport.toUpperCase()} / ${this.state.topologySelectionKind} ${this.app.build.formatVector(delta)}`;
+      this.ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / ${this.state.topologySelectionKind} ${this.app.build.formatVector(delta)}`;
       return true;
     } catch (error) {
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
@@ -158,8 +156,7 @@ export class TransformToolPresenter {
       const label = faces.length === 1 ? 'Nudge face' : 'Nudge faces';
       this.state.session.commitCandidate({ ...candidate, label });
       this.state.faceTranslationSequence += 1;
-      required<HTMLElement>('#pointer-context').textContent =
-        `${viewport.toUpperCase()} / face ${this.app.build.formatVector(delta)}`;
+      this.ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / face ${this.app.build.formatVector(delta)}`;
       return true;
     } catch (error) {
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
@@ -397,7 +394,7 @@ export class TransformToolPresenter {
   }
 
   public handleTransformDrag(event: EditorTransformDragEvent): void {
-    const pointerContext = required<HTMLElement>('#pointer-context');
+    const pointerContext = this.ui.cameraPointerContext;
     if (event.phase === 'cancel') {
       this.state.transformCandidate = null;
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
@@ -443,7 +440,7 @@ export class TransformToolPresenter {
   }
 
   public handleTransformPivotDrag(event: EditorTransformPivotDragEvent): void {
-    const pointerContext = required<HTMLElement>('#pointer-context');
+    const pointerContext = this.ui.cameraPointerContext;
     const nextPivot = event.phase === 'cancel' ? event.startPivot : event.pivot;
     this.state.transformPivot = [...nextPivot] as Vec3;
     this.state.transformPivotSelectionKey = this.selectedTransformKey();

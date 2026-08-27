@@ -1,14 +1,44 @@
+import { useSyncExternalStore } from 'react';
+import { useMutation } from '@tanstack/react-query';
+
+import type { SnapshotReader } from '@jackharrhy/worldview';
+
 import type { ViewerController } from '../viewer-controller.js';
-import type { ViewerSnapshot } from '../viewer-state.js';
+import type { ViewerCameraSnapshot, ViewerControlSnapshot } from '../viewer-state.js';
 import { CheckboxField, Field, NumberField, PanelSection, ReadonlyField } from './form-controls.js';
 
-interface MapControlsProps {
+interface ControllerSnapshotProps {
   readonly controller: ViewerController;
-  readonly snapshot: ViewerSnapshot;
+  readonly snapshot: ViewerControlSnapshot;
+}
+
+interface MapControlsProps extends ControllerSnapshotProps {
+  readonly cameraStore: SnapshotReader<ViewerCameraSnapshot>;
   readonly openWalkabilityFile: () => void;
 }
 
-export function MapControls({ controller, snapshot, openWalkabilityFile }: MapControlsProps) {
+export function MapControls({
+  controller,
+  snapshot,
+  cameraStore,
+  openWalkabilityFile,
+}: MapControlsProps) {
+  const walkabilityMutation = useMutation({
+    mutationKey: ['viewer', 'walkability', 'generate'],
+    mutationFn: () => controller.generateWalkability(),
+  });
+  const overviewMutation = useMutation({
+    mutationKey: ['viewer', 'overview', 'capture'],
+    mutationFn: () => controller.captureOverview(),
+  });
+  const audioMutation = useMutation({
+    mutationKey: ['viewer', 'audio', 'enable'],
+    mutationFn: () => controller.enableAudio(),
+  });
+  const musicMutation = useMutation({
+    mutationKey: ['viewer', 'audio', 'music', 'play'],
+    mutationFn: () => controller.playMusic(),
+  });
   const movement = (value: Parameters<ViewerController['setMovement']>[0]) =>
     controller.setMovement(value);
 
@@ -40,36 +70,7 @@ export function MapControls({ controller, snapshot, openWalkabilityFile }: MapCo
         />
       </PanelSection>
 
-      <PanelSection title="Camera">
-        <Field label="Movement">
-          <select
-            value={snapshot.movementMode}
-            onChange={(event) =>
-              controller.setMovementMode(event.currentTarget.value as 'walk' | 'fly')
-            }
-          >
-            <option value="walk">Walk</option>
-            <option value="fly">Noclip</option>
-          </select>
-        </Field>
-        <ReadonlyField label="Position" value={snapshot.position} />
-        <ReadonlyField label="Yaw / pitch" value={snapshot.angles} />
-        <NumberField
-          label="Field of view"
-          value={snapshot.fieldOfView}
-          min={45}
-          max={110}
-          step={1}
-          onCommit={(value) => controller.setFieldOfView(value)}
-        />
-        <button
-          type="button"
-          disabled={!snapshot.resetCameraEnabled}
-          onClick={() => controller.resetCamera()}
-        >
-          Reset camera
-        </button>
-      </PanelSection>
+      <CameraControls controller={controller} snapshot={snapshot} store={cameraStore} />
 
       <PanelSection title="Movement" defaultOpen>
         <NumberField
@@ -145,11 +146,65 @@ export function MapControls({ controller, snapshot, openWalkabilityFile }: MapCo
         controller={controller}
         snapshot={snapshot}
         openFile={openWalkabilityFile}
+        generating={walkabilityMutation.isPending}
+        generate={() => walkabilityMutation.mutate()}
       />
       <DisplayControls controller={controller} snapshot={snapshot} />
-      <OverviewControls controller={controller} snapshot={snapshot} />
-      <AudioControls controller={controller} snapshot={snapshot} />
+      <OverviewControls
+        controller={controller}
+        snapshot={snapshot}
+        capturing={overviewMutation.isPending}
+        capture={() => overviewMutation.mutate()}
+      />
+      <AudioControls
+        controller={controller}
+        snapshot={snapshot}
+        enabling={audioMutation.isPending}
+        enable={() => audioMutation.mutate()}
+        playing={musicMutation.isPending}
+        play={() => musicMutation.mutate()}
+      />
     </div>
+  );
+}
+
+function CameraControls({
+  controller,
+  snapshot,
+  store,
+}: ControllerSnapshotProps & { readonly store: SnapshotReader<ViewerCameraSnapshot> }) {
+  const camera = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  return (
+    <PanelSection title="Camera">
+      <Field label="Movement">
+        <select
+          value={snapshot.movementMode}
+          onChange={(event) =>
+            controller.setMovementMode(event.currentTarget.value as 'walk' | 'fly')
+          }
+        >
+          <option value="walk">Walk</option>
+          <option value="fly">Noclip</option>
+        </select>
+      </Field>
+      <ReadonlyField label="Position" value={camera.position} />
+      <ReadonlyField label="Yaw / pitch" value={camera.angles} />
+      <NumberField
+        label="Field of view"
+        value={snapshot.fieldOfView}
+        min={45}
+        max={110}
+        step={1}
+        onCommit={(value) => controller.setFieldOfView(value)}
+      />
+      <button
+        type="button"
+        disabled={!snapshot.resetCameraEnabled}
+        onClick={() => controller.resetCamera()}
+      >
+        Reset camera
+      </button>
+    </PanelSection>
   );
 }
 
@@ -157,10 +212,14 @@ function WalkabilityControls({
   controller,
   snapshot,
   openFile,
+  generating,
+  generate,
 }: {
   readonly controller: ViewerController;
-  readonly snapshot: ViewerSnapshot;
+  readonly snapshot: ViewerControlSnapshot;
   readonly openFile: () => void;
+  readonly generating: boolean;
+  readonly generate: () => void;
 }) {
   return (
     <PanelSection title="Walkability">
@@ -197,8 +256,8 @@ function WalkabilityControls({
         <button
           type="button"
           data-walkability-generate
-          disabled={!snapshot.mapLoaded || snapshot.walkabilityGenerating}
-          onClick={() => void controller.generateWalkability()}
+          disabled={!snapshot.mapLoaded || snapshot.walkabilityGenerating || generating}
+          onClick={generate}
         >
           Generate
         </button>
@@ -229,7 +288,7 @@ function WalkabilityControls({
   );
 }
 
-function DisplayControls({ controller, snapshot }: Omit<MapControlsProps, 'openWalkabilityFile'>) {
+function DisplayControls({ controller, snapshot }: ControllerSnapshotProps) {
   return (
     <PanelSection title="Display">
       <CheckboxField
@@ -247,7 +306,15 @@ function DisplayControls({ controller, snapshot }: Omit<MapControlsProps, 'openW
   );
 }
 
-function OverviewControls({ controller, snapshot }: Omit<MapControlsProps, 'openWalkabilityFile'>) {
+function OverviewControls({
+  controller,
+  snapshot,
+  capturing,
+  capture,
+}: ControllerSnapshotProps & {
+  readonly capturing: boolean;
+  readonly capture: () => void;
+}) {
   return (
     <PanelSection title="Overview">
       <Field label="Size">
@@ -267,7 +334,7 @@ function OverviewControls({ controller, snapshot }: Omit<MapControlsProps, 'open
           onChange={(event) =>
             controller.setField(
               'overviewLighting',
-              event.currentTarget.value as ViewerSnapshot['overviewLighting'],
+              event.currentTarget.value as ViewerControlSnapshot['overviewLighting'],
             )
           }
         >
@@ -281,7 +348,7 @@ function OverviewControls({ controller, snapshot }: Omit<MapControlsProps, 'open
           onChange={(event) =>
             controller.setField(
               'overviewRotation',
-              event.currentTarget.value as ViewerSnapshot['overviewRotation'],
+              event.currentTarget.value as ViewerControlSnapshot['overviewRotation'],
             )
           }
         >
@@ -322,8 +389,8 @@ function OverviewControls({ controller, snapshot }: Omit<MapControlsProps, 'open
       <button
         type="button"
         data-overview-download
-        disabled={!snapshot.overviewEnabled}
-        onClick={() => void controller.captureOverview()}
+        disabled={!snapshot.overviewEnabled || capturing}
+        onClick={capture}
       >
         Download overview
       </button>
@@ -331,12 +398,24 @@ function OverviewControls({ controller, snapshot }: Omit<MapControlsProps, 'open
   );
 }
 
-function AudioControls({ controller, snapshot }: Omit<MapControlsProps, 'openWalkabilityFile'>) {
+function AudioControls({
+  controller,
+  snapshot,
+  enabling,
+  enable,
+  playing,
+  play,
+}: ControllerSnapshotProps & {
+  readonly enabling: boolean;
+  readonly enable: () => void;
+  readonly playing: boolean;
+  readonly play: () => void;
+}) {
   return (
     <PanelSection title="Audio">
       <ReadonlyField label="State" value={snapshot.audioState} dataAttribute="data-audio-state" />
       <ReadonlyField label="Room" value={snapshot.roomType} dataAttribute="data-room-type" />
-      <button type="button" data-enable-audio onClick={() => controller.enableAudio()}>
+      <button type="button" data-enable-audio disabled={enabling} onClick={enable}>
         Enable sound
       </button>
       <CheckboxField
@@ -396,8 +475,8 @@ function AudioControls({ controller, snapshot }: Omit<MapControlsProps, 'openWal
         <button
           type="button"
           data-play-music
-          disabled={snapshot.musicOptions.length === 0}
-          onClick={() => controller.playMusic()}
+          disabled={snapshot.musicOptions.length === 0 || playing}
+          onClick={play}
         >
           Play music
         </button>
