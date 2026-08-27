@@ -10,8 +10,8 @@ export class Viewport extends ViewportPointerMove {
     this.connectPointerDown();
     this.connectPointerMove();
     this.canvas.addEventListener('pointerup', (event) => {
-      const drag = this.gestures.commit(event.pointerId);
-      if (!drag) return;
+      const drag = this.dragState;
+      if (!drag || !this.gestures.commit(event.pointerId, event)) return;
       if (drag.button === 2 && drag.moved < 5 && drag.cameraMode !== 'orbit') {
         const pointer = this.pointerPositionAt(event.clientX, event.clientY);
         if (pointer) {
@@ -450,8 +450,8 @@ export class Viewport extends ViewportPointerMove {
   }
 
   protected cancelDrag(): void {
-    const drag = this.gestures.cancel();
-    if (!drag) return;
+    const drag = this.dragState;
+    if (!drag || !this.gestures.cancel()) return;
     if (drag.clipMoving && drag.clipPointIndex !== null && drag.clipPoint) {
       this.interaction.moveClipPoint(
         drag.clipPointIndex,

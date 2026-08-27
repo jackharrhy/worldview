@@ -11,22 +11,30 @@ import {
   type EditorClipPlaneEvent,
   type CircleMode,
   type EditorSweepDragEvent,
+  type EditorSelection,
+  type EditorTool,
+  type MapDocument,
   type SimpleShapeKind,
   type SimpleShapeOptions,
   type StairDirection,
   type Vec3,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
 
 export class GeometryToolPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly isTopologyTool: (tool: EditorTool) => boolean,
+    private readonly updateInspector: (
+      document?: MapDocument,
+      selection?: EditorSelection | null,
+    ) => void,
+    private readonly formatVector: (value: readonly number[]) => string,
+    private readonly setEditorTool: (tool: EditorTool) => void,
+  ) {}
 
   public applyCsgOperation(operation: 'merge' | 'intersect' | 'subtract' | 'hollow'): void {
     try {
@@ -61,7 +69,7 @@ export class GeometryToolPresenter {
 
   public deleteTopologySelection(): void {
     if (
-      !this.app.transform.isTopologyTool(this.state.activeTool) ||
+      !this.isTopologyTool(this.state.activeTool) ||
       this.state.topologySelectedVertices.length === 0
     ) {
       this.ui.statusMessage.textContent = `Select ${this.state.activeTool === 'edge' ? 'edge' : 'vertex'} handles before deleting.`;
@@ -84,7 +92,7 @@ export class GeometryToolPresenter {
 
   public clearActiveHandleSelection(): boolean {
     if (
-      this.app.transform.isTopologyTool(this.state.activeTool) &&
+      this.isTopologyTool(this.state.activeTool) &&
       this.state.topologySelectedVertices.length > 0
     ) {
       const count =
@@ -166,13 +174,13 @@ export class GeometryToolPresenter {
     this.ui.applyClipButton.disabled = true;
     if (this.state.activeTool !== 'clip' || !this.state.clipPlanePoints) {
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
       return;
     }
     const selection = this.state.session.selection;
     if (!selection || selection.faceId) {
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
       this.ui.statusMessage.textContent =
         'Select one or more brushes before defining a clip plane.';
       return;
@@ -188,7 +196,7 @@ export class GeometryToolPresenter {
       );
       if (!candidate) {
         this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-        this.app.inspector.updateInspector();
+        this.updateInspector();
         this.ui.statusMessage.textContent =
           'The clip plane does not affect the selected brushes in this mode.';
         return;
@@ -196,11 +204,11 @@ export class GeometryToolPresenter {
       this.state.clipCandidate = candidate;
       this.ui.applyClipButton.disabled = false;
       this.state.renderer?.setDocument(candidate.document, this.state.session.selection);
-      this.app.inspector.updateInspector(candidate.document, this.state.session.selection);
+      this.updateInspector(candidate.document, this.state.session.selection);
       this.ui.statusMessage.textContent = `${this.state.clipMode === 'split' ? 'Split' : 'Clip'} preview ready. Press Enter or Apply clip to commit.`;
     } catch (error) {
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
       this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
     }
   }
@@ -212,7 +220,7 @@ export class GeometryToolPresenter {
       event.points.length === 0
         ? 'No clip points.'
         : event.points
-            .map((point, index) => `${index + 1}: ${this.app.build.formatVector(point)}`)
+            .map((point, index) => `${index + 1}: ${this.formatVector(point)}`)
             .join(' · ');
     this.refreshClipPreview();
   }
@@ -432,7 +440,7 @@ export class GeometryToolPresenter {
       this.state.renderer?.setSweepCaps(candidate.destinationCaps);
       this.ui.applySweepButton.disabled = false;
       this.ui.sweepGeneratedCount.textContent = `${candidate.insertions.length} ${candidate.insertions.length === 1 ? 'brush' : 'brushes'}`;
-      this.app.inspector.updateInspector(candidate.document, this.state.session.selection);
+      this.updateInspector(candidate.document, this.state.session.selection);
       if (announce) {
         this.ui.statusMessage.textContent = `Sweep preview: ${faces.length} ${faces.length === 1 ? 'face' : 'faces'} → ${candidate.insertions.length} brushes. Move the destination cap or press Enter to apply.`;
       }
@@ -443,7 +451,7 @@ export class GeometryToolPresenter {
       this.ui.applySweepButton.disabled = true;
       this.ui.sweepGeneratedCount.textContent = 'invalid';
       this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
     }
   }
 
@@ -473,7 +481,7 @@ export class GeometryToolPresenter {
       this.state.session.commitBatchCreationCandidate(candidate);
       this.state.sweepSequence += 1;
       this.state.renderer?.setSweepCaps([]);
-      this.app.session.setEditorTool('select');
+      this.setEditorTool('select');
       this.ui.statusMessage.textContent = `${candidate.label}. Created ${candidate.insertions.length} brushes in one undoable step.`;
     } catch (error) {
       this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
@@ -517,7 +525,7 @@ export class GeometryToolPresenter {
     this.refreshSweepPreview(false);
     const detail =
       event.mode === 'translate'
-        ? this.app.build.formatVector(event.delta)
+        ? this.formatVector(event.delta)
         : event.mode === 'rotate'
           ? `${['X', 'Y', 'Z'][event.axis]} ${event.angleDegrees}°`
           : `×${event.factor}`;

@@ -19,6 +19,11 @@ import { type FaceAttributeClipboard } from './clipboard.js';
 import { deriveBrush } from './geometry.js';
 import { applyHistoryEntry, type BrushEdit } from './history.js';
 import {
+  applyCollaborationOperation,
+  type CollaborationApplyResult,
+  type CollaborationOperation,
+} from './collaboration.js';
+import {
   createBrushSelection,
   selectedBrushIds,
   selectedFaceReferences,
@@ -45,6 +50,18 @@ import {
 } from './session-common.js';
 import { EditorSessionObjects } from './session-objects.js';
 export class EditorSession extends EditorSessionObjects {
+  /** Applies an already sequenced remote commit without adding it to this actor's undo stack. */
+  public applyRemoteCollaborationOperation(
+    operation: CollaborationOperation,
+  ): CollaborationApplyResult {
+    const result = applyCollaborationOperation(this.currentDocument, operation);
+    if (result.status !== 'applied') return result;
+    this.currentDocument = result.document;
+    this.discardRepeatableCommands();
+    this.notify('document', operation.label);
+    return result;
+  }
+
   public createMaterialCandidate(
     material: string,
     selection = this.currentSelection,

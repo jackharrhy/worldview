@@ -18,6 +18,20 @@ export type {
   MapLaunchResult,
 } from './compiler.js';
 export {
+  applyCollaborationOperation,
+  collaborationEditsBetween,
+  COLLABORATION_SCHEMA_VERSION,
+  inverseCollaborationEdits,
+  OrderedCollaborationReplica,
+  simulateCollaborationDelivery,
+  type CollaborationApplyResult,
+  type CollaborationConflict,
+  type CollaborationEdit,
+  type CollaborationOperation,
+  type SequencedCollaborationOperation,
+  type CollaborationSimulationResult,
+} from './collaboration.js';
+export {
   BoundsSpatialIndex,
   type BoundsSpatialEntry,
   type SpatialRayHit,

@@ -8,11 +8,13 @@ import {
   selectedPointEntityIds,
   serializeMap,
   type EditorSelection,
+  type EditorTool,
   type MapDocument,
   type SelectionBrushQueryMode,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
 
 interface CompileAssetEntry {
   readonly name: string;
@@ -20,13 +22,11 @@ interface CompileAssetEntry {
 }
 
 export class DocumentPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly setEditorTool: (tool: EditorTool) => void,
+  ) {}
 
   public compileAssetName(name: string, index: number): string {
     const stem = name
@@ -171,7 +171,7 @@ export class DocumentPresenter {
   }
 
   public selectAllEditableObjects(): void {
-    if (this.state.activeTool !== 'select') this.app.session.setEditorTool('select');
+    if (this.state.activeTool !== 'select') this.setEditorTool('select');
     const selection = this.state.session.selectAllEditable();
     const count = selectedBrushIds(selection).length + selectedPointEntityIds(selection).length;
     this.ui.statusMessage.textContent =
@@ -181,7 +181,7 @@ export class DocumentPresenter {
   }
 
   public invertEditableObjectSelection(): void {
-    if (this.state.activeTool !== 'select') this.app.session.setEditorTool('select');
+    if (this.state.activeTool !== 'select') this.setEditorTool('select');
     const selection = this.state.session.invertObjectSelection();
     const count = selectedBrushIds(selection).length + selectedPointEntityIds(selection).length;
     this.ui.statusMessage.textContent =
@@ -200,7 +200,7 @@ export class DocumentPresenter {
       if (mode === 'inside-projected' && !projection) {
         throw new Error('Point at an XY, XZ, or YZ viewport before using Enclosed in 2D');
       }
-      if (this.state.activeTool !== 'select') this.app.session.setEditorTool('select');
+      if (this.state.activeTool !== 'select') this.setEditorTool('select');
       const result = this.state.session.selectWithSelectionBrushes(mode, projection);
       if (!result) {
         this.ui.statusMessage.textContent = 'Select one or more ordinary structural brushes first.';

@@ -15,16 +15,21 @@ import {
   type MapDocument,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
+import type { EntityPresenter } from './entity-presenter.js';
+import type { OrganizationPresenter } from './organization-presenter.js';
+import type { TransformToolPresenter } from './transform-tool-presenter.js';
 
 export class InspectorPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly organization: OrganizationPresenter,
+    private readonly entity: EntityPresenter,
+    private readonly transform: TransformToolPresenter,
+    private readonly formatVector: (value: readonly number[]) => string,
+  ) {}
 
   public updateInspector(
     document: MapDocument = this.state.session.document,
@@ -48,11 +53,11 @@ export class InspectorPresenter {
     }
     measurePresentationStep('geometry');
     const groups = deriveEditorGroups(document);
-    this.app.organization.renderIssues();
+    this.organization.renderIssues();
     measurePresentationStep('issues');
-    this.app.organization.renderViewFilters();
+    this.organization.renderViewFilters();
     measurePresentationStep('filters');
-    const objectViewState = this.app.organization.effectiveObjectViewState(document);
+    const objectViewState = this.organization.effectiveObjectViewState(document);
     measurePresentationStep('view-state');
     this.ui.documentSummary.set({
       revision: document.revision,
@@ -67,8 +72,8 @@ export class InspectorPresenter {
         objectViewState.lockedBrushIds.length + objectViewState.lockedEntityIds.length,
       geometryErrorCount,
     });
-    this.app.organization.renderLayers(document, selection);
-    this.app.organization.updateEntityLinkSummary(document, selection);
+    this.organization.renderLayers(document, selection);
+    this.organization.updateEntityLinkSummary(document, selection);
     measurePresentationStep('organization');
     this.ui.undoButton.disabled = !this.state.session.canUndo;
     this.ui.undoButton.title = this.state.session.undoLabel
@@ -173,7 +178,7 @@ export class InspectorPresenter {
     this.ui.entitySection.hidden = Boolean(
       selectedGroup || (primaryBrushOwner && isEditorGroupEntity(primaryBrushOwner)),
     );
-    this.app.entity.renderEntityProperties(document, selection);
+    this.entity.renderEntityProperties(document, selection);
     this.ui.duplicateButton.disabled = !objectSelected;
     this.ui.copyButton.disabled = !objectSelected && selectedFaces.length === 0;
     this.ui.copyButton.title =
@@ -242,8 +247,8 @@ export class InspectorPresenter {
         : '0 brushes';
     }
     this.ui.clipToolSection.hidden = this.state.activeTool !== 'clip' || !brushObjectSelected;
-    const transformActive = this.app.transform.isTransformTool(this.state.activeTool);
-    const topologyActive = this.app.transform.isTopologyTool(this.state.activeTool);
+    const transformActive = this.transform.isTransformTool(this.state.activeTool);
+    const topologyActive = this.transform.isTopologyTool(this.state.activeTool);
     const transformSelectionSupported = transformActive && objectSelected;
     this.ui.transformToolSection.hidden = !transformSelectionSupported;
     this.ui.objectFlipSection.hidden = !objectSelected;
@@ -278,8 +283,8 @@ export class InspectorPresenter {
       panel.hidden = !transformActive || panel.dataset.transformPanel !== this.state.activeTool;
     }
     if (transformSelectionSupported) {
-      const selectionKey = this.app.transform.selectedTransformKey(selection);
-      const selectionBounds = this.app.transform.selectedTransformBounds(document);
+      const selectionKey = this.transform.selectedTransformKey(selection);
+      const selectionBounds = this.transform.selectedTransformBounds(document);
       if (
         selectionBounds &&
         (!this.state.transformPivot || this.state.transformPivotSelectionKey !== selectionKey)
@@ -361,7 +366,7 @@ export class InspectorPresenter {
         this.ui.brushRevision.textContent = 'entity';
         this.ui.brushFaces.textContent = '0';
         this.ui.brushBounds.textContent = bounds
-          ? `${this.app.build.formatVector(bounds.min)} to ${this.app.build.formatVector(bounds.max)}`
+          ? `${this.formatVector(bounds.min)} to ${this.formatVector(bounds.max)}`
           : 'invalid origin';
         this.ui.faceMaterial.textContent = pointEntity.properties.classname ?? 'entity';
       }
@@ -387,7 +392,7 @@ export class InspectorPresenter {
         : null,
     );
     const objectBounds = brushObjectSelected
-      ? this.app.transform.selectedObjectBounds(document)
+      ? this.transform.selectedObjectBounds(document)
       : derived.bounds;
     this.ui.brushId.textContent =
       objectBrushIds.length > 1 ? `${brush.id} · ${objectBrushIds.length} selected` : brush.id;
@@ -399,7 +404,7 @@ export class InspectorPresenter {
         : brush.faces.length,
     );
     this.ui.brushBounds.textContent = objectBounds
-      ? `${this.app.build.formatVector(objectBounds.min)} to ${this.app.build.formatVector(objectBounds.max)}`
+      ? `${this.formatVector(objectBounds.min)} to ${this.formatVector(objectBounds.max)}`
       : 'invalid';
     const selectedMaterials = new Set(selectedFaces.map((entry) => entry.face.material));
     const objectMaterials = new Set(
@@ -414,7 +419,7 @@ export class InspectorPresenter {
           ? selectedFaces[0]!.face.material
           : 'mixed';
     this.ui.faceNormal.textContent = derivedFace
-      ? `N ${this.app.build.formatVector(derivedFace.normal)}`
+      ? `N ${this.formatVector(derivedFace.normal)}`
       : '';
     if (face) {
       this.ui.textureShiftU.value = String(face.projection.offset[0]);
@@ -422,8 +427,8 @@ export class InspectorPresenter {
       this.ui.textureScaleU.value = String(face.projection.scale[0]);
       this.ui.textureScaleV.value = String(face.projection.scale[1]);
       this.ui.textureRotation.value = String(face.projection.rotationDegrees);
-      this.ui.textureUAxis.textContent = this.app.build.formatVector(face.projection.uAxis);
-      this.ui.textureVAxis.textContent = this.app.build.formatVector(face.projection.vAxis);
+      this.ui.textureUAxis.textContent = this.formatVector(face.projection.uAxis);
+      this.ui.textureVAxis.textContent = this.formatVector(face.projection.vAxis);
     }
   }
 }

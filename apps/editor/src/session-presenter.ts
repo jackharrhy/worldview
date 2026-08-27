@@ -8,7 +8,15 @@ import {
   type MapSourceState,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { BuildPresenter } from './build-presenter.js';
+import type { DocumentPresenter } from './document-presenter.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
+import type { GeometryToolPresenter } from './geometry-tool-presenter.js';
+import type { InspectorPresenter } from './inspector-presenter.js';
+import type { MaterialsPresenter } from './materials-presenter.js';
+import type { OrganizationPresenter } from './organization-presenter.js';
+import type { TransformToolPresenter } from './transform-tool-presenter.js';
 
 interface ReplaceDocumentOptions {
   readonly name?: string;
@@ -21,13 +29,17 @@ interface ReplaceDocumentOptions {
 }
 
 export class SessionPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly build: BuildPresenter,
+    private readonly document: DocumentPresenter,
+    private readonly geometry: GeometryToolPresenter,
+    private readonly inspector: InspectorPresenter,
+    private readonly materials: MaterialsPresenter,
+    private readonly organization: OrganizationPresenter,
+    private readonly transform: TransformToolPresenter,
+  ) {}
 
   public connectSession(): void {
     this.state.stopSubscription?.();
@@ -36,27 +48,27 @@ export class SessionPresenter {
       this.state.renderer?.setDocument(
         this.state.session.document,
         this.state.session.selection,
-        this.app.organization.effectiveObjectViewState(),
+        this.organization.effectiveObjectViewState(),
       );
-      this.app.inspector.updateInspector();
+      this.inspector.updateInspector();
       if (change.kind !== 'selection' && change.kind !== 'view') {
-        this.app.document.updateSourceFromDocument();
+        this.document.updateSourceFromDocument();
         this.state.lastRecoveryLabel = change.label;
         if (!this.state.replacingDocument) {
-          this.app.document.setDocumentDirty(true);
+          this.document.setDocumentDirty(true);
           this.state.recovery.schedule();
         }
       }
       if (change.kind === 'document' || change.kind === 'history')
-        this.app.materials.renderMaterialCatalog();
-      else this.app.materials.updateMaterialBrowserControls();
+        this.materials.renderMaterialCatalog();
+      else this.materials.updateMaterialBrowserControls();
       if (
         change.kind !== 'selection' &&
         this.state.compiledRevision !== null &&
         this.state.compiledRevision !== this.state.session.document.revision
       ) {
-        this.app.build.showCompiledPreview(false);
-        this.app.build.setCompileState(`PREVIEW R${this.state.compiledRevision} STALE`, 'stale');
+        this.build.showCompiledPreview(false);
+        this.build.setCompileState(`PREVIEW R${this.state.compiledRevision} STALE`, 'stale');
       }
       if (change.kind !== 'selection' && change.kind !== 'view')
         this.ui.launchButton.disabled = true;
@@ -119,8 +131,8 @@ export class SessionPresenter {
     if (options.focusView) this.state.renderer?.focusDocument();
     this.state.savedDocumentRevision = options.savedRevision ?? document.revision;
     this.state.lastRecoveryLabel = label;
-    this.app.document.setDocumentDirty(options.dirty ?? false);
-    if (options.name) this.app.document.setDocumentName(options.name);
+    this.document.setDocumentDirty(options.dirty ?? false);
+    if (options.name) this.document.setDocumentName(options.name);
     this.ui.sourceMessage.textContent = 'Source parsed successfully.';
     this.ui.sourceMessage.classList.remove('error-text');
   }
@@ -135,13 +147,13 @@ export class SessionPresenter {
     }
     if (
       (tool === 'clip' ||
-        this.app.transform.isTransformTool(tool) ||
-        this.app.transform.isTopologyTool(tool)) &&
+        this.transform.isTransformTool(tool) ||
+        this.transform.isTopologyTool(tool)) &&
       this.state.session.selection?.faceId
     ) {
       this.state.session.select({ brushId: this.state.session.selection.brushId });
     }
-    if (this.app.transform.isTransformTool(tool) && tool !== this.state.activeTool) {
+    if (this.transform.isTransformTool(tool) && tool !== this.state.activeTool) {
       this.state.transformPivot = null;
       this.state.transformPivotSelectionKey = null;
       this.state.renderer?.setTransformPivot(null);
@@ -149,23 +161,23 @@ export class SessionPresenter {
     this.state.activeTool = tool;
     this.state.renderer?.setTool(tool);
     if (tool === 'sweep' && previousTool !== 'sweep') {
-      this.state.sweepDefaultTransform = this.app.geometry.initialSweepTransform();
-      this.state.sweepTransform = this.app.geometry.cloneSweepTransform(
+      this.state.sweepDefaultTransform = this.geometry.initialSweepTransform();
+      this.state.sweepTransform = this.geometry.cloneSweepTransform(
         this.state.sweepDefaultTransform,
       );
       this.state.sweepEscapeReset = false;
-      this.app.geometry.resetSweep(false);
+      this.geometry.resetSweep(false);
     }
-    if (tool === 'create') this.app.geometry.updateSimpleShapeFields();
+    if (tool === 'create') this.geometry.updateSimpleShapeFields();
     for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tool]')) {
       const active = button.dataset.tool === tool;
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
     }
-    this.ui.cameraPointerContext.textContent = `${tool === 'create' ? 'CREATE' : tool === 'entity' ? 'ENTITY' : tool === 'hull' ? 'HULL' : tool === 'face' ? 'FACE' : tool === 'sweep' ? 'SWEEP' : tool === 'clip' ? 'CLIP' : this.app.transform.isTopologyTool(tool) || this.app.transform.isTransformTool(tool) ? tool.toUpperCase() : 'PERSPECTIVE'} / edit`;
+    this.ui.cameraPointerContext.textContent = `${tool === 'create' ? 'CREATE' : tool === 'entity' ? 'ENTITY' : tool === 'hull' ? 'HULL' : tool === 'face' ? 'FACE' : tool === 'sweep' ? 'SWEEP' : tool === 'clip' ? 'CLIP' : this.transform.isTopologyTool(tool) || this.transform.isTransformTool(tool) ? tool.toUpperCase() : 'PERSPECTIVE'} / edit`;
     this.ui.statusMessage.textContent =
       tool === 'create'
-        ? `Simple Shape tool active. Drag in any viewport to draw a ${this.app.geometry.simpleShapeLabel(this.state.simpleShapeOptions.kind)}; use the Object inspector for shape options.`
+        ? `Simple Shape tool active. Drag in any viewport to draw a ${this.geometry.simpleShapeLabel(this.state.simpleShapeOptions.kind)}; use the Object inspector for shape options.`
         : tool === 'entity'
           ? `Entity tool active. Click a surface or 2D viewport to place ${this.ui.pointEntityClassname.value.trim() || 'a point entity'}.`
           : tool === 'hull'
@@ -189,7 +201,7 @@ export class SessionPresenter {
                           : tool === 'shear'
                             ? 'Shear tool active. Drag horizontally to offset the viewport plane by snapped grid units. Selected vertex or edge handles take priority over brushes.'
                             : 'Select tool active. Drag on XY in 3D; Alt moves vertically and Shift locks an axis. Shift-drag a selected brush face to resize it; add Ctrl/Command to split, Alt to move the face freely, or both to stamp. Ctrl/Command-drag duplicates selected brushes or paint-selects unselected ones; Ctrl/Command-wheel drills through 3D hits. Shift-click selects a face.';
-    this.app.inspector.updateInspector(
+    this.inspector.updateInspector(
       tool === 'sweep' && this.state.sweepCandidate
         ? this.state.sweepCandidate.document
         : this.state.session.document,

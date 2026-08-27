@@ -25,13 +25,33 @@ import {
 } from '@jackharrhy/worldview-editor';
 import { AnimationFrameScheduler } from '@jackharrhy/worldview';
 
-import type { EditorApplication } from './editor-application.js';
+import type { BuildPresenter } from './build-presenter.js';
+import type { ContextMenuPresenter } from './context-menu-presenter.js';
+import type { DocumentPresenter } from './document-presenter.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
+import type { GeometryToolPresenter } from './geometry-tool-presenter.js';
+import type { InspectorPresenter } from './inspector-presenter.js';
+import type { OrganizationPresenter } from './organization-presenter.js';
+import type { TransformToolPresenter } from './transform-tool-presenter.js';
+
+interface RendererPresenterDependencies {
+  readonly state: EditorState;
+  readonly ui: EditorElements;
+  readonly build: BuildPresenter;
+  readonly contextMenu: ContextMenuPresenter;
+  readonly document: DocumentPresenter;
+  readonly geometry: GeometryToolPresenter;
+  readonly inspector: InspectorPresenter;
+  readonly organization: OrganizationPresenter;
+  readonly transform: TransformToolPresenter;
+}
 
 export class RendererPresenter {
-  public constructor(private readonly app: EditorApplication) {}
+  public constructor(private readonly dependencies: RendererPresenterDependencies) {}
 
   public async start(): Promise<void> {
-    const app = this.app;
+    const app = this.dependencies;
     const state = app.state;
     const ui = app.ui;
     try {

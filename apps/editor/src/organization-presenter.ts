@@ -20,18 +20,16 @@ import {
   type MapDocument,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
 
 const DEFAULT_LAYER_TOKEN = '__default__';
 
 export class OrganizationPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+  ) {}
 
   public selectedLayerForPanel() {
     return (

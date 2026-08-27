@@ -52,24 +52,28 @@ accept an input and return a gesture tracker. One toolbox owns the active tracke
 update, end, cancel, scroll, and modifier lifecycle. GPU scene ownership and gesture ownership do
 not overlap.
 
-Worldview has an explicit gesture lifecycle, but its input routing is not yet equivalent. Five
-classes (`ViewportBase`, `ViewportTools`, `ViewportPointerDown`, `ViewportPointerMove`, and
-`Viewport`) form an inheritance chain of roughly 3,000 lines sharing one large mutable
-`PointerDrag`. Splitting that object below the file-size ceiling moved code without removing its
-conditional complexity.
+Worldview now has an ordered `ViewportGestureRouter` and focused camera, clip, hull, face-transfer,
+topology, transform, sweep, face, creation, entity-placement, and selection controllers. The first
+accepting controller owns the live `PointerDrag` tracker through update, commit, or cancel, and the
+router rejects a second pointer while that tracker is active. GPU scene ownership remains outside
+the controller chain.
 
-The replacement boundary is composition:
+The delivered routing boundary is composition:
 
-1. `ViewportSurface` owns the canvas, camera state, projection, GPU targets, and render policy.
+1. The viewport surface layer owns the canvas, camera state, projection, GPU targets, and render
+   policy.
 2. `ViewportGestureRouter` owns at most one active tracker and the pointer/modifier lifecycle.
 3. An ordered controller chain accepts typed input: camera, selection/move, transforms, topology,
    face/material, clipping, hull/shape, and sweep.
-4. Each accepted gesture owns only its mode's state and implements update, commit, and cancel.
+4. Each accepted tracker owns its mode classification and mutable drag state and implements the
+   routed update, commit, and cancel lifecycle.
 5. Scene and material resources remain outside those controllers.
 
-Camera is the first migration slice because it is independently testable and removes look, orbit,
-pan, wheel, and fly branches from the shared drag object. Tool controllers follow one capability at
-a time; the old inheritance chain is removed rather than retained as a permanent fallback.
+The existing viewport host files still separate hit testing and mode-specific movement math through
+an inheritance chain. That is physical source-layout debt, not gesture ownership: new routing modes
+must enter through the ordered controller factory, and the architecture tests cover ordering,
+single-pointer ownership, and lifecycle behavior. Extracting those host calculations can proceed
+without changing the public gesture boundary.
 
 ## Renderer and application debt
 
@@ -81,13 +85,13 @@ The 2026-08-26 thermonuclear pass found four related structural issues:
 - `scene-buffers.ts` combines solids, object lines, tool overlays, entity overlays, links, bounds,
   and diagnostics. It should become an assembler over independent scene contributions so a change
   invalidates only the affected buffers, like TrenchBroom's focused renderer invalidation.
-- The app's presenters all receive `EditorApplication`, creating a service locator and 18
-  type-level import cycles. Presenters need narrow constructor dependencies and explicit event
-  ports even though there are currently no runtime import cycles.
+- Presenter service-locator coupling is removed. `EditorApplication` is the composition root and
+  injects state, UI, focused collaborators, and callbacks; presenter imports of the container are
+  rejected by the architecture gate.
 - `apps/editor/src`, `core`, and `render` have 36, 45, and 18 top-level source files respectively.
   Subdirectories should follow the ownership changes above (`viewport`, `scene`, `materials`,
   project/persistence, and focused core domains), not serve as cosmetic buckets around the same
   coupling.
 
-The architecture gate will grow beyond a per-file line ceiling after these migrations: it should
-reject the old viewport inheritance shape, new dependency cycles, and renewed top-level fanout.
+The architecture gate now covers the per-file ceiling and presenter/container boundary. It should
+grow with scene ownership work to reject dependency cycles and renewed top-level fanout.

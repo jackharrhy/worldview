@@ -12,17 +12,24 @@ import {
   type EditorViewportContextMenuEvent,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
-import { required } from './editor-elements.js';
+import { required, type EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
 
 export class ContextMenuPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly formatVector: (value: readonly number[]) => string,
+    private readonly renderMaterialCatalog: () => void,
+    private readonly copySelection: (selection: EditorSelection) => Promise<void>,
+    private readonly pasteFromClipboard: (
+      atPointer: boolean,
+      targetFace?: EditorSelection | null,
+    ) => Promise<void>,
+    private readonly selectedLayerForPanel: () => ReturnType<
+      import('./organization-presenter.js').OrganizationPresenter['selectedLayerForPanel']
+    >,
+  ) {}
 
   public focusCurrentSelection(): void {
     if (!this.state.renderer?.focusSelection()) {
@@ -176,7 +183,7 @@ export class ContextMenuPresenter {
     this.ui.pointEntityPreset.value = classname;
     this.ui.pointEntityClassname.value = classname;
     this.state.renderer?.setEntityPlacementBounds(definition.bounds);
-    this.ui.statusMessage.textContent = `Created ${classname} at ${this.app.build.formatVector(origin)}.`;
+    this.ui.statusMessage.textContent = `Created ${classname} at ${this.formatVector(origin)}.`;
   }
 
   public createBrushEntityFromContext(classname: string): void {
@@ -197,7 +204,7 @@ export class ContextMenuPresenter {
     this.ui.materialName.value = material;
     this.ui.materialFilter.value = material;
     required<HTMLButtonElement>('[data-inspector-tab="textures"]').click();
-    this.app.materials.renderMaterialCatalog();
+    this.renderMaterialCatalog();
     window.requestAnimationFrame(() => {
       const tile = [
         ...this.ui.materialGrid.querySelectorAll<HTMLButtonElement>('.material-tile'),
@@ -217,7 +224,7 @@ export class ContextMenuPresenter {
     this.ui.viewportContextMenu.append(
       this.contextMenuHeading(
         `${context.viewport === 'perspective' ? '3D' : context.viewport.toUpperCase()} view`,
-        this.app.build.formatVector(context.pointer.point),
+        this.formatVector(context.pointer.point),
       ),
     );
 
@@ -242,12 +249,12 @@ export class ContextMenuPresenter {
       this.contextMenuAction(
         hitSection,
         'Copy face attributes',
-        () => void this.app.document.copySelection(hit),
+        () => void this.copySelection(hit),
       );
       this.contextMenuAction(
         hitSection,
         'Paste face attributes here',
-        () => void this.app.document.pasteFromClipboard(false, hit),
+        () => void this.pasteFromClipboard(false, hit),
       );
       if (face) {
         this.contextMenuAction(hitSection, `Reveal ${face.material}`, () =>
@@ -308,7 +315,7 @@ export class ContextMenuPresenter {
       },
       !objectSelected,
     );
-    const layer = this.app.organization.selectedLayerForPanel();
+    const layer = this.selectedLayerForPanel();
     if (layer) {
       this.contextMenuAction(
         selectionSection,
@@ -356,7 +363,7 @@ export class ContextMenuPresenter {
     this.contextMenuAction(
       createSection,
       'Paste here',
-      () => this.app.document.pasteFromClipboard(true),
+      () => void this.pasteFromClipboard(true),
       this.ui.pasteHereButton.disabled,
     );
     this.ui.viewportContextMenu.append(createSection);

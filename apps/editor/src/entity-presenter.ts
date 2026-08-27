@@ -7,16 +7,14 @@ import {
   type MapDocument,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
 
 export class EntityPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+  ) {}
 
   public setEntityProperty(key: string, value: string | null, protect = false): void {
     if (!this.state.activeEntityId) {

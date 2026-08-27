@@ -28,7 +28,13 @@ import {
   rebaseMapSource,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { BuildPresenter } from './build-presenter.js';
+import type { DocumentPresenter } from './document-presenter.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
+import type { MaterialsPresenter } from './materials-presenter.js';
+import type { OrganizationPresenter } from './organization-presenter.js';
+import type { SessionPresenter } from './session-presenter.js';
 import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
 import { required } from './editor-elements.js';
 
@@ -39,13 +45,15 @@ interface OpenEditorMapOptions {
 }
 
 export class ProjectPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly build: BuildPresenter,
+    private readonly document: DocumentPresenter,
+    private readonly materials: MaterialsPresenter,
+    private readonly organization: OrganizationPresenter,
+    private readonly session: SessionPresenter,
+  ) {}
 
   private detachProjectContext(): void {
     if (!this.state.projectWorkspace) return;
@@ -65,11 +73,11 @@ export class ProjectPresenter {
     this.state.renderer?.setSprites([]);
     this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
     this.refreshEntityDefinitionPresets();
-    this.app.materials.renderMaterialCatalog();
+    this.materials.renderMaterialCatalog();
     this.ui.materialMessage.textContent =
       'Standalone map opened without the previous project’s resources.';
     this.ui.materialMessage.classList.remove('error-text');
-    void this.app.build.checkCompilerService();
+    void this.build.checkCompilerService();
   }
 
   public async openEditorMap(
@@ -122,7 +130,7 @@ export class ProjectPresenter {
       if (recovered && restoreRecovery) {
         const sourceMatchesDisk = recovered.source.fingerprint === fingerprint;
         if (sourceMatchesDisk) parsed = parseMapSource(text, recoverySourceIdFactory(recovered));
-        this.app.session.replaceDocument(parsed.document, 'Open map before recovery', {
+        this.session.replaceDocument(parsed.document, 'Open map before recovery', {
           name: logicalName,
           source: sourceMatchesDisk ? recovered.source : parsed.source,
           fileHandle: sourceMatchesDisk ? handle : null,
@@ -132,14 +140,14 @@ export class ProjectPresenter {
           focusView: true,
         });
         this.state.session.restoreDocument(recovered.document, `Restore ${recovered.label}`);
-        this.app.session.setEditorTool('select');
+        this.session.setEditorTool('select');
         this.ui.statusMessage.textContent = sourceMatchesDisk
           ? `Restored recovery for ${logicalName}; the on-disk map is unchanged.`
           : `Restored recovery for ${logicalName} as a detached copy because the on-disk source changed.`;
         return;
       }
       assertExpectedDocument();
-      this.app.session.replaceDocument(parsed.document, 'Open map', {
+      this.session.replaceDocument(parsed.document, 'Open map', {
         name: logicalName,
         source: parsed.source,
         fileHandle: handle,
@@ -148,7 +156,7 @@ export class ProjectPresenter {
         savedRevision: parsed.document.revision,
         focusView: true,
       });
-      this.app.session.setEditorTool('select');
+      this.session.setEditorTool('select');
       this.ui.statusMessage.textContent = `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`;
     } catch (error) {
       this.ui.statusMessage.textContent = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
@@ -230,7 +238,7 @@ export class ProjectPresenter {
     this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
     this.state.renderer?.setSprites(this.state.projectSprites);
     this.refreshEntityDefinitionPresets();
-    this.app.materials.renderMaterialCatalog();
+    this.materials.renderMaterialCatalog();
     const definitionErrors = definitions.diagnostics.filter(({ severity }) => severity === 'error');
     this.ui.materialMessage.textContent = [
       `${workspace.manifest.name}: ${this.state.materialCatalog.size} textures and ${this.state.entityDefinitions.size} entity definitions`,
@@ -271,7 +279,7 @@ export class ProjectPresenter {
     this.ui.buildProfile.hidden = workspace.manifest.buildProfiles.length === 0;
     this.ui.buildProfile.value =
       workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? '';
-    await this.app.build.checkCompilerService();
+    await this.build.checkCompilerService();
     const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
     if (!remembered) {
       const warning =
@@ -336,7 +344,7 @@ export class ProjectPresenter {
   public connect(): void {
     required<HTMLButtonElement>('[data-action="new"]').addEventListener('click', () => {
       const document = createStarterDocument();
-      this.app.session.replaceDocument(document, 'Create starter map', {
+      this.session.replaceDocument(document, 'Create starter map', {
         name: 'untitled.map',
         source: rebaseMapSource(document, serializeMap(document)),
         fileHandle: null,
@@ -348,7 +356,7 @@ export class ProjectPresenter {
     });
 
     required<HTMLButtonElement>('[data-action="show-source"]').addEventListener('click', () => {
-      this.app.document.updateSourceFromDocument(true);
+      this.document.updateSourceFromDocument(true);
       this.ui.sourceDialog.showModal();
       this.ui.source.focus();
     });
@@ -361,7 +369,7 @@ export class ProjectPresenter {
           this.ui.source.value,
           createSequentialIdFactory(`source-${Date.now()}`),
         );
-        this.app.session.replaceDocument(parsed.document, 'Apply map source', {
+        this.session.replaceDocument(parsed.document, 'Apply map source', {
           source: parsed.source,
           dirty: true,
           savedRevision: this.state.savedDocumentRevision,
@@ -399,10 +407,7 @@ export class ProjectPresenter {
       if (!map) return;
       await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
     });
-    this.ui.buildProfile.addEventListener(
-      'change',
-      () => void this.app.build.checkCompilerService(),
-    );
+    this.ui.buildProfile.addEventListener('change', () => void this.build.checkCompilerService());
 
     required<HTMLButtonElement>('[data-action="open-file"]').addEventListener('click', async () => {
       try {
@@ -439,7 +444,7 @@ export class ProjectPresenter {
         );
         this.state.currentMapSource = rebaseMapSource(this.state.session.document, plan.text);
         this.state.savedDocumentRevision = this.state.session.document.revision;
-        this.app.document.setDocumentDirty(false);
+        this.document.setDocumentDirty(false);
         this.state.lastRecoveryLabel = `Saved ${this.state.currentDocumentName}`;
         await this.state.recovery.flush();
         this.ui.statusMessage.textContent = `Saved ${this.state.currentDocumentName} without normalizing untouched source.`;
@@ -526,7 +531,7 @@ export class ProjectPresenter {
     required<HTMLButtonElement>('[data-action="snapshot-reference"]').addEventListener(
       'click',
       () => {
-        this.app.materials.addReferenceDocument(
+        this.materials.addReferenceDocument(
           `Document revision ${this.state.session.document.revision}`,
           this.state.session.document,
         );
@@ -535,7 +540,7 @@ export class ProjectPresenter {
     this.ui.clearReferencesButton.addEventListener('click', () => {
       this.state.referenceScenes = [];
       this.state.renderer?.setReferenceScenes(this.state.referenceScenes);
-      this.app.materials.renderReferenceScenes();
+      this.materials.renderReferenceScenes();
       this.ui.statusMessage.textContent = 'Cleared reference scenes.';
     });
 
@@ -544,7 +549,7 @@ export class ProjectPresenter {
       if (mode !== 'all' && mode !== 'transitive' && mode !== 'direct' && mode !== 'none') return;
       this.state.entityLinkMode = mode;
       this.state.renderer?.setEntityLinkMode(mode);
-      this.app.organization.updateEntityLinkSummary();
+      this.organization.updateEntityLinkSummary();
       this.ui.statusMessage.textContent = `Entity links: ${this.ui.entityLinkModeSelect.selectedOptions[0]?.textContent ?? mode}.`;
     });
   }

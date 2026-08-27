@@ -10,5 +10,10 @@ export default defineConfig({
     // Stream readers and the WAD resolver intentionally preserve serial source ordering.
     'no-await-in-loop': 'off',
   },
-  ignorePatterns: ['dist/**', 'node_modules/**', 'apps/viewer/public/local/**'],
+  ignorePatterns: [
+    'dist/**',
+    'node_modules/**',
+    'apps/viewer/public/local/**',
+    'apps/collaboration-service/worker-configuration.d.ts',
+  ],
 });

@@ -1,8 +1,10 @@
 node_modules/
 dist/
+.wrangler/
 coverage/
 playwright-report/
 test-results/
+artifacts/verification/
 tests/consumer/dist/
 *.tsbuildinfo
 .DS_Store

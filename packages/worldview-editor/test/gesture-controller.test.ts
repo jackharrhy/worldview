@@ -1,35 +1,114 @@
 import { describe, expect, it } from 'vitest';
 
-import { GestureController } from '../src/render/gesture-controller.js';
+import {
+  ViewportGestureRouter,
+  type ViewportGestureController,
+} from '../src/render/gesture-controller.js';
+import {
+  createPointerGestureControllers,
+  pointerGestureKind,
+} from '../src/render/viewport-gesture-controllers.js';
+import type { PointerDrag } from '../src/render/viewport-common.js';
 
-interface TestGesture {
-  readonly pointerId: number;
-  value: number;
-}
+const pointerDrag = (overrides: Partial<PointerDrag> = {}): PointerDrag =>
+  ({
+    pointerId: 1,
+    cameraMode: null,
+    clipping: false,
+    hullBuilding: false,
+    faceTransferMode: null,
+    topologyKind: null,
+    topologyLasso: false,
+    transform: null,
+    sweep: null,
+    faceSelection: null,
+    facePainting: false,
+    faceLassoEligible: false,
+    creating: false,
+    placingEntity: false,
+    ...overrides,
+  }) as PointerDrag;
 
-describe('GestureController', () => {
-  it('owns the explicit begin, update, and commit lifecycle', () => {
-    const controller = new GestureController<TestGesture>();
-    const gesture = controller.begin({ pointerId: 7, value: 1 });
+describe('ViewportGestureRouter', () => {
+  it('uses controller order and gives one tracker the complete lifecycle', () => {
+    const calls: string[] = [];
+    const controller = (
+      id: string,
+      accepts: boolean,
+    ): ViewportGestureController<{ pointerId: number }, number, string> => ({
+      id,
+      begin: ({ pointerId }) => {
+        calls.push(`${id}:begin`);
+        if (!accepts) return null;
+        return {
+          pointerId,
+          update: (value) => calls.push(`${id}:update:${value}`),
+          commit: (value) => calls.push(`${id}:commit:${value}`),
+          cancel: () => calls.push(`${id}:cancel`),
+        };
+      },
+    });
+    const router = new ViewportGestureRouter([
+      controller('camera', false),
+      controller('selection', true),
+      controller('fallback', true),
+    ]);
 
-    expect(controller.state).toEqual({ phase: 'active', gesture, updateCount: 0 });
-    expect(controller.update(99)).toBeNull();
-    expect(controller.update(7)).toBe(gesture);
-    gesture.value = 2;
-    expect(controller.commit(7)).toBe(gesture);
-    expect(controller.current).toBeNull();
-    expect(controller.state).toEqual({ phase: 'committed', pointerId: 7, updateCount: 1 });
+    expect(router.begin({ pointerId: 4 })).toBe('selection');
+    expect(router.update(9, 1)).toBe(false);
+    expect(router.update(4, 2)).toBe(true);
+    expect(router.commit(4, 'done')).toBe(true);
+    expect(calls).toEqual([
+      'camera:begin',
+      'selection:begin',
+      'selection:update:2',
+      'selection:commit:done',
+    ]);
+    expect(router.state).toEqual({
+      phase: 'committed',
+      controllerId: 'selection',
+      pointerId: 4,
+      updateCount: 1,
+    });
   });
 
-  it('cancels only the active pointer and permits the next gesture', () => {
-    const controller = new GestureController<TestGesture>();
-    const first = controller.begin({ pointerId: 3, value: 1 });
+  it('cancels the active tracker and rejects duplicate controller IDs', () => {
+    let cancelled = 0;
+    const controller: ViewportGestureController<{ pointerId: number }, never, never> = {
+      id: 'camera',
+      begin: ({ pointerId }) => ({
+        pointerId,
+        update: () => {},
+        commit: () => {},
+        cancel: () => {
+          cancelled += 1;
+        },
+      }),
+    };
+    const router = new ViewportGestureRouter([controller]);
+    router.begin({ pointerId: 7 });
+    expect(() => router.begin({ pointerId: 8 })).toThrow(/already owns/);
+    expect(router.cancel(8)).toBe(false);
+    expect(router.cancel()).toBe(true);
+    expect(cancelled).toBe(1);
+    expect(() => new ViewportGestureRouter([controller, controller])).toThrow(/Duplicate/);
+  });
+});
 
-    expect(controller.cancel(4)).toBeNull();
-    expect(() => controller.begin({ pointerId: 4, value: 2 })).toThrow(/already owns/);
-    expect(controller.cancel()).toBe(first);
-    expect(controller.state).toEqual({ phase: 'cancelled', pointerId: 3, updateCount: 0 });
+describe('viewport pointer gesture controllers', () => {
+  it('classifies modal gestures ahead of ordinary tool and selection gestures', () => {
+    expect(pointerGestureKind(pointerDrag())).toBe('selection');
+    expect(pointerGestureKind(pointerDrag({ creating: true }))).toBe('create');
+    expect(pointerGestureKind(pointerDrag({ topologyKind: 'vertex', creating: true }))).toBe(
+      'topology',
+    );
+    expect(pointerGestureKind(pointerDrag({ cameraMode: 'pan', clipping: true }))).toBe('camera');
+  });
 
-    expect(controller.begin({ pointerId: 4, value: 2 }).pointerId).toBe(4);
+  it('routes the live drag object into its focused tracker', () => {
+    const value = pointerDrag({ clipping: true });
+    const router = new ViewportGestureRouter(createPointerGestureControllers());
+    expect(router.begin(value)).toBe('clip');
+    expect(router.activeTracker?.drag).toBe(value);
   });
 });

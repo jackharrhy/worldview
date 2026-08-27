@@ -1,6 +1,8 @@
 import { parseMapSource, type IdFactory } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorState } from './editor-state.js';
+import type { ProjectPresenter } from './project-presenter.js';
+import type { SessionPresenter } from './session-presenter.js';
 import {
   DESTRUCTIVE_ANNOTATIONS,
   EXPECTED_DOCUMENT_PROPERTIES,
@@ -15,7 +17,9 @@ import {
 import { webMcpDocumentState } from './webmcp-state.js';
 
 interface WebMcpDocumentToolHost {
-  readonly app: EditorApplication;
+  readonly state: EditorState;
+  readonly replaceDocument: SessionPresenter['replaceDocument'];
+  readonly openEditorMap: ProjectPresenter['openEditorMap'];
   assertDocument(input: Record<string, unknown>): number;
   ids(label: string): IdFactory;
   status(message: string): void;
@@ -49,7 +53,7 @@ export function createWebMcpDocumentTools(host: WebMcpDocumentToolHost): readonl
       const source = requiredString(input, 'source', 16_000_000);
       const parsed = parseMapSource(source, host.ids('source'));
       const name = optionalString(input, 'name', 512)?.trim() || 'site-tool.map';
-      host.app.session.replaceDocument(parsed.document, 'Replace map source via site tool', {
+      host.replaceDocument(parsed.document, 'Replace map source via site tool', {
         name,
         source: parsed.source,
         fileHandle: null,
@@ -59,7 +63,7 @@ export function createWebMcpDocumentTools(host: WebMcpDocumentToolHost): readonl
         focusView: true,
       });
       host.status(`replaced the document with ${name}; history and file binding were reset.`);
-      return result(`Replaced the document with ${name}.`, webMcpDocumentState(host.app.state));
+      return result(`Replaced the document with ${name}.`, webMcpDocumentState(host.state));
     },
   };
 
@@ -82,21 +86,19 @@ export function createWebMcpDocumentTools(host: WebMcpDocumentToolHost): readonl
       const input = inputRecord(raw);
       const expectedDocumentId = requiredString(input, 'expectedDocumentId', 512);
       const expectedRevision = host.assertDocument(input);
-      if (host.app.state.documentDirty && !optionalBoolean(input, 'discardUnsavedChanges', false)) {
+      if (host.state.documentDirty && !optionalBoolean(input, 'discardUnsavedChanges', false)) {
         throw new Error('The current map has unsaved changes; set discardUnsavedChanges to true');
       }
       const path = requiredString(input, 'path', 2_048);
-      const map = host.app.state.projectWorkspace?.maps.find(
-        (candidate) => candidate.path === path,
-      );
+      const map = host.state.projectWorkspace?.maps.find((candidate) => candidate.path === path);
       if (!map) throw new Error(`Unknown project map ${path}`);
-      await host.app.project.openEditorMap(await map.handle.getFile(), map.handle, map.path, {
+      await host.openEditorMap(await map.handle.getFile(), map.handle, map.path, {
         expectedDocumentId,
         expectedRevision,
         throwOnError: true,
       });
       host.status(`opened project map ${path}.`);
-      return result(`Opened project map ${path}.`, webMcpDocumentState(host.app.state));
+      return result(`Opened project map ${path}.`, webMcpDocumentState(host.state));
     },
   };
 

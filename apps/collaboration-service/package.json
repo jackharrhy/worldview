@@ -1,0 +1,19 @@
+{
+  "name": "@worldview/collaboration-service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "wrangler types && oxfmt worker-configuration.d.ts && tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@jackharrhy/worldview-editor": "*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.1.1",
+    "@cloudflare/workers-types": "5.20260827.1",
+    "wrangler": "4.127.0"
+  }
+}

@@ -20,7 +20,10 @@ import {
   type FaceId,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
+import type { ProjectPresenter } from './project-presenter.js';
+import type { SessionPresenter } from './session-presenter.js';
 import {
   EMPTY_SCHEMA,
   EXPECTED_DOCUMENT_PROPERTIES,
@@ -50,14 +53,16 @@ import { webMcpDocumentState, webMcpSelectionSummary } from './webmcp-state.js';
 export class WebMcpPresenter {
   private idSequence = 0;
 
-  public constructor(private readonly app: EditorApplication) {}
-
-  private get state() {
-    return this.app.state;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly setEditorTool: (tool: EditorTool) => void,
+    private readonly replaceDocument: SessionPresenter['replaceDocument'],
+    private readonly openEditorMap: ProjectPresenter['openEditorMap'],
+  ) {}
 
   private status(message: string): void {
-    this.app.ui.statusMessage.textContent = `Site tool: ${message}`;
+    this.ui.statusMessage.textContent = `Site tool: ${message}`;
   }
 
   private assertRevision(input: Record<string, unknown>): number {
@@ -415,7 +420,7 @@ export class WebMcpPresenter {
         const input = inputRecord(raw);
         const tool = requiredString(input, 'tool', 16) as EditorTool;
         if (!TOOL_VALUES.includes(tool)) throw new Error(`Unknown editor tool ${tool}`);
-        this.app.setEditorTool(tool);
+        this.setEditorTool(tool);
         this.status(`activated the ${tool} tool.`);
         return result(`Activated the ${tool} tool.`, {
           revision: this.state.session.document.revision,
@@ -894,7 +899,9 @@ export class WebMcpPresenter {
       this.deleteSelectionTool(),
       this.historyTool(),
       ...createWebMcpDocumentTools({
-        app: this.app,
+        state: this.state,
+        replaceDocument: this.replaceDocument,
+        openEditorMap: this.openEditorMap,
         assertDocument: (input) => this.assertRevision(input),
         ids: (label) => this.ids(label),
         status: (message) => this.status(message),
@@ -921,7 +928,7 @@ export class WebMcpPresenter {
     root.dataset.worldviewSiteToolCount = String(registered);
     if (failure?.status === 'rejected') {
       root.dataset.worldviewSiteTools = 'error';
-      this.app.ui.statusMessage.textContent = `Site tool registration failed; ${registered} of ${tools.length} tools are available: ${failure.reason instanceof Error ? failure.reason.message : String(failure.reason)}`;
+      this.ui.statusMessage.textContent = `Site tool registration failed; ${registered} of ${tools.length} tools are available: ${failure.reason instanceof Error ? failure.reason.message : String(failure.reason)}`;
       return;
     }
     root.dataset.worldviewSiteTools = 'ready';

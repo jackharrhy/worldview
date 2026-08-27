@@ -28,8 +28,9 @@ delivered interactions lives in [`editor-capabilities.md`](./editor-capabilities
 - Chromium provides the full directory-handle workflow. Other WebGPU browsers keep safe
   import/download and IndexedDB recovery fallbacks.
 - Quake and GoldSrc are the only current game profiles.
-- Browser-only/WASM compilation, Quake/GoldSrc model previews, collaboration, three-way source
-  merge, Q2/Q3 formats, and native editor-owned geometry containers are deferred.
+- Browser-only/WASM compilation, Quake/GoldSrc model previews, three-way external source merge,
+  Q2/Q3 formats, and native editor-owned geometry containers are deferred. Optional local-first
+  collaboration is now in architecture/prototype work; it does not alter the solo editor boundary.
 - The existing viewer remains a bounded static-world exhibit. Conveyor pushing, trigger state, and
   full game simulation are out of scope.
 - Site-tool availability is browser- and account-dependent. Its absence never disables or changes
@@ -50,16 +51,17 @@ committed; ignored local data belongs in `apps/viewer/public/local`.
 
 Pinned editor references:
 
-| Reference                                                                                                                                                                                  | Adopt                                                                                                                                       | Do not adopt                                                              |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| [TrenchBroom `a4ec188`](https://github.com/TrenchBroom/TrenchBroom/tree/a4ec1886bf997ff73a18b2bf3d54e32c2020ce2a) and its [manual](https://trenchbroom.github.io/manual/latest/index.html) | Singular transaction ownership, focused tool controllers, game/entity configuration, compilation profiles, map-compatible groups and layers | GPL implementation or a desktop-only architecture                         |
-| [Q3Edit `02f8764`](https://github.com/drdator/q3edit/tree/02f87647162e5bf5e39fe61968f904efe8e19675)                                                                                        | IndexedDB recovery, worker-ready boundaries, source-loss diagnostics, browser-local resources, version history                              | Normalize-after-first-edit behavior; Worldview preserves source structure |
-| [WAD Together `e015027`](https://github.com/Donitzo/wad-together/tree/e0150270a33f25ea9428cd0b5e7f628822bdcf95)                                                                            | Later operation/inverse-operation collaboration with assets local to each participant                                                       | Collaboration before the solo workflow is dependable                      |
-| [J.A.C.K. JMF](https://jack.hlfx.ru/en/articles/1/faq.html) and [Hammer VMF](https://developer.valvesoftware.com/wiki/VMF_%28Valve_Map_Format%29)                                          | Evidence for keeping editor/project metadata outside compiler-facing map geometry                                                           | A native geometry container that weakens `.map` interoperability          |
-| [ericw-tools](https://ericw-tools.readthedocs.io/en/latest/qbsp.html)                                                                                                                      | Structured stages and BSP, portal, and leak artifacts behind safe configured profiles                                                       | Browser-supplied executable paths, commands, or arbitrary arguments       |
+| Reference                                                                                                                                                                                  | Adopt                                                                                                                                       | Do not adopt                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| [TrenchBroom `a4ec188`](https://github.com/TrenchBroom/TrenchBroom/tree/a4ec1886bf997ff73a18b2bf3d54e32c2020ce2a) and its [manual](https://trenchbroom.github.io/manual/latest/index.html) | Singular transaction ownership, focused tool controllers, game/entity configuration, compilation profiles, map-compatible groups and layers | GPL implementation or a desktop-only architecture                                                  |
+| [Q3Edit `02f8764`](https://github.com/drdator/q3edit/tree/02f87647162e5bf5e39fe61968f904efe8e19675)                                                                                        | IndexedDB recovery, worker-ready boundaries, source-loss diagnostics, browser-local resources, version history                              | Normalize-after-first-edit behavior; Worldview preserves source structure                          |
+| [WAD Together `e015027`](https://github.com/Donitzo/wad-together/tree/e0150270a33f25ea9428cd0b5e7f628822bdcf95)                                                                            | Later operation/inverse-operation collaboration with assets local to each participant                                                       | Collaboration before the solo workflow is dependable                                               |
+| [celld](https://celld.dev/docs/)                                                                                                                                                           | Self-hosted Workers/Durable Objects runtime, one SQLite-backed cell per map room, hibernating WebSockets, operator-owned bucket durability  | Treating an alpha runtime as the collaboration algorithm, auth boundary, or only deployment target |
+| [J.A.C.K. JMF](https://jack.hlfx.ru/en/articles/1/faq.html) and [Hammer VMF](https://developer.valvesoftware.com/wiki/VMF_%28Valve_Map_Format%29)                                          | Evidence for keeping editor/project metadata outside compiler-facing map geometry                                                           | A native geometry container that weakens `.map` interoperability                                   |
+| [ericw-tools](https://ericw-tools.readthedocs.io/en/latest/qbsp.html)                                                                                                                      | Structured stages and BSP, portal, and leak artifacts behind safe configured profiles                                                       | Browser-supplied executable paths, commands, or arbitrary arguments                                |
 
-The three editor repositories above are research references, not package contents, so they are not
-third-party distributions listed in `THIRD_PARTY_NOTICES.md`.
+The editor and runtime projects above are research references, not package contents, so they are
+not third-party distributions listed in `THIRD_PARTY_NOTICES.md`.
 
 ## Workspace and dependency boundaries
 
@@ -73,6 +75,9 @@ third-party distributions listed in `THIRD_PARTY_NOTICES.md`.
   filesystem/project and WebMCP adapters, IndexedDB services, dialogs, and four-view authoring UI.
 - `apps/compiler-service`: loopback adapter around explicitly configured compile and launch
   profiles.
+- `apps/collaboration-service`: portable Workers/Durable Objects room service, verified through
+  local Workers tooling and intended for celld conformance; it does not enter the published editor
+  core.
 
 `packages/worldview/src/core` remains free of DOM, WebGPU, and TypeGPU imports. The viewer consumes
 public package entrypoints. `packages/worldview-editor/src/core` remains DOM-free. The editor app
@@ -111,30 +116,32 @@ renderer.
 
 ## Editor architecture
 
-The application entrypoint is composition-only. React shell components are split into chrome,
+The application entrypoint is composition-only. The Vanilla-to-React shell translation is
+complete: React shell components are split into chrome,
 dialogs, workspace, status, and focused inspector panels. React exclusively renders the live
 document name, status/error message, compiler state, pointer context, and read-only document summary
-from five narrow immutable stores. Presenters write those stores through temporary typed
-compatibility ports; they never also mutate the corresponding DOM nodes. Presenters currently own
-project/files, commands, tools, remaining interactive inspector mutations, materials, organization,
-build UI, dialogs, WebMCP registration, and session-to-view presentation. Those imperative presenter
-seams are compatibility boundaries for incremental store-backed component migration, not a second
-UI framework.
+from five narrow immutable stores. Presenters write those stores through typed ports; they never
+also mutate the corresponding DOM nodes. Focused adapters intentionally retain direct ownership of
+canvas input, project/files, commands, tool forms, materials, organization, build dialogs, WebMCP
+registration, and session-to-view presentation. Those imperative seams are browser/controller
+boundaries beneath the React shell, not a second UI framework or an unfinished vanilla application.
 
 `EditorSession` is the singular transaction and history coordinator. Focused DOM-free domains own
 selection/view state, object transforms, topology, geometry/CSG, entities/materials, and
-organization. The remaining architecture hardening replaces the inherited viewport input chain
-with an ordered set of composed gesture controllers. One router owns the active gesture's explicit
-`begin`, `update`, `commit`, and `cancel` lifecycle; GPU scene ownership stays outside controllers.
+organization. Viewport pointer input is routed through an ordered set of composed gesture
+controllers for camera, clip, hull, face transfer, topology, transform, sweep, face, creation,
+entity placement, and selection. One router owns the active gesture's explicit `begin`, `update`,
+`commit`, and `cancel` lifecycle; GPU scene ownership stays outside controllers.
 Document mutations, validation, derived queries, source parsing, and serialization remain separate
 DOM-free modules.
 
 Scene construction will become an assembler over focused solid, object-line, tool, entity, and
-diagnostic contributions so invalidation can rebuild only affected buffers. App presenters will
-receive narrow state, UI, command, and event ports instead of the complete `EditorApplication`
-service locator. Physical `viewport`, `scene`, `materials`, project/persistence, and core-domain
-subdirectories follow those ownership changes. The pinned behavior and architecture comparison is
-recorded in [`trenchbroom-conformance.md`](./trenchbroom-conformance.md).
+diagnostic contributions so invalidation can rebuild only affected buffers. Presenters already
+receive narrow state, UI, collaborator, and callback dependencies from `EditorApplication`; an
+architecture check prevents a presenter from importing that composition container again. Physical
+`viewport`, `scene`, `materials`, project/persistence, and core-domain subdirectories follow those
+ownership changes. The pinned behavior and architecture comparison is recorded in
+[`trenchbroom-conformance.md`](./trenchbroom-conformance.md).
 
 The browser shell gives the viewports visual priority. A compact, consistently sized icon toolbar
 groups file, mode, selection/history, visibility, and build commands; document and build-profile
@@ -249,20 +256,47 @@ feature-detect to a no-op while keeping the complete visual workflow.
 6. A build request sends a compile snapshot and expected revision to a configured local
    capability. Only successful, current results replace preview; diagnostics and artifacts remain
    inspectable in history.
+7. In optional collaboration mode, a validated local commit first enters the IndexedDB outbox and
+   then the room protocol. An available `MapRoom` persists, validates, orders, acknowledges, and
+   broadcasts the semantic operation; reconnection reconciles queued operations without making the
+   room service a dependency of solo editing.
 
 No compiled artifact, renderer cache, browser handle, or machine-local helper binding flows back
 into canonical `.map` geometry or the portable project manifest.
 
+## Optional collaboration mode
+
+Collaboration wraps validated `EditorSession` commits and leaves solo editing unchanged. The client
+keeps a local IndexedDB outbox and remains editable while disconnected. Durable semantic operations
+and ephemeral presence use separate channels; pointer/drag previews, cameras, selections, GPU state,
+and local commercial/shareware resources are never canonical room state.
+
+The preferred room-runtime experiment targets the Cloudflare Workers/Durable Objects API with one
+named `MapRoom` per collaborative map, private SQLite, and hibernatable WebSockets. [celld](https://celld.dev/)
+is the preferred self-hosted runtime; workerd/Cloudflare execution remains a compatibility oracle
+and optional target so the protocol is not vendor- or celld-specific. The room persists accepted
+operations before acknowledgement/broadcast and reconstructs all important state after hibernation.
+
+celld supplies placement, single-writer room coordination, SQLite durability, and WebSocket
+lifecycle; it is not a CRDT or conflict policy. The fixed 8,000-brush bake-off selected the domain
+operation/rebase layer for V0 over Yjs and Automerge; the benchmark remains executable so that
+decision can be revisited. Brush geometry begins as an atomic validated conflict boundary, and
+personalized undo commits conditional inverse operations instead of rewinding global state.
+
+The complete architecture, alpha-runtime caveats, security boundary, research references, and
+delivery gates are recorded in [`collaboration.md`](./collaboration.md).
+
 ## Delivery milestones
 
-| Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                                                                                                                                                                                                                    |
-| --------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Architecture hardening         | In progress | Strict Mode React roots, effect-free callback-ref lifetimes, React Query command state, narrow shell stores/ports including the document summary, a clean React Doctor audit, shared frame/camera runtime, domain modules, split document/CSS/TSX, and the 1,000-line ceiling are delivered; composed viewport controllers, scene contributions, and migration of remaining interactive inspector presentation remain |
-| 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                                                                                                                                                                                                                   |
-| 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                                                                                                                                                                                                                     |
-| 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                                                                                                                                                                                                                    |
-| 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                                                                                                                                                                                                                               |
-| 6. After dependable solo          | Deferred    | Collision-aware editor walk mode first; then the explicitly deferred features listed under Product boundaries                                                                                                                                                                                                                                                                                                         |
+| Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Architecture hardening         | In progress | The Vanilla-to-React shell translation, Strict Mode roots, effect-free callback-ref lifetimes, React Query command state, narrow shell stores/ports, presenter dependency injection, composed viewport gesture routing, shared frame/camera runtime, domain modules, split document/CSS/TSX, and architecture gates are delivered; focused scene contributions remain                                                                                                                                                                          |
+| 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                                                                                                                                                                                                                                                                                                                                             |
+| 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                                                                                                                                                                                                                                                                                                                                                        |
+| 6. Collaboration foundation       | Complete    | Typed domain operations, seeded three-replica convergence, IndexedDB outbox, multi-tab and reconnect transport, conditional personalized undo, Yjs/Automerge/custom bake-off, explicit editor join/leave integration, and a chunked SQLite-backed hibernating `MapRoom` pass local Workers-runtime gates plus a live celld/Azurite deploy, WebSocket operation, `SIGKILL`, empty-local-state recovery drill; identity/room UX and multi-node/outage/backup fleet hardening belong to multiplayer delivery; solo mode has no service dependency |
+| 7. After dependable solo          | Deferred    | Collision-aware editor walk mode and the remaining explicitly deferred features listed under Product boundaries                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 Worker parsing/catalog work and list virtualization remain available optimizations rather than
 mandatory architecture: the fixed scale gate passes without them, so the roadmap's “as required”

@@ -5,16 +5,19 @@ import {
   type MapCompileResult,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { DocumentPresenter } from './document-presenter.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
 
 export class BuildPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly document: Pick<
+      DocumentPresenter,
+      'compileAssets' | 'serializeCompileDocument'
+    >,
+  ) {}
 
   public formatVector(value: readonly number[]): string {
     return value.map((component) => Number(component.toFixed(2))).join(' ');
@@ -191,11 +194,11 @@ export class BuildPresenter {
     this.setCompileState(`COMPILING ${quality.toUpperCase()}`, 'busy');
     this.ui.statusMessage.textContent = `Sending document revision ${this.state.session.document.revision} to the compiler.`;
     try {
-      const assets = this.app.document.compileAssets();
+      const assets = this.document.compileAssets();
       const outcome = await this.state.compilerCoordinator.compile(
         {
           mapName: 'worldview_preview',
-          mapText: this.app.document.serializeCompileDocument(assets),
+          mapText: this.document.serializeCompileDocument(assets),
           quality,
           profileId: this.state.activeCompileProfileId,
           expectedDocumentRevision: this.state.session.document.revision,

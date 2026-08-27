@@ -5,10 +5,12 @@ import {
   type EditorMaterial,
   type EditorMaterialUsage,
   type EditorReferenceScene,
+  type EditorTool,
   type MapDocument,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
 
 export class MaterialsPresenter {
   private readonly materialIdentityTokens = new WeakMap<object, number>();
@@ -18,13 +20,11 @@ export class MaterialsPresenter {
   private materialUsageSignature = '';
   private presentedActiveMaterial = '';
 
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly setEditorTool: (tool: EditorTool) => void,
+  ) {}
 
   public selectedMaterialToken(): string {
     return this.ui.materialName.value.trim() || this.state.activeMaterialName;
@@ -304,7 +304,7 @@ export class MaterialsPresenter {
       this.ui.statusMessage.textContent = `No visible, editable faces use ${material}.`;
       return;
     }
-    this.app.session.setEditorTool('face');
+    this.setEditorTool('face');
     this.ui.statusMessage.textContent = `Selected ${faceCount} ${faceCount === 1 ? 'face' : 'faces'} using ${material}.`;
   }
 
@@ -320,7 +320,7 @@ export class MaterialsPresenter {
       this.ui.statusMessage.textContent = `No visible, editable brushes use ${material}.`;
       return;
     }
-    this.app.session.setEditorTool('select');
+    this.setEditorTool('select');
     this.ui.statusMessage.textContent = `Selected ${selectedBrushCount} ${selectedBrushCount === 1 ? 'brush' : 'brushes'} using ${material}.`;
   }
 
@@ -343,7 +343,7 @@ export class MaterialsPresenter {
       }
       this.state.activeMaterialName = targetMaterial;
       this.ui.materialName.value = targetMaterial;
-      this.app.session.setEditorTool('face');
+      this.setEditorTool('face');
       this.renderMaterialCatalog();
       this.ui.statusMessage.textContent = `Replaced ${sourceMaterial} with ${targetMaterial} on ${changedFaceCount} ${changedFaceCount === 1 ? 'face' : 'faces'}. Undo restores the previous materials.`;
     } catch (error) {

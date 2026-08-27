@@ -32,9 +32,17 @@ function physicalLines(source) {
 const files = (await Promise.all(roots.map(sourceFiles))).flat();
 const violations = [];
 for (const file of files) {
-  const lineCount = physicalLines(await readFile(file, 'utf8'));
+  const source = await readFile(file, 'utf8');
+  const lineCount = physicalLines(source);
   if (lineCount > MAX_PRODUCTION_LINES) {
     violations.push(`${file}: ${lineCount} lines (maximum ${MAX_PRODUCTION_LINES})`);
+  }
+  if (
+    file.endsWith('-presenter.ts') &&
+    file !== 'apps/editor/src/editor-application.ts' &&
+    /from ['"]\.\/editor-application\.js['"]/.test(source)
+  ) {
+    violations.push(`${file}: presenters may not depend on the EditorApplication container`);
   }
 }
 

@@ -10,10 +10,14 @@
     "dev": "npm run build --workspace @jackharrhy/worldview && npm run dev --workspace @worldview/viewer",
     "dev:editor": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run dev --workspace @worldview/editor",
     "dev:compiler": "npm run dev --workspace @worldview/compiler-service",
-    "build": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/compiler-service && npm run build --workspace @worldview/viewer && npm run build --workspace @worldview/editor",
+    "dev:collaboration": "npm run build --workspace @jackharrhy/worldview-editor && npm run dev --workspace @worldview/collaboration-service",
+    "build": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/compiler-service && npm run build --workspace @worldview/collaboration-service && npm run build --workspace @worldview/viewer && npm run build --workspace @worldview/editor",
     "test": "npm run test --workspaces --if-present",
     "test:browser": "npm run build --workspace @jackharrhy/worldview && npm run test:consumer && playwright test",
     "test:editor-performance": "npm run build --workspace @jackharrhy/worldview-editor && WORLDVIEW_PERF_GATE=1 playwright test tests/browser/editor-performance.spec.ts --project=chromium",
+    "test:collaboration-bakeoff": "node scripts/collaboration-bakeoff.mjs",
+    "test:collaboration-celld-compat": "node scripts/check-celld-collaboration.mjs",
+    "test:collaboration-celld-live": "npm run build --workspace @jackharrhy/worldview-editor && node scripts/test-celld-azurite.mjs",
     "test:consumer": "tsc -p tests/consumer/tsconfig.json --noEmit && vite build --config tests/consumer/vite.config.ts",
     "test:package": "node tests/consumer/node-smoke.mjs && npm pack --dry-run --workspace packages/worldview",
     "release:check": "npm run check && npm run test:browser",
@@ -26,9 +30,11 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "check:architecture": "node scripts/check-editor-architecture.mjs",
-    "check": "npm run format:check && npm run check:architecture && npm run lint && npm run typecheck && npm run test && npm run build && npm run test:consumer && npm run test:package"
+    "check": "npm run format:check && npm run check:architecture && npm run lint && npm run typecheck && npm run test && npm run test:collaboration-bakeoff && npm run test:collaboration-celld-compat && npm run build && npm run test:consumer && npm run test:package"
   },
   "devDependencies": {
+    "@automerge/automerge": "^3.4.1",
+    "@azure/storage-blob": "^12.29.1",
     "@playwright/test": "1.61.1",
     "@types/node": "^24.0.0",
     "@webgpu/types": "^0.1.64",
@@ -38,7 +44,8 @@
     "typescript": "7.0.2",
     "unplugin-typegpu": "0.12.2",
     "vite": "8.2.2",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "yjs": "^13.6.32"
   },
   "engines": {
     "node": ">=24"

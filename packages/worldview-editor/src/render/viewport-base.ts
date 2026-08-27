@@ -34,7 +34,11 @@ import {
   type PointerDrag,
   initialState,
 } from './viewport-common.js';
-import { GestureController } from './gesture-controller.js';
+import { ViewportGestureRouter } from './gesture-controller.js';
+import {
+  createPointerGestureControllers,
+  type PointerGestureTracker,
+} from './viewport-gesture-controllers.js';
 import { FlyCameraController } from './viewport/fly-camera-controller.js';
 export abstract class ViewportBase {
   protected abstract connectInput(): void;
@@ -52,7 +56,12 @@ export abstract class ViewportBase {
   protected scaleOverlay: GPUBuffer | null = null;
   protected scaleOverlayCount = 0;
   protected disposed = false;
-  protected readonly gestures = new GestureController<PointerDrag>();
+  protected readonly gestures = new ViewportGestureRouter<
+    PointerDrag,
+    PointerEvent,
+    PointerEvent,
+    PointerGestureTracker
+  >(createPointerGestureControllers());
   protected pendingFaceTransferClick: number | null = null;
   protected faceTransferSequenceSource: FaceSelection | null | undefined;
   protected faceTransferSequenceReset: number | null = null;
@@ -65,7 +74,7 @@ export abstract class ViewportBase {
   private readonly resizeObserver: ResizeObserver;
 
   protected get dragState(): PointerDrag | null {
-    return this.gestures.current;
+    return this.gestures.activeTracker?.drag ?? null;
   }
   protected readonly cancelOnEscape = (event: KeyboardEvent) => {
     if (

@@ -11,6 +11,8 @@ import {
   type BrushSelection,
   type DocumentEditCandidate,
   type EditorPointerPositionEvent,
+  type EditorBrushDragEvent,
+  type EditorSelection,
   type EditorTool,
   type EditorTopologyDragEvent,
   type EditorTransformDragEvent,
@@ -20,16 +22,22 @@ import {
   type Vec3,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorState } from './editor-state.js';
 
 export class TransformToolPresenter {
-  public constructor(private readonly app: EditorApplication) {}
-  private get state() {
-    return this.app.state;
-  }
-  private get ui() {
-    return this.app.ui;
-  }
+  public constructor(
+    private readonly state: EditorState,
+    private readonly ui: EditorElements,
+    private readonly updateInspector: (
+      document?: MapDocument,
+      selection?: EditorSelection | null,
+    ) => void,
+    private readonly formatVector: (value: readonly number[]) => string,
+    private readonly movementDescription: (
+      event: Pick<EditorBrushDragEvent, 'movementPlane' | 'axisRestriction'>,
+    ) => string,
+  ) {}
 
   public isTransformTool(tool: EditorTool): tool is 'rotate' | 'scale' | 'shear' {
     return tool === 'rotate' || tool === 'scale' || tool === 'shear';
@@ -54,7 +62,7 @@ export class TransformToolPresenter {
     if (event.phase === 'cancel' || !hasMovement) {
       this.state.topologyCandidate = null;
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
       if (event.phase === 'cancel') this.ui.statusMessage.textContent = `${label} move cancelled.`;
       pointerContext.textContent = `${event.viewport.toUpperCase()} / ${event.kind}`;
       return;
@@ -91,9 +99,9 @@ export class TransformToolPresenter {
       if (event.phase === 'preview') {
         this.state.topologyCandidate = candidate;
         this.state.renderer?.setDocument(candidate.document, this.state.session.selection);
-        this.app.inspector.updateInspector(candidate.document, this.state.session.selection);
-        this.ui.statusMessage.textContent = `${label} preview: ${this.app.build.formatVector(event.delta)} (${event.snapMode} snap; ${this.app.build.movementDescription(event)}). Release to commit.`;
-        pointerContext.textContent = `${event.viewport.toUpperCase()} / ${insertion ? 'insert' : event.kind} ${this.app.build.formatVector(event.delta)}`;
+        this.updateInspector(candidate.document, this.state.session.selection);
+        this.ui.statusMessage.textContent = `${label} preview: ${this.formatVector(event.delta)} (${event.snapMode} snap; ${this.movementDescription(event)}). Release to commit.`;
+        pointerContext.textContent = `${event.viewport.toUpperCase()} / ${insertion ? 'insert' : event.kind} ${this.formatVector(event.delta)}`;
         return;
       }
       this.state.session.commitCandidate(this.state.topologyCandidate ?? candidate);
@@ -103,7 +111,7 @@ export class TransformToolPresenter {
     } catch (error) {
       this.state.topologyCandidate = null;
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
       this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
       pointerContext.textContent = `${event.viewport.toUpperCase()} / ${event.kind} invalid`;
     }
@@ -131,11 +139,11 @@ export class TransformToolPresenter {
       this.state.renderer?.translateTopologySelection(delta);
       this.state.session.commitCandidate({ ...candidate, label });
       this.state.topologySequence += 1;
-      this.ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / ${this.state.topologySelectionKind} ${this.app.build.formatVector(delta)}`;
+      this.ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / ${this.state.topologySelectionKind} ${this.formatVector(delta)}`;
       return true;
     } catch (error) {
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
       this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
       return true;
     }
@@ -156,11 +164,11 @@ export class TransformToolPresenter {
       const label = faces.length === 1 ? 'Nudge face' : 'Nudge faces';
       this.state.session.commitCandidate({ ...candidate, label });
       this.state.faceTranslationSequence += 1;
-      this.ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / face ${this.app.build.formatVector(delta)}`;
+      this.ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / face ${this.formatVector(delta)}`;
       return true;
     } catch (error) {
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
       this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
       return true;
     }
@@ -291,7 +299,7 @@ export class TransformToolPresenter {
     ) as [number, number, number];
     this.state.transformPivotSelectionKey = this.selectedTransformKey(selection);
     this.state.renderer?.setTransformPivot(this.state.transformPivot);
-    this.app.inspector.updateInspector();
+    this.updateInspector();
   }
 
   public readTransformPivot(): Vec3 {
@@ -398,7 +406,7 @@ export class TransformToolPresenter {
     if (event.phase === 'cancel') {
       this.state.transformCandidate = null;
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
       this.ui.statusMessage.textContent = `${event.tool[0]!.toUpperCase()}${event.tool.slice(1)} cancelled.`;
       pointerContext.textContent = `${event.viewport.toUpperCase()} / ${event.tool}`;
       return;
@@ -409,12 +417,12 @@ export class TransformToolPresenter {
       if (event.phase === 'preview') {
         this.state.transformCandidate = candidate;
         this.state.renderer?.setDocument(candidate.document, this.state.session.selection);
-        this.app.inspector.updateInspector(candidate.document, this.state.session.selection);
+        this.updateInspector(candidate.document, this.state.session.selection);
         const detail =
           event.tool === 'rotate'
             ? `${event.angleDegrees}°`
             : event.tool === 'scale'
-              ? this.app.build.formatVector(event.factors)
+              ? this.formatVector(event.factors)
               : `${event.offset > 0 ? '+' : ''}${event.offset}`;
         this.ui.statusMessage.textContent = `${this.state.topologySelectionKind ? 'Component ' : ''}${event.tool} preview: ${detail}. Release to commit.`;
         pointerContext.textContent = `${event.viewport.toUpperCase()} / ${event.tool} ${detail}`;
@@ -427,14 +435,14 @@ export class TransformToolPresenter {
       if (transformedComponents) {
         this.state.renderer?.remapTopologySelection(event);
         this.state.topologyTransformSequence += 1;
-        this.app.inspector.updateInspector();
+        this.updateInspector();
       }
       this.state.transformCandidate = null;
       pointerContext.textContent = `${event.viewport.toUpperCase()} / ${event.tool}`;
     } catch (error) {
       this.state.transformCandidate = null;
       this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.app.inspector.updateInspector();
+      this.updateInspector();
       this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
     }
   }
@@ -445,17 +453,17 @@ export class TransformToolPresenter {
     this.state.transformPivot = [...nextPivot] as Vec3;
     this.state.transformPivotSelectionKey = this.selectedTransformKey();
     this.state.renderer?.setTransformPivot(this.state.transformPivot);
-    this.app.inspector.updateInspector();
+    this.updateInspector();
     const constraint =
       event.axisRestriction === null ? '' : ` / ${['X', 'Y', 'Z'][event.axisRestriction]} locked`;
     if (event.phase === 'preview') {
-      this.ui.statusMessage.textContent = `Rotate pivot preview: ${this.app.build.formatVector(nextPivot)}${constraint}. Release to place it.`;
+      this.ui.statusMessage.textContent = `Rotate pivot preview: ${this.formatVector(nextPivot)}${constraint}. Release to place it.`;
     } else if (event.phase === 'commit') {
-      this.ui.statusMessage.textContent = `Rotate pivot moved to ${this.app.build.formatVector(nextPivot)}${constraint}.`;
+      this.ui.statusMessage.textContent = `Rotate pivot moved to ${this.formatVector(nextPivot)}${constraint}.`;
     } else {
-      this.ui.statusMessage.textContent = `Rotate pivot move cancelled at ${this.app.build.formatVector(nextPivot)}.`;
+      this.ui.statusMessage.textContent = `Rotate pivot move cancelled at ${this.formatVector(nextPivot)}.`;
     }
-    pointerContext.textContent = `${event.viewport.toUpperCase()} / rotate pivot ${this.app.build.formatVector(nextPivot)}${constraint}`;
+    pointerContext.textContent = `${event.viewport.toUpperCase()} / rotate pivot ${this.formatVector(nextPivot)}${constraint}`;
   }
 
   public applyExactTransform(): void {
@@ -587,7 +595,7 @@ export class TransformToolPresenter {
       if (transformComponents && remapEvent) {
         this.state.renderer?.remapTopologySelection(remapEvent);
         this.state.topologyTransformSequence += 1;
-        this.app.inspector.updateInspector();
+        this.updateInspector();
       }
     } catch (error) {
       this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
