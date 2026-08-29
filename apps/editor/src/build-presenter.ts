@@ -265,7 +265,7 @@ export class BuildPresenter {
   }
 
   public async checkCompilerService(): Promise<void> {
-    if (!this.state.compilerProbeEnabled) {
+    if (!this.state.buildServiceEnabled) {
       this.ui.compileButton.disabled = true;
       this.ui.launchButton.disabled = true;
       this.setCompileState('COMPILER UNCONFIGURED', 'offline');

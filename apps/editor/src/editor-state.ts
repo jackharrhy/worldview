@@ -31,6 +31,7 @@ import {
   type EntityLinkMode,
   type MapCompileResult,
   type MapCompileQuality,
+  type MapBuildService,
   type MapDocument,
   type WorldviewGameProfile,
   type MapSourceState,
@@ -60,6 +61,11 @@ export interface EditorStateHost {
   ): Parameters<EditorSourceRenderer['setDocument']>[2];
   setEditorTool(tool: EditorTool): void;
   updateInspector(document?: MapDocument, selection?: MapDocumentSelection): void;
+}
+
+export interface EditorStateOptions {
+  readonly buildService?: MapBuildService;
+  readonly buildServiceEnabled?: boolean;
 }
 
 type MapDocumentSelection = Parameters<EditorSession['select']>[0];
@@ -170,9 +176,9 @@ export class EditorState {
   public readonly enabledIssueTypes = new Set<EditorIssueType>(
     EDITOR_ISSUE_TYPE_INFO.map((entry) => entry.type),
   );
-  public readonly buildService: RemoteMapCompiler;
+  public readonly buildService: MapBuildService;
   public readonly compilerCoordinator: MapCompileCoordinator;
-  public readonly compilerProbeEnabled: boolean;
+  public readonly buildServiceEnabled: boolean;
   public readonly buildHistory: MapBuildHistoryService;
   public readonly projectLocalState = new ProjectLocalStateService();
   public readonly assetMountState = new AssetMountStateService();
@@ -198,6 +204,7 @@ export class EditorState {
   public constructor(
     public readonly ui: EditorElements,
     host: () => EditorStateHost,
+    options: EditorStateOptions = {},
   ) {
     this.activeGridSize = Number(ui.gridSizeSelect.value);
     const configuredCompilerEndpoint =
@@ -205,9 +212,12 @@ export class EditorState {
       import.meta.env.VITE_WORLDVIEW_COMPILER_ENDPOINT;
     const localHost =
       window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
-    this.compilerProbeEnabled = Boolean(configuredCompilerEndpoint) || localHost;
+    this.buildServiceEnabled =
+      options.buildServiceEnabled ??
+      (Boolean(options.buildService ?? configuredCompilerEndpoint) || localHost);
     const compilerEndpoint = configuredCompilerEndpoint ?? 'http://127.0.0.1:8788/compile';
-    this.buildService = new RemoteMapCompiler({ endpoint: compilerEndpoint });
+    this.buildService =
+      options.buildService ?? new RemoteMapCompiler({ endpoint: compilerEndpoint });
     this.compilerCoordinator = new MapCompileCoordinator(this.buildService);
     this.buildHistory = new MapBuildHistoryService(undefined, (error) => {
       ui.statusMessage.setError(

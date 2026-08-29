@@ -21,6 +21,10 @@ export class RemoteBuildQueue {
     private readonly maxPending = 3,
   ) {}
 
+  public supports(game: 'quake' | 'goldsrc'): boolean {
+    return Boolean(this.endpoints[game]);
+  }
+
   public enqueue(input: {
     id: string;
     game: 'quake' | 'goldsrc';

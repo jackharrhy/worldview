@@ -58,8 +58,10 @@ resolve the same named MapCell and its single monotonically increasing `mapVersi
 
 Build creation names a map version, fixed server profile, and preview/final quality. The service
 retrieves the canonical source and pinned resources itself, queues the job, and stores bounded logs,
-diagnostics, source fingerprint, and content-addressed artifacts. Browser-provided source or
-executable paths are not accepted.
+diagnostics, source fingerprint, and content-addressed artifacts. Local helpers and hosted builds
+implement the same editor build contract; hosted artifacts are downloaded through authenticated,
+membership-checked content-addressed routes. Browser-provided source or executable paths are not
+accepted.
 
 Hosted map source is limited to 2 MiB. One user may have one active build and submit at most six
 builds per hour; the process admits no more than four active/queued jobs globally and retains only

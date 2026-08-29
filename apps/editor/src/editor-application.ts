@@ -3,7 +3,7 @@ import { CommandEvents } from './command-events.js';
 import { ContextMenuPresenter } from './context-menu-presenter.js';
 import { DocumentPresenter } from './document-presenter.js';
 import type { EditorElements } from './editor-elements.js';
-import { EditorState, type EditorStateHost } from './editor-state.js';
+import { EditorState, type EditorStateHost, type EditorStateOptions } from './editor-state.js';
 import { EntityPresenter } from './entity-presenter.js';
 import { GeometryToolPresenter } from './geometry-tool-presenter.js';
 import { InspectorPresenter } from './inspector-presenter.js';
@@ -82,12 +82,15 @@ export class EditorApplication implements EditorStateHost {
     readonly clearRemotePresence: () => void;
   } | null = null;
 
-  public constructor(public readonly ui: EditorElements) {
-    this.state = new EditorState(ui, () => this);
+  public constructor(
+    public readonly ui: EditorElements,
+    options: EditorStateOptions = {},
+  ) {
+    this.state = new EditorState(ui, () => this, options);
     this.theme = new ThemePresenter(this.state, ui);
     this.collaborationUi = new CollaborationPresenter(
       ui,
-      (options) => this.joinCollaboration(options),
+      (joinOptions) => this.joinCollaboration(joinOptions),
       () => this.leaveCollaboration(),
     );
     this.entity = new EntityPresenter(this.state, ui);

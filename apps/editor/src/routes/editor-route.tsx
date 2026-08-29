@@ -8,6 +8,7 @@ import { createEditorShellState } from '../editor-shell-state.js';
 import { takePendingEditorLaunch } from './editor-launch.js';
 import { readNewMapLaunch } from './editor-navigation-state.js';
 import type { HostedMapLaunch } from './hosted-project-api.js';
+import { HostedMapBuildService } from '../hosted-map-build-service.js';
 
 import '@phosphor-icons/web/regular/style.css';
 import '../style.css';
@@ -44,7 +45,18 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
   });
   const attachEditor = (node: HTMLElement | null) => {
     if (!node || editor.current) return;
-    const application = new EditorApplication(bindEditorElements(shellState));
+    const application = new EditorApplication(
+      bindEditorElements(shellState),
+      hostedMap
+        ? {
+            buildService: new HostedMapBuildService({
+              mapId: hostedMap.id,
+              game: hostedMap.game,
+            }),
+            buildServiceEnabled: true,
+          }
+        : {},
+    );
     editor.current = application;
     delete document.documentElement.dataset.worldviewEditorReady;
     if (initialMap)

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { createStarterDocument } from '@jackharrhy/worldview-editor/core';
 import { FileBlobStore } from '../src/blob-store.js';
+import { RemoteBuildQueue } from '../src/build-queue.js';
 import { WorldviewDatabase } from '../src/database.js';
 import { createWorldviewService } from '../src/server.js';
 import type { HostedMapCheckpoint, HostedMapSnapshot } from '../src/map-cell-client.js';
@@ -50,13 +51,14 @@ afterEach(async () => {
   while (cleanups.length) await cleanups.pop()!();
 });
 
-async function fixture(fetchImpl?: typeof fetch) {
+async function fixture(fetchImpl?: typeof fetch, compilerFetch?: typeof fetch) {
   const root = await mkdtemp(join(tmpdir(), 'worldview-service-test-'));
   const database = new WorldviewDatabase(join(root, 'worldview.db'));
   const maps = new FakeMapCells();
+  const blobs = new FileBlobStore(join(root, 'blobs'));
   const server = createWorldviewService({
     database,
-    blobs: new FileBlobStore(join(root, 'blobs')),
+    blobs,
     oauth: {
       fourmUrl: 'https://4orm.example',
       clientId: 'worldview',
@@ -65,6 +67,16 @@ async function fixture(fetchImpl?: typeof fetch) {
     realtimeTicketSecret: 'test-worldview-realtime-ticket-secret-0001',
     maps,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
+    ...(compilerFetch
+      ? {
+          builds: new RemoteBuildQueue(
+            database,
+            blobs,
+            { quake: 'http://compiler.internal' },
+            compilerFetch,
+          ),
+        }
+      : {}),
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
@@ -98,6 +110,29 @@ const malformedHumanTokenFetch: typeof fetch = async (input) => {
       expires_in: 'forever',
     });
   throw new Error('Userinfo must not be requested for an invalid token response');
+};
+
+const successfulCompilerFetch: typeof fetch = async (_input, init) => {
+  const request = JSON.parse(String(init?.body)) as {
+    mapText: string;
+    expectedDocumentRevision: number;
+  };
+  expect(request.mapText).toContain('worldspawn');
+  expect(request.expectedDocumentRevision).toBe(0);
+  return Response.json({
+    status: 'succeeded',
+    diagnostics: [],
+    logs: [{ stage: 'qbsp', text: 'built', truncated: false }],
+    elapsedMilliseconds: 7,
+    artifacts: [
+      {
+        name: 'showcase.bsp',
+        kind: 'bsp',
+        mediaType: 'application/octet-stream',
+        base64: Buffer.from([29, 0, 0, 0]).toString('base64'),
+      },
+    ],
+  });
 };
 
 describe('Worldview hosted project service', () => {
@@ -284,6 +319,54 @@ describe('Worldview hosted project service', () => {
       app.database.updateBuild(build.id, 'failed');
     }
     expect(app.database.buildAdmission(user.id)).toBe('user-hourly');
+  });
+
+  test('builds canonical hosted maps and serves artifacts only to project members', async () => {
+    const app = await fixture(undefined, successfulCompilerFetch);
+    const { user, cookie } = session(app.database);
+    const project = app.database.createProject(user.id, 'Hosted build', 'quake');
+    const map = app.database.createMap({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      userId: user.id,
+      name: 'showcase.map',
+      format: 'quake',
+    });
+    const mapId = String(map.id);
+    await app.maps.initialize(mapId, '{\n"classname" "worldspawn"\n}\n');
+
+    const stale = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quality: 'preview', expectedMapVersion: 9 }),
+    });
+    expect(stale.status).toBe(409);
+    const queued = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quality: 'preview', expectedMapVersion: 0 }),
+    });
+    expect(queued.status).toBe(202);
+    const buildId = ((await queued.json()) as { build: { id: string } }).build.id;
+
+    await expect
+      .poll(async () => {
+        const response = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
+          headers: { Cookie: cookie },
+        });
+        const builds = (await response.json()) as {
+          builds: readonly { id: string; status: string; result?: { artifacts?: unknown[] } }[];
+        };
+        return builds.builds.find(({ id }) => id === buildId);
+      })
+      .toMatchObject({ status: 'succeeded', result: { artifacts: [expect.any(Object)] } });
+    const build = app.database.build(mapId, buildId, user.id)!;
+    const artifact = build.result!.artifacts![0]!;
+    const artifactUrl = `${app.origin}/api/maps/${map.id}/builds/${buildId}/artifacts/${artifact.sha256}`;
+    expect((await fetch(artifactUrl)).status).toBe(401);
+    const downloaded = await fetch(artifactUrl, { headers: { Cookie: cookie } });
+    expect(downloaded.status).toBe(200);
+    expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(Uint8Array.from([29, 0, 0, 0]));
   });
 
   test('completes the existing 4orm PKCE flow into a Worldview session', async () => {

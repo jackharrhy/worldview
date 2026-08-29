@@ -439,10 +439,13 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
       if (request.method === 'GET' && buildsMatch) {
         const user = requireUser(request, response, options.database);
         if (!user) return;
-        const builds = options.database.listBuilds(decodeURIComponent(buildsMatch[1]!), user.id);
-        return builds
-          ? json(response, 200, { builds })
-          : json(response, 404, { error: 'Map not found' });
+        const mapId = decodeURIComponent(buildsMatch[1]!);
+        const map = options.database.map(mapId, user.id);
+        if (!map) return json(response, 404, { error: 'Map not found' });
+        return json(response, 200, {
+          builds: options.database.listBuilds(mapId, user.id),
+          capability: options.builds?.supports(map.game) ? { profileId: 'default' } : null,
+        });
       }
       if (request.method === 'POST' && buildsMatch) {
         if (!mutationAllowed(request, options.oauth.publicUrl))
@@ -454,9 +457,18 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const map = options.database.map(decodeURIComponent(buildsMatch[1]!), user.id);
         if (!map || map.role === 'viewer')
           return json(response, 403, { error: 'Editor access required' });
+        if (!options.builds.supports(map.game))
+          return json(response, 503, { error: `No ${map.game} build worker is configured` });
         const input = await body(request);
         const quality = input.quality === 'final' ? 'final' : 'preview';
         const snapshot = await options.maps.snapshot(map.id);
+        if (
+          typeof input.expectedMapVersion === 'number' &&
+          input.expectedMapVersion !== snapshot.mapVersion
+        )
+          return json(response, 409, {
+            error: 'The hosted map has not saved this revision yet; wait a moment and try again',
+          });
         const source = new TextEncoder().encode(snapshot.source);
         if (source.byteLength > MAX_HOSTED_MAP_BYTES)
           return json(response, 413, { error: 'Hosted builds are limited to 2 MiB map sources' });
@@ -498,6 +510,30 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         return json(response, 202, {
           build: { ...build, status: 'queued', mapVersion: snapshot.mapVersion, quality },
         });
+      }
+      const artifactMatch =
+        /^\/api\/maps\/([^/]+)\/builds\/([^/]+)\/artifacts\/([a-f0-9]{64})$/.exec(url.pathname);
+      if (request.method === 'GET' && artifactMatch) {
+        const user = requireUser(request, response, options.database);
+        if (!user) return;
+        const build = options.database.build(
+          decodeURIComponent(artifactMatch[1]!),
+          decodeURIComponent(artifactMatch[2]!),
+          user.id,
+        );
+        const artifact = build?.result?.artifacts?.find(
+          ({ sha256 }) => sha256 === artifactMatch[3],
+        );
+        if (!artifact) return json(response, 404, { error: 'Build artifact not found' });
+        const bytes = await options.blobs.get(artifact.sha256);
+        if (!bytes) return json(response, 404, { error: 'Build artifact data not found' });
+        response.writeHead(200, {
+          'Content-Type': artifact.mediaType,
+          'Content-Length': bytes.byteLength,
+          'Cache-Control': 'private, max-age=31536000, immutable',
+        });
+        response.end(bytes);
+        return;
       }
       if (
         options.staticRoot &&

@@ -18,6 +18,60 @@ export interface ProjectSummary {
   readonly updatedAt: number;
 }
 
+export interface HostedBuildArtifact {
+  readonly name: string;
+  readonly kind: string;
+  readonly mediaType: string;
+  readonly sha256: string;
+  readonly size: number;
+}
+
+export interface HostedBuildResult {
+  readonly error?: string;
+  readonly diagnostics?: readonly unknown[];
+  readonly logs?: readonly unknown[];
+  readonly elapsedMilliseconds?: number;
+  readonly artifacts?: readonly HostedBuildArtifact[];
+}
+
+export interface HostedBuildRecord {
+  readonly id: string;
+  readonly mapVersion: number;
+  readonly profileId: string;
+  readonly quality: 'preview' | 'final';
+  readonly status: 'queued' | 'running' | 'succeeded' | 'failed';
+  readonly sourceSha256: string | null;
+  readonly result: HostedBuildResult | null;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+interface SqlBuild {
+  id: string;
+  map_version: number;
+  profile_id: string;
+  quality: 'preview' | 'final';
+  status: HostedBuildRecord['status'];
+  source_sha256: string | null;
+  result_json: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+function hostedBuild(row: SqlBuild): HostedBuildRecord {
+  return {
+    id: row.id,
+    mapVersion: row.map_version,
+    profileId: row.profile_id,
+    quality: row.quality,
+    status: row.status,
+    sourceSha256: row.source_sha256,
+    result: row.result_json ? (JSON.parse(row.result_json) as HostedBuildResult) : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 interface SqlUser {
   id: string;
   fourm_sub: string;
@@ -499,18 +553,22 @@ export class WorldviewDatabase {
       .run(status, result === null ? null : JSON.stringify(result), sourceSha256, Date.now(), id);
   }
 
-  public listBuilds(mapId: string, userId: string): readonly Record<string, unknown>[] | null {
+  public build(mapId: string, buildId: string, userId: string): HostedBuildRecord | null {
+    if (!this.map(mapId, userId)) return null;
+    const row = this.sql
+      .prepare(`SELECT id,map_version,profile_id,quality,status,source_sha256,result_json,created_at,updated_at
+      FROM builds WHERE map_id=? AND id=?`)
+      .get(mapId, buildId) as SqlBuild | undefined;
+    return row ? hostedBuild(row) : null;
+  }
+
+  public listBuilds(mapId: string, userId: string): readonly HostedBuildRecord[] | null {
     const map = this.map(mapId, userId);
     if (!map) return null;
     const rows = this.sql
       .prepare(`SELECT id,map_version,profile_id,quality,status,source_sha256,result_json,created_at,updated_at
       FROM builds WHERE map_id=? ORDER BY created_at DESC LIMIT 20`)
-      .all(mapId) as Record<string, unknown>[];
-    // oxlint-disable-next-line no-map-spread -- database rows are immutable response values.
-    return rows.map((row) => ({
-      ...row,
-      result: typeof row.result_json === 'string' ? JSON.parse(row.result_json) : null,
-      result_json: undefined,
-    }));
+      .all(mapId) as unknown as SqlBuild[];
+    return rows.map(hostedBuild);
   }
 }
