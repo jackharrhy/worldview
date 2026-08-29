@@ -19,6 +19,7 @@ import { type BrushClipEdit, type BrushEdit } from './history.js';
 import { stampBrushFace } from './sweep.js';
 import {
   createBrushSelection,
+  extrudableBrushFaces,
   matchingBrushFaces,
   selectedBrushIds,
   selectedFaceReferences,
@@ -97,7 +98,7 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
       faces.map((face) => [`${face.brushId}\u0000${face.faceId}`, face] as const),
     );
     const normalized = [...unique.values()];
-    const matching = matchingBrushFaces(
+    const matching = extrudableBrushFaces(
       this.currentDocument,
       primary,
       normalized.map((face) => face.brushId),
@@ -107,7 +108,7 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
       matchingKeys.size !== normalized.length ||
       normalized.some((face) => !matchingKeys.has(`${face.brushId}\u0000${face.faceId}`))
     ) {
-      throw new Error('Shared extrusion requires faces with exactly the same vertices');
+      throw new Error('Shared extrusion requires compatible coplanar faces');
     }
     const primaryBrush = findBrush(this.currentDocument, primary.brushId);
     const primaryFace = primaryBrush

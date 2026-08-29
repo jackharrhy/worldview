@@ -19,6 +19,10 @@ The default Select tool owns TrenchBroom's permanent interaction stack: click to
 selection to move it, and drag with no selection to create the configured simple shape. Brush
 creation is not a separate modal toolbar tool.
 
+Shift-dragging a face of a multi-brush object selection resizes every compatible selected face as
+one undoable operation. Same-facing faces need only share the plane; opposing faces must overlap the
+grabbed polygon so only a genuine shared seam participates.
+
 The desktop workspace follows TrenchBroom's default balanced 2×2 layout: Perspective is upper-left,
 XY upper-right, XZ lower-left, and YZ lower-right. Drag the shared row or column separator, or the
 separator immediately left of the inspector, to resize them. Focused separators also respond to

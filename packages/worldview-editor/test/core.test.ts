@@ -33,6 +33,7 @@ import {
   editorGroupForObject,
   encodeQuakeWad2,
   entityClassFiltersInDocument,
+  extrudableBrushFaces,
   findBrush,
   hollowBrush,
   intersectBrushes,
@@ -2259,7 +2260,32 @@ describe('editor transactions', () => {
         seed,
         16,
       ),
-    ).toThrow('exactly the same vertices');
+    ).toThrow('compatible coplanar faces');
+  });
+
+  it('extrudes coplanar faces across an object selection without requiring identical polygons', () => {
+    const ids = createSequentialIdFactory('coplanar-selection');
+    const lower = createBoxBrush([-32, -32, 0], [0, -8, 32], 'LOWER', ids);
+    const upper = createBoxBrush([-32, 8, 0], [0, 32, 32], 'UPPER', ids);
+    const unrelated = createBoxBrush([0, 48, 0], [32, 64, 32], 'UNRELATED', ids);
+    const starter = createStarterDocument();
+    const document = {
+      ...starter,
+      entities: [
+        { ...starter.entities[0]!, primitives: [lower, upper, unrelated] },
+        ...starter.entities.slice(1),
+      ],
+    };
+    const seed = { brushId: lower.id, faceId: lower.faces[0]!.id };
+    const faces = extrudableBrushFaces(document, seed, [lower.id, upper.id, unrelated.id]);
+
+    expect(faces).toEqual([seed, { brushId: upper.id, faceId: upper.faces[0]!.id }]);
+    const candidate = new EditorSession(document).createFaceSetExtrusionCandidate(faces, seed, 16)!;
+    if (!('edits' in candidate)) throw new Error('Expected a batch face extrusion candidate');
+    expect(candidate.edits).toHaveLength(2);
+    expect(deriveBrush(findBrush(candidate.document, lower.id)!).bounds?.max[0]).toBe(16);
+    expect(deriveBrush(findBrush(candidate.document, upper.id)!).bounds?.max[0]).toBe(16);
+    expect(deriveBrush(findBrush(candidate.document, unrelated.id)!).bounds?.min[0]).toBe(0);
   });
 
   it('translates selected face vertices across adjacent brushes as one convex edit', () => {

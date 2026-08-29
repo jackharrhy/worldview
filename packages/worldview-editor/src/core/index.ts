@@ -345,6 +345,7 @@ export {
   createBrushSelection,
   createFaceSelection,
   createObjectSelection,
+  extrudableBrushFaces,
   facesOfBrush,
   isBrushSelected,
   isFaceSelected,

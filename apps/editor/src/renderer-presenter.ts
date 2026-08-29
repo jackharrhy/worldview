@@ -6,6 +6,7 @@ import {
   createSimpleShapeBrushes,
   createSequentialIdFactory,
   editorGroupForObject,
+  extrudableBrushFaces,
   pointEntityDefinition,
   selectedBrushIds,
   selectedFaceReferences,
@@ -487,6 +488,7 @@ export class RendererPresenter {
 
           try {
             const selectedFaces = selectedFaceReferences(state.session.selection);
+            const selectedBrushes = selectedBrushIds(state.session.selection);
             const eventFace = {
               brushId: event.selection.brushId,
               faceId: event.selection.faceId,
@@ -495,7 +497,12 @@ export class RendererPresenter {
               (face) => face.brushId === eventFace.brushId && face.faceId === eventFace.faceId,
             )
               ? selectedFaces
-              : [eventFace];
+              : selectedBrushes.includes(eventFace.brushId) &&
+                  event.mode === 'normal' &&
+                  !event.split &&
+                  !event.stamp
+                ? extrudableBrushFaces(state.session.document, eventFace, selectedBrushes)
+                : [eventFace];
             const candidate =
               event.mode === 'translate'
                 ? state.session.createFaceSetTranslationCandidate(

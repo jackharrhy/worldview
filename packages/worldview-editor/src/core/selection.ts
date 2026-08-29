@@ -223,6 +223,43 @@ export function matchingBrushFaces(
   return [seed, ...matches.filter((face) => faceKey(face) !== faceKey(seed))];
 }
 
+/**
+ * Finds the faces that participate when a face is extruded through an object selection.
+ * Same-facing faces need only be coplanar. Opposing faces must also overlap the seed polygon so
+ * that unrelated brushes on the same plane are not pulled into a shared-seam extrusion.
+ */
+export function extrudableBrushFaces(
+  document: MapDocument,
+  seed: FaceSelection,
+  brushIds: readonly BrushId[],
+): readonly FaceSelection[] {
+  const seedBrush = findBrush(document, seed.brushId);
+  const seedFace = seedBrush
+    ? deriveBrush(seedBrush).faces.find((face) => face.faceId === seed.faceId)
+    : null;
+  if (!seedFace) return [];
+
+  const matches = [...new Set([seed.brushId, ...brushIds])].flatMap((brushId) => {
+    const brush = findBrush(document, brushId);
+    if (!brush) return [];
+    return deriveBrush(brush).faces.flatMap((face) => {
+      const alignment = dot(seedFace.normal, face.normal);
+      const sameFacing = alignment >= 1 - 1e-5;
+      const opposing = alignment <= -1 + 1e-5;
+      const coplanar = sameFacing
+        ? Math.abs(seedFace.distance - face.distance) <= GEOMETRY_EPSILON * 4
+        : opposing
+          ? Math.abs(seedFace.distance + face.distance) <= GEOMETRY_EPSILON * 4
+          : false;
+      if (!coplanar || (opposing && !facesTouch(seedFace, face))) return [];
+      return [{ brushId, faceId: face.faceId }];
+    });
+  });
+  const unique = new Map(matches.map((face) => [faceKey(face), face] as const));
+  unique.delete(faceKey(seed));
+  return [seed, ...unique.values()];
+}
+
 interface DerivedFaceReference extends FaceSelection {
   readonly face: DerivedFace;
 }

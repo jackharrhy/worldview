@@ -31,6 +31,19 @@ function adjacentBrushSource(): string {
   });
 }
 
+function coplanarBrushSource(): string {
+  const ids = createSequentialIdFactory('browser-coplanar-face');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const lower = createBoxBrush([-32, -64, 0], [0, -16, 32], 'LOWER', ids);
+  const upper = createBoxBrush([-32, 16, 0], [0, 64, 32], 'UPPER', ids);
+
+  return serializeMap({
+    ...starter,
+    entities: [{ ...worldspawn, primitives: [lower, upper] }, ...starter.entities.slice(1)],
+  });
+}
+
 function subtractionBrushSource(): string {
   const ids = createSequentialIdFactory('browser-csg-subtract');
   const starter = createStarterDocument();
@@ -2344,6 +2357,48 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#brush-count')).toHaveText('4');
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
     await expect(page.locator('#status-message')).toContainText('Split-extrude face');
+  });
+
+  test('Shift-drag resizes coplanar faces across a multi-brush object selection atomically', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(coplanarBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+
+    const lowerCenter = await topWorldPoint(page, -16, -40);
+    const upperCenter = await topWorldPoint(page, -16, 40);
+    await page.mouse.click(lowerCenter.x, lowerCenter.y);
+    await page.keyboard.down('Control');
+    await page.mouse.click(upperCenter.x, upperCenter.y);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+
+    // Start just beyond the selected silhouette so the Select tool's face-proximity heuristic
+    // resolves the +X plane instead of the top face hit by the orthographic ray.
+    const grabbedFace = await topWorldPoint(page, 6, -40);
+    const movedFace = await topWorldPoint(page, 22, -40);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(grabbedFace.x, grabbedFace.y);
+    await page.mouse.down();
+    await page.mouse.move(movedFace.x, movedFace.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+
+    await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('Extrude shared faces');
+    const moved = await readEditorDocument(page);
+    expect(brushesInDocument(moved).map((brush) => deriveBrush(brush).bounds?.max[0])).toEqual([
+      16, 16,
+    ]);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    const restored = await readEditorDocument(page);
+    expect(brushesInDocument(restored).map((brush) => deriveBrush(brush).bounds?.max[0])).toEqual([
+      0, 0,
+    ]);
   });
 
   test('Shift-drag acquires a selected brush face just outside its silhouette edge', async ({
