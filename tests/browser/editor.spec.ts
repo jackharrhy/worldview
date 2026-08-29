@@ -397,7 +397,7 @@ async function perspectivePoint(
 
 async function perspectiveGridBandThickness(page: Page): Promise<number> {
   return page.getByLabel('Perspective map viewport').evaluate(async (canvas) => {
-    const bitmap = await createImageBitmap(canvas);
+    const bitmap = await createImageBitmap(canvas as HTMLCanvasElement);
     const sample = new OffscreenCanvas(bitmap.width, bitmap.height);
     const context = sample.getContext('2d');
     if (!context) throw new Error('2D canvas context is unavailable');
