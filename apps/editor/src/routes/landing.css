@@ -114,6 +114,13 @@ a:focus-visible {
   border-color: var(--accent-active);
   background: var(--accent-active);
 }
+.button-primary:disabled,
+.primary:disabled {
+  border-color: var(--accent-active);
+  background: var(--accent-active);
+  color: var(--on-accent);
+  cursor: progress;
+}
 .button-quiet {
   border-color: transparent;
   background: transparent;

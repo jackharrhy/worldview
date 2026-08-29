@@ -185,13 +185,14 @@ architecture check prevents a presenter from importing that composition containe
 ownership changes. The pinned behavior and architecture comparison is recorded in
 [`trenchbroom-conformance.md`](./trenchbroom-conformance.md).
 
-The browser shell gives the viewports visual priority. A compact, consistently sized icon toolbar
-groups file, mode, selection/history, visibility, and build commands; document and build-profile
-selectors retain text where context matters. Every icon action keeps an accessible text name,
-keyboard path, focus treatment, and descriptive tooltip. Secondary document actions, uncommon
-selection commands, and visibility/locking controls live in compact accessible toolbar menus;
-frequent file, source, build, mode, history, clipboard, and transform controls remain directly
-available.
+The browser shell gives the viewports visual priority. A compact top command bar keeps frequent
+Home, New, Save, Undo, Redo, Source, and Compile actions visible, while short accessible menus hold
+open/create, recovery, build-result, and other document commands. Editing modes occupy a single
+vertical rail beside the viewports; applicable selection commands appear contextually, with grid,
+texture-lock, visibility, and uncommon edit controls anchored at the rail's foot. Document and
+build-profile selectors retain text where context matters. Every icon action keeps an accessible
+text name, keyboard path, focus treatment, descriptive tooltip, and stable presenter action
+contract. The hierarchy simplifies scanning without removing editor capability.
 
 Source viewport navigation follows the TrenchBroom editing model: once a viewport has keyboard
 focus, focus follows the pointer between source panes; orthographic panes share zoom and synchronize

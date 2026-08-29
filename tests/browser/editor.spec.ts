@@ -349,7 +349,7 @@ async function perspectivePoint(
   xFraction: number,
   yFraction: number,
 ): Promise<{ readonly x: number; readonly y: number }> {
-  const bounds = await page.locator('.source-canvas').nth(1).boundingBox();
+  const bounds = await page.locator('.source-canvas').nth(0).boundingBox();
   if (!bounds) throw new Error('The perspective editor canvas has no bounds');
   return {
     x: bounds.x + bounds.width * xFraction,
@@ -361,7 +361,7 @@ async function perspectiveWorldPoint(
   page: Page,
   point: readonly [number, number, number],
 ): Promise<{ readonly x: number; readonly y: number }> {
-  const bounds = await page.locator('.source-canvas').nth(1).boundingBox();
+  const bounds = await page.locator('.source-canvas').nth(0).boundingBox();
   if (!bounds) throw new Error('The perspective editor canvas has no bounds');
   const yaw = Math.PI * 0.72;
   const pitch = -0.43;
@@ -405,7 +405,7 @@ async function topWorldPoint(
   x: number,
   y: number,
 ): Promise<{ readonly x: number; readonly y: number }> {
-  const bounds = await page.locator('.source-canvas').nth(0).boundingBox();
+  const bounds = await page.locator('.source-canvas').nth(1).boundingBox();
   if (!bounds) throw new Error('The top editor canvas has no bounds');
   const span = 640;
   const aspect = bounds.width / bounds.height;
@@ -1426,7 +1426,7 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#perspective-mode')).toContainText('PAN');
 
     await page.locator('#grid-size').selectOption('32');
-    await page.locator('.source-canvas').nth(1).focus();
+    await page.locator('.source-canvas').nth(0).focus();
     const flyStart = await perspectiveCamera(page);
     await page.keyboard.down('w');
     await page.waitForTimeout(180);
@@ -1826,8 +1826,8 @@ test.describe('3D source authoring', () => {
   }) => {
     await openEditor(page);
     await page.getByRole('button', { name: 'Hull', exact: true }).click();
-    const start = await perspectivePoint(page, 0.5, 0.58);
-    const end = await perspectivePoint(page, 0.5, 0.4);
+    const start = await perspectiveWorldPoint(page, [0, 0, 48]);
+    const end = await perspectiveWorldPoint(page, [0, 0, 128]);
 
     await page.mouse.dblclick(start.x, start.y);
     await expect(page.locator('#hull-point-count')).toHaveText('4 points');
@@ -2093,8 +2093,8 @@ test.describe('3D source authoring', () => {
     page,
   }) => {
     await openEditor(page);
-    const start = await perspectivePoint(page, 0.5, 0.58);
-    const end = await perspectivePoint(page, 0.5, 0.38);
+    const start = await perspectiveWorldPoint(page, [0, 0, 0]);
+    const end = await perspectiveWorldPoint(page, [0, 0, 96]);
     await page.mouse.click(start.x, start.y);
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
 
@@ -2409,8 +2409,8 @@ test.describe('3D source authoring', () => {
   }) => {
     await openEditor(page);
     await page.getByRole('button', { name: 'Face' }).click();
-    const start = await perspectivePoint(page, 0.5, 0.58);
-    const end = await perspectivePoint(page, 0.5, 0.38);
+    const start = await perspectiveWorldPoint(page, [0, 0, 0]);
+    const end = await perspectiveWorldPoint(page, [0, 0, 96]);
     await page.mouse.click(start.x, start.y);
     await expect(page.locator('#selection-kind')).toHaveText('Face');
 
@@ -2539,8 +2539,8 @@ test.describe('3D source authoring', () => {
     await page.mouse.dblclick(point.x, point.y);
     await expect(page.locator('#selection-kind')).toHaveText('6 Faces');
     await expect(page.locator('#face-extrude-section')).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Duplicate' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    await expect(page.locator('[data-action="duplicate"]')).toBeDisabled();
+    await expect(page.locator('[data-action="delete"]')).toBeDisabled();
 
     await page.getByRole('tab', { name: 'Textures' }).click();
     await page.locator('#material-name').fill('FACE_SET');
@@ -2571,7 +2571,7 @@ test.describe('3D source authoring', () => {
     await page.getByRole('button', { name: 'Apply source', exact: true }).click();
     await page.getByRole('tab', { name: 'Textures', exact: true }).click();
 
-    await expect(page.locator('#material-count')).toHaveText('2 loaded · 2 in use');
+    await expect(page.locator('#material-count')).toHaveText('4 loaded · 2 in use');
     await expect(page.locator('#material-coverage')).toBeHidden();
     await expect(page.locator('.material-tile.in-use')).toHaveCount(2);
     await page.locator('#material-sort').selectOption('usage');

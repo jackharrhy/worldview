@@ -10,6 +10,13 @@ with two-pixel control corners and square structural surfaces. Gradients, decora
 cards, and large ambient shadows do not belong on product routes. Motion is reserved for direct
 interaction feedback and must respect reduced-motion preferences.
 
+The live editor is viewport-first. Its top command bar keeps Home, New, Save, Undo, Redo, Source,
+and Compile visible, while open/create, recovery, build-result, and other document commands live in
+short named menus. Editing modes occupy a single vertical rail beside the viewports. Selection
+commands appear contextually in that rail, and persistent grid, texture-lock, visibility, and less
+common edit controls remain anchored at its foot. This is command hierarchy, not feature removal:
+stable action contracts and keyboard paths remain available to presenters and automation.
+
 Shared route components live in `apps/editor/src/components/ui.tsx`. New pre-editor UI should use
 these components instead of introducing route-specific button, field, heading, or empty-state
 markup. Editor internals may keep focused class-based components where presenters need stable DOM
