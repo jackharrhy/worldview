@@ -278,11 +278,13 @@ export class EditorApplication implements EditorStateHost {
           const previewObjectIds: string[] = [];
           for (const edit of preview?.edits ?? []) {
             previewObjectIds.push(
-              edit.kind === 'insert-brush'
-                ? edit.brush.id
-                : edit.kind === 'replace-entity-properties'
-                  ? edit.entityId
-                  : edit.brushId,
+              edit.kind === 'insert-entity'
+                ? edit.entity.id
+                : edit.kind === 'insert-brush'
+                  ? edit.brush.id
+                  : edit.kind === 'replace-entity-properties' || edit.kind === 'delete-entity'
+                    ? edit.entityId
+                    : edit.brushId,
             );
           }
           return {

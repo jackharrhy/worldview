@@ -8,6 +8,7 @@ import {
   createSequentialIdFactory,
   createStarterDocument,
   insertBrush,
+  insertEntity,
   serializeMap,
   translateBrush,
   type CollaborationOperation,
@@ -199,6 +200,29 @@ describe('MapCell', () => {
       expect(state.storage.sql.exec('SELECT * FROM operation_receipts').toArray()).toHaveLength(2);
       expect(state.storage.sql.exec('SELECT * FROM operations').toArray()).toHaveLength(2);
     });
+  });
+
+  it('persists created point entities in the authoritative document and map source', async () => {
+    const mapId = 'point-entity';
+    const cell = env.MAP_CELLS.getByName(mapId);
+    const initial = createStarterDocument();
+    await cell.initialize(mapId, serializeMap(initial));
+    const starter = (await cell.snapshot(mapId)).document as unknown as MapDocument;
+    const light = {
+      id: createSequentialIdFactory('point-entity').entity(),
+      properties: { classname: 'light', origin: '64 64 64', light: '300' },
+      primitives: [],
+    };
+    const after = insertEntity(starter, light);
+
+    expect(await cell.submit('alice', operation(starter, after))).toMatchObject({
+      type: 'ack',
+      mapVersion: 1,
+    });
+    const snapshot = await cell.snapshot(mapId);
+    expect(snapshot.document.entities).toContainEqual(light);
+    expect(snapshot.source).toContain('"classname" "light"');
+    expect(snapshot.source).toContain('"origin" "64 64 64"');
   });
 
   it('deduplicates concurrent retries before applying geometry twice', async () => {

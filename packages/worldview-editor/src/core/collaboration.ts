@@ -1,6 +1,6 @@
 import { deriveBrush } from './geometry.js';
 import type { MapSourceDiagnostic } from './map-source-types.js';
-import type { BrushId, EntityId, MapBrush, MapDocument } from './types.js';
+import type { BrushId, EntityId, MapBrush, MapDocument, MapEntity } from './types.js';
 
 export const COLLABORATION_SCHEMA_VERSION = 1 as const;
 
@@ -18,6 +18,16 @@ export interface CollaborationOperation {
 
 export type CollaborationEdit =
   | {
+      readonly kind: 'insert-entity';
+      readonly insertionIndex: number;
+      readonly entity: MapEntity;
+    }
+  | {
+      readonly kind: 'delete-entity';
+      readonly entityId: EntityId;
+      readonly baseProperties: Readonly<Record<string, string>>;
+    }
+  | {
       readonly kind: 'replace-brush';
       readonly brushId: BrushId;
       readonly baseRevision: number;
@@ -33,6 +43,14 @@ export type CollaborationEdit =
       readonly kind: 'delete-brush';
       readonly brushId: BrushId;
       readonly baseRevision: number;
+    }
+  | {
+      readonly kind: 'move-brush';
+      readonly brushId: BrushId;
+      readonly baseEntityId: EntityId;
+      readonly baseRevision: number;
+      readonly entityId: EntityId;
+      readonly insertionIndex: number;
     }
   | {
       readonly kind: 'replace-entity-properties';
@@ -96,7 +114,21 @@ export function applyCollaborationOperation(
   let next = document;
   const conflicts: CollaborationConflict[] = [];
   for (const [editIndex, edit] of operation.edits.entries()) {
-    if (edit.kind === 'replace-brush' || edit.kind === 'delete-brush') {
+    if (edit.kind === 'insert-entity') {
+      if (next.entities.some(({ id }) => id === edit.entity.id)) {
+        conflicts.push({
+          editIndex,
+          kind: 'target-exists',
+          targetId: edit.entity.id,
+          message: `Entity ${edit.entity.id} already exists`,
+        });
+        continue;
+      }
+      const insertionIndex = Math.min(Math.max(edit.insertionIndex, 0), next.entities.length);
+      next = Object.assign({}, next, {
+        entities: next.entities.toSpliced(insertionIndex, 0, { ...edit.entity, primitives: [] }),
+      });
+    } else if (edit.kind === 'replace-brush' || edit.kind === 'delete-brush') {
       const located = locateBrush(next, edit.brushId);
       if (!located) {
         conflicts.push({
@@ -180,7 +212,51 @@ export function applyCollaborationOperation(
           primitives: entity.primitives.toSpliced(insertionIndex, 0, edit.brush),
         }),
       });
-    } else {
+    } else if (edit.kind === 'move-brush') {
+      const located = locateBrush(next, edit.brushId);
+      const targetIndex = next.entities.findIndex(({ id }) => id === edit.entityId);
+      if (!located || located.entity.id !== edit.baseEntityId) {
+        conflicts.push({
+          editIndex,
+          kind: 'missing-target',
+          targetId: edit.brushId,
+          message: `Brush ${edit.brushId} is no longer owned by entity ${edit.baseEntityId}`,
+        });
+        continue;
+      }
+      if (located.brush.revision !== edit.baseRevision) {
+        conflicts.push({
+          editIndex,
+          kind: 'revision-mismatch',
+          targetId: edit.brushId,
+          message: `Brush ${edit.brushId} is revision ${located.brush.revision}, expected ${edit.baseRevision}`,
+        });
+        continue;
+      }
+      const target = next.entities[targetIndex];
+      if (!target) {
+        conflicts.push({
+          editIndex,
+          kind: 'missing-target',
+          targetId: edit.entityId,
+          message: `Entity ${edit.entityId} no longer exists`,
+        });
+        continue;
+      }
+      const sourcePrimitives = located.entity.primitives.toSpliced(located.brushIndex, 1);
+      const insertionIndex = Math.min(Math.max(edit.insertionIndex, 0), target.primitives.length);
+      const entities = next.entities.with(located.entityIndex, {
+        ...located.entity,
+        primitives: sourcePrimitives,
+      });
+      next = {
+        ...next,
+        entities: entities.with(targetIndex, {
+          ...target,
+          primitives: target.primitives.toSpliced(insertionIndex, 0, located.brush),
+        }),
+      };
+    } else if (edit.kind === 'replace-entity-properties') {
       const entityIndex = next.entities.findIndex((entity) => entity.id === edit.entityId);
       const entity = next.entities[entityIndex];
       if (!entity) {
@@ -204,6 +280,28 @@ export function applyCollaborationOperation(
       next = Object.assign({}, next, {
         entities: next.entities.with(entityIndex, { ...entity, properties: edit.properties }),
       });
+    } else {
+      const entityIndex = next.entities.findIndex(({ id }) => id === edit.entityId);
+      const entity = next.entities[entityIndex];
+      if (!entity || entity.primitives.length > 0) {
+        conflicts.push({
+          editIndex,
+          kind: 'missing-target',
+          targetId: edit.entityId,
+          message: `Entity ${edit.entityId} no longer exists or is not empty`,
+        });
+        continue;
+      }
+      if (!recordsEqual(entity.properties, edit.baseProperties)) {
+        conflicts.push({
+          editIndex,
+          kind: 'revision-mismatch',
+          targetId: edit.entityId,
+          message: `Entity ${edit.entityId} properties changed concurrently`,
+        });
+        continue;
+      }
+      next = { ...next, entities: next.entities.toSpliced(entityIndex, 1) };
     }
   }
 
@@ -217,6 +315,8 @@ export function collaborationEditsBetween(
   after: MapDocument,
 ): readonly CollaborationEdit[] {
   const edits: CollaborationEdit[] = [];
+  const beforeEntities = new Map(before.entities.map((entity) => [entity.id, entity] as const));
+  const afterEntities = new Map(after.entities.map((entity) => [entity.id, entity] as const));
   const beforeBrushes = new Map(
     before.entities.flatMap((entity) =>
       entity.primitives
@@ -232,6 +332,24 @@ export function collaborationEditsBetween(
     ),
   );
 
+  const afterBrushOwners = new Map(
+    after.entities.flatMap((entity) =>
+      entity.primitives
+        .filter((primitive) => primitive.kind === 'brush')
+        .map((brush) => [brush.id, entity.id] as const),
+    ),
+  );
+
+  for (const [insertionIndex, entity] of after.entities.entries()) {
+    if (!beforeEntities.has(entity.id)) {
+      edits.push({
+        kind: 'insert-entity',
+        insertionIndex,
+        entity: { ...entity, primitives: [] },
+      });
+    }
+  }
+
   for (const entity of before.entities) {
     const afterEntity = after.entities.find((candidate) => candidate.id === entity.id);
     if (afterEntity && !recordsEqual(entity.properties, afterEntity.properties)) {
@@ -245,14 +363,30 @@ export function collaborationEditsBetween(
     for (const brush of entity.primitives) {
       if (brush.kind !== 'brush') continue;
       const replacement = afterBrushes.get(brush.id);
+      const brushChanged =
+        replacement !== undefined &&
+        replacement !== brush &&
+        JSON.stringify(replacement) !== JSON.stringify(brush);
       if (!replacement)
         edits.push({ kind: 'delete-brush', brushId: brush.id, baseRevision: brush.revision });
-      else if (replacement !== brush && JSON.stringify(replacement) !== JSON.stringify(brush)) {
+      else if (brushChanged) {
         edits.push({
           kind: 'replace-brush',
           brushId: brush.id,
           baseRevision: brush.revision,
           brush: replacement,
+        });
+      }
+      const targetEntityId = afterBrushOwners.get(brush.id);
+      if (replacement && targetEntityId && targetEntityId !== entity.id) {
+        const target = afterEntities.get(targetEntityId)!;
+        edits.push({
+          kind: 'move-brush',
+          brushId: brush.id,
+          baseEntityId: entity.id,
+          baseRevision: brush.revision + (brushChanged ? 1 : 0),
+          entityId: targetEntityId,
+          insertionIndex: target.primitives.findIndex(({ id }) => id === brush.id),
         });
       }
     }
@@ -263,6 +397,15 @@ export function collaborationEditsBetween(
       if (!beforeBrushes.has(brush.id)) {
         edits.push({ kind: 'insert-brush', entityId: entity.id, insertionIndex, brush });
       }
+    }
+  }
+  for (const entity of before.entities) {
+    if (!afterEntities.has(entity.id)) {
+      edits.push({
+        kind: 'delete-entity',
+        entityId: entity.id,
+        baseProperties: entity.properties,
+      });
     }
   }
   return edits;

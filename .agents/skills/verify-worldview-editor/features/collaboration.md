@@ -29,6 +29,9 @@ Require the final acknowledged MapCell version, source hash, and visible documen
 unchanged. Kill and recreate the runtime with an empty local replica and require the same snapshot
 to recover from object storage before making the persistence claim.
 
+Persistence coverage must include a point entity and a brush entity, not only worldspawn brushes.
+After reload, require point properties and brush ownership to match the acknowledged document.
+
 For gesture presence, hold an actual canvas drag before pointer-up. Require the remote participant
 row to report **Moving**, capture the colored remote wireframe/cursor, and prove the remote WebMCP
 inspection still reports the old canonical revision. Release the pointer, require the durable

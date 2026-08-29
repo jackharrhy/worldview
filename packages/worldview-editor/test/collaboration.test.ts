@@ -3,9 +3,12 @@ import {
   applyCollaborationOperation,
   collaborationEditsBetween,
   createBoxBrush,
+  createBrushEntity,
   createSequentialIdFactory,
   createStarterDocument,
+  insertEntity,
   insertBrush,
+  removeEntities,
   OrderedCollaborationReplica,
   simulateCollaborationDelivery,
   translateBrush,
@@ -29,6 +32,54 @@ function operation(
 }
 
 describe('collaboration operations', () => {
+  it('persists point entity creation and deletion as semantic operations', () => {
+    const ids = createSequentialIdFactory('entities');
+    const baseline = createStarterDocument();
+    const light = {
+      id: ids.entity(),
+      properties: { classname: 'light', origin: '64 64 64', light: '300' },
+      primitives: [],
+    };
+    const created = insertEntity(baseline, light);
+    const createResult = applyCollaborationOperation(
+      baseline,
+      operation('entity:create', 'alice', collaborationEditsBetween(baseline, created)),
+    );
+    expect(createResult).toMatchObject({
+      status: 'applied',
+      document: { entities: created.entities },
+    });
+    if (createResult.status !== 'applied') return;
+
+    const deleted = removeEntities(created, [light.id]);
+    const deleteResult = applyCollaborationOperation(
+      createResult.document,
+      operation('entity:delete', 'alice', collaborationEditsBetween(created, deleted)),
+    );
+    expect(deleteResult).toMatchObject({
+      status: 'applied',
+      document: { entities: deleted.entities },
+    });
+  });
+
+  it('persists brush entity creation and brush ownership', () => {
+    const ids = createSequentialIdFactory('brush-entity');
+    const starter = createStarterDocument();
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64], 'STONE', ids);
+    const baseline = insertBrush(starter, starter.entities[0]!.id, brush);
+    const door = {
+      id: ids.entity(),
+      properties: { classname: 'func_door' },
+      primitives: [],
+    };
+    const after = createBrushEntity(baseline, [brush.id], door);
+    const edits = collaborationEditsBetween(baseline, after);
+    expect(edits.map(({ kind }) => kind)).toEqual(['insert-entity', 'move-brush']);
+
+    const result = applyCollaborationOperation(baseline, operation('entity:brush', 'alice', edits));
+    expect(result).toMatchObject({ status: 'applied', document: { entities: after.entities } });
+  });
+
   it('derives and deterministically applies independent semantic edits', () => {
     const ids = createSequentialIdFactory('collaboration');
     let baseline = createStarterDocument();

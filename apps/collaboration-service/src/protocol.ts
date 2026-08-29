@@ -74,8 +74,24 @@ function isBrush(value: unknown): boolean {
   );
 }
 
+function isEmptyEntity(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    isStringRecord(value.properties) &&
+    Array.isArray(value.primitives) &&
+    value.primitives.length === 0
+  );
+}
+
 function isEdit(value: unknown): boolean {
   if (!isRecord(value) || typeof value.kind !== 'string') return false;
+  if (value.kind === 'insert-entity') {
+    return Number.isInteger(value.insertionIndex) && isEmptyEntity(value.entity);
+  }
+  if (value.kind === 'delete-entity') {
+    return typeof value.entityId === 'string' && isStringRecord(value.baseProperties);
+  }
   if (value.kind === 'replace-brush') {
     return (
       typeof value.brushId === 'string' &&
@@ -92,6 +108,15 @@ function isEdit(value: unknown): boolean {
   }
   if (value.kind === 'delete-brush') {
     return typeof value.brushId === 'string' && Number.isInteger(value.baseRevision);
+  }
+  if (value.kind === 'move-brush') {
+    return (
+      typeof value.brushId === 'string' &&
+      typeof value.baseEntityId === 'string' &&
+      Number.isInteger(value.baseRevision) &&
+      typeof value.entityId === 'string' &&
+      Number.isInteger(value.insertionIndex)
+    );
   }
   return (
     value.kind === 'replace-entity-properties' &&

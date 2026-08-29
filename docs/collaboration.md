@@ -182,6 +182,8 @@ the editor's 8,000-brush target.
 
 - `@jackharrhy/worldview-editor/core` exports typed semantic edits, atomic validation/application,
   semantic before/after diffing, inverse edit derivation, and an ordered idempotent replica buffer.
+  The operation schema covers brush geometry, point-entity creation/deletion and properties, brush
+  entity creation/deletion, and brush ownership moves.
 - The seeded three-replica test covers delay, reverse ordering, and duplicate delivery. A geometry
   policy test proves stale same-brush edits conflict atomically.
 - The editor app contains an opt-in `CollaborationController`: IndexedDB is written before
