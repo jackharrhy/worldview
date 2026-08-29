@@ -75,7 +75,7 @@ export class HostedMapBuildService implements MapBuildService {
   private readonly timeoutMilliseconds: number;
 
   public constructor(private readonly options: HostedMapBuildServiceOptions) {
-    this.fetch = options.fetch ?? globalThis.fetch;
+    this.fetch = (options.fetch ?? globalThis.fetch).bind(globalThis);
     this.pollIntervalMilliseconds = options.pollIntervalMilliseconds ?? 500;
     this.timeoutMilliseconds = options.timeoutMilliseconds ?? 120_000;
   }

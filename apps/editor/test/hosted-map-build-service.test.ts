@@ -1,7 +1,23 @@
 import { describe, expect, test, vi } from 'vitest';
 import { HostedMapBuildService } from '../src/hosted-map-build-service.js';
 
+const receiverCheckingFetch: typeof fetch = async function (this: unknown) {
+  expect(this).toBe(globalThis);
+  return Response.json({ capability: { profileId: 'default' } });
+};
+
 describe('HostedMapBuildService', () => {
+  test('binds the browser fetch implementation to the global object', async () => {
+    const service = new HostedMapBuildService({
+      mapId: 'map-1',
+      game: 'quake',
+      fetch: receiverCheckingFetch,
+    });
+    await expect(service.capabilities()).resolves.toMatchObject({
+      compileProfiles: [{ id: 'default' }],
+    });
+  });
+
   test('advertises only compiler profiles enabled by the host', async () => {
     const enabled = new HostedMapBuildService({
       mapId: 'map-1',
