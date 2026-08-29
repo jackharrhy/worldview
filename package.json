@@ -24,7 +24,7 @@
     "release:check": "npm run check && npm run test:browser",
     "publish:dry-run": "node scripts/publish.mjs --dry-run",
     "publish": "node scripts/publish.mjs",
-    "typecheck": "npm run build:types --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run typecheck --workspaces --if-present && tsc -p tests/tsconfig.json --noEmit",
+    "typecheck": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run typecheck --workspaces --if-present && tsc -p tests/tsconfig.json --noEmit",
     "lint": "oxlint . --deny-warnings --report-unused-disable-directives",
     "doctor": "react-doctor . --project @worldview/viewer,@worldview/editor --no-parallel --no-score --no-supply-chain",
     "check:react": "npm run doctor",
