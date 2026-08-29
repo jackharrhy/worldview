@@ -60,6 +60,18 @@ for (let attempt = 0; attempt < 30; attempt += 1) {
 }
 if (storageError) throw storageError;
 
-run(['diagnose', '--bucket', bucketUrl, '--listen', '127.0.0.1:0']);
+let diagnoseError;
+for (let attempt = 0; attempt < 30; attempt += 1) {
+  try {
+    run(['diagnose', '--bucket', bucketUrl, '--listen', '127.0.0.1:0'], attempt < 29);
+    diagnoseError = undefined;
+    break;
+  } catch (error) {
+    diagnoseError = error;
+    await delay(1_000);
+  }
+}
+if (diagnoseError) throw diagnoseError;
+
 run(['deploy', 'apps/collaboration-service', '--bucket', bucketUrl]);
 console.log(`Deployed Worldview collaboration to ${bucketUrl} through ${endpoint}`);
