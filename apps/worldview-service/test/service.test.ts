@@ -180,6 +180,44 @@ describe('Worldview hosted project service', () => {
     expect(rejected.status).toBe(403);
   });
 
+  test('admits only one active build per user and bounds hourly build attempts', async () => {
+    const app = await fixture();
+    const { user } = session(app.database);
+    const project = app.database.createProject(user.id, 'Build quota', 'quake');
+    const bytes = new TextEncoder().encode('{\n"classname" "worldspawn"\n}\n');
+    const blob = await new FileBlobStore(join(app.root, 'blobs')).put(bytes);
+    const map = app.database.createMap({
+      projectId: project.id,
+      userId: user.id,
+      name: 'quota.map',
+      format: 'quake',
+      sourceHash: blob.sha256,
+      sourceFingerprint: blob.sha256,
+    });
+    const mapId = String(map.id);
+    expect(app.database.buildAdmission(user.id)).toBe('allowed');
+    const active = app.database.createBuild({
+      mapId,
+      userId: user.id,
+      sourceVersion: 0,
+      profileId: 'default',
+      quality: 'preview',
+    });
+    expect(app.database.buildAdmission(user.id)).toBe('user-active');
+    app.database.updateBuild(active.id, 'failed');
+    for (let index = 1; index < 6; index += 1) {
+      const build = app.database.createBuild({
+        mapId,
+        userId: user.id,
+        sourceVersion: 0,
+        profileId: 'default',
+        quality: 'preview',
+      });
+      app.database.updateBuild(build.id, 'failed');
+    }
+    expect(app.database.buildAdmission(user.id)).toBe('user-hourly');
+  });
+
   test('completes the existing 4orm PKCE flow into a Worldview session', async () => {
     const calls: string[] = [];
     const mockFetch: typeof fetch = async (input) => {

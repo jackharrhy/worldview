@@ -97,7 +97,7 @@ function isEdit(value: unknown): boolean {
 
 export function parseClientFrame(value: string | ArrayBuffer): ClientFrame {
   if (typeof value !== 'string') throw new Error('Binary collaboration frames are not supported');
-  if (value.length > 2 * 1024 * 1024) throw new Error('Collaboration frame is too large');
+  if (value.length > 512 * 1024) throw new Error('Collaboration frame is too large');
   const parsed: unknown = JSON.parse(value);
   if (!isRecord(parsed) || (parsed.type !== 'operation' && parsed.type !== 'presence')) {
     throw new Error('Unknown collaboration frame');

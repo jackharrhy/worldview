@@ -9,7 +9,14 @@ import { parseClientFrame, type ServerFrame } from './protocol.js';
 interface SocketAttachment {
   readonly actorId: string;
   readonly role: 'owner' | 'editor' | 'viewer';
+  readonly operationWindowStartedAt: number;
+  readonly operationCount: number;
 }
+
+const MAX_ROOM_CONNECTIONS = 32;
+const MAX_ACTOR_CONNECTIONS = 4;
+const OPERATION_WINDOW_MS = 60_000;
+const MAX_OPERATIONS_PER_WINDOW = 240;
 
 export class MapRoom extends DurableObject<Env> {
   public constructor(ctx: DurableObjectState, env: Env) {
@@ -64,10 +71,21 @@ export class MapRoom extends DurableObject<Env> {
     if (role !== 'owner' && role !== 'editor' && role !== 'viewer') {
       return Response.json({ error: 'Valid collaboration role required' }, { status: 400 });
     }
+    if (this.ctx.getWebSockets().length >= MAX_ROOM_CONNECTIONS) {
+      return Response.json({ error: 'Collaboration room is at capacity' }, { status: 503 });
+    }
+    if (this.ctx.getWebSockets(`actor:${actorId}`).length >= MAX_ACTOR_CONNECTIONS) {
+      return Response.json({ error: 'Actor connection limit reached' }, { status: 429 });
+    }
     this.initializeRoom(roomId);
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
-    server.serializeAttachment({ actorId, role } satisfies SocketAttachment);
+    server.serializeAttachment({
+      actorId,
+      role,
+      operationWindowStartedAt: Date.now(),
+      operationCount: 0,
+    } satisfies SocketAttachment);
     this.ctx.acceptWebSocket(server, [`actor:${actorId}`]);
     server.send(JSON.stringify(this.readyFrame()));
     return new Response(null, { status: 101, webSocket: client });
@@ -115,6 +133,22 @@ export class MapRoom extends DurableObject<Env> {
       }
       const attachment = socket.deserializeAttachment() as SocketAttachment | null;
       if (attachment?.role === 'viewer') throw new Error('Viewer connections cannot edit maps');
+      if (!attachment) throw new Error('Collaboration connection is missing its identity');
+      const now = Date.now();
+      const operationWindowStartedAt =
+        now - attachment.operationWindowStartedAt >= OPERATION_WINDOW_MS
+          ? now
+          : attachment.operationWindowStartedAt;
+      const operationCount = operationWindowStartedAt === now ? 1 : attachment.operationCount + 1;
+      if (operationCount > MAX_OPERATIONS_PER_WINDOW) {
+        socket.close(1008, 'Operation rate limit exceeded');
+        return;
+      }
+      socket.serializeAttachment({
+        ...attachment,
+        operationWindowStartedAt,
+        operationCount,
+      } satisfies SocketAttachment);
       this.acceptSocketOperation(socket, frame.operation);
     } catch (error) {
       socket.send(

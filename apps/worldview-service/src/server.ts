@@ -13,6 +13,7 @@ import { RemoteBuildQueue } from './build-queue.js';
 
 const SESSION_COOKIE = 'worldview_session';
 const OAUTH_COOKIE = 'worldview_oauth';
+const MAX_HOSTED_MAP_BYTES = 2 * 1024 * 1024;
 
 export interface WorldviewServiceOptions {
   readonly database: WorldviewDatabase;
@@ -165,7 +166,7 @@ async function staticResponse(
 
 export function createWorldviewService(options: WorldviewServiceOptions) {
   const secure = new URL(options.oauth.publicUrl).protocol === 'https:';
-  return createServer(async (request, response) => {
+  const server = createServer({ maxHeaderSize: 16 * 1024 }, async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', options.oauth.publicUrl);
       if (request.method === 'GET' && url.pathname === '/health')
@@ -368,7 +369,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const principal = mapPrincipal(request, options.database, mapId);
         if (!principal)
           return json(response, 404, { error: 'Map not found or authentication required' });
-        const input = await body(request, 16 * 1024 * 1024);
+        const input = await body(request, MAX_HOSTED_MAP_BYTES + 64 * 1024);
         if (
           typeof input.source !== 'string' ||
           !Number.isSafeInteger(input.expectedVersion) ||
@@ -377,6 +378,8 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           return json(response, 400, { error: 'source and expectedVersion are required' });
         }
         const bytes = new TextEncoder().encode(input.source);
+        if (bytes.byteLength > MAX_HOSTED_MAP_BYTES)
+          return json(response, 413, { error: 'Hosted maps are limited to 2 MiB of source' });
         const blob = await options.blobs.put(bytes);
         const saveInput = {
           mapId,
@@ -461,6 +464,20 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const quality = input.quality === 'final' ? 'final' : 'preview';
         const source = await options.blobs.get(map.sourceHash);
         if (!source) return json(response, 500, { error: 'Map source blob is missing' });
+        if (source.byteLength > MAX_HOSTED_MAP_BYTES)
+          return json(response, 413, { error: 'Hosted builds are limited to 2 MiB map sources' });
+        const admission = options.database.buildAdmission(user.id);
+        if (admission !== 'allowed') {
+          response.setHeader('Retry-After', admission === 'user-hourly' ? '3600' : '30');
+          return json(response, 429, {
+            error:
+              admission === 'user-active'
+                ? 'Wait for your current build to finish'
+                : admission === 'user-hourly'
+                  ? 'Build limit reached; try again later'
+                  : 'The build worker is at capacity',
+          });
+        }
         const build = options.database.createBuild({
           mapId: map.id,
           userId: user.id,
@@ -468,7 +485,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           profileId: 'default',
           quality,
         });
-        options.builds.enqueue({
+        const queued = options.builds.enqueue({
           id: build.id,
           game: map.game,
           mapName: map.name,
@@ -479,6 +496,11 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           quality,
           assets: [],
         });
+        if (!queued) {
+          options.database.updateBuild(build.id, 'failed', { error: 'Build queue is full' });
+          response.setHeader('Retry-After', '30');
+          return json(response, 429, { error: 'The build queue is full' });
+        }
         return json(response, 202, {
           build: { ...build, status: 'queued', sourceVersion: map.sourceVersion, quality },
         });
@@ -514,6 +536,11 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
       else response.destroy();
     }
   });
+  server.requestTimeout = 30_000;
+  server.headersTimeout = 15_000;
+  server.keepAliveTimeout = 5_000;
+  server.maxHeadersCount = 64;
+  return server;
 }
 
 function environment(name: string, fallback?: string): string {

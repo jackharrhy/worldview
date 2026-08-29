@@ -132,6 +132,11 @@ export class WorldviewDatabase {
     if (!mapColumns.some(({ name }) => name === 'source_version')) {
       this.sql.exec('ALTER TABLE maps ADD COLUMN source_version INTEGER NOT NULL DEFAULT 0');
     }
+    this.sql
+      .prepare(
+        "UPDATE builds SET status='failed',result_json=?,updated_at=? WHERE status IN ('queued','running')",
+      )
+      .run(JSON.stringify({ error: 'Build interrupted by service restart' }), Date.now());
   }
 
   public beginOauth(returnTo: string, verifier: string): { state: string; expiresAt: number } {
@@ -560,6 +565,26 @@ export class WorldviewDatabase {
         createdAt,
       );
     return { id, createdAt };
+  }
+
+  public buildAdmission(
+    userId: string,
+    now = Date.now(),
+  ): 'allowed' | 'user-active' | 'user-hourly' | 'global-capacity' {
+    const userActive = this.sql
+      .prepare(
+        "SELECT COUNT(*) AS count FROM builds WHERE requested_by=? AND status IN ('queued','running')",
+      )
+      .get(userId) as { count: number };
+    if (userActive.count >= 1) return 'user-active';
+    const recent = this.sql
+      .prepare('SELECT COUNT(*) AS count FROM builds WHERE requested_by=? AND created_at>=?')
+      .get(userId, now - 60 * 60_000) as { count: number };
+    if (recent.count >= 6) return 'user-hourly';
+    const globalActive = this.sql
+      .prepare("SELECT COUNT(*) AS count FROM builds WHERE status IN ('queued','running')")
+      .get() as { count: number };
+    return globalActive.count >= 4 ? 'global-capacity' : 'allowed';
   }
 
   public updateBuild(

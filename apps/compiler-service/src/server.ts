@@ -16,6 +16,11 @@ const maxRequestBytes = Number(
   process.env.WORLDVIEW_COMPILER_MAX_REQUEST_BYTES ?? 96 * 1024 * 1024,
 );
 const maxConcurrent = Number(process.env.WORLDVIEW_COMPILER_MAX_CONCURRENT ?? 2);
+const maxMapBytes = Number(process.env.WORLDVIEW_COMPILER_MAX_MAP_BYTES ?? 2 * 1024 * 1024);
+const maxAssets = Number(process.env.WORLDVIEW_COMPILER_MAX_ASSETS ?? 16);
+const maxAssetBase64Bytes = Number(
+  process.env.WORLDVIEW_COMPILER_MAX_ASSET_BASE64_BYTES ?? 32 * 1024 * 1024,
+);
 const allowedOrigins = new Set(
   (process.env.WORLDVIEW_COMPILER_ORIGINS ?? 'http://127.0.0.1:5174,http://localhost:5174')
     .split(',')
@@ -34,6 +39,10 @@ const config: NativeCompilerConfig = {
     Number(process.env.WORLDVIEW_COMPILER_TIMEOUT_MS ?? 5 * 60 * 1000),
   ),
   maxLogBytes: Math.max(1024, Number(process.env.WORLDVIEW_COMPILER_MAX_LOG_BYTES ?? 512 * 1024)),
+  maxArtifactBytes: Math.max(
+    1024,
+    Number(process.env.WORLDVIEW_COMPILER_MAX_ARTIFACT_BYTES ?? 64 * 1024 * 1024),
+  ),
 };
 const gameProfile = process.env.WORLDVIEW_GAME_PROFILE === 'goldsrc' ? 'goldsrc' : 'quake';
 const launchProfile = configuredLaunchProfile(process.env);
@@ -74,7 +83,7 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-const server = createServer(async (request, response) => {
+const server = createServer({ maxHeaderSize: 16 * 1024 }, async (request, response) => {
   if (!cors(request, response)) {
     json(response, 403, { error: 'Origin is not allowed' });
     return;
@@ -141,7 +150,11 @@ const server = createServer(async (request, response) => {
   request.once('aborted', () => controller.abort());
   activeCompiles += 1;
   try {
-    const requested = parseCompileRequest(await readJson(request));
+    const requested = parseCompileRequest(await readJson(request), {
+      maxMapBytes,
+      maxAssets,
+      maxAssetBase64Bytes,
+    });
     const result = await compileNativeMap(requested, config, controller.signal);
     buildHistory.remember(requested, result);
     json(response, 200, result);
@@ -154,6 +167,11 @@ const server = createServer(async (request, response) => {
     activeCompiles -= 1;
   }
 });
+
+server.requestTimeout = 30_000;
+server.headersTimeout = 15_000;
+server.keepAliveTimeout = 5_000;
+server.maxHeadersCount = 64;
 
 server.listen(port, host, () => {
   const state = compilerConfigured() ? 'ready' : 'unconfigured';

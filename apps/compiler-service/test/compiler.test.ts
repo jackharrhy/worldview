@@ -149,6 +149,49 @@ describe('native compiler planning', () => {
     });
   });
 
+  it('rejects oversized map and asset payloads before invoking native tools', () => {
+    expect(() =>
+      parseCompileRequest(
+        {
+          mapName: 'large',
+          mapText: 'x'.repeat(17),
+          quality: 'preview',
+          expectedDocumentRevision: 1,
+        },
+        { maxMapBytes: 16, maxAssets: 1, maxAssetBase64Bytes: 8 },
+      ),
+    ).toThrow(/Map source exceeds/);
+    expect(() =>
+      parseCompileRequest(
+        {
+          mapName: 'assets',
+          mapText: '{}',
+          quality: 'preview',
+          expectedDocumentRevision: 1,
+          assets: [
+            { name: 'one.wad', mediaType: 'application/octet-stream', base64: 'AAAA' },
+            { name: 'two.wad', mediaType: 'application/octet-stream', base64: 'AAAA' },
+          ],
+        },
+        { maxMapBytes: 16, maxAssets: 1, maxAssetBase64Bytes: 8 },
+      ),
+    ).toThrow(/invalid compile assets/);
+    expect(() =>
+      parseCompileRequest(
+        {
+          mapName: 'assets',
+          mapText: '{}',
+          quality: 'preview',
+          expectedDocumentRevision: 1,
+          assets: [
+            { name: 'one.wad', mediaType: 'application/octet-stream', base64: 'A'.repeat(9) },
+          ],
+        },
+        { maxMapBytes: 16, maxAssets: 1, maxAssetBase64Bytes: 8 },
+      ),
+    ).toThrow(/Compile assets exceed/);
+  });
+
   it('advertises only configured capabilities and bounds launchable build retention', () => {
     expect(helperCapabilities(false, 'quake', null)).toEqual({
       protocolVersion: 1,

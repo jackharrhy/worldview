@@ -51,4 +51,11 @@ The production Worldview image includes this adapter but not ericw-tools. Newpor
 image with this service's command, a read-only filesystem, bounded temporary storage, CPU/memory/PID
 limits, no Linux capabilities, and the host's pinned ericw-tools directory mounted read-only. The
 service is reachable only on the private Compose network; the public Worldview service proxies no
-compiler route and submits its server-owned build jobs directly.
+compiler route and submits its server-owned build jobs directly. Production limits map source to
+2 MiB, asset base64 to 32 MiB, artifacts to 64 MiB, each stage to 60 seconds, scratch space to
+256 MiB, memory to 1 GiB, and CPU to two cores with one compile at a time.
+
+On Newport, a synthetic 1,000-brush preview (542 KiB request) completed in about one second. Before
+these tighter limits, a synthetic 10,000-brush preview (5.5 MiB request) saturated four cores for
+98 seconds and returned roughly 41 MiB of base64 artifacts. The source ceiling intentionally rejects
+that workload before spawning native tools.

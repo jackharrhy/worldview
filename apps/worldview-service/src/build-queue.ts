@@ -18,6 +18,7 @@ export class RemoteBuildQueue {
     private readonly endpoints: Partial<Record<'quake' | 'goldsrc', string>>,
     private readonly fetch: typeof globalThis.fetch = globalThis.fetch,
     private readonly concurrency = 1,
+    private readonly maxPending = 3,
   ) {}
 
   public enqueue(input: {
@@ -30,7 +31,8 @@ export class RemoteBuildQueue {
     profileId: string;
     quality: 'preview' | 'final';
     assets: readonly { name: string; mediaType: string; bytes: Uint8Array }[];
-  }): void {
+  }): boolean {
+    if (this.pending.length >= this.maxPending) return false;
     this.pending.push(async () => {
       this.database.updateBuild(input.id, 'running');
       try {
@@ -51,6 +53,7 @@ export class RemoteBuildQueue {
               base64: Buffer.from(asset.bytes).toString('base64'),
             })),
           }),
+          signal: AbortSignal.timeout(190_000),
         });
         const result = (await response.json()) as NativeResult | { error?: unknown };
         if (!response.ok || !('status' in result)) {
@@ -91,6 +94,7 @@ export class RemoteBuildQueue {
       }
     });
     this.drain();
+    return true;
   }
 
   private drain(): void {

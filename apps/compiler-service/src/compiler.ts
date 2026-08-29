@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -29,6 +29,7 @@ export interface NativeCompilerConfig {
   readonly maxThreads: number;
   readonly timeoutMilliseconds: number;
   readonly maxLogBytes: number;
+  readonly maxArtifactBytes: number;
 }
 
 export interface NativeCompileDiagnostic {
@@ -235,9 +236,17 @@ function artifactMetadata(name: string): {
 
 async function collectArtifacts(
   workingDirectory: string,
+  maxArtifactBytes: number,
 ): Promise<NativeCompilerResult['artifacts']> {
   const names = await readdir(workingDirectory);
   const allowed = names.filter((name) => /\.(?:bsp|prt|pts|lin|log)$/i.test(name)).toSorted();
+  let totalBytes = 0;
+  for (const name of allowed) {
+    totalBytes += (await stat(join(workingDirectory, name))).size;
+    if (totalBytes > maxArtifactBytes) {
+      throw new Error(`Compiler artifacts exceed the ${maxArtifactBytes} byte limit`);
+    }
+  }
   return Promise.all(
     allowed.map(async (name) => {
       const metadata = artifactMetadata(name);
@@ -312,7 +321,7 @@ export async function compileNativeMap(
         throw error;
       }
     }
-    const artifacts = await collectArtifacts(workingDirectory);
+    const artifacts = await collectArtifacts(workingDirectory, config.maxArtifactBytes);
     const diagnostics = stages.flatMap(({ stage, output }) => stageDiagnostics(stage, output));
     if (failure) {
       diagnostics.push({ severity: 'error', stage: failure.stage, message: failure.message });

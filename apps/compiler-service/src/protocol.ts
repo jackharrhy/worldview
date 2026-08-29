@@ -14,7 +14,20 @@ export function originAllowed(
   return origin === undefined || allowedOrigins.has(origin);
 }
 
-export function parseCompileRequest(value: unknown): NativeCompilerRequest {
+export interface CompileRequestLimits {
+  readonly maxMapBytes: number;
+  readonly maxAssets: number;
+  readonly maxAssetBase64Bytes: number;
+}
+
+export function parseCompileRequest(
+  value: unknown,
+  limits: CompileRequestLimits = {
+    maxMapBytes: 2 * 1024 * 1024,
+    maxAssets: 16,
+    maxAssetBase64Bytes: 32 * 1024 * 1024,
+  },
+): NativeCompilerRequest {
   if (!value || typeof value !== 'object') throw new Error('Request must be a JSON object');
   const request = value as Partial<NativeCompilerRequest>;
   if (
@@ -29,9 +42,13 @@ export function parseCompileRequest(value: unknown): NativeCompilerRequest {
   if (request.profileId !== undefined && request.profileId !== 'default') {
     throw new Error('Unknown compile profile');
   }
+  if (Buffer.byteLength(request.mapText) > limits.maxMapBytes) {
+    throw new Error(`Map source exceeds the ${limits.maxMapBytes} byte limit`);
+  }
   if (
     request.assets !== undefined &&
     (!Array.isArray(request.assets) ||
+      request.assets.length > limits.maxAssets ||
       request.assets.some(
         (asset) =>
           !asset ||
@@ -41,6 +58,11 @@ export function parseCompileRequest(value: unknown): NativeCompilerRequest {
       ))
   ) {
     throw new Error('Request contains invalid compile assets');
+  }
+  const assetBase64Bytes =
+    request.assets?.reduce((sum, asset) => sum + asset.base64.length, 0) ?? 0;
+  if (assetBase64Bytes > limits.maxAssetBase64Bytes) {
+    throw new Error(`Compile assets exceed the ${limits.maxAssetBase64Bytes} base64 byte limit`);
   }
   return {
     mapName: request.mapName,

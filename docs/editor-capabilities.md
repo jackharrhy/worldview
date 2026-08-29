@@ -830,9 +830,11 @@ either the returned revision or the current document revision differs from the r
 runs `qbsp`, `vis`, and `light` without a shell in a per-request temporary directory; preview quality
 uses `qbsp -nofill`, fast vis, and bounded light settings so open construction remains inspectable.
 Final quality restores outside filling, detailed vis, and extra light sampling. Native executable
-paths and any game directory are server configuration, never request fields. Internet deployment
-additionally requires per-job OS/container sandboxing, authentication, and external CPU, memory,
-disk, and concurrency limits.
+paths and any game directory are server configuration, never request fields. The Newport deployment
+accepts only server-owned jobs from authenticated hosted maps, limits map source to 2 MiB, assets
+and artifacts independently, admits one active build and six attempts per user per hour, and bounds
+the global queue. Its private compiler container additionally constrains CPU, memory, scratch space,
+PIDs, file descriptors, stage duration, and concurrency.
 
 Compile assets are transient request inputs. The editor encodes its generated development textures
 as an in-memory WAD2, uploads that WAD alongside any locally loaded WADs, and adds their safe

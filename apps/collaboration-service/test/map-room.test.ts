@@ -136,6 +136,9 @@ describe('MapRoom', () => {
         }),
       ),
     ).toThrow('Invalid collaboration operation');
+    expect(() => parseClientFrame('x'.repeat(512 * 1024 + 1))).toThrow(
+      'Collaboration frame is too large',
+    );
   });
 
   it('accepts bounded ephemeral gesture previews and rejects malformed pointers', () => {
