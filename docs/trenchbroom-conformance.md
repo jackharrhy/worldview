@@ -27,9 +27,10 @@ boundary. The first visual-quality pass on that foundation now uses four-sample 
 screen-space triangle strips for consistent editor edges, and a derivative-antialiased orthographic
 grid generated in the fragment shader. Grid, ordinary geometry, and interaction overlays use
 separate screen-space widths: perspective grid lines remain fine at every camera distance while
-selection feedback stays prominent. The grid preserves the selected snap interval and promotes its
-visible interval by powers of two when zoomed out, keeping geometry aligned while preventing
-dense-grid shimmer.
+selection feedback stays prominent. Segments are clipped against the near plane before expansion so
+crossing the perspective grid cannot turn a sub-pixel line into a viewport-sized quad. The grid
+preserves the selected snap interval and promotes its visible interval by powers of two when zoomed
+out, keeping geometry aligned while preventing dense-grid shimmer.
 
 ### Visual selection audit
 

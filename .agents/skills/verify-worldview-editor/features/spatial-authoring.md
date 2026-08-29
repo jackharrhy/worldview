@@ -74,6 +74,11 @@ Viewport color evidence must be interpreted through the active CSS theme. Inspec
 colors are resolved from those properties at startup; hard-coded RGB expectations belong only in a
 purpose-built theme fixture, not in general visual checks.
 
+Perspective-grid width verification must dolly the camera through the grid's near-plane crossing,
+not merely frame a brush at a comfortable distance. Sample several vertical pixel columns in the
+lower viewport and reject sustained grid-colored bands; this catches screen-space line expansion
+performed before homogeneous clipping.
+
 Theme selection is available through `#editor-theme` with System, Dark, and Light values. Verify a
 runtime switch by requiring the root `data-theme`, computed `color-scheme`, persisted
 `worldview.editor.theme` value, and a new viewport screenshot. Reload to prove persistence. A theme

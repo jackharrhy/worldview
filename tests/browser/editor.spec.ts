@@ -394,6 +394,46 @@ async function perspectivePoint(
   };
 }
 
+async function perspectiveGridBandThickness(page: Page): Promise<number> {
+  return page.getByLabel('Perspective map viewport').evaluate(async (canvas) => {
+    const bitmap = await createImageBitmap(canvas);
+    const sample = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = sample.getContext('2d');
+    if (!context) throw new Error('2D canvas context is unavailable');
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+    const colors = new Map<string, number>();
+    for (let y = Math.floor(sample.height * 0.25); y < sample.height; y += 4) {
+      for (let x = 0; x < sample.width; x += 4) {
+        const offset = (y * sample.width + x) * 4;
+        const key = `${Math.round(pixels[offset]! / 8)},${Math.round(pixels[offset + 1]! / 8)},${Math.round(pixels[offset + 2]! / 8)}`;
+        colors.set(key, (colors.get(key) ?? 0) + 1);
+      }
+    }
+    const background = [...colors.entries()]
+      .toSorted((left, right) => right[1] - left[1])[0]![0]
+      .split(',')
+      .map((component) => Number(component) * 8);
+    const columnRuns = [0.2, 0.35, 0.5, 0.65, 0.8].map((fraction) => {
+      const x = Math.floor(sample.width * fraction);
+      let run = 0;
+      let maximum = 0;
+      for (let y = Math.floor(sample.height * 0.25); y < sample.height; y += 1) {
+        const offset = (y * sample.width + x) * 4;
+        const difference =
+          Math.abs(pixels[offset]! - background[0]!) +
+          Math.abs(pixels[offset + 1]! - background[1]!) +
+          Math.abs(pixels[offset + 2]! - background[2]!);
+        run = difference > 36 ? run + 1 : 0;
+        maximum = Math.max(maximum, run);
+      }
+      return maximum;
+    });
+    return columnRuns.toSorted((left, right) => left - right)[2]!;
+  });
+}
+
 async function perspectiveWorldPoint(
   page: Page,
   point: readonly [number, number, number],
@@ -1524,6 +1564,17 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#status-message')).toContainText('Framed the selection');
     await expect(page.locator('#perspective-mode')).toContainText('FOCUS');
     await expect(page.locator('#document-revision')).toHaveText('0');
+  });
+
+  test('keeps perspective grid lines fine when they cross the near plane', async ({ page }) => {
+    await openEditor(page, { empty: true });
+    const canvas = page.getByLabel('Perspective map viewport');
+    const bounds = await canvas.boundingBox();
+    if (!bounds) throw new Error('Perspective viewport bounds are unavailable');
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height * 0.65);
+
+    for (let index = 0; index < 3; index += 1) await page.mouse.wheel(0, -600);
+    await expect.poll(() => perspectiveGridBandThickness(page)).toBeLessThanOrEqual(4);
   });
 
   test('links orthographic navigation and follows viewport focus under the pointer', async ({

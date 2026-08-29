@@ -41,9 +41,29 @@ export function lineVertex(input: LineVertexInput) {
   'use gpu';
   const start = editorSceneLayout.$.scene.projectionView.mul(d.vec4f(input.start, 1));
   const end = editorSceneLayout.$.scene.projectionView.mul(d.vec4f(input.end, 1));
-  const startNdc = start.xy.div(start.w);
-  const endNdc = end.xy.div(end.w);
-  const direction = std.normalize(endNdc.sub(startNdc));
+  let clippedStart = d.vec4f(start);
+  let clippedEnd = d.vec4f(end);
+  let clippedStartColor = d.vec3f(input.startColor);
+  let clippedEndColor = d.vec3f(input.endColor);
+  const startBehindNearPlane = start.z < 0;
+  const endBehindNearPlane = end.z < 0;
+  if (startBehindNearPlane && endBehindNearPlane) {
+    clippedStart = d.vec4f(2, 2, 2, 1);
+    clippedEnd = d.vec4f(2, 2, 2, 1);
+  } else if (startBehindNearPlane) {
+    const amount = (0.0001 - start.z) / (end.z - start.z);
+    clippedStart = std.mix(start, end, amount);
+    clippedStartColor = std.mix(input.startColor, input.endColor, amount);
+  } else if (endBehindNearPlane) {
+    const amount = (0.0001 - end.z) / (start.z - end.z);
+    clippedEnd = std.mix(end, start, amount);
+    clippedEndColor = std.mix(input.endColor, input.startColor, amount);
+  }
+  const startNdc = clippedStart.xy.div(clippedStart.w);
+  const endNdc = clippedEnd.xy.div(clippedEnd.w);
+  const delta = endNdc.sub(startNdc);
+  let direction = d.vec2f(1, 0);
+  if (std.length(delta) > 0.000001) direction = std.normalize(delta);
   const perpendicular = d.vec2f(0 - direction.y, direction.x);
   let atEnd = false;
   let positiveSide = false;
@@ -51,12 +71,12 @@ export function lineVertex(input: LineVertexInput) {
     atEnd = true;
   if (input.$vertexIndex === 2 || input.$vertexIndex === 3 || input.$vertexIndex === 5)
     positiveSide = true;
-  let clip = d.vec4f(start);
-  let color = d.vec3f(input.startColor);
+  let clip = d.vec4f(clippedStart);
+  let color = d.vec3f(clippedStartColor);
   let side = -1;
   if (atEnd) {
-    clip = d.vec4f(end);
-    color = d.vec3f(input.endColor);
+    clip = d.vec4f(clippedEnd);
+    color = d.vec3f(clippedEndColor);
   }
   if (positiveSide) side = 1;
   const pixelOffset = d

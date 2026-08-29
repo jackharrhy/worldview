@@ -250,7 +250,9 @@ render into four-sample color and depth targets before resolving to each canvas.
 segments expand into pixel-width triangle strips in the TypeGPU vertex stage, giving stable
 antialiased edges independently of camera distance. Grid, ordinary-edge, and interaction-overlay
 draws use distinct screen-space widths so construction lines stay subordinate during close camera
-movement. Orthographic grids are generated directly in a
+movement. The line vertex stage clips segments against the camera near plane before screen-space
+expansion, preventing long perspective-grid segments from becoming oversized quads during a close
+dolly. Orthographic grids are generated directly in a
 derivative-antialiased fragment pass; the displayed interval promotes by powers of two below an
 eight-pixel readability threshold without changing the active snap size. The application schedules
 frames on demand and runs continuously only
