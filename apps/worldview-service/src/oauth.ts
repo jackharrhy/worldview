@@ -55,6 +55,19 @@ export function beginAuthorization(
   return { url: url.toString(), state: transaction.state };
 }
 
+export function consumeAuthorizationTransaction(input: {
+  readonly database: WorldviewDatabase;
+  readonly state: string;
+  readonly cookieState: string | undefined;
+}): { verifier: string; returnTo: string } {
+  if (!input.cookieState || input.cookieState !== input.state)
+    throw Object.assign(new Error('OAuth state mismatch'), { status: 400 });
+  const transaction = input.database.consumeOauth(input.state);
+  if (!transaction)
+    throw Object.assign(new Error('OAuth transaction is missing or expired'), { status: 400 });
+  return transaction;
+}
+
 export async function completeAuthorization(input: {
   readonly database: WorldviewDatabase;
   readonly config: OAuthConfig;
@@ -63,10 +76,7 @@ export async function completeAuthorization(input: {
   readonly cookieState: string | undefined;
   readonly fetch: typeof globalThis.fetch;
 }): Promise<{ user: WorldviewUser; returnTo: string }> {
-  if (!input.cookieState || input.cookieState !== input.state)
-    throw new Error('OAuth state mismatch');
-  const transaction = input.database.consumeOauth(input.state);
-  if (!transaction) throw new Error('OAuth transaction is missing or expired');
+  const transaction = consumeAuthorizationTransaction(input);
   const tokenResponse = await input.fetch(new URL('/oauth/token', input.config.fourmUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -79,9 +89,23 @@ export async function completeAuthorization(input: {
     }),
   });
   if (!tokenResponse.ok) throw new Error(`4orm token exchange failed (${tokenResponse.status})`);
-  const tokenPayload = (await tokenResponse.json()) as { access_token?: unknown };
-  if (typeof tokenPayload.access_token !== 'string')
-    throw new Error('4orm returned no access token');
+  const tokenPayload = (await tokenResponse.json()) as {
+    access_token?: unknown;
+    token_type?: unknown;
+    expires_in?: unknown;
+  };
+  if (
+    typeof tokenPayload.access_token !== 'string' ||
+    (tokenPayload.token_type !== undefined &&
+      (typeof tokenPayload.token_type !== 'string' ||
+        tokenPayload.token_type.toLowerCase() !== 'bearer')) ||
+    (tokenPayload.expires_in !== undefined &&
+      (typeof tokenPayload.expires_in !== 'number' ||
+        !Number.isFinite(tokenPayload.expires_in) ||
+        tokenPayload.expires_in <= 0))
+  ) {
+    throw new Error('4orm returned an invalid access token response');
+  }
   const profileResponse = await input.fetch(new URL('/oauth/userinfo', input.config.fourmUrl), {
     headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
   });

@@ -49,6 +49,16 @@ function session(database: WorldviewDatabase) {
   return { user, cookie: `worldview_session=${database.createSession(user.id).token}` };
 }
 
+const malformedHumanTokenFetch: typeof fetch = async (input) => {
+  if (String(input).endsWith('/oauth/token'))
+    return Response.json({
+      access_token: 'access-token',
+      token_type: 'Basic',
+      expires_in: 'forever',
+    });
+  throw new Error('Userinfo must not be requested for an invalid token response');
+};
+
 describe('Worldview hosted project service', () => {
   test('creates private projects and keeps remote maps behind a 4orm session', async () => {
     const app = await fixture();
@@ -223,7 +233,12 @@ describe('Worldview hosted project service', () => {
     const mockFetch: typeof fetch = async (input) => {
       const url = String(input);
       calls.push(url);
-      if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'access-token' });
+      if (url.endsWith('/oauth/token'))
+        return Response.json({
+          access_token: 'access-token',
+          token_type: 'Bearer',
+          expires_in: 300,
+        });
       if (url.endsWith('/oauth/userinfo'))
         return Response.json({
           sub: '42',
@@ -249,10 +264,59 @@ describe('Worldview hosted project service', () => {
     );
     expect(callback.status).toBe(303);
     expect(callback.headers.get('location')).toBe('/projects/example');
-    expect(callback.headers.get('set-cookie')).toContain('worldview_session=');
+    const callbackCookies = callback.headers.getSetCookie();
+    expect(callbackCookies).toHaveLength(2);
+    expect(callbackCookies).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('worldview_oauth=;'),
+        expect.stringContaining('worldview_session='),
+      ]),
+    );
     expect(calls).toEqual([
       'https://4orm.example/oauth/token',
       'https://4orm.example/oauth/userinfo',
     ]);
+  });
+
+  test('validates, consumes, and clears OAuth state when authorization is denied', async () => {
+    const app = await fixture();
+    const login = await fetch(`${app.origin}/auth/login`, { redirect: 'manual' });
+    const authorize = new URL(login.headers.get('location')!);
+    const state = authorize.searchParams.get('state')!;
+    const oauthCookie = login.headers.get('set-cookie')!.split(';', 1)[0]!;
+    const denial = await fetch(
+      `${app.origin}/auth/callback?error=access_denied&state=${encodeURIComponent(state)}`,
+      { headers: { Cookie: oauthCookie }, redirect: 'manual' },
+    );
+
+    expect(denial.status).toBe(303);
+    expect(denial.headers.get('location')).toBe('/?authError=access_denied');
+    expect(denial.headers.getSetCookie()).toEqual([expect.stringContaining('worldview_oauth=;')]);
+
+    const replay = await fetch(
+      `${app.origin}/auth/callback?code=replay&state=${encodeURIComponent(state)}`,
+      { headers: { Cookie: oauthCookie }, redirect: 'manual' },
+    );
+    expect(replay.status).toBe(400);
+    await expect(replay.json()).resolves.toEqual({
+      error: 'OAuth transaction is missing or expired',
+    });
+    expect(replay.headers.getSetCookie()).toEqual([expect.stringContaining('worldview_oauth=;')]);
+  });
+
+  test('rejects malformed human token metadata and clears the OAuth cookie', async () => {
+    const app = await fixture(malformedHumanTokenFetch);
+    const login = await fetch(`${app.origin}/auth/login`, { redirect: 'manual' });
+    const authorize = new URL(login.headers.get('location')!);
+    const state = authorize.searchParams.get('state')!;
+    const oauthCookie = login.headers.get('set-cookie')!.split(';', 1)[0]!;
+    const callback = await fetch(
+      `${app.origin}/auth/callback?code=code-1&state=${encodeURIComponent(state)}`,
+      { headers: { Cookie: oauthCookie }, redirect: 'manual' },
+    );
+
+    expect(callback.status).toBe(500);
+    expect(callback.headers.getSetCookie()).toEqual([expect.stringContaining('worldview_oauth=;')]);
+    expect(await callback.json()).toEqual({ error: 'Internal server error' });
   });
 });

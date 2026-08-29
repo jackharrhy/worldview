@@ -7,8 +7,8 @@ turning 4orm access tokens into the browser's application session.
 ## Flow
 
 1. `GET /auth/login` creates an S256 PKCE verifier/challenge, a random state value, and a bounded
-   same-origin return path. The verifier and state live in a short-lived, HTTP-only transaction
-   cookie.
+   same-origin return path. The verifier and return path live in a short-lived server-side
+   transaction; the HTTP-only cookie contains only the random state value.
 2. 4orm authenticates and obtains consent for the registered `worldview` public client.
 3. `GET /auth/callback` verifies state, exchanges the one-use code, and calls 4orm userinfo.
 4. Worldview upserts the stable 4orm `sub`, current username/display name, and administrator flag,
@@ -17,9 +17,12 @@ turning 4orm access tokens into the browser's application session.
 5. The browser subsequently authenticates only with the Worldview session cookie. Logout deletes
    that session and clears the cookie.
 
-The production cookie is `HttpOnly`, `Secure`, `SameSite=Lax`, and scoped to `/`. Mutating API
-requests additionally require a same-origin `Origin` or Fetch Metadata signal. OAuth state is
-single-use and callback errors never disclose tokens or verifiers.
+The production cookies are `HttpOnly`, `Secure`, `SameSite=Lax`, and scoped to `/`. Mutating API
+requests additionally require a same-origin `Origin` or Fetch Metadata signal. Every callback,
+including authorization denial, must match and atomically consume the cookie-bound state. The
+transaction cookie is cleared on every callback outcome. Successful token responses require an
+access token, accept only Bearer when `token_type` is present, and reject malformed `expires_in`
+values. Callback errors never disclose tokens or verifiers.
 
 ## 4orm boundary
 

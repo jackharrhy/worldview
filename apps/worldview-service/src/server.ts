@@ -6,7 +6,12 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FileBlobStore, type BlobStore } from './blob-store.js';
 import { WorldviewDatabase, type WorldviewUser } from './database.js';
-import { beginAuthorization, completeAuthorization, type OAuthConfig } from './oauth.js';
+import {
+  beginAuthorization,
+  completeAuthorization,
+  consumeAuthorizationTransaction,
+  type OAuthConfig,
+} from './oauth.js';
 import { signRealtimeTicket } from './realtime-ticket.js';
 import { ArtbinClient } from './artbin.js';
 import { RemoteBuildQueue } from './build-queue.js';
@@ -41,10 +46,12 @@ function setCookie(
   maxAge: number,
   secure: boolean,
 ): void {
-  response.setHeader(
-    'Set-Cookie',
-    `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.max(0, Math.floor(maxAge))}${secure ? '; Secure' : ''}`,
-  );
+  const serialized = `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.max(0, Math.floor(maxAge))}${secure ? '; Secure' : ''}`;
+  const existing = response.getHeader('Set-Cookie');
+  response.setHeader('Set-Cookie', [
+    ...(Array.isArray(existing) ? existing.map(String) : existing ? [String(existing)] : []),
+    serialized,
+  ]);
 }
 
 function json(response: ServerResponse, status: number, value: unknown): void {
@@ -181,9 +188,19 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         return redirect(response, auth.url);
       }
       if (request.method === 'GET' && url.pathname === '/auth/callback') {
+        const cookieState = cookie(request, OAUTH_COOKIE);
+        setCookie(response, OAUTH_COOKIE, '', 0, secure);
         const error = url.searchParams.get('error');
-        if (error) return redirect(response, `/?authError=${encodeURIComponent(error)}`);
         const state = url.searchParams.get('state');
+        if (error) {
+          if (!state) return json(response, 400, { error: 'OAuth state is required' });
+          consumeAuthorizationTransaction({
+            database: options.database,
+            state,
+            cookieState,
+          });
+          return redirect(response, `/?authError=${encodeURIComponent(error)}`);
+        }
         const code = url.searchParams.get('code');
         if (!state || !code)
           return json(response, 400, { error: 'OAuth code and state are required' });
@@ -192,7 +209,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           config: options.oauth,
           state,
           code,
-          cookieState: cookie(request, OAUTH_COOKIE),
+          cookieState,
           fetch: options.fetch ?? globalThis.fetch,
         });
         const session = options.database.createSession(completed.user.id);
