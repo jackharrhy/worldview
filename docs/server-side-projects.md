@@ -74,3 +74,9 @@ KiB. Ephemeral cursor and gesture presence remains separate from durable edit ad
 Quake and GoldSrc use separate constrained internal compiler profiles with operator-provided,
 read-only toolchains. Successful current BSPs may enter the compiled preview. Stale results remain
 inspectable but never replace it.
+
+The authenticated queue, admission limits, canonical MapCell source lookup, and artifact storage
+are implemented. Connecting the hosted editor controls to build polling and authenticated artifact
+download remains delivery work; until that adapter lands, public deployments do not probe a
+visitor's loopback interface and keep the compile control disabled. Explicitly configured local
+helpers retain the existing direct preview workflow.

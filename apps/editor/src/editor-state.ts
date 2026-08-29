@@ -172,6 +172,7 @@ export class EditorState {
   );
   public readonly buildService: RemoteMapCompiler;
   public readonly compilerCoordinator: MapCompileCoordinator;
+  public readonly compilerProbeEnabled: boolean;
   public readonly buildHistory: MapBuildHistoryService;
   public readonly projectLocalState = new ProjectLocalStateService();
   public readonly assetMountState = new AssetMountStateService();
@@ -199,10 +200,13 @@ export class EditorState {
     host: () => EditorStateHost,
   ) {
     this.activeGridSize = Number(ui.gridSizeSelect.value);
-    const compilerEndpoint =
+    const configuredCompilerEndpoint =
       new URLSearchParams(window.location.search).get('compiler') ??
-      import.meta.env.VITE_WORLDVIEW_COMPILER_ENDPOINT ??
-      'http://127.0.0.1:8788/compile';
+      import.meta.env.VITE_WORLDVIEW_COMPILER_ENDPOINT;
+    const localHost =
+      window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+    this.compilerProbeEnabled = Boolean(configuredCompilerEndpoint) || localHost;
+    const compilerEndpoint = configuredCompilerEndpoint ?? 'http://127.0.0.1:8788/compile';
     this.buildService = new RemoteMapCompiler({ endpoint: compilerEndpoint });
     this.compilerCoordinator = new MapCompileCoordinator(this.buildService);
     this.buildHistory = new MapBuildHistoryService(undefined, (error) => {

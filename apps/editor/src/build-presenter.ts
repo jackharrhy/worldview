@@ -265,6 +265,12 @@ export class BuildPresenter {
   }
 
   public async checkCompilerService(): Promise<void> {
+    if (!this.state.compilerProbeEnabled) {
+      this.ui.compileButton.disabled = true;
+      this.ui.launchButton.disabled = true;
+      this.setCompileState('COMPILER UNCONFIGURED', 'offline');
+      return;
+    }
     try {
       const capabilities = await this.state.buildService.capabilities();
       const activeGame = this.state.projectWorkspace?.manifest.game ?? this.state.activeGameProfile;
