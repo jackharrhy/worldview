@@ -418,11 +418,9 @@ export class EditorApplication implements EditorStateHost {
       ...(options.onConflict ? { onConflict: options.onConflict } : {}),
       ...(options.onConnectionChange ? { onConnectionChange: options.onConnectionChange } : {}),
       onReady: async (ready) => {
-        if (ready.mapVersion > canonicalMapVersion) {
-          const reconciliation = reconcilePendingOperations(
-            ready.document,
-            await controller.pending(),
-          );
+        const pending = await controller.pending();
+        if (ready.mapVersion > canonicalMapVersion || pending.length > 0) {
+          const reconciliation = reconcilePendingOperations(ready.document, pending);
           for (const conflict of reconciliation.conflicts) {
             options.onConflict?.(conflict.operationId, conflict.details);
           }
