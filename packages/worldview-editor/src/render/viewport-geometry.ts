@@ -415,32 +415,32 @@ export function creationBounds(
     min = [
       Math.min(first[0], second[0]),
       Math.min(first[1], second[1]),
-      referenceBounds?.min[2] ?? 0,
+      snap(referenceBounds?.min[2] ?? 0),
     ];
     max = [
       Math.max(first[0], second[0]),
       Math.max(first[1], second[1]),
-      referenceBounds?.max[2] ?? gridSize,
+      snap(referenceBounds?.max[2] ?? gridSize),
     ];
   } else if (kind === 'xz') {
     min = [
       Math.min(first[0], second[0]),
-      referenceBounds?.min[1] ?? -gridSize / 2,
+      snap(referenceBounds?.min[1] ?? 0),
       Math.min(first[2], second[2]),
     ];
     max = [
       Math.max(first[0], second[0]),
-      referenceBounds?.max[1] ?? gridSize / 2,
+      snap(referenceBounds?.max[1] ?? gridSize),
       Math.max(first[2], second[2]),
     ];
   } else {
     min = [
-      referenceBounds?.min[0] ?? -gridSize / 2,
+      snap(referenceBounds?.min[0] ?? 0),
       Math.min(first[1], second[1]),
       Math.min(first[2], second[2]),
     ];
     max = [
-      referenceBounds?.max[0] ?? gridSize / 2,
+      snap(referenceBounds?.max[0] ?? gridSize),
       Math.max(first[1], second[1]),
       Math.max(first[2], second[2]),
     ];
@@ -451,6 +451,12 @@ export function creationBounds(
       : kind === 'xz'
         ? ([0, 2] as const)
         : ([1, 2] as const);
+  const hiddenAxis = ([0, 1, 2] as const).find(
+    (axis) => !visibleAxes.some((visibleAxis) => visibleAxis === axis),
+  );
+  if (hiddenAxis !== undefined && max[hiddenAxis] - min[hiddenAxis] < gridSize) {
+    max[hiddenAxis] = min[hiddenAxis] + gridSize;
+  }
   if (equalVisibleAxes) {
     const size = Math.max(...visibleAxes.map((axis) => Math.abs(second[axis] - first[axis])));
     for (const axis of visibleAxes) {

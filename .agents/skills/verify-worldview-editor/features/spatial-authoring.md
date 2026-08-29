@@ -4,6 +4,8 @@
 
 Four-view picking, camera navigation, brush/face/vertex/edge manipulation, lasso and paint
 selection, resize, clip, sweep, hull, shape, UV, and contextual 3D actions.
+Construction-grid coverage includes number-key selection, bracket stepping, snapped creation bounds,
+and undoable selected-brush or selected-face vertex snapping.
 
 ## How to get to it (user POV)
 
@@ -29,6 +31,11 @@ and result screenshots and verify the resulting source or WebMCP object state.
 
 Compute canvas points from bounds and world projection; do not record desktop screen coordinates.
 A DOM click is not proof of a GPU pick—verify selection or source state afterward.
+
+Grid keys follow Radiant's mapping: `1` through `9` select 1 through 256 units and `[` / `]` step
+the current power-of-two size. After drawing in an orthographic pane, inspect every component of the
+created bounds, including the implicit depth axis. For Snap to grid, inspect derived vertices after
+the command and restore the original off-grid bounds with Undo.
 
 For layout verification, assert relative viewport bounds before interacting. Drag every
 `[data-resize]` separator and require its `aria-valuenow` and the corresponding pane bounds to

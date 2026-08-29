@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   EditorSession,
   brushesInDocument,
+  brushVertices,
   createBoxBrush,
   createObjectSelection,
   createSequentialIdFactory,
@@ -82,6 +83,16 @@ function selectionBrushSource(): string {
         primitives: [],
       },
     ],
+  });
+}
+
+function offGridBrushSource(): string {
+  const ids = createSequentialIdFactory('browser-grid-snap');
+  const starter = createStarterDocument();
+  const brush = createBoxBrush([3, 5, 7], [27, 29, 31], 'GRID_SNAP', ids);
+  return serializeMap({
+    ...starter,
+    entities: [{ ...starter.entities[0]!, primitives: [brush] }, ...starter.entities.slice(1)],
   });
 }
 
@@ -1983,6 +1994,50 @@ test.describe('3D source authoring', () => {
     await page.mouse.up();
     await expect(page.locator('#brush-count')).toHaveText('4');
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
+  });
+
+  test('Radiant grid keys drive snapped brush creation in orthographic views', async ({ page }) => {
+    await openEditor(page);
+    await page.locator('.source-canvas').nth(1).focus();
+    await page.keyboard.press('Digit6');
+    await expect(page.locator('#grid-size')).toHaveValue('32');
+    await page.keyboard.press('BracketRight');
+    await expect(page.locator('#grid-size')).toHaveValue('64');
+    await page.keyboard.press('BracketLeft');
+    await expect(page.locator('#grid-size')).toHaveValue('32');
+
+    const start = await topWorldPoint(page, 269, 275);
+    const end = await topWorldPoint(page, 371, 389);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 8 });
+    await page.mouse.up();
+
+    const created = brushesInDocument(await readEditorDocument(page)).at(-1)!;
+    const bounds = deriveBrush(created).bounds!;
+    expect([...bounds.min, ...bounds.max].every((value) => value % 32 === 0)).toBe(true);
+  });
+
+  test('snaps selected brush vertices to the active grid and undoes the edit', async ({ page }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(offGridBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await page.locator('.source-canvas').nth(1).focus();
+    await page.keyboard.press('Digit4');
+    await expect(page.locator('#grid-size')).toHaveValue('8');
+    const brushPoint = await topWorldPoint(page, 15, 17);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.getByRole('button', { name: 'Snap to grid', exact: true }).click();
+
+    let brush = brushesInDocument(await readEditorDocument(page))[0]!;
+    expect(brushVertices(brush).every((point) => point.every((value) => value % 8 === 0))).toBe(
+      true,
+    );
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    brush = brushesInDocument(await readEditorDocument(page))[0]!;
+    expect(deriveBrush(brush).bounds).toEqual({ min: [3, 5, 7], max: [27, 29, 31] });
   });
 
   test('Simple Shape 3D drawing supports square, cube, and height-only modifiers', async ({

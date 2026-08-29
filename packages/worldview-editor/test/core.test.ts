@@ -4280,6 +4280,50 @@ describe('face attribute clipboard transactions', () => {
   });
 });
 
+describe('selection grid snapping', () => {
+  it('snaps every selected brush vertex and restores the exact brush on undo', () => {
+    const ids = createSequentialIdFactory('selection-grid-snap');
+    const starter = createStarterDocument();
+    const brush = createBoxBrush([3, 5, 7], [27, 29, 31], 'GRID', ids);
+    const document = {
+      ...starter,
+      entities: [{ ...starter.entities[0]!, primitives: [brush] }, ...starter.entities.slice(1)],
+    };
+    const session = new EditorSession(document);
+    session.selectBrush(brush.id);
+
+    expect(session.snapSelectionToGrid(8, ids)).toBe(true);
+    const snapped = findBrush(session.document, brush.id)!;
+    expect(brushVertices(snapped).every((point) => point.every((value) => value % 8 === 0))).toBe(
+      true,
+    );
+    expect(session.undoLabel).toBe('Snap brush vertices to grid');
+    expect(session.undo()).toBe(true);
+    expect(findBrush(session.document, brush.id)?.faces).toEqual(brush.faces);
+  });
+
+  it('limits face-selection snapping to the selected face vertices', () => {
+    const ids = createSequentialIdFactory('face-grid-snap');
+    const starter = createStarterDocument();
+    const brush = createBoxBrush([0, 0, 0], [10, 10, 10], 'GRID', ids);
+    const document = {
+      ...starter,
+      entities: [{ ...starter.entities[0]!, primitives: [brush] }, ...starter.entities.slice(1)],
+    };
+    const selectedFace = deriveBrush(brush).faces.find((face) =>
+      face.vertices.every((point) => Math.abs(point[2] - 10) < 0.001),
+    )!;
+    const session = new EditorSession(document);
+    session.select(createFaceSelection([{ brushId: brush.id, faceId: selectedFace.faceId }]));
+
+    expect(session.snapSelectionToGrid(8, ids)).toBe(true);
+    const vertices = brushVertices(findBrush(session.document, brush.id)!);
+    expect(vertices.filter((point) => Math.abs(point[2]) < 0.001)).toHaveLength(4);
+    expect(vertices.filter((point) => Math.abs(point[2] - 8) < 0.001)).toHaveLength(4);
+    expect(session.undoLabel).toBe('Snap face vertices to grid');
+  });
+});
+
 describe('object clipboard transactions', () => {
   it('serializes a mixed selection as parseable map text with brush-entity ownership', () => {
     const ids = createSequentialIdFactory('clipboard-source');

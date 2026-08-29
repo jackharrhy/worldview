@@ -194,6 +194,7 @@ export class InspectorPresenter {
     this.ui.pasteHereButton.disabled = !this.state.lastPointerPosition;
     this.ui.deleteButton.disabled = !objectSelected;
     this.ui.focusSelectionButton.disabled = !selection;
+    this.ui.snapSelectionToGridButton.disabled = !brush;
     this.ui.hideSelectionButton.disabled = !objectSelected;
     this.ui.isolateSelectionButton.disabled = !objectSelected;
     this.ui.showAllButton.disabled = !this.state.session.canShowAll;

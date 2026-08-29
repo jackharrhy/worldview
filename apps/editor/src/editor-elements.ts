@@ -40,6 +40,9 @@ export function bindEditorElements(shellState: EditorShellState) {
   const focusSelectionButton = required<HTMLButtonElement>('[data-action="focus-selection"]');
   const selectAllButton = required<HTMLButtonElement>('[data-action="select-all"]');
   const invertSelectionButton = required<HTMLButtonElement>('[data-action="invert-selection"]');
+  const snapSelectionToGridButton = required<HTMLButtonElement>(
+    '[data-action="snap-selection-to-grid"]',
+  );
   const undoButton = required<HTMLButtonElement>('[data-action="undo"]');
   const redoButton = required<HTMLButtonElement>('[data-action="redo"]');
   const repeatCommandsButton = required<HTMLButtonElement>('[data-action="repeat-commands"]');
@@ -304,6 +307,7 @@ export function bindEditorElements(shellState: EditorShellState) {
     focusSelectionButton,
     selectAllButton,
     invertSelectionButton,
+    snapSelectionToGridButton,
     undoButton,
     redoButton,
     repeatCommandsButton,

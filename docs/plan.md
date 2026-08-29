@@ -156,6 +156,12 @@ that policy. Editable source rendering stays in `worldview-editor` because its f
 IDs, tool overlays, and mutable source geometry have different ownership from the BSP/lightmap
 renderer.
 
+Both rendering packages use the same native TypeGPU boundary: TypeScript-authored GPU functions,
+typed vertex and bind-group schemas, TypeGPU pipelines, uniforms, textures, samplers, and bind
+groups. Raw WebGPU remains only at the deliberate command-encoding and bulk immutable vertex-buffer
+upload boundary. The editor architecture gate rejects reintroduction of raw WGSL strings, shader
+modules, pipeline layouts, bind-group layouts, or raw render-pipeline construction.
+
 ## Editor architecture
 
 The application entrypoint is composition-only. The Vanilla-to-React shell translation is
@@ -203,6 +209,10 @@ row, column, and inspector boundaries are directly resizable with pointer or key
 enforce usable minimum sizes.
 The default Select tool is likewise a permanent controller stack: clicks select, selected objects
 move or resize, and a left drag creates the configured simple shape whenever the selection is empty.
+Orthographic and perspective construction bounds align component-wise to the active power-of-two
+grid. Radiant-compatible number keys 1–9 select 1–256 unit grids, brackets step the grid, and an
+undoable Snap to grid command repairs all selected brush vertices or the vertices of selected faces
+while rejecting degenerate convex results.
 Brush drawing is not exposed as a separate modal toolbar mode. Shift-resize can acquire the hidden
 adjacent face from a narrow screen-space band outside a selected brush's silhouette, while direct
 face hits and ordinary internal edges retain their normal priority.

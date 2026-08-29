@@ -65,81 +65,6 @@ export function preferredResizeFace(
 
 export const FACE_HANDLE_HIT_RADIUS = 8;
 
-export const SOLID_SHADER = /* wgsl */ `
-struct Scene {
-  projectionView: mat4x4f,
-};
-
-@group(0) @binding(0) var<uniform> scene: Scene;
-
-struct VertexInput {
-  @location(0) position: vec3f,
-  @location(1) color: vec3f,
-  @location(2) uv: vec2f,
-};
-
-struct VertexOutput {
-  @builtin(position) position: vec4f,
-  @location(0) color: vec3f,
-  @location(1) uv: vec2f,
-};
-
-struct MaterialSettings {
-  useTexture: f32,
-  alphaTest: f32,
-};
-
-@group(1) @binding(0) var materialSampler: sampler;
-@group(1) @binding(1) var materialTexture: texture_2d<f32>;
-@group(1) @binding(2) var<uniform> material: MaterialSettings;
-
-@vertex fn vertexMain(input: VertexInput) -> VertexOutput {
-  var output: VertexOutput;
-  output.position = scene.projectionView * vec4f(input.position, 1.0);
-  output.color = input.color;
-  output.uv = input.uv;
-  return output;
-}
-
-@fragment fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-  let dimensions = vec2f(textureDimensions(materialTexture));
-  let sampled = textureSample(materialTexture, materialSampler, input.uv / dimensions);
-  if (material.alphaTest > 0.5 && sampled.a < 0.5) {
-    discard;
-  }
-  return vec4f(mix(input.color, sampled.rgb, material.useTexture), 1.0);
-}
-`;
-
-export const LINE_SHADER = /* wgsl */ `
-struct Scene {
-  projectionView: mat4x4f,
-};
-
-@group(0) @binding(0) var<uniform> scene: Scene;
-
-struct VertexInput {
-  @location(0) position: vec3f,
-  @location(1) color: vec3f,
-};
-
-struct VertexOutput {
-  @builtin(position) position: vec4f,
-  @location(0) color: vec3f,
-};
-
-@vertex fn vertexMain(input: VertexInput) -> VertexOutput {
-  var output: VertexOutput;
-  output.position = scene.projectionView * vec4f(input.position, 1.0);
-  output.color = input.color;
-  return output;
-}
-
-@fragment fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-  return vec4f(input.color, 1.0);
-}
-`;
-
 export interface ViewportState {
   center: [number, number, number];
   yaw: number;
@@ -150,10 +75,7 @@ export interface ViewportState {
   flySpeed: number;
 }
 
-export interface Pipelines {
-  readonly solid: GPURenderPipeline;
-  readonly lines: GPURenderPipeline;
-}
+export type { EditorPipelines as Pipelines } from './renderer-gpu.js';
 
 export interface ViewportInteraction {
   currentTool(): EditorTool;

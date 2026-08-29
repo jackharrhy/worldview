@@ -47,12 +47,14 @@ import {
 } from './viewport-gesture-controllers.js';
 import { FlyCameraController } from './viewport/fly-camera-controller.js';
 import type { EditorRenderTheme } from './theme.js';
+import type { TgpuBindGroup, TgpuRoot, TgpuUniform } from 'typegpu';
+import { editorSceneLayout, SceneUniform } from './gpu-schemas.js';
 export abstract class ViewportBase {
   protected abstract connectInput(): void;
   protected abstract cancelDrag(): void;
   protected readonly context: GPUCanvasContext;
-  protected readonly uniform: GPUBuffer;
-  protected readonly bindGroup: GPUBindGroup;
+  protected readonly uniform: TgpuUniform<typeof SceneUniform>;
+  protected readonly bindGroup: TgpuBindGroup;
   protected grid: GPUBuffer;
   protected gridCount: number;
   protected readonly state: ViewportState;
@@ -141,32 +143,27 @@ export abstract class ViewportBase {
     if (event.key === 'Shift' && !this.dragState) this.interaction.hoverTopology(null);
   };
   public constructor(
-    private readonly device: GPUDevice,
+    private readonly root: TgpuRoot,
     private readonly format: GPUTextureFormat,
     private readonly pipelines: Pipelines,
     public readonly kind: EditorViewportKind,
     public readonly canvas: HTMLCanvasElement,
-    bindGroupLayout: GPUBindGroupLayout,
     protected readonly interaction: ViewportInteraction,
     protected gridSize: number,
     private readonly requestRender: () => void,
     private theme: EditorRenderTheme,
   ) {
-    const context = canvas.getContext('webgpu');
-    if (!context) throw new Error('WebGPU canvas context is unavailable');
+    const context = root.configureContext({ canvas, format, alphaMode: 'opaque' });
     canvas.tabIndex = 0;
     this.context = context;
-    this.context.configure({ device, format, alphaMode: 'opaque' });
-    this.uniform = device.createBuffer({
-      size: 64,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    this.uniform = root.createUniform(SceneUniform, {
+      projectionView: new Float32Array(16),
     });
-    this.bindGroup = device.createBindGroup({
-      layout: bindGroupLayout,
-      entries: [{ binding: 0, resource: { buffer: this.uniform } }],
+    this.bindGroup = root.createBindGroup(editorSceneLayout, {
+      scene: this.uniform,
     });
     const grid = gridVertices(kind, gridSize, theme);
-    this.grid = uploadFloatBuffer(device, grid, GPUBufferUsage.VERTEX);
+    this.grid = uploadFloatBuffer(root.device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
     this.state = initialState(kind);
     this.flyCamera = new FlyCameraController({
@@ -278,7 +275,7 @@ export abstract class ViewportBase {
     this.gridSize = next;
     this.grid.destroy();
     const grid = gridVertices(this.kind, next, this.theme);
-    this.grid = uploadFloatBuffer(this.device, grid, GPUBufferUsage.VERTEX);
+    this.grid = uploadFloatBuffer(this.root.device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
     this.renderRequested = true;
   }
@@ -287,14 +284,14 @@ export abstract class ViewportBase {
     this.theme = theme;
     this.grid.destroy();
     const grid = gridVertices(this.kind, this.gridSize, theme);
-    this.grid = uploadFloatBuffer(this.device, grid, GPUBufferUsage.VERTEX);
+    this.grid = uploadFloatBuffer(this.root.device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
     this.renderRequested = true;
   }
 
   public render(
     scene: SceneBuffers,
-    materialBindGroup: (name: string) => GPUBindGroup,
+    materialBindGroup: (name: string) => TgpuBindGroup,
     clearColor: readonly [number, number, number, number],
     renderVersion: number,
     encoder: GPUCommandEncoder,
@@ -307,13 +304,7 @@ export abstract class ViewportBase {
     if (!this.renderRequested && this.lastRenderedVersion === renderVersion) return false;
     this.updateScaleOverlay(scene);
     const matrix = this.projectionView();
-    this.device.queue.writeBuffer(
-      this.uniform,
-      0,
-      matrix.buffer,
-      matrix.byteOffset,
-      matrix.byteLength,
-    );
+    this.uniform.write({ projectionView: matrix });
     const pass = encoder.beginRenderPass({
       label: `Worldview ${this.kind} viewport`,
       colorAttachments: [
@@ -336,18 +327,18 @@ export abstract class ViewportBase {
         depthClearValue: 1,
       },
     });
-    pass.setBindGroup(0, this.bindGroup);
+    pass.setBindGroup(0, this.root.unwrap(this.bindGroup));
     let activeMaterial: string | null = null;
     const bindMaterial = (name: string) => {
       const key = name.trim().toLowerCase();
       if (key === activeMaterial) return;
-      pass.setBindGroup(1, materialBindGroup(name));
+      pass.setBindGroup(1, this.root.unwrap(materialBindGroup(name)));
       activeMaterial = key;
     };
     // Match the source-editor convention: textured faces belong to 3D, while orthographic views
     // remain uncluttered projected wireframes.
     if (this.kind === 'perspective' && scene.solids.length > 0) {
-      pass.setPipeline(this.pipelines.solid);
+      pass.setPipeline(this.root.unwrap(this.pipelines.solid));
       for (const batch of scene.solids) {
         if (!boundsVisible(matrix, batch.bounds)) continue;
         bindMaterial(batch.materialName);
@@ -356,7 +347,7 @@ export abstract class ViewportBase {
       }
     }
     if (this.kind === 'perspective' && scene.remoteSolids.length > 0) {
-      pass.setPipeline(this.pipelines.solid);
+      pass.setPipeline(this.root.unwrap(this.pipelines.solid));
       for (const batch of scene.remoteSolids) {
         if (!boundsVisible(matrix, batch.bounds)) continue;
         bindMaterial(batch.materialName);
@@ -364,7 +355,7 @@ export abstract class ViewportBase {
         pass.draw(batch.count);
       }
     }
-    pass.setPipeline(this.pipelines.lines);
+    pass.setPipeline(this.root.unwrap(this.pipelines.lines));
     pass.setVertexBuffer(0, this.grid);
     pass.draw(this.gridCount);
     if (this.kind === 'perspective' && scene.perspectiveGridCount > 0) {
@@ -400,7 +391,7 @@ export abstract class ViewportBase {
     this.hideTransformReadout();
     this.depth?.destroy();
     this.scaleOverlay?.destroy();
-    this.uniform.destroy();
+    this.uniform.buffer.destroy();
     this.grid.destroy();
     if (this.pendingFaceTransferClick !== null) window.clearTimeout(this.pendingFaceTransferClick);
     if (this.faceTransferSequenceReset !== null)
@@ -442,7 +433,7 @@ export abstract class ViewportBase {
     if (!scene.scaleBounds) return;
     const vertices = scaleOverlayVertices(scene.scaleBounds, this.kind, this.theme);
     if (vertices.length === 0) return;
-    this.scaleOverlay = uploadFloatBuffer(this.device, vertices, GPUBufferUsage.VERTEX);
+    this.scaleOverlay = uploadFloatBuffer(this.root.device, vertices, GPUBufferUsage.VERTEX);
     this.scaleOverlayCount = vertices.length / 6;
   }
 
@@ -457,7 +448,7 @@ export abstract class ViewportBase {
     this.canvas.width = width;
     this.canvas.height = height;
     this.depth?.destroy();
-    this.depth = this.device.createTexture({
+    this.depth = this.root.device.createTexture({
       size: [width, height],
       format: 'depth24plus',
       usage: GPUTextureUsage.RENDER_ATTACHMENT,

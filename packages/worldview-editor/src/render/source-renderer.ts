@@ -57,6 +57,7 @@ import {
   type ViewportInteraction,
 } from './viewport-common.js';
 import { createRendererGpuRuntime } from './renderer-gpu.js';
+import type { TgpuRoot, TgpuSampler } from 'typegpu';
 import { DEFAULT_EDITOR_RENDER_THEME, type EditorRenderTheme } from './theme.js';
 import { Viewport } from './viewport.js';
 import { releaseReplacedSceneBuffers } from './scene-lifetime.js';
@@ -109,12 +110,11 @@ export class EditorSourceRenderer {
   private disposed = false;
 
   private constructor(
+    private readonly root: TgpuRoot,
     private readonly device: GPUDevice,
     format: GPUTextureFormat,
     pipelines: Pipelines,
-    bindGroupLayout: GPUBindGroupLayout,
-    materialBindGroupLayout: GPUBindGroupLayout,
-    materialSampler: GPUSampler,
+    materialSampler: TgpuSampler,
     options: EditorSourceRendererOptions,
     private clearColor: readonly [number, number, number, number],
   ) {
@@ -179,8 +179,7 @@ export class EditorSourceRenderer {
       this.theme,
     );
     this.materialResources = new SourceMaterialResources(
-      device,
-      materialBindGroupLayout,
+      root,
       materialSampler,
       options.materials ?? [],
       this.sprites,
@@ -475,12 +474,11 @@ export class EditorSourceRenderer {
     ).map(
       ([kind, canvas]) =>
         new Viewport(
-          device,
+          root,
           format,
           pipelines,
           kind,
           canvas,
-          bindGroupLayout,
           interaction,
           this.gridSize,
           () => this.onRenderRequest?.(),
@@ -497,14 +495,12 @@ export class EditorSourceRenderer {
   }
 
   public static async create(options: EditorSourceRendererOptions): Promise<EditorSourceRenderer> {
-    const { device, format, pipelines, bindGroupLayout, materialBindGroupLayout, materialSampler } =
-      await createRendererGpuRuntime();
+    const { root, device, format, pipelines, materialSampler } = await createRendererGpuRuntime();
     return new EditorSourceRenderer(
+      root,
       device,
       format,
       pipelines,
-      bindGroupLayout,
-      materialBindGroupLayout,
       materialSampler,
       options,
       options.clearColor ?? options.theme?.background ?? DEFAULT_EDITOR_RENDER_THEME.background,
@@ -911,6 +907,6 @@ export class EditorSourceRenderer {
     this.scene.perspectiveGrid.destroy();
     this.materialResources.dispose();
     for (const viewport of this.viewports) viewport.dispose();
-    this.device.destroy();
+    this.root.destroy();
   }
 }

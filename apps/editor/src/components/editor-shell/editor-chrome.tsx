@@ -185,6 +185,13 @@ const selectionActions: readonly ActionSpec[] = [
     title: 'Invert selection (Ctrl/Command+Shift+A)',
   },
   {
+    action: 'snap-selection-to-grid',
+    icon: 'grid-four',
+    label: 'Snap to grid',
+    title: 'Snap selected brush or face vertices to the current grid',
+    disabled: true,
+  },
+  {
     action: 'undo',
     icon: 'arrow-counter-clockwise',
     label: 'Undo',
@@ -500,7 +507,7 @@ function ToolRail() {
       <ActionMenu label="Visibility and locking" icon="eye" actions={visibilityActions} />
       <label className="tool-select" title="Grid size">
         <select id="grid-size" aria-label="Grid size" defaultValue={16}>
-          {[1, 2, 4, 8, 16, 32, 64].map((size) => (
+          {[1, 2, 4, 8, 16, 32, 64, 128, 256].map((size) => (
             <option key={size} value={size}>
               {size}
             </option>
