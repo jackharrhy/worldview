@@ -1,4 +1,8 @@
-import { isWorldviewGameProfile, type WorldviewGameProfile } from './game-profiles.js';
+import {
+  isWorldviewGameProfile,
+  worldviewGameProfile,
+  type WorldviewGameProfile,
+} from './game-profiles.js';
 
 export type { WorldviewGameProfile } from './game-profiles.js';
 export type EntityDefinitionFormat = 'fgd' | 'def' | 'ent';
@@ -172,6 +176,16 @@ export function parseWorldviewProject(source: string): WorldviewProjectManifest 
   if (!isWorldviewGameProfile(game)) {
     throw new WorldviewProjectParseError('must be quake, goldsrc, or quake2', 'game');
   }
+  const resources = parseResources(project.resources);
+  const supportedDefinitionFormats = worldviewGameProfile(game).entityDefinitionFormats;
+  for (const [index, definition] of resources.entityDefinitions.entries()) {
+    if (!supportedDefinitionFormats.includes(definition.format)) {
+      throw new WorldviewProjectParseError(
+        `${definition.format} is not supported by the ${game} profile`,
+        `resources.entityDefinitions[${index}].format`,
+      );
+    }
+  }
   const mapRoots = unique(
     array(project.mapRoots, 'mapRoots').map((path, index) =>
       relativePath(path, `mapRoots[${index}]`, true),
@@ -200,7 +214,7 @@ export function parseWorldviewProject(source: string): WorldviewProjectManifest 
     name: string(project.name, 'name'),
     game,
     mapRoots,
-    resources: parseResources(project.resources),
+    resources,
     buildProfiles,
     ...(defaultBuildProfile === undefined ? {} : { defaultBuildProfile }),
   };

@@ -12,10 +12,17 @@ export type {
   MapCompilerBackend,
   MapBuildCapabilities,
   MapBuildProfileCapability,
+  MapBuildProfileSelection,
   MapBuildService,
   MapLaunchProfileCapability,
   MapLaunchRequest,
   MapLaunchResult,
+} from './compiler.js';
+export {
+  compiledBspVersion,
+  selectMapBuildProfile,
+  selectMapLaunchProfile,
+  supportsCompiledBspPreview,
 } from './compiler.js';
 export {
   applyCollaborationOperation,

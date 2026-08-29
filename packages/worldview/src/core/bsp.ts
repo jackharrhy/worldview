@@ -1,4 +1,10 @@
 import { BinaryView } from './binary.js';
+import { parseBsp38 } from './bsp38.js';
+import {
+  buildBspRenderGeometry,
+  type BspRenderFace,
+  type BspTextureMapping,
+} from './bsp-render-geometry.js';
 import { parseGoldSrcAudioEntities } from './audio.js';
 import { validateBspCollision, type ParsedBspCollision } from './collision.js';
 import { entityValue, parseEntities, wadReferences } from './entities.js';
@@ -10,10 +16,7 @@ import { validateBspTrace, type ParsedBspTrace } from './trace.js';
 import type { ParsedBspVisibility } from './visibility.js';
 import type {
   Bounds,
-  DrawBatch,
   GoldSrcRenderMode,
-  MaterialKind,
-  ParsedFace,
   ParsedLightmap,
   ParsedMaterial,
   ParsedMipTexture,
@@ -47,11 +50,7 @@ export interface ParseBspOptions {
   readonly lightmapPageSize?: number;
 }
 
-interface TextureMapping {
-  readonly s: readonly [number, number, number, number];
-  readonly t: readonly [number, number, number, number];
-  readonly materialIndex: number;
-}
+type TextureMapping = BspTextureMapping;
 
 interface RawModel {
   readonly bounds: Bounds;
@@ -61,18 +60,7 @@ interface RawModel {
   readonly faceCount: number;
 }
 
-interface RawFace {
-  readonly sourceIndex: number;
-  readonly modelIndex: number;
-  readonly materialIndex: number;
-  readonly kind: MaterialKind;
-  readonly firstEdge: number;
-  readonly edgeCount: number;
-  readonly mapping: TextureMapping;
-  readonly lightmap: ParsedLightmap;
-  readonly minimumS: number;
-  readonly minimumT: number;
-}
+type RawFace = BspRenderFace;
 
 interface MutableAllocation {
   width: number;
@@ -384,6 +372,9 @@ export function parseBsp(
   options: ParseBspOptions = {},
 ): ParsedWorld {
   const source = new BinaryView(input);
+  if (source.byteLength >= 8 && source.u32(0) === 0x50534249) {
+    return parseBsp38(input, options);
+  }
   invariant(source.byteLength >= HEADER_SIZE, 'BSP header is truncated');
   const version = source.u32(0);
   if (version !== 29 && version !== 30) {
@@ -649,81 +640,7 @@ export function parseBsp(
     });
   }
 
-  const renderOrder = rawFaces.toSorted(
-    (left, right) =>
-      left.modelIndex - right.modelIndex ||
-      left.kind.localeCompare(right.kind) ||
-      left.materialIndex - right.materialIndex ||
-      left.lightmap.pageIndex - right.lightmap.pageIndex ||
-      left.sourceIndex - right.sourceIndex,
-  );
-  const vertexValues: number[] = [];
-  const indexValues: number[] = [];
-  const parsedFaces: ParsedFace[] = [];
-  const batches: DrawBatch[] = [];
-
-  for (const face of renderOrder) {
-    const baseVertex = vertexValues.length / 7;
-    const firstIndex = indexValues.length;
-    for (let edge = 0; edge < face.edgeCount; edge += 1) {
-      const positionIndex = surfaceVertexIndices[face.firstEdge + edge];
-      const position = positions[positionIndex ?? positions.length];
-      invariant(position !== undefined, `face ${face.sourceIndex} references a missing vertex`);
-      const s = dotMapping(position, face.mapping.s);
-      const t = dotMapping(position, face.mapping.t);
-      const lightmapS =
-        face.lightmap.pageIndex < 0
-          ? 0.5
-          : face.lightmap.pageX + s / 16 - Math.floor(face.minimumS / 16) + 0.5;
-      const lightmapT =
-        face.lightmap.pageIndex < 0
-          ? 0.5
-          : face.lightmap.pageY + t / 16 - Math.floor(face.minimumT / 16) + 0.5;
-      vertexValues.push(position[0], position[1], position[2], s, t, lightmapS, lightmapT);
-    }
-    for (let edge = 2; edge < face.edgeCount; edge += 1) {
-      indexValues.push(baseVertex, baseVertex + edge - 1, baseVertex + edge);
-    }
-    const indexCount = (face.edgeCount - 2) * 3;
-    parsedFaces.push({
-      sourceIndex: face.sourceIndex,
-      modelIndex: face.modelIndex,
-      materialIndex: face.materialIndex,
-      kind: face.kind,
-      firstIndex,
-      indexCount,
-      lightmap: face.lightmap,
-    });
-
-    if (face.kind === 'tool') continue;
-    const previous = batches.at(-1);
-    if (
-      previous &&
-      previous.modelIndex === face.modelIndex &&
-      previous.materialIndex === face.materialIndex &&
-      previous.kind === face.kind &&
-      previous.lightmapPage === face.lightmap.pageIndex &&
-      previous.firstIndex + previous.indexCount === firstIndex
-    ) {
-      batches[batches.length - 1] = {
-        ...previous,
-        indexCount: previous.indexCount + indexCount,
-        faceIndices: [...previous.faceIndices, face.sourceIndex],
-      };
-    } else {
-      batches.push({
-        modelIndex: face.modelIndex,
-        materialIndex: face.materialIndex,
-        kind: face.kind,
-        lightmapPage: face.lightmap.pageIndex,
-        firstIndex,
-        indexCount,
-        faceIndices: [face.sourceIndex],
-      });
-    }
-  }
-
-  const sourceFaces = parsedFaces.toSorted((left, right) => left.sourceIndex - right.sourceIndex);
+  const geometry = buildBspRenderGeometry(positions, surfaceVertexIndices, materials, rawFaces);
   const models: ParsedModel[] = rawModels.map((model, modelIndex) => {
     const state = modelRenderState(modelIndex, entities);
     return {
@@ -756,11 +673,11 @@ export function parseBsp(
     trace,
     visibility,
     collision,
-    vertices: new Float32Array(vertexValues),
-    indices: new Uint32Array(indexValues),
+    vertices: geometry.vertices,
+    indices: geometry.indices,
     materials,
-    faces: sourceFaces,
-    batches,
+    faces: geometry.faces,
+    batches: geometry.batches,
     models,
     lightmapPages: packer.finish(lightmaps),
     lightmapBytesPerTexel: bytesPerTexel,

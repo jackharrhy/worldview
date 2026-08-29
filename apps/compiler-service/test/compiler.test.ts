@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { NativeCompileError, safeAssetName, safeMapName, stageArguments } from '../src/compiler.js';
+import {
+  NativeCompileError,
+  compilerStages,
+  parseCompilerGameProfile,
+  safeAssetName,
+  safeMapName,
+} from '../src/compiler.js';
 import { configuredLaunchProfile } from '../src/launch.js';
 import {
   BoundedBuildHistory,
@@ -31,11 +37,14 @@ function successfulBuild(buildId: string, revision: number) {
 
 describe('native compiler planning', () => {
   it('uses fast vis and bounded light work for preview compiles', () => {
-    const stages = stageArguments(
+    const stages = compilerStages(
       'preview',
       '/tmp/preview.map',
       '/tmp/preview.bsp',
-      { maxThreads: 2 },
+      {
+        maxThreads: 2,
+        toolchain: { kind: 'ericw', qbsp: '/tools/qbsp', vis: '/tools/vis', light: '/tools/light' },
+      },
       '/tmp/assets',
     );
 
@@ -50,15 +59,53 @@ describe('native compiler planning', () => {
   });
 
   it('uses detailed vis and extra light sampling for final compiles', () => {
-    const stages = stageArguments('final', '/tmp/final.map', '/tmp/final.bsp', {
+    const stages = compilerStages('final', '/tmp/final.map', '/tmp/final.bsp', {
       maxThreads: 4,
       gameDirectory: '/srv/quake',
+      toolchain: { kind: 'ericw', qbsp: '/tools/qbsp', vis: '/tools/vis', light: '/tools/light' },
     });
 
     expect(stages[1]?.args).not.toContain('-fast');
     expect(stages[0]?.args).not.toContain('-nofill');
     expect(stages[2]?.args).toContain('-extra');
     expect(stages.every((stage) => stage.args.includes('/srv/quake'))).toBe(true);
+  });
+
+  it('plans Quake II as one explicit q2tool pipeline', () => {
+    const stages = compilerStages('preview', '/tmp/q2.map', '/tmp/q2.bsp', {
+      maxThreads: 3,
+      gameDirectory: '/games/quake2',
+      toolchain: { kind: 'q2tool', executable: '/tools/q2tool' },
+    });
+
+    expect(stages).toEqual([
+      {
+        stage: 'q2tool',
+        executable: '/tools/q2tool',
+        args: [
+          '-bsp',
+          '-vis',
+          '-threads',
+          '3',
+          '-gamedir',
+          '/games/quake2',
+          '-fast',
+          '/tmp/q2.map',
+        ],
+      },
+    ]);
+    expect(
+      compilerStages('final', '/tmp/q2.map', '/tmp/q2.bsp', {
+        maxThreads: 3,
+        toolchain: { kind: 'q2tool', executable: '/tools/q2tool' },
+      })[0]?.args,
+    ).toEqual(expect.arrayContaining(['-rad', '-extra']));
+  });
+
+  it('parses configured game profiles without silently downgrading invalid values', () => {
+    expect(parseCompilerGameProfile(undefined)).toBe('quake');
+    expect(parseCompilerGameProfile('quake2')).toBe('quake2');
+    expect(() => parseCompilerGameProfile('q2')).toThrow(/quake, goldsrc, or quake2/);
   });
 
   it('rejects names that could escape the isolated compile directory', () => {
@@ -202,6 +249,10 @@ describe('native compiler planning', () => {
       id: 'default',
       game: 'goldsrc',
       qualities: ['preview', 'final'],
+    });
+    expect(helperCapabilities(true, 'quake2', null).compileProfiles[0]).toMatchObject({
+      game: 'quake2',
+      label: 'Local q2tools-220',
     });
 
     const history = new BoundedBuildHistory(2);

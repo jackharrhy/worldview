@@ -1,6 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
-import { compileNativeMap, type NativeCompilerConfig } from './compiler.js';
+import {
+  compileNativeMap,
+  parseCompilerGameProfile,
+  type NativeCompilerConfig,
+} from './compiler.js';
 import { configuredLaunchProfile, launchBuild } from './launch.js';
 import {
   BoundedBuildHistory,
@@ -28,10 +32,17 @@ const allowedOrigins = new Set(
     .filter(Boolean),
 );
 
+const gameProfile = parseCompilerGameProfile(process.env.WORLDVIEW_GAME_PROFILE);
 const config: NativeCompilerConfig = {
-  qbsp: process.env.ERICW_QBSP ?? '',
-  vis: process.env.ERICW_VIS ?? '',
-  light: process.env.ERICW_LIGHT ?? '',
+  toolchain:
+    gameProfile === 'quake2'
+      ? { kind: 'q2tool', executable: process.env.WORLDVIEW_Q2TOOL ?? '' }
+      : {
+          kind: 'ericw',
+          qbsp: process.env.ERICW_QBSP ?? '',
+          vis: process.env.ERICW_VIS ?? '',
+          light: process.env.ERICW_LIGHT ?? '',
+        },
   ...(process.env.WORLDVIEW_GAME_DIR ? { gameDirectory: process.env.WORLDVIEW_GAME_DIR } : {}),
   maxThreads: Math.max(1, Number(process.env.WORLDVIEW_COMPILER_THREADS ?? 2)),
   timeoutMilliseconds: Math.max(
@@ -44,7 +55,6 @@ const config: NativeCompilerConfig = {
     Number(process.env.WORLDVIEW_COMPILER_MAX_ARTIFACT_BYTES ?? 64 * 1024 * 1024),
   ),
 };
-const gameProfile = process.env.WORLDVIEW_GAME_PROFILE === 'goldsrc' ? 'goldsrc' : 'quake';
 const launchProfile = configuredLaunchProfile(process.env);
 const maxBuildHistory = Math.max(1, Number(process.env.WORLDVIEW_COMPILER_HISTORY ?? 20));
 const buildHistory = new BoundedBuildHistory(maxBuildHistory);
@@ -52,7 +62,15 @@ const buildHistory = new BoundedBuildHistory(maxBuildHistory);
 let activeCompiles = 0;
 
 function compilerConfigured(): boolean {
-  return Boolean(config.qbsp && config.vis && config.light);
+  return config.toolchain.kind === 'q2tool'
+    ? Boolean(config.toolchain.executable)
+    : Boolean(config.toolchain.qbsp && config.toolchain.vis && config.toolchain.light);
+}
+
+function compilerConfigurationError(): string {
+  return config.toolchain.kind === 'q2tool'
+    ? 'WORLDVIEW_Q2TOOL must be configured for the quake2 profile'
+    : 'ERICW_QBSP, ERICW_VIS, and ERICW_LIGHT must be configured';
 }
 
 function cors(request: IncomingMessage, response: ServerResponse): boolean {
@@ -138,7 +156,7 @@ const server = createServer({ maxHeaderSize: 16 * 1024 }, async (request, respon
     return;
   }
   if (!compilerConfigured()) {
-    json(response, 503, { error: 'ERICW_QBSP, ERICW_VIS, and ERICW_LIGHT must be configured' });
+    json(response, 503, { error: compilerConfigurationError() });
     return;
   }
   if (activeCompiles >= maxConcurrent) {

@@ -10,6 +10,19 @@ ERICW_LIGHT=/absolute/path/to/light \
 npm run dev --workspace @worldview/compiler-service
 ```
 
+Quake II uses a separate, explicit q2tools-220 pipeline; the helper never advertises Quake II while
+only Quake tools are configured:
+
+```sh
+WORLDVIEW_GAME_PROFILE=quake2 \
+WORLDVIEW_Q2TOOL=/absolute/path/to/q2tool \
+WORLDVIEW_GAME_DIR=/absolute/path/to/quake2 \
+npm run dev --workspace @worldview/compiler-service
+```
+
+The external GPL tools are behavior dependencies installed by the user or operator. They are not
+linked, vendored, or redistributed by this MIT repository.
+
 The service listens on `127.0.0.1:8788` by default. `GET /health` reports whether executables are
 configured; `GET /capabilities`, `POST /compile`, and `POST /launch` implement the safe profile-ID
 protocol consumed by `RemoteMapCompiler`. Expected compiler failures return structured failed-build

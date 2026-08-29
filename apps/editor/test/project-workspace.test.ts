@@ -190,6 +190,49 @@ describe('project workspaces', () => {
     });
   });
 
+  it('loads Quake II QUAKED definitions through the shared catalog', async () => {
+    const quake2Root = directory('quake2', {
+      'worldview.project.json': JSON.stringify({
+        schemaVersion: 1,
+        name: 'Quake II definitions',
+        game: 'quake2',
+        mapRoots: ['maps'],
+        resources: {
+          wads: [],
+          spriteRoots: [],
+          entityDefinitions: [{ path: 'entities/quake2.def', format: 'def' }],
+        },
+        buildProfiles: [],
+      }),
+      maps: {},
+      entities: {
+        'quake2.def': `/*QUAKED info_player_start (1 0 0) (-16 -16 -24) (16 16 32)
+Synthetic Quake II player start.
+*/
+/*QUAKED func_areaportal (0.5 0.5 0.5) ? START_OPEN
+Synthetic Quake II area portal.
+*/`,
+      },
+    });
+
+    const definitions = await loadProjectEntityDefinitions(await openWorldviewProject(quake2Root));
+
+    expect(definitions.diagnostics).toEqual([]);
+    expect(definitions.catalog.find('info_player_start')).toMatchObject({
+      kind: 'point',
+      bounds: { min: [-16, -16, -24], max: [16, 16, 32] },
+    });
+    expect(definitions.catalog.find('func_areaportal')).toMatchObject({
+      kind: 'brush',
+      properties: [
+        {
+          key: 'spawnflags',
+          choices: [{ value: '1', label: 'START_OPEN' }],
+        },
+      ],
+    });
+  });
+
   it('discovers WAL files recursively in material-root precedence order', async () => {
     const materialRoot = directory('materials', {
       'worldview.project.json': JSON.stringify({

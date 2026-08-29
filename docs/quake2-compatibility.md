@@ -12,9 +12,19 @@ This document records evidence and remaining work for the Quake II expansion des
   the standard Quake II bits while unknown bits remain numeric and survive editing for compiler and
   mod compatibility.
 - Project manifests accept ordered loose-material roots independently from WAD archives.
+- Project manifests accept the profile's existing DEF and ENT definition formats and reject
+  incompatible formats at the manifest boundary. Definitions flow through the shared catalog and
+  entity inspector rather than a Quake II-specific parser or UI path.
 - The texture inspector exposes profile-owned contents/surface flags and face values. Multi-face
   edits are atomic and undoable, mixed values are explicit, and named-bit edits preserve unknown
   compiler or mod bits.
+- The safe helper protocol accepts Quake II compile and launch capabilities. The local helper
+  advertises Quake II only when an external `q2tool` executable is explicitly configured, and the
+  editor selects compile/launch profiles only after matching the active game.
+- The DOM-free BSP core accepts `IBSP` version 38, validates its 19-lump layout, and produces static
+  world and brush-model geometry, entities, Quake II surface classifications, RGB lightmaps, draw
+  batches, and bounds through the same renderer contract as BSP29/30. BSP38 artifacts install through
+  the editor's revision-safe compiled-preview handoff.
 - Synthetic MIT-owned tests cover exact no-op save, normalized serialize/reparse, named flag
   decoding, unknown-bit retention, and Quake II project-manifest round trips.
 
@@ -44,16 +54,27 @@ The raw numeric values are the authority when a profile catalog does not recogni
 The standard names and numeric compatibility were checked against id Software's GPL Quake II
 `q_shared.h`. That source is a behavior oracle only; no GPL implementation is adapted here.
 
+The same boundary was smoke-tested against id Software's GPL Quake II game sources at commit
+`372afde46e7defc9dd2d719a1732b8ace1fa096e`: all 148 `QUAKED` declarations across 30 source files
+parsed with zero diagnostics. Those sources remain an external compatibility oracle and are not
+copied into this repository. A small MIT-owned synthetic project fixture keeps the Quake II
+definition-loading lifecycle under CI.
+
+The local safe-helper path was smoke-tested with q2tools-220 commit
+`07d8d893cb04ba5f39a63d7382e8d9979b3f38da` and the GPL Spirit corpus map `spirit2dm1.map` at the
+corpus commit above. A preview request returned HTTP 200, preserved source revision 42, and produced
+a 720,216-byte `IBSP` version 38 artifact with non-truncated logs. Missing retail textures were
+reported as warnings and no commercial data was supplied. The preview plan deliberately runs BSP
+and fast VIS only; final builds add RAD and therefore require the operator's configured game data.
+
+That artifact also passed the DOM-free parser with 27,322 render vertices, 15,906 triangles, 5,708
+faces, 87 draw batches, 161 texinfo-derived materials, and three models. A separate MIT-owned sealed
+room was compiled with the same real helper and visibly rendered in the editor at revision 0 using
+the missing-WAL checkerboard. No GPL map or compiler output is committed.
+
 ## Next acceptance slice
 
-1. Parse and validate WAL headers, dimensions, mip offsets, animation links, and surface metadata in
-   a DOM-free core module with synthetic fixtures.
-2. Resolve loose WAL files through ordered project material roots and browser-local directory
-   handles without bundling retail data.
-3. Feed decoded WAL pixels and dimensions through the existing source-material resource boundary.
-4. Add malformed/truncated WAL diagnostics, duplicate-name precedence tests, and a real-browser
-   material-loading scenario.
-5. Load Quake II entity definitions and add a configured compiler-capability boundary before
-   claiming daily authoring support.
-
-BSP38 parsing/rendering and configured Quake II compilation remain separate later slices.
+Add BSP38 visibility and collision structures without pretending the BSP29/30 layouts apply, then
+connect browser-local WAL roots to compiled-preview texture resolution. Compiler choice and
+executable paths remain machine-local; portable projects continue to name only logical build
+profiles.

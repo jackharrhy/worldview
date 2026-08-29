@@ -13,6 +13,12 @@ interface FixtureOptions {
   readonly collision?: boolean;
 }
 
+interface Bsp38FixtureOptions {
+  readonly surfaceFlags?: number;
+  readonly textureName?: string;
+  readonly lightOffset?: number;
+}
+
 interface WaveFixtureOptions {
   readonly bitsPerSample?: 8 | 16;
   readonly channels?: 1 | 2;
@@ -369,6 +375,74 @@ export function makeBsp(options: FixtureOptions = {}): Uint8Array {
     const offset = offsets[index] ?? headerSize;
     view.setUint32(4 + index * 8, offset, true);
     view.setUint32(8 + index * 8, lump.length, true);
+    result.set(lump, offset);
+  });
+  return result;
+}
+
+export function makeBsp38(options: Bsp38FixtureOptions = {}): Uint8Array {
+  const entities = new TextEncoder().encode('{\n"classname" "worldspawn"\n"sky" "unit1_"\n}\n\0');
+  const vertices = new Uint8Array(48);
+  const vertexView = new DataView(vertices.buffer);
+  [0, 0, 0, 16, 0, 0, 16, 16, 0, 0, 16, 0].forEach((value, index) =>
+    vertexView.setFloat32(index * 4, value, true),
+  );
+  const texinfo = new Uint8Array(76);
+  const texinfoView = new DataView(texinfo.buffer);
+  texinfoView.setFloat32(0, 1, true);
+  texinfoView.setFloat32(20, 1, true);
+  texinfoView.setUint32(32, options.surfaceFlags ?? 0, true);
+  new TextEncoder().encodeInto(options.textureName ?? 'e1u1/fixture', texinfo.subarray(40, 72));
+  texinfoView.setInt32(72, -1, true);
+  const face = new Uint8Array(20);
+  const faceView = new DataView(face.buffer);
+  faceView.setInt32(4, 0, true);
+  faceView.setInt16(8, 4, true);
+  faceView.setInt16(10, 0, true);
+  faceView.setUint8(12, 0);
+  faceView.setUint8(13, 255);
+  faceView.setUint8(14, 255);
+  faceView.setUint8(15, 255);
+  faceView.setInt32(16, options.lightOffset ?? 0, true);
+  const lighting = new Uint8Array(12).fill(128);
+  const edges = new Uint8Array(16);
+  const edgeView = new DataView(edges.buffer);
+  [0, 1, 1, 2, 2, 3, 3, 0].forEach((value, index) => edgeView.setUint16(index * 2, value, true));
+  const surfedges = new Uint8Array(16);
+  const surfedgeView = new DataView(surfedges.buffer);
+  [0, 1, 2, 3].forEach((value, index) => surfedgeView.setInt32(index * 4, value, true));
+  const model = new Uint8Array(48);
+  const modelView = new DataView(model.buffer);
+  [0, 0, -1, 16, 16, 1].forEach((value, index) => modelView.setFloat32(index * 4, value, true));
+  modelView.setInt32(36, 0, true);
+  modelView.setInt32(40, 0, true);
+  modelView.setInt32(44, 1, true);
+
+  const lumps: Uint8Array[] = Array.from({ length: 19 }, () => new Uint8Array());
+  lumps[0] = entities;
+  lumps[2] = vertices;
+  lumps[5] = texinfo;
+  lumps[6] = face;
+  lumps[7] = lighting;
+  lumps[11] = edges;
+  lumps[12] = surfedges;
+  lumps[13] = model;
+  const headerSize = 8 + lumps.length * 8;
+  let size = headerSize;
+  const offsets = lumps.map((lump) => {
+    size = align4(size);
+    const offset = size;
+    size += lump.length;
+    return offset;
+  });
+  const result = new Uint8Array(size);
+  const view = new DataView(result.buffer);
+  new TextEncoder().encodeInto('IBSP', result.subarray(0, 4));
+  view.setUint32(4, 38, true);
+  lumps.forEach((lump, index) => {
+    const offset = offsets[index] ?? headerSize;
+    view.setUint32(8 + index * 8, offset, true);
+    view.setUint32(12 + index * 8, lump.length, true);
     result.set(lump, offset);
   });
   return result;

@@ -1,11 +1,10 @@
-import { entityValue, tracePlayerHull, type ParsedWorld, type Vec3Tuple } from '../core/index.js';
-
-const QUAKE_SPAWNS = new Set(['info_player_start', 'info_player_deathmatch']);
-const GOLDSRC_SPAWNS = new Set([
-  ...QUAKE_SPAWNS,
-  'info_player_counterterrorist',
-  'info_player_terrorist',
-]);
+import {
+  bspPlayerProfile,
+  entityValue,
+  tracePlayerHull,
+  type ParsedWorld,
+  type Vec3Tuple,
+} from '../core/index.js';
 
 function parseOrigin(value: string | undefined): Vec3Tuple | null {
   const parts = value?.trim().split(/\s+/).map(Number);
@@ -48,8 +47,7 @@ export function walkabilitySeeds(
     ? seedOrigins.map((position) => ({ position, entityIndex: null }))
     : world.entities.flatMap((entity, entityIndex) => {
         const classname = entityValue(entity, 'classname')?.toLowerCase();
-        const spawnClasses = world.version === 29 ? QUAKE_SPAWNS : GOLDSRC_SPAWNS;
-        if (!classname || !spawnClasses.has(classname)) return [];
+        if (!classname || !bspPlayerProfile(world.format).spawnClasses.has(classname)) return [];
         const position = parseOrigin(entityValue(entity, 'origin'));
         return position ? [{ position, entityIndex }] : [];
       });

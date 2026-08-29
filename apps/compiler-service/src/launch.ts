@@ -3,12 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 
-import { safeMapName } from './compiler.js';
+import { parseCompilerGameProfile, safeMapName, type CompilerGameProfile } from './compiler.js';
 
 export interface NativeLaunchConfig {
   readonly profileId: string;
   readonly label: string;
-  readonly game: 'quake' | 'goldsrc';
+  readonly game: CompilerGameProfile;
   readonly executable: string;
   readonly arguments: readonly string[];
   readonly workingDirectory: string;
@@ -45,7 +45,7 @@ export function configuredLaunchProfile(environment: NodeJS.ProcessEnv): NativeL
   return {
     profileId: environment.WORLDVIEW_LAUNCH_PROFILE_ID?.trim() || 'default-launch',
     label: environment.WORLDVIEW_LAUNCH_PROFILE_LABEL?.trim() || 'Local game',
-    game: environment.WORLDVIEW_GAME_PROFILE === 'goldsrc' ? 'goldsrc' : 'quake',
+    game: parseCompilerGameProfile(environment.WORLDVIEW_GAME_PROFILE),
     executable,
     arguments: argumentsValue,
     workingDirectory,

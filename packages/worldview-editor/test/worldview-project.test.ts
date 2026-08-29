@@ -47,6 +47,25 @@ describe('Worldview project manifests', () => {
     expect(parseWorldviewProject(serializeWorldviewProject(quake2))).toEqual(quake2);
   });
 
+  it.each([
+    ['quake2', 'fgd'],
+    ['goldsrc', 'def'],
+    ['goldsrc', 'ent'],
+  ] as const)('rejects %s projects configured with incompatible %s definitions', (game, format) => {
+    expect(() =>
+      parseWorldviewProject(
+        JSON.stringify({
+          ...PROJECT,
+          game,
+          resources: {
+            ...PROJECT.resources,
+            entityDefinitions: [{ path: `entities/game.${format}`, format }],
+          },
+        }),
+      ),
+    ).toThrow(`resources.entityDefinitions[0].format: ${format} is not supported`);
+  });
+
   it.each(['../outside.wad', '/absolute.wad', 'C:/game/file.wad', 'https://example.test/a.wad'])(
     'rejects non-contained resource path %s',
     (path) => {

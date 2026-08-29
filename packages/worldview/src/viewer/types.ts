@@ -140,7 +140,7 @@ export interface CameraUpdate {
 
 export interface MapDiagnostics {
   readonly format: BspFormat;
-  readonly version: 29 | 30;
+  readonly version: 29 | 30 | 38;
   readonly vertices: number;
   readonly triangles: number;
   readonly faces: number;

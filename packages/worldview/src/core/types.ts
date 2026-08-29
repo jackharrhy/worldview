@@ -5,7 +5,7 @@ import type { ParsedBspTrace } from './trace.js';
 import type { ParsedBspVisibility } from './visibility.js';
 
 export type Vec3Tuple = readonly [number, number, number];
-export type BspFormat = 'quake-bsp29' | 'goldsrc-bsp30';
+export type BspFormat = 'quake-bsp29' | 'goldsrc-bsp30' | 'quake2-bsp38';
 export type MaterialKind = 'opaque' | 'alpha-test' | 'water' | 'sky' | 'tool';
 export type GoldSrcRenderMode = 0 | 1 | 2 | 3 | 4 | 5;
 
@@ -103,7 +103,7 @@ export interface ParsedModel {
 
 export interface ParsedWorld {
   readonly format: BspFormat;
-  readonly version: 29 | 30;
+  readonly version: 29 | 30 | 38;
   readonly bounds: Bounds;
   readonly entities: readonly BspEntity[];
   readonly skyName: string | null;

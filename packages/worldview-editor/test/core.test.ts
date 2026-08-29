@@ -21,6 +21,7 @@ import {
   createSequentialIdFactory,
   createSimpleShapeBrushes,
   createStarterDocument,
+  compiledBspVersion,
   DEFAULT_SIMPLE_SHAPE_OPTIONS,
   deleteBrushVertices,
   deriveBrush,
@@ -60,6 +61,9 @@ import {
   serializeFaceAttributeClipboard,
   serializeMap,
   serializeObjectClipboard,
+  selectMapBuildProfile,
+  selectMapLaunchProfile,
+  supportsCompiledBspPreview,
   selectedBrushIds,
   selectedEntityIdsForLinks,
   selectedEditorGroup,
@@ -1237,6 +1241,49 @@ describe('compiler coordination', () => {
         body: { buildId: 'build-7', profileId: 'quake', expectedDocumentRevision: 7 },
       }),
     ]);
+  });
+
+  it('selects compile and launch capabilities only within the active game boundary', () => {
+    const capabilities = {
+      protocolVersion: 1 as const,
+      compileProfiles: [
+        { id: 'default', label: 'Quake', game: 'quake' as const, qualities: ['preview'] as const },
+        {
+          id: 'q2-final',
+          label: 'Quake II final',
+          game: 'quake2' as const,
+          qualities: ['final'] as const,
+        },
+      ],
+      launchProfiles: [
+        { id: 'quake', label: 'Quake', game: 'quake' as const },
+        { id: 'quake2', label: 'Quake II', game: 'quake2' as const },
+      ],
+    };
+
+    expect(
+      selectMapBuildProfile(capabilities, { game: 'quake2', quality: 'preview' }),
+    ).toBeUndefined();
+    expect(selectMapBuildProfile(capabilities, { game: 'quake2', quality: 'final' })?.id).toBe(
+      'q2-final',
+    );
+    expect(selectMapLaunchProfile(capabilities, 'quake2')?.id).toBe('quake2');
+  });
+
+  it('reads classic and IBSP compiled-map versions without conflating the magic word', () => {
+    const classic = new ArrayBuffer(4);
+    new DataView(classic).setInt32(0, 29, true);
+    const ibsp = new ArrayBuffer(8);
+    new DataView(ibsp).setInt32(0, 0x50534249, true);
+    new DataView(ibsp).setInt32(4, 38, true);
+
+    expect(compiledBspVersion(classic)).toBe(29);
+    expect(compiledBspVersion(ibsp)).toBe(38);
+    expect(compiledBspVersion(new ArrayBuffer(3))).toBeNull();
+    expect(supportsCompiledBspPreview(classic)).toBe(true);
+    expect(supportsCompiledBspPreview(ibsp)).toBe(true);
+    new DataView(ibsp).setInt32(4, 46, true);
+    expect(supportsCompiledBspPreview(ibsp)).toBe(false);
   });
 
   it('keeps structured failed-build diagnostics and artifacts available to the editor', async () => {

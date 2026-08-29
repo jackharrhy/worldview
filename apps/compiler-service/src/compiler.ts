@@ -5,6 +5,13 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 export type CompileQuality = 'preview' | 'final';
+export type CompilerGameProfile = 'quake' | 'goldsrc' | 'quake2';
+
+export function parseCompilerGameProfile(value: string | undefined): CompilerGameProfile {
+  if (value === undefined || value.trim() === '') return 'quake';
+  if (value === 'quake' || value === 'goldsrc' || value === 'quake2') return value;
+  throw new Error('WORLDVIEW_GAME_PROFILE must be quake, goldsrc, or quake2');
+}
 
 export interface NativeCompilerRequest {
   readonly mapName: string;
@@ -21,10 +28,17 @@ export interface NativeCompilerAsset {
   readonly base64: string;
 }
 
+export type NativeCompilerToolchain =
+  | {
+      readonly kind: 'ericw';
+      readonly qbsp: string;
+      readonly vis: string;
+      readonly light: string;
+    }
+  | { readonly kind: 'q2tool'; readonly executable: string };
+
 export interface NativeCompilerConfig {
-  readonly qbsp: string;
-  readonly vis: string;
-  readonly light: string;
+  readonly toolchain: NativeCompilerToolchain;
   readonly gameDirectory?: string;
   readonly maxThreads: number;
   readonly timeoutMilliseconds: number;
@@ -60,6 +74,12 @@ interface StageResult {
   readonly truncated: boolean;
 }
 
+export interface NativeCompilerStage {
+  readonly stage: 'qbsp' | 'vis' | 'light' | 'q2tool';
+  readonly executable: string;
+  readonly args: readonly string[];
+}
+
 export class NativeCompileError extends Error {
   public constructor(
     public readonly stage: string,
@@ -90,13 +110,31 @@ export function safeAssetName(value: string): string {
   return value;
 }
 
-export function stageArguments(
+export function compilerStages(
   quality: CompileQuality,
   mapPath: string,
   bspPath: string,
-  config: Pick<NativeCompilerConfig, 'gameDirectory' | 'maxThreads'>,
+  config: Pick<NativeCompilerConfig, 'gameDirectory' | 'maxThreads' | 'toolchain'>,
   assetDirectory?: string,
-): readonly { readonly stage: 'qbsp' | 'vis' | 'light'; readonly args: readonly string[] }[] {
+): readonly NativeCompilerStage[] {
+  if (config.toolchain.kind === 'q2tool') {
+    return [
+      {
+        stage: 'q2tool',
+        executable: config.toolchain.executable,
+        args: [
+          '-bsp',
+          '-vis',
+          ...(quality === 'final' ? ['-rad'] : []),
+          '-threads',
+          String(config.maxThreads),
+          ...(config.gameDirectory ? ['-gamedir', config.gameDirectory] : []),
+          ...(quality === 'preview' ? ['-fast'] : ['-extra']),
+          mapPath,
+        ],
+      },
+    ];
+  }
   const paths = [
     '-nodefaultpaths',
     ...(config.gameDirectory ? ['-gamedir', config.gameDirectory] : []),
@@ -106,6 +144,7 @@ export function stageArguments(
   return [
     {
       stage: 'qbsp',
+      executable: config.toolchain.qbsp,
       args: [
         ...common,
         ...(assetDirectory ? ['-wadpath', assetDirectory] : []),
@@ -114,9 +153,14 @@ export function stageArguments(
         bspPath,
       ],
     },
-    { stage: 'vis', args: [...common, ...(quality === 'preview' ? ['-fast'] : []), bspPath] },
+    {
+      stage: 'vis',
+      executable: config.toolchain.vis,
+      args: [...common, ...(quality === 'preview' ? ['-fast'] : []), bspPath],
+    },
     {
       stage: 'light',
+      executable: config.toolchain.light,
       args: [...common, ...(quality === 'preview' ? ['-gate', '1'] : ['-extra']), bspPath],
     },
   ];
@@ -280,7 +324,6 @@ export async function compileNativeMap(
   const mapPath = join(workingDirectory, `${mapName}.map`);
   const bspPath = join(workingDirectory, `${mapName}.bsp`);
   const assetDirectory = request.assets?.length ? join(workingDirectory, 'assets') : undefined;
-  const commands = { qbsp: config.qbsp, vis: config.vis, light: config.light } as const;
   try {
     await writeFile(mapPath, request.mapText, { encoding: 'utf8', flag: 'wx' });
     if (assetDirectory && request.assets) {
@@ -300,12 +343,12 @@ export async function compileNativeMap(
     }
     const stages: StageResult[] = [];
     let failure: NativeCompileError | null = null;
-    for (const stage of stageArguments(request.quality, mapPath, bspPath, config, assetDirectory)) {
+    for (const stage of compilerStages(request.quality, mapPath, bspPath, config, assetDirectory)) {
       try {
         stages.push(
           await runStage(
             stage.stage,
-            commands[stage.stage],
+            stage.executable,
             stage.args,
             workingDirectory,
             config,

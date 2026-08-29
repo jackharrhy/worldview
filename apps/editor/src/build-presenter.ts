@@ -1,6 +1,10 @@
 import {
+  compiledBspVersion,
   parseLeakPath,
   parsePortalFile,
+  selectMapBuildProfile,
+  selectMapLaunchProfile,
+  supportsCompiledBspPreview,
   type EditorBrushDragEvent,
   type MapCompileResult,
 } from '@jackharrhy/worldview-editor';
@@ -154,15 +158,24 @@ export class BuildPresenter {
     this.ui.statusMessage.textContent = `Showing retained build ${record.buildId.slice(0, 8)} from ${new Date(record.createdAt).toLocaleString()}.`;
   }
 
-  public async installCompiledPreview(result: MapCompileResult): Promise<void> {
+  public async installCompiledPreview(result: MapCompileResult): Promise<boolean> {
     const artifact = result.artifacts.find(
       (candidate) =>
         candidate.mediaType === 'application/x-quake-bsp' ||
         candidate.name.toLowerCase().endsWith('.bsp'),
     );
     if (!artifact) throw new Error('Compiler completed without returning a BSP artifact');
-    const bspVersion =
-      artifact.data.byteLength >= 4 ? new DataView(artifact.data).getInt32(0, true) : null;
+    const bspVersion = compiledBspVersion(artifact.data);
+    if (!supportsCompiledBspPreview(artifact.data)) {
+      this.state.compiledPreviewWarning = ` BSP${bspVersion ?? ' (truncated)'} preview is not supported yet; the compiled artifact remains available.`;
+      this.state.compiledViewer?.dispose();
+      this.state.compiledViewer = null;
+      this.state.compiledRevision = null;
+      this.ui.compiledCanvas.hidden = true;
+      this.ui.togglePreviewButton.disabled = true;
+      this.showCompiledPreview(false);
+      return false;
+    }
     const needsDiagnosticPalette = bspVersion === 29 && !this.state.quakePalette;
     this.state.compiledPreviewWarning = needsDiagnosticPalette
       ? ' Using the diagnostic palette; load the map’s Quake palette for exact texture colors.'
@@ -189,6 +202,7 @@ export class BuildPresenter {
     this.state.compiledRevision = result.sourceDocumentRevision;
     this.ui.togglePreviewButton.disabled = false;
     this.showCompiledPreview(true);
+    return true;
   }
 
   public async compilePreview(): Promise<void> {
@@ -238,9 +252,9 @@ export class BuildPresenter {
           errors.slice(0, 3).join(' · ') || 'Compiler reported a failed build.';
         return;
       }
-      await this.installCompiledPreview(outcome.result);
+      const previewInstalled = await this.installCompiledPreview(outcome.result);
       this.setCompileState(`COMPILED R${outcome.result.sourceDocumentRevision}`, 'ready');
-      this.ui.statusMessage.textContent = `Compiled preview installed in ${Math.round(outcome.result.elapsedMilliseconds)} ms.${this.state.compiledPreviewWarning ?? ''}`;
+      this.ui.statusMessage.textContent = `${previewInstalled ? 'Compiled preview installed' : 'Compile completed'} in ${Math.round(outcome.result.elapsedMilliseconds)} ms.${this.state.compiledPreviewWarning ?? ''}`;
     } catch (error) {
       this.showCompiledPreview(false);
       this.setCompileState('COMPILER ERROR', 'offline');
@@ -253,21 +267,22 @@ export class BuildPresenter {
   public async checkCompilerService(): Promise<void> {
     try {
       const capabilities = await this.state.buildService.capabilities();
-      let compileProfile = capabilities.compileProfiles.find((profile) => profile.id === 'default');
+      const activeGame = this.state.projectWorkspace?.manifest.game ?? this.state.activeGameProfile;
       const logicalProfile = this.state.projectWorkspace?.manifest.buildProfiles.find(
         ({ id }) => id === this.ui.buildProfile.value,
       );
+      let preferredCompileProfileId: string | undefined;
       if (this.state.projectWorkspace && this.state.projectKey && logicalProfile) {
         const local = await this.state.projectLocalState.load(this.state.projectKey);
-        const bound = local?.buildBindings[logicalProfile.id];
-        compileProfile =
-          capabilities.compileProfiles.find(({ id }) => id === bound) ??
-          capabilities.compileProfiles.find(
-            ({ game, qualities }) =>
-              game === this.state.projectWorkspace?.manifest.game &&
-              qualities.includes(logicalProfile.quality),
-          );
-        if (compileProfile && bound !== compileProfile.id) {
+        preferredCompileProfileId = local?.buildBindings[logicalProfile.id];
+      }
+      const compileProfile = selectMapBuildProfile(capabilities, {
+        game: activeGame,
+        ...(preferredCompileProfileId ? { preferredId: preferredCompileProfileId } : {}),
+        ...(logicalProfile ? { quality: logicalProfile.quality } : {}),
+      });
+      if (this.state.projectWorkspace && this.state.projectKey && logicalProfile) {
+        if (compileProfile && preferredCompileProfileId !== compileProfile.id) {
           await this.state.projectLocalState.setBuildBinding(
             this.state.projectKey,
             this.state.projectWorkspace.handle,
@@ -282,7 +297,7 @@ export class BuildPresenter {
         this.ui.compileButton,
         logicalProfile ? `Build ${logicalProfile.label}` : 'Compile',
       );
-      this.state.launchProfileId = capabilities.launchProfiles[0]?.id ?? null;
+      this.state.launchProfileId = selectMapLaunchProfile(capabilities, activeGame)?.id ?? null;
       this.ui.compileButton.disabled = !compileProfile;
       this.ui.launchButton.disabled =
         !this.state.launchProfileId ||

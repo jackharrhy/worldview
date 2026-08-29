@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  bspPlayerProfile,
   buildLightmapPage,
   classifyMaterial,
   copyWaveChannel,
@@ -38,6 +39,7 @@ import { WorldCamera } from '../src/viewer/camera.js';
 import { WorldControls, type PlayerSoundEvent } from '../src/viewer/controls.js';
 import {
   makeBsp,
+  makeBsp38,
   makeMipTexture,
   makePalette,
   makeSprite,
@@ -73,6 +75,20 @@ describe('overview planning', () => {
   });
 });
 
+describe('BSP player profiles', () => {
+  it('keeps format-owned spawn and eye-height behavior explicit', () => {
+    expect(bspPlayerProfile('quake-bsp29').eyeHeight).toBe(22);
+    expect(bspPlayerProfile('quake2-bsp38').eyeHeight).toBe(22);
+    expect(bspPlayerProfile('goldsrc-bsp30').eyeHeight).toBe(28);
+    expect(bspPlayerProfile('goldsrc-bsp30').spawnClasses.has('info_player_counterterrorist')).toBe(
+      true,
+    );
+    expect(bspPlayerProfile('quake2-bsp38').spawnClasses.has('info_player_counterterrorist')).toBe(
+      false,
+    );
+  });
+});
+
 describe('BSP visibility', () => {
   it('marks only faces referenced by leaves in the camera PVS', () => {
     const world = parseBsp(makeBsp({ faceCopies: 2, visibility: true }));
@@ -84,6 +100,40 @@ describe('BSP visibility', () => {
   it('falls back to drawing everything when the camera is in the solid leaf', () => {
     const world = parseBsp(makeBsp({ visibility: true }));
     expect(visibleWorldFaceMask(world.trace, world.visibility, [0, 0, 0])).toBeNull();
+  });
+});
+
+describe('Quake II BSP38', () => {
+  it('parses IBSP geometry, RGB lightmaps, entities, and material identity', () => {
+    const world = parseBsp(makeBsp38());
+
+    expect(world).toMatchObject({
+      format: 'quake2-bsp38',
+      version: 38,
+      skyName: 'unit1_',
+      lightmapBytesPerTexel: 3,
+      trace: null,
+      visibility: null,
+      collision: null,
+    });
+    expect(world.vertices).toHaveLength(28);
+    expect(world.indices).toEqual(new Uint32Array([0, 1, 2, 0, 2, 3]));
+    expect(world.materials).toMatchObject([{ name: 'e1u1/fixture', kind: 'opaque' }]);
+    expect(world.lightmapPages).toHaveLength(1);
+    expect(world.lightmapPages[0]?.lightmaps[0]?.samples).toHaveLength(12);
+  });
+
+  it('uses Quake II surface flags for render classification', () => {
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x04 })).materials[0]?.kind).toBe('sky');
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x08 })).materials[0]?.kind).toBe('water');
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x80 })).materials[0]?.kind).toBe('tool');
+  });
+
+  it('rejects invalid IBSP versions and truncated lightmaps', () => {
+    const unsupported = makeBsp38();
+    new DataView(unsupported.buffer).setUint32(4, 46, true);
+    expect(() => parseBsp(unsupported)).toThrow(/IBSP version 38/);
+    expect(() => parseBsp(makeBsp38({ lightOffset: 8 }))).toThrow(/light samples/);
   });
 });
 

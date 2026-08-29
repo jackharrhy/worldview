@@ -1,4 +1,5 @@
 import {
+  bspPlayerProfile,
   createGoldSrcMovementState,
   entityValue,
   moveGoldSrcPlayer,
@@ -174,7 +175,7 @@ export class WorldControls {
           : DEFAULT_WORLDVIEW_MOVEMENT.maxSpeed,
       };
     }
-    this.eyeHeight = world.version === 29 ? 22 : 28;
+    this.eyeHeight = bspPlayerProfile(world.format).eyeHeight;
     this.spawnOrigin = this.originFromCamera(camera.value.position);
     this.movement = createGoldSrcMovementState(this.spawnOrigin);
     this.accumulator = 0;

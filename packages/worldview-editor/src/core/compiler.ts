@@ -1,3 +1,5 @@
+import type { WorldviewGameProfile } from './game-profiles.js';
+
 export type MapCompilerBackend = 'wasm' | 'remote';
 export type MapCompileQuality = 'preview' | 'final';
 export type MapCompileStatus = 'succeeded' | 'failed';
@@ -54,20 +56,65 @@ export interface MapCompileResult {
 export interface MapBuildProfileCapability {
   readonly id: string;
   readonly label: string;
-  readonly game: 'quake' | 'goldsrc';
+  readonly game: WorldviewGameProfile;
   readonly qualities: readonly MapCompileQuality[];
 }
 
 export interface MapLaunchProfileCapability {
   readonly id: string;
   readonly label: string;
-  readonly game: 'quake' | 'goldsrc';
+  readonly game: WorldviewGameProfile;
 }
 
 export interface MapBuildCapabilities {
   readonly protocolVersion: 1;
   readonly compileProfiles: readonly MapBuildProfileCapability[];
   readonly launchProfiles: readonly MapLaunchProfileCapability[];
+}
+
+export interface MapBuildProfileSelection {
+  readonly game: WorldviewGameProfile;
+  readonly preferredId?: string;
+  readonly quality?: MapCompileQuality;
+}
+
+export function selectMapBuildProfile(
+  capabilities: MapBuildCapabilities,
+  selection: MapBuildProfileSelection,
+): MapBuildProfileCapability | undefined {
+  const compatible = capabilities.compileProfiles.filter(
+    ({ game, qualities }) =>
+      game === selection.game &&
+      (selection.quality === undefined || qualities.includes(selection.quality)),
+  );
+  return (
+    compatible.find(({ id }) => id === selection.preferredId) ??
+    compatible.find(({ id }) => id === 'default') ??
+    compatible[0]
+  );
+}
+
+export function selectMapLaunchProfile(
+  capabilities: MapBuildCapabilities,
+  game: WorldviewGameProfile,
+): MapLaunchProfileCapability | undefined {
+  return capabilities.launchProfiles.find((profile) => profile.game === game);
+}
+
+const IBSP_MAGIC = 0x50534249;
+
+export function compiledBspVersion(data: ArrayBuffer): number | null {
+  if (data.byteLength < 4) return null;
+  const view = new DataView(data);
+  const first = view.getInt32(0, true);
+  return first === IBSP_MAGIC && data.byteLength >= 8 ? view.getInt32(4, true) : first;
+}
+
+const COMPILED_PREVIEW_BSP_VERSIONS = new Set([29, 30, 38]);
+
+export function supportsCompiledBspPreview(data: ArrayBuffer): boolean {
+  const version = compiledBspVersion(data);
+  return version !== null && COMPILED_PREVIEW_BSP_VERSIONS.has(version);
 }
 
 export interface MapLaunchRequest {

@@ -1,5 +1,6 @@
 export { asArrayBuffer, BinaryView } from './binary.js';
 export { cameraRight, perspectiveForward } from './camera.js';
+export { bspPlayerProfile } from './player-profile.js';
 export {
   BSP_CONTENTS_EMPTY,
   BSP_CONTENTS_SOLID,

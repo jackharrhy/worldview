@@ -1,4 +1,8 @@
-import type { NativeCompilerRequest, NativeCompilerResult } from './compiler.js';
+import type {
+  CompilerGameProfile,
+  NativeCompilerRequest,
+  NativeCompilerResult,
+} from './compiler.js';
 import type { LaunchableBuild, NativeLaunchConfig } from './launch.js';
 
 export interface NativeLaunchRequest {
@@ -94,7 +98,7 @@ export function parseLaunchRequest(value: unknown): NativeLaunchRequest {
 
 export function helperCapabilities(
   compilerConfigured: boolean,
-  game: 'quake' | 'goldsrc',
+  game: CompilerGameProfile,
   launchProfile: NativeLaunchConfig | null,
 ) {
   return {
@@ -103,7 +107,7 @@ export function helperCapabilities(
       ? [
           {
             id: 'default',
-            label: 'Local ericw-tools',
+            label: game === 'quake2' ? 'Local q2tools-220' : 'Local ericw-tools',
             game,
             qualities: ['preview', 'final'] as const,
           },

@@ -2,6 +2,7 @@ import { mat4 } from 'wgpu-matrix';
 
 import {
   entityValue,
+  bspPlayerProfile,
   perspectiveForward,
   type ParsedWorld,
   type Vec3Tuple,
@@ -32,18 +33,9 @@ export class WorldCamera {
   }
 
   public reset(world: ParsedWorld): void {
-    const spawnClasses = new Set(
-      world.version === 29
-        ? ['info_player_start', 'info_player_deathmatch']
-        : [
-            'info_player_start',
-            'info_player_deathmatch',
-            'info_player_counterterrorist',
-            'info_player_terrorist',
-          ],
-    );
+    const playerProfile = bspPlayerProfile(world.format);
     const spawn = world.entities.find((entity) =>
-      spawnClasses.has(entityValue(entity, 'classname')?.toLowerCase() ?? ''),
+      playerProfile.spawnClasses.has(entityValue(entity, 'classname')?.toLowerCase() ?? ''),
     );
     const origin = parseOrigin(spawn ? entityValue(spawn, 'origin') : undefined);
     const fallback: Vec3Tuple = [
@@ -52,7 +44,7 @@ export class WorldCamera {
       (world.bounds.min[2] + world.bounds.max[2]) / 2,
     ];
     const position = origin ?? fallback;
-    const eyeHeight = origin ? (world.version === 29 ? 22 : 28) : 0;
+    const eyeHeight = origin ? playerProfile.eyeHeight : 0;
     const yawDegrees = Number(spawn ? (entityValue(spawn, 'angle') ?? 0) : 0);
     this.state = {
       position: [position[0], position[1], position[2] + eyeHeight],
