@@ -7,6 +7,9 @@ import {
   setBrushFaceMaterials,
   setBrushMaterial,
   setFaceTextureTransform,
+  setSurfaceAttributeFlag,
+  setSurfaceAttributeValue,
+  updateBrushFaceSurfaces,
   transformFaceTexture,
   transferFaceAttributes,
   type FaceAttributeTransferMode,
@@ -60,6 +63,69 @@ export class EditorSession extends EditorSessionObjects {
     this.discardRepeatableCommands();
     this.notify('document', operation.label);
     return result;
+  }
+
+  private createSelectedSurfaceCandidate(
+    label: string,
+    update: Parameters<typeof updateBrushFaceSurfaces>[2],
+  ): BrushEditCandidate | BrushBatchEditCandidate | null {
+    const selectedFaces = selectedFaceReferences(this.currentSelection);
+    if (selectedFaces.length === 0) return null;
+    const byBrush = new Map<BrushId, FaceSelection[]>();
+    for (const face of selectedFaces) {
+      const entries = byBrush.get(face.brushId) ?? [];
+      entries.push(face);
+      byBrush.set(face.brushId, entries);
+    }
+    const edits = [...byBrush].map<BrushEdit>(([brushId, faces]) => {
+      const before = findBrush(this.currentDocument, brushId)!;
+      const after = updateBrushFaceSurfaces(
+        before,
+        faces.map(({ faceId }) => faceId),
+        update,
+      );
+      return { brushId, baseBrushRevision: before.revision, before, after };
+    });
+    const document = replaceBrushes(
+      this.currentDocument,
+      edits.map(({ after }) => after),
+    );
+    if (edits.length > 1) {
+      return { label, baseDocumentRevision: this.currentDocument.revision, edits, document };
+    }
+    const edit = edits[0]!;
+    return {
+      label,
+      brushId: edit.brushId,
+      baseDocumentRevision: this.currentDocument.revision,
+      baseBrushRevision: edit.baseBrushRevision,
+      before: edit.before,
+      after: edit.after,
+      document,
+    };
+  }
+
+  public setSelectedSurfaceFlag(
+    field: 'contents' | 'flags',
+    mask: number,
+    enabled: boolean,
+  ): boolean {
+    const candidate = this.createSelectedSurfaceCandidate(
+      `${enabled ? 'Set' : 'Clear'} surface ${field} flag`,
+      (surface) => setSurfaceAttributeFlag(surface, field, mask, enabled),
+    );
+    if (!candidate) return false;
+    this.commitCandidate(candidate);
+    return true;
+  }
+
+  public setSelectedSurfaceValue(value: number): boolean {
+    const candidate = this.createSelectedSurfaceCandidate('Set surface value', (surface) =>
+      setSurfaceAttributeValue(surface, value),
+    );
+    if (!candidate) return false;
+    this.commitCandidate(candidate);
+    return true;
   }
 
   public createMaterialCandidate(

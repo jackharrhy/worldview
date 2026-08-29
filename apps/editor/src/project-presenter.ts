@@ -8,6 +8,7 @@ import {
 import {
   loadProjectEntityDefinitions,
   loadProjectSprites,
+  loadProjectWalFiles,
   openWorldviewProject,
   pickProjectDirectory,
   projectFile,
@@ -233,6 +234,18 @@ export class ProjectPresenter {
       resourceMessages.push(`${path}: ${result.added} added, ${result.replaced} replaced`);
       const error = result.diagnostics.find(({ severity }) => severity === 'error');
       if (error) throw new Error(error.message);
+    }
+    const walFiles = await loadProjectWalFiles(workspace);
+    if (walFiles.length > 0) {
+      if (!stagedPalette) {
+        throw new Error('Quake II WAL material roots require a 768-byte palette resource');
+      }
+      const walPalette = stagedPalette;
+      for (const { path, file } of walFiles) {
+        const result = stagedCatalog.importWal(path, await file.arrayBuffer(), walPalette);
+        resourceMessages.push(`${path}: ${result.added} added, ${result.replaced} replaced`);
+        resourceMessages.push(...result.diagnostics.map(({ message }) => `${path}: ${message}`));
+      }
     }
     const [definitions, sprites] = await Promise.all([
       loadProjectEntityDefinitions(workspace),

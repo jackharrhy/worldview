@@ -2,6 +2,7 @@ import {
   brushesInDocument,
   deriveBrush,
   deriveEditorGroups,
+  decodeSurfaceFlags,
   findBrush,
   isEditorGroupEntity,
   isEditorLayerEntity,
@@ -12,6 +13,8 @@ import {
   selectedEditorGroup,
   selectedFaceReferences,
   selectedPointEntityIds,
+  worldviewGameProfile,
+  type SurfaceFlagDefinition,
   type MapDocument,
 } from '@jackharrhy/worldview-editor';
 
@@ -22,6 +25,18 @@ import type { EntityPresenter } from './entity-presenter.js';
 import type { OrganizationPresenter } from './organization-presenter.js';
 import type { TransformToolPresenter } from './transform-tool-presenter.js';
 
+function unknownSurfaceBitsLabel(
+  values: readonly number[],
+  definitions: readonly SurfaceFlagDefinition[],
+): string {
+  const unknown = new Set(
+    values.map((value) => decodeSurfaceFlags(value, definitions).unknownBits),
+  );
+  if (unknown.size > 1) return 'mixed';
+  const value = [...unknown][0] ?? 0;
+  return value === 0 ? '' : `0x${value.toString(16)}`;
+}
+
 export class InspectorPresenter {
   public constructor(
     private readonly state: EditorState,
@@ -30,7 +45,38 @@ export class InspectorPresenter {
     private readonly entity: EntityPresenter,
     private readonly transform: TransformToolPresenter,
     private readonly formatVector: (value: readonly number[]) => string,
-  ) {}
+  ) {
+    this.ui.surfaceInspector.bind({
+      setFlag: (field, mask, enabled) => {
+        if (this.state.session.setSelectedSurfaceFlag(field, mask, enabled)) {
+          this.updateInspector();
+        }
+      },
+      setValue: (value) => {
+        try {
+          if (this.state.session.setSelectedSurfaceValue(value)) this.updateInspector();
+        } catch (error) {
+          this.ui.statusMessage.setError(error instanceof Error ? error.message : String(error));
+        }
+      },
+    });
+  }
+
+  private surfaceFlagControls(
+    definitions: readonly SurfaceFlagDefinition[],
+    values: readonly number[],
+  ) {
+    return definitions.map((definition) => {
+      const selected = values.filter(
+        (value) => ((value >>> 0) & definition.value) === definition.value,
+      ).length;
+      return {
+        ...definition,
+        checked: selected === values.length,
+        mixed: selected > 0 && selected < values.length,
+      };
+    });
+  }
 
   public updateInspector(
     document: MapDocument = this.state.session.document,
@@ -126,6 +172,34 @@ export class InspectorPresenter {
       const face = owner?.faces.find((candidate) => candidate.id === reference.faceId);
       return face ? [{ reference, face }] : [];
     });
+    const surfaceSemantics = worldviewGameProfile(this.state.activeGameProfile).surfaceSemantics;
+    if (!surfaceSemantics || selectedFaces.length === 0) {
+      this.ui.surfaceInspector.set({
+        visible: false,
+        contents: [],
+        flags: [],
+        unknownContents: '',
+        unknownFlags: '',
+        value: '',
+        valueMixed: false,
+        valueLabel: 'Value',
+      });
+    } else {
+      const contentsValues = selectedFaces.map(({ face }) => face.surface.contents ?? 0);
+      const flagValues = selectedFaces.map(({ face }) => face.surface.flags ?? 0);
+      const values = selectedFaces.map(({ face }) => face.surface.value ?? 0);
+      const distinctValues = new Set(values);
+      this.ui.surfaceInspector.set({
+        visible: true,
+        contents: this.surfaceFlagControls(surfaceSemantics.contents, contentsValues),
+        flags: this.surfaceFlagControls(surfaceSemantics.flags, flagValues),
+        unknownContents: unknownSurfaceBitsLabel(contentsValues, surfaceSemantics.contents),
+        unknownFlags: unknownSurfaceBitsLabel(flagValues, surfaceSemantics.flags),
+        value: distinctValues.size === 1 ? String(values[0] ?? 0) : '',
+        valueMixed: distinctValues.size > 1,
+        valueLabel: surfaceSemantics.valueLabel,
+      });
+    }
     const objectSelected = Boolean(
       selectedFaces.length === 0 && objectBrushIds.length + objectEntityIds.length > 0,
     );

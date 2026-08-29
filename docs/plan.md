@@ -321,9 +321,10 @@ safely reanchored. **Export normalized copy** is separate and never overwrites t
 ### Projects and local state
 
 `WorldviewProjectManifest`, `parseWorldviewProject`, and `serializeWorldviewProject` define
-versioned `worldview.project.json` files. Version 1 contains project name, `quake` or `goldsrc`
-profile, relative map roots, ordered relative WADs, optional palette/sprite roots, ordered FGD/DEF/
-ENT definition files, logical preview/final build profiles, and defaults.
+versioned `worldview.project.json` files. Version 1 contains project name, `quake`, `goldsrc`, or
+`quake2` profile, relative map roots, ordered relative WADs and loose material roots, optional
+palette/sprite roots, ordered FGD/DEF/ENT definition files, logical preview/final build profiles,
+and defaults.
 
 Absolute/executable paths, directory handles, credentials, binary assets, UI layout, cameras, and
 helper bindings are machine-local. Chromium directory handles and logical-profile-to-capability
@@ -509,7 +510,7 @@ implies the other.
 | 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                                                                                                                                                                                                                                                                                                                   |
 | 6. Collaboration foundation       | Complete    | Typed domain operations, seeded three-replica convergence, IndexedDB outbox, multi-tab and reconnect transport, conditional personalized undo, ticketed hosted-room UI, participant presence, Yjs/Automerge/custom bake-off, and a chunked SQLite-backed hibernating `MapRoom` pass local Workers-runtime gates plus a live celld/Azurite deploy, WebSocket operation, `SIGKILL`, empty-local-state recovery drill; multi-node/outage/backup fleet hardening remains; solo mode has no service dependency |
 | 7. Hosted project foundation      | In progress | Newport deployment, 4orm identity, projects/maps, source autosave/checkpoints, signed hosted-room access, Artbin pinned mounts and cached WAD loading, server-owned build records, persistent per-user/global build admission, bounded queues/payloads/artifacts, ingress throttles, collaboration socket/frame/edit limits, and compiler cgroup/time limits are delivered; membership/folder/history/build UI and multi-node room-fleet hardening remain                                                 |
-| 8. Format expansion               | Planned     | Quake II is the next end-to-end profile/source slice; Quake III authoring, BSP46 preview, and VMF follow in the ordered stages and acceptance gates above                                                                                                                                                                                                                                                                                                                                                 |
+| 8. Format expansion               | In progress | The Quake II profile, WAL decoding/resource resolution, profile-aware surface authoring, project material roots, synthetic source-lifecycle coverage, and pinned local corpus smoke are delivered; definitions, compiler integration, and BSP38 preview remain. Quake III authoring, BSP46 preview, and VMF follow in the ordered stages above                                                                                                                                                            |
 | 9. After dependable solo          | Deferred    | Collision-aware editor walk mode and the remaining explicitly deferred features listed under Product boundaries                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Worker parsing/catalog work and list virtualization remain available optimizations rather than

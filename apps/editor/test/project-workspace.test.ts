@@ -4,6 +4,7 @@ import {
   ensureProjectDirectoryPermission,
   loadProjectEntityDefinitions,
   loadProjectSprites,
+  loadProjectWalFiles,
   openWorldviewProject,
   projectFile,
   type EditorDirectoryHandle,
@@ -187,6 +188,35 @@ describe('project workspaces', () => {
     expect(definitions.catalog.find('light_test')).toMatchObject({
       bounds: { min: [-16, -16, -16], max: [16, 16, 16] },
     });
+  });
+
+  it('discovers WAL files recursively in material-root precedence order', async () => {
+    const materialRoot = directory('materials', {
+      'worldview.project.json': JSON.stringify({
+        schemaVersion: 1,
+        name: 'Quake II materials',
+        game: 'quake2',
+        mapRoots: ['maps'],
+        resources: {
+          wads: [],
+          materialRoots: ['base', 'override'],
+          spriteRoots: [],
+          entityDefinitions: [],
+        },
+        buildProfiles: [],
+      }),
+      maps: {},
+      base: { z: { 'metal.wal': 'base' }, 'ignore.txt': '' },
+      override: { 'metal.wal': 'override', 'wall.wal': 'wall' },
+    });
+    const workspace = await openWorldviewProject(materialRoot);
+    const files = await loadProjectWalFiles(workspace);
+
+    expect(files.map(({ path }) => path)).toEqual([
+      'base/z/metal.wal',
+      'override/metal.wal',
+      'override/wall.wal',
+    ]);
   });
 
   it('reports missing sprite roots and malformed sprite assets without blocking the project', async () => {

@@ -11,6 +11,8 @@ export interface WorldviewEntityDefinitionSource {
 export interface WorldviewProjectResources {
   /** Later entries override earlier WAD entries with the same logical texture name. */
   readonly wads: readonly string[];
+  /** Ordered roots for loose profile-native materials such as Quake II WAL files. */
+  readonly materialRoots?: readonly string[];
   readonly palette?: string;
   readonly spriteRoots: readonly string[];
   readonly entityDefinitions: readonly WorldviewEntityDefinitionSource[];
@@ -96,6 +98,12 @@ function parseResources(value: unknown): WorldviewProjectResources {
     ),
     'resources.spriteRoots',
   );
+  const materialRoots = unique(
+    array(resources.materialRoots ?? [], 'resources.materialRoots').map((path, index) =>
+      relativePath(path, `resources.materialRoots[${index}]`, true),
+    ),
+    'resources.materialRoots',
+  );
   const entityDefinitions = array(
     resources.entityDefinitions ?? [],
     'resources.entityDefinitions',
@@ -115,6 +123,7 @@ function parseResources(value: unknown): WorldviewProjectResources {
   });
   return {
     wads,
+    ...(materialRoots.length === 0 ? {} : { materialRoots }),
     ...(resources.palette === undefined
       ? {}
       : { palette: relativePath(resources.palette, 'resources.palette') }),
@@ -161,7 +170,7 @@ export function parseWorldviewProject(source: string): WorldviewProjectManifest 
   }
   const game = string(project.game, 'game');
   if (!isWorldviewGameProfile(game)) {
-    throw new WorldviewProjectParseError('must be quake or goldsrc', 'game');
+    throw new WorldviewProjectParseError('must be quake, goldsrc, or quake2', 'game');
   }
   const mapRoots = unique(
     array(project.mapRoots, 'mapRoots').map((path, index) =>

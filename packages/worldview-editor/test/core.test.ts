@@ -2530,6 +2530,62 @@ describe('editor transactions', () => {
     expect(findBrush(session.document, brush.id)?.faces[0]?.projection).toEqual(face.projection);
   });
 
+  it('edits Quake II surface flags atomically while preserving unknown bits and undo', () => {
+    const document = createStarterDocument();
+    const brush = brushesInDocument(document)[1]!;
+    const first = brush.faces[0]!;
+    const second = brush.faces[1]!;
+    const withSurface: MapDocument = {
+      ...document,
+      entities: document.entities.map((entity) =>
+        Object.assign({}, entity, {
+          primitives: entity.primitives.map((primitive) =>
+            primitive.id === brush.id && primitive.kind === 'brush'
+              ? Object.assign({}, primitive, {
+                  faces: primitive.faces.map((face) =>
+                    face.id === first.id
+                      ? Object.assign({}, face, { surface: { flags: 0x101, value: 100 } })
+                      : face.id === second.id
+                        ? Object.assign({}, face, { surface: { flags: 0x100, value: 200 } })
+                        : face,
+                  ),
+                })
+              : primitive,
+          ),
+        }),
+      ),
+    };
+    const session = new EditorSession(withSurface);
+    session.select(
+      createFaceSelection([
+        { brushId: brush.id, faceId: first.id },
+        { brushId: brush.id, faceId: second.id },
+      ]),
+    );
+
+    expect(session.setSelectedSurfaceFlag('flags', 0x04, true)).toBe(true);
+    const changed = findBrush(session.document, brush.id)!;
+    expect(changed.faces.slice(0, 2).map(({ surface }) => surface.flags)).toEqual([0x105, 0x104]);
+    expect(session.setSelectedSurfaceValue(300)).toBe(true);
+    expect(
+      findBrush(session.document, brush.id)!
+        .faces.slice(0, 2)
+        .map(({ surface }) => surface.value),
+    ).toEqual([300, 300]);
+    expect(session.undo()).toBe(true);
+    expect(
+      findBrush(session.document, brush.id)!
+        .faces.slice(0, 2)
+        .map(({ surface }) => surface.value),
+    ).toEqual([100, 200]);
+    expect(session.undo()).toBe(true);
+    expect(
+      findBrush(session.document, brush.id)!
+        .faces.slice(0, 2)
+        .map(({ surface }) => surface.flags),
+    ).toEqual([0x101, 0x100]);
+  });
+
   it('previews relative UV transforms around a stable face-space pivot', () => {
     const document = createStarterDocument();
     const brush = brushesInDocument(document)[1]!;

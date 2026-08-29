@@ -9,6 +9,8 @@
   navigates to the lazy `/editor` route with that payload in browser history state. The visible URL
   stays clean, and the history entry preserves setup across reloads and back/forward navigation.
   WebGPU, presenters, WebMCP, compiler checks, and collaboration initialize only in the editor.
+- New-map choices come from the package game-profile registry. Quake II exposes classic axial syntax
+  only; Quake retains classic and Valve 220, while GoldSrc remains Valve 220-only.
 - `/new-map` warms the lazy editor modules during browser idle time and on submit-button intent;
   this downloads code only and does not construct presenters or initialize WebGPU. The selected
   empty document is installed before renderer startup so the renderer initializes it once.

@@ -87,7 +87,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
         </div>
         <div className="inspector-scroll">
           <ObjectInspector />
-          <TextureInspector />
+          <TextureInspector shellState={shellState} />
           <MapInspector shellState={shellState} />
         </div>
       </aside>

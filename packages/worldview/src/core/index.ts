@@ -76,6 +76,12 @@ export {
   type ParsedWad,
   type WadLump,
 } from './wad.js';
+export {
+  decodeWalTexture,
+  readWalTextureHeader,
+  type DecodedWalTexture,
+  type WalTextureHeader,
+} from './wal.js';
 export { decodeTga, type DecodedTga } from './tga.js';
 export {
   findBspLeaf,

@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   EditorSession,
+  type MapDocument,
   brushesInDocument,
   brushVertices,
   createBoxBrush,
@@ -678,6 +679,8 @@ test.describe('WebMCP site authoring', () => {
     await page.goBack();
     await expect(page.getByRole('heading', { name: 'Worldview Editor' })).toBeVisible();
     await page.goForward();
+    await page.getByLabel('Game').selectOption('quake2');
+    await expect(page.getByLabel('Map format').locator('option')).toHaveText(['Classic Quake']);
     await page.getByLabel('Game').selectOption('goldsrc');
     await expect(page.getByLabel('Map format').locator('option')).toHaveCount(1);
     await page.getByRole('button', { name: 'Create map', exact: true }).click();
@@ -2990,6 +2993,57 @@ test.describe('3D source authoring', () => {
     document = await readEditorDocument(page);
     brushes = brushesInDocument(document);
     expect(brushes[2]!.faces.every((face) => face.material === 'TRANSFER_SOURCE')).toBe(true);
+  });
+
+  test('edits Quake II surface flags without discarding unknown bits', async ({ page }) => {
+    await page.goto('http://127.0.0.1:5174/');
+    await page.getByRole('button', { name: 'New map', exact: true }).click();
+    await page.getByLabel('Game').selectOption('quake2');
+    await page.getByRole('button', { name: 'Create map', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
+
+    const starter = createStarterDocument();
+    const attributed: MapDocument = {
+      ...starter,
+      faceSyntax: 'quake',
+      entities: starter.entities.map((entity) =>
+        Object.assign({}, entity, {
+          primitives: entity.primitives.map((primitive) =>
+            primitive.kind === 'brush'
+              ? Object.assign({}, primitive, {
+                  faces: primitive.faces.map((face) =>
+                    Object.assign({}, face, { surface: { flags: 0x100, value: 300 } }),
+                  ),
+                })
+              : primitive,
+          ),
+        }),
+      ),
+    };
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(serializeMap(attributed));
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const point = await perspectivePoint(page, 0.5, 0.58);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(point.x, point.y);
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Quake II surface' })).toBeVisible();
+    await expect(page.getByText('Unknown bits: 0x100')).toBeVisible();
+
+    await page.getByLabel('Sky', { exact: true }).check();
+    expect(
+      brushesInDocument(await readEditorDocument(page)).some((brush) =>
+        brush.faces.some(({ surface }) => surface.flags === 0x104),
+      ),
+    ).toBe(true);
+    await page.keyboard.press('Control+z');
+    expect(
+      brushesInDocument(await readEditorDocument(page)).every((brush) =>
+        brush.faces.every(({ surface }) => surface.flags === 0x100),
+      ),
+    ).toBe(true);
   });
 
   test('Alt-drag paints a chained attribute path as one undoable 3D transaction', async ({

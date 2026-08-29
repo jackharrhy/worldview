@@ -310,7 +310,21 @@ export {
   worldviewGameProfile,
   type WorldviewGameProfile,
   type WorldviewGameProfileDefinition,
+  type WorldviewMaterialFormat,
 } from './game-profiles.js';
+export {
+  QUAKE2_SURFACE_SEMANTICS,
+  decodeSurfaceAttributes,
+  decodeSurfaceFlags,
+  type DecodedSurfaceFlags,
+  type SurfaceFlagDefinition,
+  type SurfaceSemantics,
+} from './surface-semantics.js';
+export {
+  setSurfaceAttributeFlag,
+  setSurfaceAttributeValue,
+  updateBrushFaceSurfaces,
+} from './surface-editing.js';
 export {
   orderAssetMounts,
   type AssetMountDescriptor,
@@ -365,6 +379,7 @@ export {
   type EditorMaterial,
   type MaterialImportDiagnostic,
   type MaterialImportResult,
+  type WalMaterialImportResult,
 } from './materials.js';
 export {
   EditorSession,

@@ -54,6 +54,11 @@ export interface ProjectSprites {
   readonly diagnostics: readonly string[];
 }
 
+export interface ProjectMaterialFile {
+  readonly path: string;
+  readonly file: File;
+}
+
 export interface WorldviewProjectWorkspace {
   readonly handle: EditorDirectoryHandle;
   readonly manifest: WorldviewProjectManifest;
@@ -118,6 +123,21 @@ async function spriteFilesInDirectory(
       files.push({ path, file: await handle.getFile() });
   }
   return files;
+}
+
+async function materialFilesInDirectory(
+  directory: EditorDirectoryHandle,
+  prefix: string,
+): Promise<readonly ProjectMaterialFile[]> {
+  const files: ProjectMaterialFile[] = [];
+  for await (const [name, handle] of directory.entries()) {
+    const path = prefix ? `${prefix}/${name}` : name;
+    if (handle.kind === 'directory') files.push(...(await materialFilesInDirectory(handle, path)));
+    else if (name.toLowerCase().endsWith('.wal')) {
+      files.push({ path, file: await handle.getFile() });
+    }
+  }
+  return files.toSorted((left, right) => left.path.localeCompare(right.path));
 }
 
 export async function openWorldviewProject(
@@ -235,4 +255,18 @@ export async function loadProjectSprites(
     diagnostics.push(...root.diagnostics);
   }
   return { sprites, diagnostics };
+}
+
+/** Discovers Quake II WAL files in manifest root order; later roots intentionally override first. */
+export async function loadProjectWalFiles(
+  workspace: WorldviewProjectWorkspace,
+): Promise<readonly ProjectMaterialFile[]> {
+  const roots = workspace.manifest.resources.materialRoots ?? [];
+  const files: ProjectMaterialFile[] = [];
+  for (const root of roots) {
+    const prefix = root === '.' ? '' : root;
+    const directory = await directoryAt(workspace.handle, prefix ? prefix.split('/') : []);
+    files.push(...(await materialFilesInDirectory(directory, prefix)));
+  }
+  return files;
 }

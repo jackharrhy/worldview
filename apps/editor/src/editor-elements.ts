@@ -23,6 +23,7 @@ export function bindEditorElements(shellState: EditorShellState) {
   const statusMessage = shellState.statusMessage;
   const cameraPointerContext = shellState.pointerContext;
   const documentSummary = shellState.documentSummary;
+  const surfaceInspector = shellState.surfaceInspector;
   const editorShell = required<HTMLElement>('.editor-shell');
   const issueBrowser = required<HTMLElement>('#issue-browser');
   const issueSummary = required<HTMLElement>('#issue-summary');
@@ -463,6 +464,7 @@ export function bindEditorElements(shellState: EditorShellState) {
     uvResetPivot,
     applyTextureTransformButton,
     documentSummary,
+    surfaceInspector,
     workspaceHome: shellState.workspaceHome,
     collaborationUi: shellState.collaborationUi,
     materialCount,

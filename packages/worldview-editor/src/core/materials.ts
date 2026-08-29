@@ -1,5 +1,6 @@
 import {
   decodeMipTexture,
+  decodeWalTexture,
   parseWad,
   readMipTextureHeader,
   WAD2_MIPTEX,
@@ -25,6 +26,17 @@ export interface MaterialImportDiagnostic {
 export interface MaterialImportResult {
   readonly sourceName: string;
   readonly wadVersion: 2 | 3;
+  readonly added: number;
+  readonly replaced: number;
+  readonly skipped: number;
+  readonly diagnostics: readonly MaterialImportDiagnostic[];
+}
+
+export interface WalMaterialImportResult {
+  readonly sourceName: string;
+  readonly materialName?: string;
+  readonly animationName?: string;
+  readonly surface?: { readonly contents: number; readonly flags: number; readonly value: number };
   readonly added: number;
   readonly replaced: number;
   readonly skipped: number;
@@ -302,5 +314,60 @@ export class EditorMaterialCatalog {
       skipped,
       diagnostics,
     };
+  }
+
+  public importWal(
+    sourceName: string,
+    input: ArrayBuffer | ArrayBufferView,
+    palette: Uint8Array,
+  ): WalMaterialImportResult {
+    try {
+      const decoded = decodeWalTexture(input, palette);
+      if (
+        decoded.width > MAX_EDITOR_TEXTURE_DIMENSION ||
+        decoded.height > MAX_EDITOR_TEXTURE_DIMENSION ||
+        decoded.width * decoded.height > MAX_EDITOR_TEXTURE_PIXELS
+      ) {
+        throw new Error(
+          `texture dimensions ${decoded.width}x${decoded.height} exceed the editor preview limit`,
+        );
+      }
+      const replaced = this.set({
+        name: decoded.name,
+        sourceName,
+        width: decoded.width,
+        height: decoded.height,
+        rgba: decoded.levels[0]!.rgba,
+        alphaTest: false,
+      });
+      return {
+        sourceName,
+        materialName: decoded.name,
+        ...(decoded.animationName ? { animationName: decoded.animationName } : {}),
+        surface: {
+          contents: decoded.contents,
+          flags: decoded.flags,
+          value: decoded.value,
+        },
+        added: replaced ? 0 : 1,
+        replaced: replaced ? 1 : 0,
+        skipped: 0,
+        diagnostics: [],
+      };
+    } catch (error) {
+      return {
+        sourceName,
+        added: 0,
+        replaced: 0,
+        skipped: 1,
+        diagnostics: [
+          {
+            severity: 'warning',
+            sourceName,
+            message: error instanceof Error ? error.message : String(error),
+          },
+        ],
+      };
+    }
   }
 }

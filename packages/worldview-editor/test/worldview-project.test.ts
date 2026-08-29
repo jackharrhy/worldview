@@ -31,6 +31,22 @@ describe('Worldview project manifests', () => {
     expect(serialized.endsWith('\n')).toBe(true);
   });
 
+  it('accepts Quake II as a portable project profile without requiring WAD resources', () => {
+    const quake2 = {
+      ...PROJECT,
+      name: 'Quake II project',
+      game: 'quake2',
+      resources: {
+        wads: [],
+        materialRoots: ['textures'],
+        spriteRoots: [],
+        entityDefinitions: [{ path: 'entities/quake2.def', format: 'def' }],
+      },
+    } as const;
+
+    expect(parseWorldviewProject(serializeWorldviewProject(quake2))).toEqual(quake2);
+  });
+
   it.each(['../outside.wad', '/absolute.wad', 'C:/game/file.wad', 'https://example.test/a.wad'])(
     'rejects non-contained resource path %s',
     (path) => {

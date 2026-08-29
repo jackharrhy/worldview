@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Form, useActionData, useNavigate, useNavigation } from 'react-router';
+import type { WorldviewGameProfile } from '@jackharrhy/worldview-editor/core';
 import { ActionButton, Field, ProductHeader, ProductPage } from '../components/ui.js';
 import type { action } from './new-map-action.js';
 import { NEW_MAP_PROFILES } from './new-map-options.js';
@@ -9,7 +10,7 @@ export function Component() {
   const actionData = useActionData<typeof action>();
   const navigate = useNavigate();
   const navigation = useNavigation();
-  const [profile, setProfile] = useState<'quake' | 'goldsrc'>('quake');
+  const [profile, setProfile] = useState<WorldviewGameProfile>('quake');
   const selected = NEW_MAP_PROFILES[profile];
   const nameInput = useRef<HTMLInputElement>(null);
   const launch = actionData && 'launch' in actionData ? actionData.launch : null;

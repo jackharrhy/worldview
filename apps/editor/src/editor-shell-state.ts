@@ -1,4 +1,8 @@
 import { SnapshotStore } from '@jackharrhy/worldview';
+import type {
+  SurfaceFlagDefinition,
+  WorldviewGameProfile,
+} from '@jackharrhy/worldview-editor/core';
 
 export interface StatusMessageSnapshot {
   readonly message: string;
@@ -109,6 +113,58 @@ export class DocumentSummaryPort {
   }
 }
 
+export interface SurfaceFlagControl extends SurfaceFlagDefinition {
+  readonly checked: boolean;
+  readonly mixed: boolean;
+}
+
+export interface SurfaceInspectorSnapshot {
+  readonly visible: boolean;
+  readonly contents: readonly SurfaceFlagControl[];
+  readonly flags: readonly SurfaceFlagControl[];
+  readonly unknownContents: string;
+  readonly unknownFlags: string;
+  readonly value: string;
+  readonly valueMixed: boolean;
+  readonly valueLabel: string;
+}
+
+export interface SurfaceInspectorActions {
+  setFlag(field: 'contents' | 'flags', mask: number, enabled: boolean): void;
+  setValue(value: number): void;
+}
+
+export class SurfaceInspectorPort {
+  private readonly store = new SnapshotStore<SurfaceInspectorSnapshot>({
+    visible: false,
+    contents: [],
+    flags: [],
+    unknownContents: '',
+    unknownFlags: '',
+    value: '',
+    valueMixed: false,
+    valueLabel: 'Value',
+  });
+  private actions: SurfaceInspectorActions | null = null;
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+  public bind(actions: SurfaceInspectorActions): void {
+    this.actions = actions;
+  }
+  public set(snapshot: SurfaceInspectorSnapshot): void {
+    this.store.set(snapshot);
+  }
+  public invoke<K extends keyof SurfaceInspectorActions>(
+    action: K,
+    ...args: Parameters<SurfaceInspectorActions[K]>
+  ): void {
+    const handler = this.actions?.[action] as
+      | ((...values: Parameters<SurfaceInspectorActions[K]>) => void)
+      | undefined;
+    handler?.(...args);
+  }
+}
+
 export interface RecentProjectSnapshot {
   readonly projectKey: string;
   readonly displayName: string;
@@ -120,7 +176,7 @@ export interface WorkspaceHomeSnapshot {
   readonly visible: boolean;
   readonly newMapOpen: boolean;
   readonly name: string;
-  readonly profile: 'quake' | 'goldsrc';
+  readonly profile: WorldviewGameProfile;
   readonly format: 'valve-220' | 'quake';
   readonly recents: readonly RecentProjectSnapshot[];
 }
@@ -237,6 +293,7 @@ export interface EditorShellState {
   readonly compileState: CompileStatePort;
   readonly pointerContext: PointerContextPort;
   readonly documentSummary: DocumentSummaryPort;
+  readonly surfaceInspector: SurfaceInspectorPort;
   readonly workspaceHome: WorkspaceHomePort;
   readonly collaborationUi: CollaborationUiPort;
 }
@@ -248,6 +305,7 @@ export function createEditorShellState(): EditorShellState {
     compileState: new CompileStatePort(),
     pointerContext: new PointerContextPort(),
     documentSummary: new DocumentSummaryPort(),
+    surfaceInspector: new SurfaceInspectorPort(),
     workspaceHome: new WorkspaceHomePort(),
     collaborationUi: new CollaborationUiPort(),
   };

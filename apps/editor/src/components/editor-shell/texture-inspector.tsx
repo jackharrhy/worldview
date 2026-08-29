@@ -1,4 +1,92 @@
-export function TextureInspector() {
+import { useEffect, useRef, useSyncExternalStore, type FormEvent } from 'react';
+import type { EditorShellState, SurfaceFlagControl } from '../../editor-shell-state.js';
+
+function FlagCheckbox({
+  field,
+  flag,
+  shellState,
+}: {
+  readonly field: 'contents' | 'flags';
+  readonly flag: SurfaceFlagControl;
+  readonly shellState: EditorShellState;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (input.current) input.current.indeterminate = flag.mixed;
+  }, [flag.mixed]);
+  return (
+    <label>
+      <input
+        ref={input}
+        type="checkbox"
+        checked={flag.checked}
+        onChange={(event) =>
+          shellState.surfaceInspector.invoke(
+            'setFlag',
+            field,
+            flag.value,
+            event.currentTarget.checked,
+          )
+        }
+      />
+      {flag.label}
+    </label>
+  );
+}
+
+function SurfaceInspector({ shellState }: { readonly shellState: EditorShellState }) {
+  const snapshot = useSyncExternalStore(
+    shellState.surfaceInspector.subscribe,
+    shellState.surfaceInspector.getSnapshot,
+    shellState.surfaceInspector.getSnapshot,
+  );
+  if (!snapshot.visible) return null;
+  const submitValue = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const value = Number(data.get('surface-value'));
+    if (Number.isInteger(value)) shellState.surfaceInspector.invoke('setValue', value);
+  };
+  return (
+    <div className="surface-attributes inspector-section">
+      <h3>Quake II surface</h3>
+      <fieldset>
+        <legend>Contents</legend>
+        <div className="surface-flag-grid">
+          {snapshot.contents.map((flag) => (
+            <FlagCheckbox key={flag.name} field="contents" flag={flag} shellState={shellState} />
+          ))}
+        </div>
+        {snapshot.unknownContents ? <p>Unknown bits: {snapshot.unknownContents}</p> : null}
+      </fieldset>
+      <fieldset>
+        <legend>Surface flags</legend>
+        <div className="surface-flag-grid">
+          {snapshot.flags.map((flag) => (
+            <FlagCheckbox key={flag.name} field="flags" flag={flag} shellState={shellState} />
+          ))}
+        </div>
+        {snapshot.unknownFlags ? <p>Unknown bits: {snapshot.unknownFlags}</p> : null}
+      </fieldset>
+      <form onSubmit={submitValue} className="surface-value-form">
+        <label>
+          {snapshot.valueLabel}
+          <input
+            key={`${snapshot.value}:${snapshot.valueMixed}`}
+            name="surface-value"
+            type="number"
+            step={1}
+            defaultValue={snapshot.value}
+            placeholder={snapshot.valueMixed ? 'Mixed' : undefined}
+          />
+        </label>
+        <button type="submit">Apply</button>
+      </form>
+    </div>
+  );
+}
+
+export function TextureInspector({ shellState }: { readonly shellState: EditorShellState }) {
   return (
     <section data-inspector-panel="textures" hidden>
       <div className="panel-heading">
@@ -128,6 +216,7 @@ export function TextureInspector() {
           material only. Drag paints a chain; double-click affects the whole target brush.
         </p>
       </div>
+      <SurfaceInspector shellState={shellState} />
       <div className="material-section inspector-section">
         <div className="section-heading">
           <h3>Materials</h3>
