@@ -490,3 +490,11 @@ point rather than a replacement for the reference-hardware gate.
 A follow-up retained-edge drill measured single-brush selection in the same 8,000-brush document at
 12.0 ms versus 19.4 ms with world-buffer reuse disabled. The performance gate now records and caps
 selection independently so future scene refactors cannot hide selection latency inside load timing.
+
+GitHub-hosted CI keeps browser coverage deliberately bounded: `npm run test:browser:ci` runs a
+serial smoke set for routing and a real WebGPU-backed WebMCP edit/undo after the complete static,
+unit, build, package, and collaboration gate. Serial execution avoids competing SwiftShader devices
+on the small shared runner. `npm run test:browser` remains the full 90-test editor and viewer suite
+for the prepared Linux GPU host, while `npm run test:editor-performance`, local compatibility
+corpora, and `npm run test:collaboration-celld-live` remain explicit host verification rather than
+pretending shared CI hardware is a renderer or infrastructure reference machine.

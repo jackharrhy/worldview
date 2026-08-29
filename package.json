@@ -15,6 +15,7 @@
     "build": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/compiler-service && npm run build --workspace @worldview/collaboration-service && npm run build --workspace @worldview/viewer && npm run build --workspace @worldview/editor",
     "test": "npm run test --workspaces --if-present",
     "test:browser": "npm run build --workspace @jackharrhy/worldview && npm run test:consumer && playwright test",
+    "test:browser:ci": "npm run build --workspace @jackharrhy/worldview && npm run test:consumer && playwright test --grep @ci-smoke --workers=1",
     "test:editor-performance": "npm run build --workspace @jackharrhy/worldview-editor && WORLDVIEW_PERF_GATE=1 playwright test tests/browser/editor-performance.spec.ts --project=chromium",
     "test:collaboration-bakeoff": "node scripts/collaboration-bakeoff.mjs",
     "test:collaboration-celld-compat": "node scripts/check-celld-collaboration.mjs",

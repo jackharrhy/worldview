@@ -584,7 +584,7 @@ test.describe('WebMCP site authoring', () => {
     }
   });
 
-  test('uses a dedicated history-aware new-map page', async ({ page }) => {
+  test('uses a dedicated history-aware new-map page @ci-smoke', async ({ page }) => {
     const loadedScripts: string[] = [];
     page.on('request', (request) => {
       if (request.resourceType() === 'script') loadedScripts.push(request.url());
@@ -697,7 +697,7 @@ test.describe('WebMCP site authoring', () => {
     await expect(page.getByRole('button', { name: 'Versions', exact: true })).toBeVisible();
   });
 
-  test('registers first-class live tools with revision guards, visible edits, and undo', async ({
+  test('registers first-class live tools with revision guards, visible edits, and undo @ci-smoke', async ({
     page,
   }) => {
     await installSiteToolRegistry(page);
