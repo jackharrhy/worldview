@@ -1,10 +1,20 @@
 import tgpu, { type TgpuRenderPipeline, type TgpuRoot } from 'typegpu';
-import { lineFragment, lineVertex, solidFragment, solidVertex } from './gpu-shaders.js';
-import { lineVertexLayout, solidVertexLayout } from './gpu-schemas.js';
+import {
+  gridFragment,
+  gridVertex,
+  lineFragment,
+  lineVertex,
+  solidFragment,
+  solidVertex,
+} from './gpu-shaders.js';
+import { lineSegmentLayout, solidVertexLayout } from './gpu-schemas.js';
+
+export const EDITOR_SAMPLE_COUNT = 4;
 
 export interface EditorPipelines {
   readonly solid: TgpuRenderPipeline;
   readonly lines: TgpuRenderPipeline;
+  readonly grid: TgpuRenderPipeline;
 }
 
 export interface RendererGpuRuntime {
@@ -17,7 +27,9 @@ export interface RendererGpuRuntime {
 
 export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
   if (!navigator.gpu) throw new Error('This browser does not expose WebGPU');
-  const root = await tgpu.init({ adapter: { powerPreference: 'high-performance' } });
+  const root = await tgpu.init({
+    adapter: { powerPreference: 'high-performance' },
+  });
   const device = root.device;
   const format = navigator.gpu.getPreferredCanvasFormat();
   const materialSampler = root.createSampler({
@@ -37,25 +49,55 @@ export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
     },
     targets: { format },
     primitive: { topology: 'triangle-list', cullMode: 'none' },
-    depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' },
+    depthStencil: {
+      format: 'depth24plus',
+      depthWriteEnabled: true,
+      depthCompare: 'less',
+    },
+    multisample: { count: EDITOR_SAMPLE_COUNT },
   });
   const lines = root.createRenderPipeline({
     vertex: lineVertex,
     fragment: lineFragment,
     attribs: {
-      position: lineVertexLayout.attrib.position,
-      color: lineVertexLayout.attrib.color,
+      start: lineSegmentLayout.attrib.start,
+      startColor: lineSegmentLayout.attrib.startColor,
+      end: lineSegmentLayout.attrib.end,
+      endColor: lineSegmentLayout.attrib.endColor,
     },
     targets: { format },
-    primitive: { topology: 'line-list' },
-    depthStencil: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less-equal' },
+    primitive: { topology: 'triangle-list' },
+    depthStencil: {
+      format: 'depth24plus',
+      depthWriteEnabled: false,
+      depthCompare: 'less-equal',
+    },
+    multisample: { count: EDITOR_SAMPLE_COUNT },
   });
-  await Promise.all([solid.initAsync(), lines.initAsync()]);
+  const grid = root.createRenderPipeline({
+    vertex: gridVertex,
+    fragment: gridFragment,
+    targets: {
+      format,
+      blend: {
+        color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+        alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+      },
+    },
+    primitive: { topology: 'triangle-list' },
+    depthStencil: {
+      format: 'depth24plus',
+      depthWriteEnabled: false,
+      depthCompare: 'always',
+    },
+    multisample: { count: EDITOR_SAMPLE_COUNT },
+  });
+  await Promise.all([solid.initAsync(), lines.initAsync(), grid.initAsync()]);
   return {
     root,
     device,
     format,
-    pipelines: { solid, lines },
+    pipelines: { solid, lines, grid },
     materialSampler,
   };
 }

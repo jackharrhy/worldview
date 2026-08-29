@@ -5,7 +5,10 @@
 Four-view picking, camera navigation, brush/face/vertex/edge manipulation, lasso and paint
 selection, resize, clip, sweep, hull, shape, UV, and contextual 3D actions.
 Construction-grid coverage includes number-key selection, bracket stepping, snapped creation bounds,
-and undoable selected-brush or selected-face vertex snapping.
+undoable selected-brush or selected-face vertex snapping, and a fine screen-space perspective grid
+that remains visually subordinate to ordinary and selected brush edges while zooming.
+Selection drilling uses Ctrl/Command+wheel for objects in every viewport and adds Shift for faces;
+both directions wrap through overlapping candidates beneath the pointer.
 
 ## How to get to it (user POV)
 

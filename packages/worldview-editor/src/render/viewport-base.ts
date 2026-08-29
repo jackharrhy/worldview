@@ -16,7 +16,7 @@ import type {
 } from './types.js';
 import { scaleOverlayVertices, type SceneBuffers } from './scene-buffers.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
-import { gridVertices } from './scene-grid.js';
+import { adaptiveGridSpacing, gridVertices } from './scene-grid.js';
 import { boundsVisible } from './scene-visibility.js';
 import {
   addScaled,
@@ -47,18 +47,24 @@ import {
 } from './viewport-gesture-controllers.js';
 import { FlyCameraController } from './viewport/fly-camera-controller.js';
 import type { EditorRenderTheme } from './theme.js';
-import type { TgpuBindGroup, TgpuRoot, TgpuUniform } from 'typegpu';
+import { d, type TgpuBindGroup, type TgpuRoot, type TgpuUniform } from 'typegpu';
 import { editorSceneLayout, SceneUniform } from './gpu-schemas.js';
+import { EDITOR_SAMPLE_COUNT } from './renderer-gpu.js';
 export abstract class ViewportBase {
   protected abstract connectInput(): void;
   protected abstract cancelDrag(): void;
   protected readonly context: GPUCanvasContext;
   protected readonly uniform: TgpuUniform<typeof SceneUniform>;
   protected readonly bindGroup: TgpuBindGroup;
+  protected readonly gridUniform: TgpuUniform<typeof SceneUniform>;
+  protected readonly gridBindGroup: TgpuBindGroup;
+  protected readonly overlayUniform: TgpuUniform<typeof SceneUniform>;
+  protected readonly overlayBindGroup: TgpuBindGroup;
   protected grid: GPUBuffer;
   protected gridCount: number;
   protected readonly state: ViewportState;
   protected depth: GPUTexture | null = null;
+  protected color: GPUTexture | null = null;
   protected width = 0;
   protected height = 0;
   protected scaleOverlayScene: SceneBuffers | null = null;
@@ -86,16 +92,19 @@ export abstract class ViewportBase {
     return this.gestures.activeTracker?.drag ?? null;
   }
 
-  protected selectionHitAt(clientX: number, clientY: number): EditorObjectRayHit | null {
+  protected selectionHitsAt(clientX: number, clientY: number): readonly EditorObjectRayHit[] {
     const ray = this.rayAt(clientX, clientY);
     const hits = this.interaction.hitTests(ray.origin, ray.direction);
-    if (this.kind === 'perspective' || hits.length < 2) return hits[0] ?? null;
+    if (this.kind === 'perspective' || hits.length < 2) return hits;
 
     const axes: readonly [number, number] =
       this.kind === 'xy' ? [0, 1] : this.kind === 'xz' ? [0, 2] : [1, 2];
     const projectedFaceArea = (hit: EditorObjectRayHit): number => {
       if (isBrushRayHit(hit)) {
-        const face = this.interaction.faceHandle({ brushId: hit.brushId, faceId: hit.faceId });
+        const face = this.interaction.faceHandle({
+          brushId: hit.brushId,
+          faceId: hit.faceId,
+        });
         if (face && face.vertices.length >= 3) {
           let twiceArea = 0;
           for (let index = 0; index < face.vertices.length; index += 1) {
@@ -114,11 +123,14 @@ export abstract class ViewportBase {
         : Number.POSITIVE_INFINITY;
     };
 
-    return hits.reduce((best, hit) => {
-      const area = projectedFaceArea(hit);
-      const bestArea = projectedFaceArea(best);
-      return area < bestArea || (area === bestArea && hit.distance < best.distance) ? hit : best;
+    return hits.toSorted((left, right) => {
+      const areaDifference = projectedFaceArea(left) - projectedFaceArea(right);
+      return areaDifference !== 0 ? areaDifference : left.distance - right.distance;
     });
+  }
+
+  protected selectionHitAt(clientX: number, clientY: number): EditorObjectRayHit | null {
+    return this.selectionHitsAt(clientX, clientY)[0] ?? null;
   }
   protected readonly cancelOnEscape = (event: KeyboardEvent) => {
     if (
@@ -153,14 +165,42 @@ export abstract class ViewportBase {
     private readonly requestRender: () => void,
     private theme: EditorRenderTheme,
   ) {
-    const context = root.configureContext({ canvas, format, alphaMode: 'opaque' });
+    const context = root.configureContext({
+      canvas,
+      format,
+      alphaMode: 'opaque',
+    });
     canvas.tabIndex = 0;
     this.context = context;
     this.uniform = root.createUniform(SceneUniform, {
       projectionView: new Float32Array(16),
+      viewport: d.vec4f(1, 1, 1, 0),
+      grid: d.vec4f(0, 0, 1, gridSize),
+      gridMinor: d.vec4f(...theme.gridMinor, 0.62),
+      gridMajor: d.vec4f(...theme.gridMajor, 0.88),
     });
     this.bindGroup = root.createBindGroup(editorSceneLayout, {
       scene: this.uniform,
+    });
+    this.gridUniform = root.createUniform(SceneUniform, {
+      projectionView: new Float32Array(16),
+      viewport: d.vec4f(1, 1, 0.32, 0),
+      grid: d.vec4f(0, 0, 1, gridSize),
+      gridMinor: d.vec4f(...theme.gridMinor, 0.62),
+      gridMajor: d.vec4f(...theme.gridMajor, 0.88),
+    });
+    this.gridBindGroup = root.createBindGroup(editorSceneLayout, {
+      scene: this.gridUniform,
+    });
+    this.overlayUniform = root.createUniform(SceneUniform, {
+      projectionView: new Float32Array(16),
+      viewport: d.vec4f(1, 1, 0.9, 0),
+      grid: d.vec4f(0, 0, 1, gridSize),
+      gridMinor: d.vec4f(...theme.gridMinor, 0.62),
+      gridMajor: d.vec4f(...theme.gridMajor, 0.88),
+    });
+    this.overlayBindGroup = root.createBindGroup(editorSceneLayout, {
+      scene: this.overlayUniform,
     });
     const grid = gridVertices(kind, gridSize, theme);
     this.grid = uploadFloatBuffer(root.device, grid, GPUBufferUsage.VERTEX);
@@ -300,16 +340,40 @@ export abstract class ViewportBase {
     this.flyCamera.update();
     this.resize();
     this.positionTransformReadout();
-    if (!this.depth || this.width === 0 || this.height === 0) return false;
+    if (!this.depth || !this.color || this.width === 0 || this.height === 0) return false;
     if (!this.renderRequested && this.lastRenderedVersion === renderVersion) return false;
     this.updateScaleOverlay(scene);
     const matrix = this.projectionView();
-    this.uniform.write({ projectionView: matrix });
+    const unitsPerPixel = this.state.orthographicSpan / this.height;
+    const visibleGridSpacing = adaptiveGridSpacing(this.gridSize, unitsPerPixel);
+    const gridCenter: readonly [number, number] =
+      this.kind === 'xy'
+        ? [this.state.center[0], this.state.center[1]]
+        : this.kind === 'xz'
+          ? [this.state.center[0], this.state.center[2]]
+          : [this.state.center[1], this.state.center[2]];
+    const uniformValue = {
+      projectionView: matrix,
+      grid: d.vec4f(gridCenter[0], gridCenter[1], unitsPerPixel, visibleGridSpacing),
+      gridMinor: d.vec4f(...this.theme.gridMinor, 0.62),
+      gridMajor: d.vec4f(...this.theme.gridMajor, 0.88),
+    };
+    this.uniform.write({ ...uniformValue, viewport: d.vec4f(this.width, this.height, 0.55, 0) });
+    this.gridUniform.write({
+      ...uniformValue,
+      viewport: d.vec4f(this.width, this.height, 0.32, 0),
+    });
+    this.overlayUniform.write({
+      ...uniformValue,
+      viewport: d.vec4f(this.width, this.height, 0.9, 0),
+    });
+    const swapchainView = this.context.getCurrentTexture().createView();
     const pass = encoder.beginRenderPass({
       label: `Worldview ${this.kind} viewport`,
       colorAttachments: [
         {
-          view: this.context.getCurrentTexture().createView(),
+          view: this.color.createView(),
+          resolveTarget: swapchainView,
           loadOp: 'clear',
           storeOp: 'store',
           clearValue: {
@@ -327,6 +391,11 @@ export abstract class ViewportBase {
         depthClearValue: 1,
       },
     });
+    if (this.kind !== 'perspective') {
+      pass.setBindGroup(0, this.root.unwrap(this.gridBindGroup));
+      pass.setPipeline(this.root.unwrap(this.pipelines.grid));
+      pass.draw(3);
+    }
     pass.setBindGroup(0, this.root.unwrap(this.bindGroup));
     let activeMaterial: string | null = null;
     const bindMaterial = (name: string) => {
@@ -356,27 +425,34 @@ export abstract class ViewportBase {
       }
     }
     pass.setPipeline(this.root.unwrap(this.pipelines.lines));
-    pass.setVertexBuffer(0, this.grid);
-    pass.draw(this.gridCount);
-    if (this.kind === 'perspective' && scene.perspectiveGridCount > 0) {
-      pass.setVertexBuffer(0, scene.perspectiveGrid);
-      pass.draw(scene.perspectiveGridCount);
+    if (this.kind === 'perspective') {
+      pass.setBindGroup(0, this.root.unwrap(this.gridBindGroup));
+      pass.setVertexBuffer(0, this.grid);
+      pass.draw(6, this.gridCount / 2);
     }
+    if (this.kind === 'perspective' && scene.perspectiveGridCount > 0) {
+      pass.setBindGroup(0, this.root.unwrap(this.gridBindGroup));
+      pass.setVertexBuffer(0, scene.perspectiveGrid);
+      pass.draw(6, scene.perspectiveGridCount / 2);
+    }
+    pass.setBindGroup(0, this.root.unwrap(this.bindGroup));
     if (scene.lineCount > 0) {
       pass.setVertexBuffer(0, scene.lines);
-      pass.draw(scene.lineCount);
+      pass.draw(6, scene.lineCount / 2);
     }
     if (scene.remoteLineCount > 0) {
       pass.setVertexBuffer(0, scene.remoteLines);
-      pass.draw(scene.remoteLineCount);
+      pass.draw(6, scene.remoteLineCount / 2);
     }
     if (scene.overlayLineCount > 0) {
+      pass.setBindGroup(0, this.root.unwrap(this.overlayBindGroup));
       pass.setVertexBuffer(0, scene.overlayLines);
-      pass.draw(scene.overlayLineCount);
+      pass.draw(6, scene.overlayLineCount / 2);
     }
     if (this.scaleOverlay && this.scaleOverlayCount > 0) {
+      pass.setBindGroup(0, this.root.unwrap(this.overlayBindGroup));
       pass.setVertexBuffer(0, this.scaleOverlay);
-      pass.draw(this.scaleOverlayCount);
+      pass.draw(6, this.scaleOverlayCount / 2);
     }
     pass.end();
     this.renderRequested = false;
@@ -390,8 +466,11 @@ export abstract class ViewportBase {
     this.removeHandleLasso();
     this.hideTransformReadout();
     this.depth?.destroy();
+    this.color?.destroy();
     this.scaleOverlay?.destroy();
     this.uniform.buffer.destroy();
+    this.gridUniform.buffer.destroy();
+    this.overlayUniform.buffer.destroy();
     this.grid.destroy();
     if (this.pendingFaceTransferClick !== null) window.clearTimeout(this.pendingFaceTransferClick);
     if (this.faceTransferSequenceReset !== null)
@@ -448,9 +527,17 @@ export abstract class ViewportBase {
     this.canvas.width = width;
     this.canvas.height = height;
     this.depth?.destroy();
+    this.color?.destroy();
     this.depth = this.root.device.createTexture({
       size: [width, height],
       format: 'depth24plus',
+      sampleCount: EDITOR_SAMPLE_COUNT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    this.color = this.root.device.createTexture({
+      size: [width, height],
+      format: this.format,
+      sampleCount: EDITOR_SAMPLE_COUNT,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
   }

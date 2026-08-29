@@ -16,7 +16,13 @@ Loads the real editor, registers its WebMCP tools, performs select/translate/und
 }
 
 function argumentsFrom(argv) {
-  const result = { build: true, headed: false, map: null, evidence: null, url: null };
+  const result = {
+    build: true,
+    headed: false,
+    map: null,
+    evidence: null,
+    url: null,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--help') return { ...result, help: true };
@@ -97,7 +103,11 @@ async function sourceDigest(page) {
     let offset = 0;
     let text = '';
     while (true) {
-      const part = await tool.execute({ mode: 'save', offset, maxChars: 100_000 });
+      const part = await tool.execute({
+        mode: 'save',
+        offset,
+        maxChars: 100_000,
+      });
       if (typeof part.text !== 'string') throw new Error(`Save source is ${part.saveStatus}`);
       text += part.text;
       offset += part.text.length;
@@ -126,7 +136,12 @@ await mkdir(evidence, { recursive: true });
 let vite = null;
 let browser = null;
 const browserLog = [];
-const report = { startedAt: new Date().toISOString(), evidence, input: {}, actions: [] };
+const report = {
+  startedAt: new Date().toISOString(),
+  evidence,
+  input: {},
+  actions: [],
+};
 const cleanup = async () => {
   await browser?.close().catch(() => {});
   browser = null;
@@ -184,7 +199,9 @@ try {
       '--enable-unsafe-webgpu',
     ],
   });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+  });
   page.on('console', (message) => browserLog.push({ type: message.type(), text: message.text() }));
   page.on('pageerror', (error) =>
     browserLog.push({ type: 'pageerror', text: error.stack ?? error.message }),
@@ -216,8 +233,12 @@ try {
     report.actions.push({ action: 'create-default-map-from-workspace' });
   }
   await page.locator('html[data-worldview-editor-ready="true"]').waitFor({ timeout: 30_000 });
-  if (await page.locator('.viewport-error').isVisible())
-    throw new Error('Viewport error is visible');
+  if (await page.locator('.viewport-error').isVisible()) {
+    const viewportError = await page.locator('.viewport-error').textContent();
+    throw new Error(
+      `Viewport error is visible: ${viewportError?.trim() || 'unknown renderer error'}`,
+    );
+  }
   await page
     .locator('html[data-worldview-site-tools="ready"][data-worldview-site-tool-count="21"]')
     .waitFor();
@@ -259,7 +280,10 @@ try {
   }
 
   const before = await sourceDigest(page);
-  const listed = await executeTool(page, 'worldview_list_objects', { kind: 'brush', limit: 1 });
+  const listed = await executeTool(page, 'worldview_list_objects', {
+    kind: 'brush',
+    limit: 1,
+  });
   const brush = listed.objects?.[0];
   if (!brush) throw new Error('Loaded document has no editable brush to verify');
   await executeTool(page, 'worldview_select', {
@@ -298,6 +322,17 @@ try {
   };
   if (!report.source.restoredExactly) throw new Error('Undo did not restore the exact save source');
   await page.screenshot({ path: `${evidence}/03-undone.png`, fullPage: true });
+
+  const gpuValidationMessages = browserLog.filter(
+    (entry) =>
+      entry.type === 'warning' &&
+      /(invalid commandbuffer|attachment state|while encoding|while calling \[queue\])/i.test(
+        entry.text,
+      ),
+  );
+  if (gpuValidationMessages.length > 0) {
+    throw new Error(`WebGPU validation failed: ${gpuValidationMessages[0].text}`);
+  }
 
   report.finishedAt = new Date().toISOString();
   report.status = 'passed';

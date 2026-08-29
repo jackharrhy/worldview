@@ -371,29 +371,43 @@ export class Viewport extends ViewportPointerMove {
       (event) => {
         event.preventDefault();
         if (
-          this.kind === 'perspective' &&
           this.interaction.currentTool() === 'select' &&
           (event.ctrlKey || event.metaKey) &&
-          !event.shiftKey
+          event.deltaY !== 0
         ) {
           const selection = this.interaction.currentSelection();
-          if (!selection || selection.faceId || event.deltaY === 0) return;
+          const faceDrill = event.shiftKey;
+          if (!selection || faceDrill !== Boolean(selection.faceId)) return;
           const ray = this.rayAt(event.clientX, event.clientY);
-          const hits = this.interaction.hitTests(ray.origin, ray.direction);
-          const selectedIndex = hits.findIndex((hit) =>
-            isBrushRayHit(hit)
+          const hits = faceDrill
+            ? this.interaction.hitTests(ray.origin, ray.direction).filter(isBrushRayHit)
+            : this.selectionHitsAt(event.clientX, event.clientY);
+          const selectedIndex = hits.findIndex((hit) => {
+            if (faceDrill)
+              return (
+                isBrushRayHit(hit) &&
+                hit.brushId === selection.brushId &&
+                hit.faceId === selection.faceId
+              );
+            return isBrushRayHit(hit)
               ? hit.brushId === selection.brushId
-              : hit.entityId === selection.entityId,
-          );
+              : hit.entityId === selection.entityId;
+          });
           if (selectedIndex < 0) return;
           const direction = event.deltaY < 0 ? 'farther' : 'nearer';
-          const next = hits[selectedIndex + (direction === 'farther' ? 1 : -1)];
-          if (!next) return;
-          this.interaction.pick(selectionForHit(next), this.kind, {
+          const offset = direction === 'farther' ? 1 : -1;
+          const next = hits[(selectedIndex + offset + hits.length) % hits.length];
+          if (!next || hits.length < 2) return;
+          const nextSelection =
+            faceDrill && isBrushRayHit(next)
+              ? { brushId: next.brushId, faceId: next.faceId }
+              : selectionForHit(next);
+          this.interaction.pick(nextSelection, this.kind, {
             additive: false,
             expansion: 'single',
             objectExpansion: 'single',
             drill: direction,
+            drillTarget: faceDrill ? 'face' : 'object',
           });
           return;
         }

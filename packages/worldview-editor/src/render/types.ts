@@ -42,8 +42,10 @@ export interface EditorPickIntent {
   readonly paint?: boolean;
   /** Activates a group on double-click, or selects every brush owned by an ungrouped brush entity. */
   readonly objectExpansion?: 'single' | 'siblings' | 'activate';
-  /** The hit was reached by Ctrl/Command-wheel selection drilling in the 3D viewport. */
+  /** The hit was reached by Ctrl/Command-wheel selection drilling beneath the pointer. */
   readonly drill?: 'farther' | 'nearer';
+  /** Distinguishes ordinary object drilling from Shift-modified face drilling. */
+  readonly drillTarget?: 'object' | 'face';
 }
 
 export type EditorBrushDragPhase = 'preview' | 'commit' | 'cancel';

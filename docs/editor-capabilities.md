@@ -322,9 +322,11 @@ creation. The inspector exposes the same operation at an exact signed distance. 
 as a behavior oracle; no TrenchBroom implementation source is adapted. Collision-aware walk
 navigation remains planned.
 
-Object selection keeps every perspective brush and point-entity ray hit in distance order. Ctrl/Command-wheel
-replaces the primary object with the next farther or nearer hit under the pointer without moving the
-camera, making fully occluded brushwork or entities reachable in 3D. Ctrl/Command-drag beginning on
+Object selection retains every editable hit beneath the pointer. Ctrl/Command-wheel replaces the
+primary object with the next candidate without moving the camera and wraps at either end. Perspective
+uses distance order; orthographic views use the same smallest-projected-area order as ordinary
+clicking. Adding Shift drills the depth-ordered brush-face candidates instead, making otherwise
+occluded faces reachable in every viewport. Ctrl/Command-drag beginning on
 an unselected object paint-selects each previously unselected brush or point entity crossed by the
 pointer and never toggles the same object twice when the path doubles back. Double-clicking a brush owned by a
 non-world brush entity selects all of that entity's sibling brushes, with Ctrl/Command preserving
@@ -884,7 +886,7 @@ hull when a moved corner requires face chopping, fusion, or removal. Shift+Alt t
 viewport-aware arrow-key component nudging now reuse that hull path and remap the selected handles
 after each atomic commit. Face handles now share the same keyboard movement mapping, and component,
 tool, and object cancellation follow the manual's staged Escape behavior.
-Continuous object paint selection, perspective selection drilling, brush-entity sibling expansion,
+Continuous object paint selection, reversible object/face selection drilling, brush-entity sibling expansion,
 and stable-ID duplicate-and-move gestures now extend the object-set boundary without adding derived
 interaction state to the document.
 Macro-like command repetition now records object duplicate, translate, rotate, mirror, scale, and

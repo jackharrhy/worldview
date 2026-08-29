@@ -132,6 +132,21 @@ function drillSelectionSource(): string {
   });
 }
 
+function orthographicDrillSelectionSource(): string {
+  const ids = createSequentialIdFactory('browser-orthographic-selection-drill');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const lowerWall = createBoxBrush([-96, -96, 0], [96, 96, 64], 'DRILL_WALL', ids);
+  const upperDetail = createBoxBrush([-32, -32, 128], [32, 32, 192], 'DRILL_DETAIL', ids);
+  return serializeMap({
+    ...starter,
+    entities: [
+      { ...worldspawn, primitives: [lowerWall, upperDetail] },
+      ...starter.entities.slice(1),
+    ],
+  });
+}
+
 function brushEntitySiblingSource(): string {
   const ids = createSequentialIdFactory('browser-brush-entity');
   const starter = createStarterDocument();
@@ -1687,13 +1702,66 @@ test.describe('3D source authoring', () => {
     await page.mouse.wheel(0, -120);
     await page.keyboard.up('Control');
     await expect(page.locator('#brush-bounds')).toHaveText('16 -72 48 to 64 -24 96');
-    await expect(page.locator('#status-message')).toContainText('Drilled selection farther');
+    await expect(page.locator('#status-message')).toContainText(
+      'Drilled object selection farther in the PERSPECTIVE view',
+    );
 
     await page.keyboard.down('Control');
     await page.mouse.wheel(0, 120);
     await page.keyboard.up('Control');
     await expect(page.locator('#brush-bounds')).toHaveText('72 -136 88 to 120 -88 136');
-    await expect(page.locator('#status-message')).toContainText('Drilled selection nearer');
+    await expect(page.locator('#status-message')).toContainText(
+      'Drilled object selection nearer in the PERSPECTIVE view',
+    );
+  });
+
+  test('wheel drilling reaches overlapping objects and faces in an orthographic view', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(orthographicDrillSelectionSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const center = await topWorldPoint(page, 0, 0);
+
+    await page.mouse.click(center.x, center.y);
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 128 to 32 32 192');
+
+    await page.keyboard.down('Control');
+    await page.mouse.move(center.x, center.y);
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -96 0 to 96 96 64');
+    await expect(page.locator('#status-message')).toContainText(
+      'Drilled object selection farther in the XY view',
+    );
+
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 128 to 32 32 192');
+
+    await page.keyboard.down('Shift');
+    await page.mouse.click(center.x, center.y);
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Shift');
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Shift');
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -96 0 to 96 96 64');
+    await expect(page.locator('#status-message')).toContainText(
+      'Drilled face selection farther in the XY view',
+    );
+
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Shift');
+    await page.mouse.wheel(0, 120);
+    await page.keyboard.up('Shift');
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 128 to 32 32 192');
   });
 
   test('double-click selects every brush owned by one brush entity', async ({ page }) => {

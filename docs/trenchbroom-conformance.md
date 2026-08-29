@@ -23,8 +23,13 @@ A future view preference may make faces configurable, but the default stays wire
 The editable renderer now shares the viewer's native TypeGPU architecture: authored TypeScript GPU
 functions and typed schemas own shaders, layouts, pipelines, uniforms, textures, samplers, and bind
 groups. Command encoding and large retained vertex uploads intentionally remain at the raw WebGPU
-boundary. This clean cut precedes multisampling, screen-space editor lines, and shader-rendered
-adaptive grids so those visual passes do not extend the removed raw-WGSL architecture.
+boundary. The first visual-quality pass on that foundation now uses four-sample render targets,
+screen-space triangle strips for consistent editor edges, and a derivative-antialiased orthographic
+grid generated in the fragment shader. Grid, ordinary geometry, and interaction overlays use
+separate screen-space widths: perspective grid lines remain fine at every camera distance while
+selection feedback stays prominent. The grid preserves the selected snap interval and promotes its
+visible interval by powers of two when zoomed out, keeping geometry aligned while preventing
+dense-grid shimmer.
 
 ### Visual selection audit
 
@@ -140,11 +145,18 @@ TrenchBroom's resize contract and Radiant's older wording: the face nearest the 
 the currently selected brush.
 
 Ordinary object picking intentionally differs by viewport. Perspective keeps ray-depth ordering,
-so the frontmost object wins and selection drilling reaches objects behind it. XY, XZ, and YZ first
+so the frontmost object wins. XY, XZ, and YZ first
 collect every editable object under the pointer, then choose the object whose hit face has the
 smallest projected area; point entities fall back to projected bounds. Equal areas retain depth as
 the tie-breaker. This makes a small brush behind a wall selectable from an orthographic view without
 changing geometric hit rules for clip, hull, face, or topology tools.
+
+Ctrl/Command-wheel drills through the complete object candidate order in either direction and wraps
+in every viewport; Shift+Ctrl/Command-wheel drills through depth-ordered face candidates. TrenchBroom
+provides reversible object drilling with Ctrl+wheel and its 2D smallest-area heuristic. GtkRadiant's
+Shift+Alt click cycling confirms the value of an explicit orthographic drill gesture. Worldview uses
+one wheel-based vocabulary for objects and faces rather than stateful repeated clicks. These GPL
+projects informed behavior only; their implementations were not adapted.
 
 ## Controller ownership
 

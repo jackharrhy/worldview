@@ -216,6 +216,9 @@ while rejecting degenerate convex results.
 Brush drawing is not exposed as a separate modal toolbar mode. Shift-resize can acquire the hidden
 adjacent face from a narrow screen-space band outside a selected brush's silhouette, while direct
 face hits and ordinary internal edges retain their normal priority.
+Ctrl/Command-wheel reversibly drills through overlapping object candidates in every viewport;
+adding Shift drills through depth-ordered face candidates. Candidate traversal wraps, retains the
+normal perspective-depth or orthographic-smallest-area ordering, and does not alter the document.
 
 Editor theming has one CSS-owned color source. Shell, panel, inspector, dialog, border, SVG, and
 viewport-chrome colors consume custom properties whose concrete palette values use OKLCH. The app
@@ -242,8 +245,15 @@ tool, group, link-mode, and diagnostic changes; those states draw through a sepa
 buffer. Document/reference/visibility/theme changes rebuild world edges, while document edits still
 retain unchanged spatial solid batches. Each viewport redraws only when its camera, dimensions,
 grid, or the shared scene version changes. Material catalog changes retain GPU textures and bind groups for
-unchanged immutable material entries and replace only changed or removed names. The application
-schedules frames on demand and runs continuously only
+unchanged immutable material entries and replace only changed or removed names. Editor viewports
+render into four-sample color and depth targets before resolving to each canvas. World and overlay
+segments expand into pixel-width triangle strips in the TypeGPU vertex stage, giving stable
+antialiased edges independently of camera distance. Grid, ordinary-edge, and interaction-overlay
+draws use distinct screen-space widths so construction lines stay subordinate during close camera
+movement. Orthographic grids are generated directly in a
+derivative-antialiased fragment pass; the displayed interval promotes by powers of two below an
+eight-pixel readability threshold without changing the active snap size. The application schedules
+frames on demand and runs continuously only
 during fly-camera movement. All invalidated viewport passes encode into one command buffer and use
 one queue submission per editor frame. Pipeline compilation uses WebGPU's asynchronous API, the
 editor requests the high-performance adapter preference, and unexpected device loss becomes a
