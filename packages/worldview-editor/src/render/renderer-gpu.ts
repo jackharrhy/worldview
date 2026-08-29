@@ -4,6 +4,8 @@ import {
   gridVertex,
   lineFragment,
   lineVertex,
+  occludedLineFragment,
+  selectionFragment,
   solidFragment,
   solidVertex,
 } from './gpu-shaders.js';
@@ -13,7 +15,9 @@ export const EDITOR_SAMPLE_COUNT = 4;
 
 export interface EditorPipelines {
   readonly solid: TgpuRenderPipeline;
+  readonly selectionSolid: TgpuRenderPipeline;
   readonly lines: TgpuRenderPipeline;
+  readonly occludedLines: TgpuRenderPipeline;
   readonly grid: TgpuRenderPipeline;
 }
 
@@ -74,6 +78,53 @@ export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
     },
     multisample: { count: EDITOR_SAMPLE_COUNT },
   });
+  const selectionSolid = root.createRenderPipeline({
+    vertex: solidVertex,
+    fragment: selectionFragment,
+    attribs: {
+      position: solidVertexLayout.attrib.position,
+      color: solidVertexLayout.attrib.color,
+      uv: solidVertexLayout.attrib.uv,
+    },
+    targets: {
+      format,
+      blend: {
+        color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+        alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+      },
+    },
+    primitive: { topology: 'triangle-list', cullMode: 'none' },
+    depthStencil: {
+      format: 'depth24plus',
+      depthWriteEnabled: false,
+      depthCompare: 'less-equal',
+    },
+    multisample: { count: EDITOR_SAMPLE_COUNT },
+  });
+  const occludedLines = root.createRenderPipeline({
+    vertex: lineVertex,
+    fragment: occludedLineFragment,
+    attribs: {
+      start: lineSegmentLayout.attrib.start,
+      startColor: lineSegmentLayout.attrib.startColor,
+      end: lineSegmentLayout.attrib.end,
+      endColor: lineSegmentLayout.attrib.endColor,
+    },
+    targets: {
+      format,
+      blend: {
+        color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+        alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+      },
+    },
+    primitive: { topology: 'triangle-list' },
+    depthStencil: {
+      format: 'depth24plus',
+      depthWriteEnabled: false,
+      depthCompare: 'always',
+    },
+    multisample: { count: EDITOR_SAMPLE_COUNT },
+  });
   const grid = root.createRenderPipeline({
     vertex: gridVertex,
     fragment: gridFragment,
@@ -92,12 +143,18 @@ export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
     },
     multisample: { count: EDITOR_SAMPLE_COUNT },
   });
-  await Promise.all([solid.initAsync(), lines.initAsync(), grid.initAsync()]);
+  await Promise.all([
+    solid.initAsync(),
+    selectionSolid.initAsync(),
+    lines.initAsync(),
+    occludedLines.initAsync(),
+    grid.initAsync(),
+  ]);
   return {
     root,
     device,
     format,
-    pipelines: { solid, lines, grid },
+    pipelines: { solid, selectionSolid, lines, occludedLines, grid },
     materialSampler,
   };
 }

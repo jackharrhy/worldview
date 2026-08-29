@@ -58,6 +58,7 @@ import { brushSolidSignature, SolidBatchBuilder, type SolidBatch } from './scene
 import { LineBatchBuilder } from './scene-line-batches.js';
 import { DEFAULT_EDITOR_RENDER_THEME, type EditorRenderTheme } from './theme.js';
 import { buildRemotePresenceBuffer } from './remote-presence-buffers.js';
+import { buildSelectionOverlayBuffers } from './selection-overlay-buffers.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
 import type { SceneBuffers } from './scene-types.js';
 import { appendNonBrushPrimitives } from './scene-nonbrush-primitives.js';
@@ -361,11 +362,9 @@ export function buildSceneBuffers(
         ? theme.referenceEdge
         : locked
           ? theme.edgeLocked
-          : selectedObject
-            ? theme.edgeSelected
-            : hoveredObject
-              ? theme.edgeHover
-              : theme.edge;
+          : hoveredObject
+            ? theme.edgeHover
+            : theme.edge;
       if (!reuseWorld && derived.bounds) {
         const baseColor = reference ? theme.referenceEdge : locked ? theme.edgeLocked : theme.edge;
         lineBatches?.add(
@@ -391,7 +390,7 @@ export function buildSceneBuffers(
           },
         );
       }
-      if (selectedObject || hoveredObject)
+      if (hoveredObject && !selectedObject)
         for (const edge of derived.edges) {
           overlayLines.push(
             edge.start[0] + offset[0],
@@ -703,11 +702,25 @@ export function buildSceneBuffers(
   }
   const remote = reuseWorld
     ? {
-        buffer: previousScene.remoteLines,
-        count: previousScene.remoteLineCount,
+        lines: previousScene.remoteLines,
+        lineCount: previousScene.remoteLineCount,
         solids: previousScene.remoteSolids,
       }
     : buildRemotePresenceBuffer(device, remotePresence, entityDefinitions);
+  const localSelection = buildSelectionOverlayBuffers(
+    device,
+    selection
+      ? [
+          {
+            key: 'local',
+            color: theme.edgeSelected,
+            document,
+            objectIds: [...selectedBrushIds(selection), ...selectedPointEntityIds(selection)],
+          },
+        ]
+      : [],
+    entityDefinitions,
+  );
   const solids = solidBatches?.finish(device) ?? previousScene!.solids;
   return {
     solids,
@@ -723,8 +736,11 @@ export function buildSceneBuffers(
       'Worldview overlays',
     ),
     overlayLineCount: overlayLines.length / 6,
-    remoteLines: remote.buffer,
-    remoteLineCount: remote.count,
+    selectionLines: localSelection.lines,
+    selectionLineCount: localSelection.lineCount,
+    selectionSolids: localSelection.solids,
+    remoteLines: remote.lines,
+    remoteLineCount: remote.lineCount,
     remoteSolids: remote.solids,
     perspectiveGrid: uploadFloatBuffer(
       device,

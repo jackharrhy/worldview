@@ -9,6 +9,9 @@ export interface SceneBuffers {
   readonly lineCount: number;
   readonly overlayLines: GPUBuffer;
   readonly overlayLineCount: number;
+  readonly selectionLines: GPUBuffer;
+  readonly selectionLineCount: number;
+  readonly selectionSolids: readonly SolidBatch[];
   readonly remoteLines: GPUBuffer;
   readonly remoteLineCount: number;
   readonly remoteSolids: readonly SolidBatch[];

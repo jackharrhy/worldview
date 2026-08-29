@@ -430,7 +430,10 @@ an unbounded pointer-event backlog.
 Public collaboration is available only to hosted maps. A 4orm-backed Worldview session must have a
 project role before the application service issues its short-lived room ticket; the room Worker
 rejects non-hosted rooms and invalid tickets. Local maps remain offline and never contact the room
-service. Colored presence overlays show selections, world-space pointers, active viewports, and
+service. Local and remote brush selections share one renderer treatment: real materials remain
+visible beneath a restrained participant-colored face tint, visible edges remain crisp, and a
+translucent depth-independent edge pass preserves the complete silhouette behind other geometry.
+Colored presence overlays show selections, world-space pointers, active viewports, and
 in-progress transform, face, topology, and creation candidates. Those candidates travel as lossy
 sequenced semantic patches and never become document, history, outbox, or persisted room state.
 

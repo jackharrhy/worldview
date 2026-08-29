@@ -37,6 +37,10 @@ export function solidFragment(input: SolidFragmentInput): d.v4f {
   if (editorMaterialLayout.$.material.settings.y > 0.5 && sampled.a < 0.5) std.discard();
   return d.vec4f(std.mix(input.color, sampled.rgb, editorMaterialLayout.$.material.settings.x), 1);
 }
+export function selectionFragment(input: SolidFragmentInput): d.v4f {
+  'use gpu';
+  return d.vec4f(input.color, 0.22);
+}
 export function lineVertex(input: LineVertexInput) {
   'use gpu';
   const start = editorSceneLayout.$.scene.projectionView.mul(d.vec4f(input.start, 1));
@@ -91,6 +95,10 @@ export function lineVertex(input: LineVertexInput) {
 export function lineFragment(input: { readonly color: d.v3f }): d.v4f {
   'use gpu';
   return d.vec4f(input.color, 1);
+}
+export function occludedLineFragment(input: { readonly color: d.v3f }): d.v4f {
+  'use gpu';
+  return d.vec4f(input.color, 0.4);
 }
 
 export function gridVertex(input: { readonly $vertexIndex: number }) {

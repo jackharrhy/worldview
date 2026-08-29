@@ -415,11 +415,13 @@ export abstract class ViewportBase {
         pass.draw(batch.count);
       }
     }
-    if (this.kind === 'perspective' && scene.remoteSolids.length > 0) {
-      pass.setPipeline(this.root.unwrap(this.pipelines.solid));
-      for (const batch of scene.remoteSolids) {
+    if (
+      this.kind === 'perspective' &&
+      (scene.selectionSolids.length > 0 || scene.remoteSolids.length > 0)
+    ) {
+      pass.setPipeline(this.root.unwrap(this.pipelines.selectionSolid));
+      for (const batch of [...scene.selectionSolids, ...scene.remoteSolids]) {
         if (!boundsVisible(matrix, batch.bounds)) continue;
-        bindMaterial(batch.materialName);
         pass.setVertexBuffer(0, batch.buffer);
         pass.draw(batch.count);
       }
@@ -444,6 +446,22 @@ export abstract class ViewportBase {
     if (scene.lineCount > 0) {
       pass.setVertexBuffer(0, scene.lines);
       pass.draw(6, scene.lineCount / 2);
+    }
+    if (scene.selectionLineCount > 0 || scene.remoteLineCount > 0) {
+      pass.setPipeline(this.root.unwrap(this.pipelines.occludedLines));
+      if (scene.selectionLineCount > 0) {
+        pass.setVertexBuffer(0, scene.selectionLines);
+        pass.draw(6, scene.selectionLineCount / 2);
+      }
+      if (scene.remoteLineCount > 0) {
+        pass.setVertexBuffer(0, scene.remoteLines);
+        pass.draw(6, scene.remoteLineCount / 2);
+      }
+      pass.setPipeline(this.root.unwrap(this.pipelines.lines));
+    }
+    if (scene.selectionLineCount > 0) {
+      pass.setVertexBuffer(0, scene.selectionLines);
+      pass.draw(6, scene.selectionLineCount / 2);
     }
     if (scene.remoteLineCount > 0) {
       pass.setVertexBuffer(0, scene.remoteLines);
