@@ -1,4 +1,17 @@
-import type { Bounds, BrushId, FaceSelection, TransformAxis, Vec3 } from '../core/index.js';
+import {
+  brushVertices,
+  deriveBrush,
+  findBrush,
+  selectedBrushIds,
+  selectedFaceReferences,
+  type Bounds,
+  type BrushId,
+  type EditorSelection,
+  type FaceSelection,
+  type MapDocument,
+  type TransformAxis,
+  type Vec3,
+} from '../core/index.js';
 import type {
   EditorTool,
   EditorTopologyKind,
@@ -19,6 +32,87 @@ export interface FaceHandle {
   readonly selection: FaceSelection;
   readonly center: Vec3;
   readonly normal: Vec3;
+  readonly vertices: readonly Vec3[];
+}
+
+export function availableTopologyHandles(
+  document: MapDocument,
+  selection: EditorSelection | null,
+  kind: EditorTopologyKind,
+): readonly TopologyHandle[] {
+  if (!selection || selection.faceId) return [];
+  const handles = new Map<string, TopologyHandle>();
+  for (const brushId of selectedBrushIds(selection)) {
+    const brush = findBrush(document, brushId);
+    if (!brush) continue;
+    const candidates: readonly TopologyHandle[] =
+      kind === 'vertex'
+        ? brushVertices(brush).map((point) => ({
+            kind,
+            center: point,
+            vertices: [point],
+            key: topologyHandleKey(kind, [point]),
+            brushIds: [brush.id],
+          }))
+        : deriveBrush(brush).edges.map((edge) => {
+            const vertices = [edge.start, edge.end] as const;
+            return {
+              kind,
+              vertices,
+              key: topologyHandleKey(kind, vertices),
+              brushIds: [brush.id],
+              center: [
+                (vertices[0][0] + vertices[1][0]) / 2,
+                (vertices[0][1] + vertices[1][1]) / 2,
+                (vertices[0][2] + vertices[1][2]) / 2,
+              ],
+            };
+          });
+    for (const handle of candidates) {
+      const existing = handles.get(handle.key);
+      handles.set(
+        handle.key,
+        existing
+          ? {
+              ...existing,
+              brushIds: [...new Set([...existing.brushIds, brush.id])],
+            }
+          : handle,
+      );
+    }
+  }
+  return [...handles.values()];
+}
+
+export function availableFaceHandles(
+  document: MapDocument,
+  selection: EditorSelection | null,
+): readonly FaceHandle[] {
+  if (!selection) return [];
+  const brushIds = selection.faceId
+    ? [...new Set(selectedFaceReferences(selection).map((face) => face.brushId))]
+    : selectedBrushIds(selection);
+  return brushIds.flatMap((brushId) => {
+    const brush = findBrush(document, brushId);
+    if (!brush) return [];
+    return deriveBrush(brush).faces.map((face) => {
+      const sum = face.vertices.reduce<[number, number, number]>(
+        (total, point) => [total[0] + point[0], total[1] + point[1], total[2] + point[2]],
+        [0, 0, 0],
+      );
+      const center: Vec3 = [
+        sum[0] / face.vertices.length,
+        sum[1] / face.vertices.length,
+        sum[2] / face.vertices.length,
+      ];
+      return {
+        selection: { brushId, faceId: face.faceId },
+        center,
+        normal: face.normal,
+        vertices: face.vertices,
+      };
+    });
+  });
 }
 
 export type ScaleSide = -1 | 0 | 1;

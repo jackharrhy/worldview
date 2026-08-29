@@ -199,6 +199,7 @@ export function convexMergeBrushes(
   if (hull.length < 4) throw new Error('Convex merge requires a three-dimensional hull');
   return assertCsgBrush(
     {
+      kind: 'brush',
       id: ids.brush(),
       revision: 0,
       faces: hull.map((candidate) =>
@@ -232,6 +233,7 @@ export function createConvexHullBrush(
   if (hull.length < 4) throw new Error('Hull points must enclose a three-dimensional volume');
   return assertCsgBrush(
     {
+      kind: 'brush',
       id: ids.brush(),
       revision: 0,
       faces: hull.map<MapFace>((candidate) => ({
@@ -321,6 +323,7 @@ export function hollowBrush(
     throw new Error('Hollow wall thickness must be a positive finite number');
   }
   const inner: MapBrush = {
+    kind: 'brush',
     id: ids.brush(),
     revision: 0,
     faces: brush.faces.map((face) => {

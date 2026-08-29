@@ -314,7 +314,7 @@ export function transformPointEntityAffine(
     throw new Error('Point entity affine transform values must be finite');
   }
   const origin = parseEntityOrigin(entity);
-  if (!origin || entity.brushes.length > 0) {
+  if (!origin || entity.primitives.length > 0) {
     throw new Error(`Entity ${entity.id} is not a point entity`);
   }
   const transformedOrigin = multiplyMatrixVector(linear, origin);
@@ -341,7 +341,7 @@ export function rotatePointEntity(
     throw new Error('Point entity rotation values must be finite');
   }
   const origin = parseEntityOrigin(entity);
-  if (!origin || entity.brushes.length > 0)
+  if (!origin || entity.primitives.length > 0)
     throw new Error(`Entity ${entity.id} is not a point entity`);
   const relativeBounds = pointEntityDefinition(entity.properties.classname ?? '').bounds;
   if (
@@ -370,7 +370,7 @@ export function flipPointEntity(
 ): MapEntity {
   if (!pivot.every(Number.isFinite)) throw new Error('Point entity flip pivot must be finite');
   const origin = parseEntityOrigin(entity);
-  if (!origin || entity.brushes.length > 0)
+  if (!origin || entity.primitives.length > 0)
     throw new Error(`Entity ${entity.id} is not a point entity`);
   const transformation = flipMatrix(axis);
   const properties: Record<string, string> = {
@@ -384,7 +384,7 @@ export function pointEntityBounds(
   entity: MapEntity,
   catalog?: EntityDefinitionCatalog,
 ): Bounds | null {
-  if (entity.brushes.length > 0) return null;
+  if (entity.primitives.length > 0) return null;
   const origin = parseEntityOrigin(entity);
   if (!origin) return null;
   const relative = pointEntityDefinition(entity.properties.classname ?? '', catalog).bounds;

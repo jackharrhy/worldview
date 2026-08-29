@@ -1,4 +1,4 @@
-import { findBrush } from './types.js';
+import { findBrush, isMapBrush } from './types.js';
 import { deriveBrush } from './geometry.js';
 import { deriveEditorGroups, isEditorGroupEntity } from './groups.js';
 import { isEditorLayerEntity } from './layers.js';
@@ -108,6 +108,7 @@ function faceAttributeClipboardFromUnknown(value: unknown): FaceAttributeClipboa
     material: record.material,
     planePoints,
     projection: {
+      kind: 'valve-220',
       uAxis,
       vAxis,
       offset,
@@ -139,6 +140,7 @@ export function serializeFaceAttributeClipboard(
       clonedVec3(face.planePoints[2]),
     ],
     projection: {
+      kind: face.projection.kind,
       uAxis: clonedVec3(face.projection.uAxis),
       vAxis: clonedVec3(face.projection.vAxis),
       offset: [face.projection.offset[0], face.projection.offset[1]],
@@ -190,11 +192,11 @@ export function createObjectClipboardDocument(
       .map((group) => group.id),
   );
   const worldBrushes = [
-    ...worldspawn.brushes.filter((brush) => selectedBrushes.has(brush.id)),
+    ...worldspawn.primitives.filter((brush) => selectedBrushes.has(brush.id)),
     ...document.entities.flatMap((entity) =>
       isEditorLayerEntity(entity) ||
       (isEditorGroupEntity(entity) && !includedGroupIds.has(entity.properties['_tb_id'] ?? ''))
-        ? entity.brushes.filter((brush) => selectedBrushes.has(brush.id))
+        ? entity.primitives.filter((brush) => selectedBrushes.has(brush.id))
         : [],
     ),
   ];
@@ -203,10 +205,10 @@ export function createObjectClipboardDocument(
     {
       id: worldspawn.id,
       properties: { classname: 'worldspawn' },
-      brushes: worldBrushes,
+      primitives: worldBrushes,
     },
   ];
-  const foundBrushes = new Set(entities[0]!.brushes.map((brush) => brush.id));
+  const foundBrushes = new Set(entities[0]!.primitives.map((brush) => brush.id));
   const foundEntities = new Set<string>();
   for (const entity of document.entities) {
     if (entity.id === worldspawn.id) continue;
@@ -217,29 +219,29 @@ export function createObjectClipboardDocument(
       const properties = { ...entity.properties };
       if (!includedGroupIds.has(properties['_tb_group'] ?? '')) delete properties['_tb_group'];
       delete properties['_tb_layer'];
-      const brushes = entity.brushes.filter((brush) => selectedBrushes.has(brush.id));
+      const brushes = entity.primitives.filter((brush) => selectedBrushes.has(brush.id));
       brushes.forEach((brush) => foundBrushes.add(brush.id));
-      entities.push({ ...entity, properties, brushes });
+      entities.push({ ...entity, properties, primitives: brushes });
       continue;
     }
-    const brushes = entity.brushes.filter((brush) => selectedBrushes.has(brush.id));
+    const brushes = entity.primitives.filter((brush) => selectedBrushes.has(brush.id));
     if (brushes.length > 0) {
       brushes.forEach((brush) => foundBrushes.add(brush.id));
       const properties = { ...entity.properties };
       if (!includedGroupIds.has(properties['_tb_group'] ?? '')) delete properties['_tb_group'];
       delete properties['_tb_layer'];
-      entities.push({ ...entity, properties, brushes });
+      entities.push({ ...entity, properties, primitives: brushes });
       continue;
     }
     if (selectedEntities.has(entity.id)) {
-      if (entity.brushes.length > 0) {
+      if (entity.primitives.length > 0) {
         throw new Error(`Brush entity ${entity.id} cannot be copied as a point entity`);
       }
       foundEntities.add(entity.id);
       const properties = { ...entity.properties };
       if (!includedGroupIds.has(properties['_tb_group'] ?? '')) delete properties['_tb_group'];
       delete properties['_tb_layer'];
-      entities.push({ ...entity, properties, brushes: [] });
+      entities.push({ ...entity, properties, primitives: [] });
     }
   }
   if (foundBrushes.size !== selectedBrushes.size) {
@@ -264,13 +266,13 @@ export function serializeObjectClipboard(
 export function objectClipboardBounds(document: MapDocument): Bounds | null {
   const bounds = [
     ...document.entities.flatMap((entity) =>
-      entity.brushes.flatMap((brush) => {
+      entity.primitives.filter(isMapBrush).flatMap((brush) => {
         const derived = deriveBrush(brush);
         return derived.valid && derived.bounds ? [derived.bounds] : [];
       }),
     ),
     ...document.entities.flatMap((entity) => {
-      if (entity.brushes.length > 0) return [];
+      if (entity.primitives.length > 0) return [];
       const entityBounds = pointEntityBounds(entity);
       return entityBounds ? [entityBounds] : [];
     }),

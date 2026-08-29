@@ -23,7 +23,7 @@ export function webMcpDocumentState(state: EditorState) {
     documentId: document.id,
     name: state.currentDocumentName,
     revision: document.revision,
-    format: document.format,
+    format: document.faceSyntax,
     dirty: state.documentDirty,
     selection: webMcpSelectionSummary(state.session.selection),
     canUndo: state.session.canUndo,

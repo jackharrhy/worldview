@@ -7,6 +7,7 @@ import {
 
 import type { DocumentPresenter } from './document-presenter.js';
 import type { EditorElements } from './editor-elements.js';
+import { setToolbarButtonLabel } from './editor-elements.js';
 import type { EditorState } from './editor-state.js';
 import { resolveEditorRenderTheme } from './render-theme.js';
 
@@ -47,9 +48,10 @@ export class BuildPresenter {
     this.ui.canvases.perspective.hidden = this.state.showingCompiled;
     this.ui.compiledCanvas.hidden = !this.state.showingCompiled;
     this.ui.perspectiveMode.textContent = this.state.showingCompiled ? 'COMPILED · FLY' : 'EDIT';
-    this.ui.togglePreviewButton.textContent = this.state.showingCompiled
-      ? 'Show source'
-      : 'Show compiled';
+    setToolbarButtonLabel(
+      this.ui.togglePreviewButton,
+      this.state.showingCompiled ? 'Show source' : 'Show compiled',
+    );
     if (this.state.showingCompiled) this.state.compiledViewer?.start();
     else this.state.compiledViewer?.stop();
   }
@@ -276,9 +278,10 @@ export class BuildPresenter {
       }
       this.state.activeCompileProfileId = compileProfile?.id ?? 'default';
       this.state.activeCompileQuality = logicalProfile?.quality ?? 'preview';
-      this.ui.compileButton.textContent = logicalProfile
-        ? `Build ${logicalProfile.label}`
-        : 'Compile';
+      setToolbarButtonLabel(
+        this.ui.compileButton,
+        logicalProfile ? `Build ${logicalProfile.label}` : 'Compile',
+      );
       this.state.launchProfileId = capabilities.launchProfiles[0]?.id ?? null;
       this.ui.compileButton.disabled = !compileProfile;
       this.ui.launchButton.disabled =

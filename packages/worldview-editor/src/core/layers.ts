@@ -170,14 +170,14 @@ export function deriveEditorLayers(document: MapDocument): readonly EditorLayer[
       const entity = entityById.get(entityId);
       return entity ? [entity] : [];
     });
-    const directStructuralBrushes = id === null ? worldspawn.brushes : metadata.brushes;
+    const directStructuralBrushes = id === null ? worldspawn.primitives : metadata.primitives;
     const groupBrushes = layerGroups.flatMap((group) =>
       group.brushIds.flatMap((brushId) => {
         const brush = brushById.get(brushId);
         return brush ? [brush] : [];
       }),
     );
-    const entityBrushes = regularEntities.flatMap((entity) => entity.brushes);
+    const entityBrushes = regularEntities.flatMap((entity) => entity.primitives);
     const brushes = [
       ...new Map(
         [...directStructuralBrushes, ...groupBrushes, ...entityBrushes].map((brush) => [
@@ -200,10 +200,12 @@ export function deriveEditorLayers(document: MapDocument): readonly EditorLayer[
       brushIds: brushes.map((brush) => brush.id),
       pointEntityIds: points.map((entity) => entity.id),
       bounds: combinedBounds([
-        ...brushes.flatMap((brush) => {
-          const bounds = deriveBrush(brush).bounds;
-          return bounds ? [bounds] : [];
-        }),
+        ...brushes
+          .filter((brush) => brush.kind === 'brush')
+          .flatMap((brush) => {
+            const bounds = deriveBrush(brush).bounds;
+            return bounds ? [bounds] : [];
+          }),
         ...points.flatMap((entity) => {
           const bounds = pointEntityBounds(entity);
           return bounds ? [bounds] : [];
@@ -281,7 +283,7 @@ export function createEditorLayer(
       [ID_PROPERTY]: layerId,
       [TRENCHBROOM_LAYER_SORT_INDEX]: String(sortIndex),
     },
-    brushes: [],
+    primitives: [],
   };
   return { document: { ...document, entities: [...document.entities, entity] }, layerId };
 }
@@ -397,12 +399,12 @@ export function moveSelectionToEditorLayer(
     throw new Error('Nested group members cannot move between layers');
   const selectedBrushes = new Set(selectedBrushIds(selection));
   const selectedPoints = new Set(selectedPointEntityIds(selection));
-  const structuralBrushes: MapEntity['brushes'][number][] = [];
+  const structuralBrushes: MapEntity['primitives'][number][] = [];
   const structuralBrushIds = new Set<BrushId>();
   const entityIds = new Set<EntityId>();
   if (selectedGroup) entityIds.add(selectedGroup.entityId);
   for (const entity of document.entities) {
-    const selectedOwned = entity.brushes.filter((brush) => selectedBrushes.has(brush.id));
+    const selectedOwned = entity.primitives.filter((brush) => selectedBrushes.has(brush.id));
     if (selectedOwned.length === 0) continue;
     if (entity.id === worldspawn.id || isEditorLayerEntity(entity)) {
       for (const brush of selectedOwned) {
@@ -428,7 +430,10 @@ export function moveSelectionToEditorLayer(
   }
   let entities = document.entities.map((entity) => {
     let next = structuralBrushIds.size
-      ? { ...entity, brushes: entity.brushes.filter((brush) => !structuralBrushIds.has(brush.id)) }
+      ? {
+          ...entity,
+          primitives: entity.primitives.filter((brush) => !structuralBrushIds.has(brush.id)),
+        }
       : entity;
     if (entityIds.has(entity.id))
       next = { ...next, properties: withLayer(next.properties, layerId) };
@@ -437,7 +442,7 @@ export function moveSelectionToEditorLayer(
   if (structuralBrushes.length > 0) {
     entities = entities.map((entity) =>
       entity.id === targetEntity.id
-        ? { ...entity, brushes: [...entity.brushes, ...structuralBrushes] }
+        ? { ...entity, primitives: [...entity.primitives, ...structuralBrushes] }
         : entity,
     );
   }
@@ -459,8 +464,8 @@ export function removeEditorLayer(document: MapDocument, layerId: string): MapDo
       .filter((entity) => entity.id !== layer.entityId)
       .map((entity) => {
         let next = entity;
-        if (entity.id === worldspawn.id && layerEntity.brushes.length > 0) {
-          next = { ...next, brushes: [...next.brushes, ...layerEntity.brushes] };
+        if (entity.id === worldspawn.id && layerEntity.primitives.length > 0) {
+          next = { ...next, primitives: [...next.primitives, ...layerEntity.primitives] };
         }
         if (entity.properties[TRENCHBROOM_LAYER_PROPERTY]?.trim() === layerId) {
           next = { ...next, properties: withLayer(next.properties, null) };

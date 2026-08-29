@@ -72,9 +72,9 @@ function recordsEqual(
 function locateBrush(document: MapDocument, brushId: BrushId) {
   for (let entityIndex = 0; entityIndex < document.entities.length; entityIndex += 1) {
     const entity = document.entities[entityIndex]!;
-    const brushIndex = entity.brushes.findIndex((brush) => brush.id === brushId);
+    const brushIndex = entity.primitives.findIndex((brush) => brush.id === brushId);
     if (brushIndex >= 0)
-      return { entityIndex, brushIndex, entity, brush: entity.brushes[brushIndex]! };
+      return { entityIndex, brushIndex, entity, brush: entity.primitives[brushIndex]! };
   }
   return null;
 }
@@ -124,14 +124,20 @@ export function applyCollaborationOperation(
           });
           continue;
         }
-        const brushes = located.entity.brushes.with(located.brushIndex, brush);
+        const brushes = located.entity.primitives.with(located.brushIndex, brush);
         next = Object.assign({}, next, {
-          entities: next.entities.with(located.entityIndex, { ...located.entity, brushes }),
+          entities: next.entities.with(located.entityIndex, {
+            ...located.entity,
+            primitives: brushes,
+          }),
         });
       } else {
-        const brushes = located.entity.brushes.toSpliced(located.brushIndex, 1);
+        const brushes = located.entity.primitives.toSpliced(located.brushIndex, 1);
         next = Object.assign({}, next, {
-          entities: next.entities.with(located.entityIndex, { ...located.entity, brushes }),
+          entities: next.entities.with(located.entityIndex, {
+            ...located.entity,
+            primitives: brushes,
+          }),
         });
       }
     } else if (edit.kind === 'insert-brush') {
@@ -164,11 +170,11 @@ export function applyCollaborationOperation(
         });
         continue;
       }
-      const insertionIndex = Math.min(Math.max(edit.insertionIndex, 0), entity.brushes.length);
+      const insertionIndex = Math.min(Math.max(edit.insertionIndex, 0), entity.primitives.length);
       next = Object.assign({}, next, {
         entities: next.entities.with(entityIndex, {
           ...entity,
-          brushes: entity.brushes.toSpliced(insertionIndex, 0, edit.brush),
+          primitives: entity.primitives.toSpliced(insertionIndex, 0, edit.brush),
         }),
       });
     } else {
@@ -209,10 +215,18 @@ export function collaborationEditsBetween(
 ): readonly CollaborationEdit[] {
   const edits: CollaborationEdit[] = [];
   const beforeBrushes = new Map(
-    before.entities.flatMap((entity) => entity.brushes.map((brush) => [brush.id, brush] as const)),
+    before.entities.flatMap((entity) =>
+      entity.primitives
+        .filter((primitive) => primitive.kind === 'brush')
+        .map((brush) => [brush.id, brush] as const),
+    ),
   );
   const afterBrushes = new Map(
-    after.entities.flatMap((entity) => entity.brushes.map((brush) => [brush.id, brush] as const)),
+    after.entities.flatMap((entity) =>
+      entity.primitives
+        .filter((primitive) => primitive.kind === 'brush')
+        .map((brush) => [brush.id, brush] as const),
+    ),
   );
 
   for (const entity of before.entities) {
@@ -225,7 +239,8 @@ export function collaborationEditsBetween(
         properties: afterEntity.properties,
       });
     }
-    for (const brush of entity.brushes) {
+    for (const brush of entity.primitives) {
+      if (brush.kind !== 'brush') continue;
       const replacement = afterBrushes.get(brush.id);
       if (!replacement)
         edits.push({ kind: 'delete-brush', brushId: brush.id, baseRevision: brush.revision });
@@ -240,7 +255,8 @@ export function collaborationEditsBetween(
     }
   }
   for (const entity of after.entities) {
-    for (const [insertionIndex, brush] of entity.brushes.entries()) {
+    for (const [insertionIndex, brush] of entity.primitives.entries()) {
+      if (brush.kind !== 'brush') continue;
       if (!beforeBrushes.has(brush.id)) {
         edits.push({ kind: 'insert-brush', entityId: entity.id, insertionIndex, brush });
       }

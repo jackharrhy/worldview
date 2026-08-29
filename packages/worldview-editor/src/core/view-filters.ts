@@ -125,7 +125,7 @@ export function entityClassFiltersInDocument(
     summaries.set(classname, {
       classname,
       pointEntityCount: current.pointEntityCount + (parseEntityOrigin(entity) ? 1 : 0),
-      brushEntityCount: current.brushEntityCount + (entity.brushes.length > 0 ? 1 : 0),
+      brushEntityCount: current.brushEntityCount + (entity.primitives.length > 0 ? 1 : 0),
     });
   }
   return [...summaries.values()].toSorted((left, right) =>
@@ -147,10 +147,11 @@ export function deriveEditorViewFilterObjectIds(
   for (const entity of document.entities) {
     const classname = normalizedClassname(entity);
     if (!isStructuralOwner(entity) && hiddenClassnames.has(classname)) {
-      for (const brush of entity.brushes) brushIds.add(brush.id);
+      for (const brush of entity.primitives) brushIds.add(brush.id);
       if (parseEntityOrigin(entity)) entityIds.add(entity.id);
     }
-    for (const brush of entity.brushes) {
+    for (const brush of entity.primitives) {
+      if (brush.kind !== 'brush') continue;
       if (!state.worldBrushesVisible && isStructuralOwner(entity)) brushIds.add(brush.id);
       if (
         EDITOR_SPECIAL_BRUSH_FILTER_INFO.some(

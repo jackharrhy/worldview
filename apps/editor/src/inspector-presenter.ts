@@ -16,6 +16,7 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorElements } from './editor-elements.js';
+import { setToolbarButtonLabel } from './editor-elements.js';
 import type { EditorState } from './editor-state.js';
 import type { EntityPresenter } from './entity-presenter.js';
 import type { OrganizationPresenter } from './organization-presenter.js';
@@ -85,8 +86,10 @@ export class InspectorPresenter {
       : 'Nothing to redo';
     const repeatLabels = this.state.session.repeatCommandLabels;
     this.ui.repeatCommandsButton.disabled = !this.state.session.canRepeatCommands;
-    this.ui.repeatCommandsButton.textContent =
-      repeatLabels.length > 0 ? `Repeat ${repeatLabels.length}` : 'Repeat';
+    setToolbarButtonLabel(
+      this.ui.repeatCommandsButton,
+      repeatLabels.length > 0 ? `Repeat ${repeatLabels.length}` : 'Repeat',
+    );
     this.ui.repeatCommandsButton.title =
       repeatLabels.length > 0
         ? `Repeat ${repeatLabels.join(' → ')} (Ctrl/Command+Shift+R)`
@@ -96,7 +99,10 @@ export class InspectorPresenter {
       repeatLabels.length > 0
         ? `Clear ${repeatLabels.join(' → ')} and start a new sequence`
         : 'No recorded command sequence';
-    this.ui.simpleShapeToolSection.hidden = this.state.activeTool !== 'create';
+    this.ui.simpleShapeToolSection.hidden = !(
+      this.state.activeTool === 'create' ||
+      (this.state.activeTool === 'select' && !selection)
+    );
     this.ui.pointEntityToolSection.hidden = this.state.activeTool !== 'entity';
     this.ui.hullToolSection.hidden = this.state.activeTool !== 'hull';
     this.ui.hullPointCount.textContent = `${this.state.hullBuildPoints.length} ${this.state.hullBuildPoints.length === 1 ? 'point' : 'points'}`;
@@ -152,7 +158,7 @@ export class InspectorPresenter {
     const brushObjectSelected = Boolean(brush && selectedFaces.length === 0 && !selectedGroup);
     const selectionBrushOwners = objectBrushIds.flatMap((selectedBrushId) => {
       const owner = document.entities.find((entity) =>
-        entity.brushes.some((candidate) => candidate.id === selectedBrushId),
+        entity.primitives.some((candidate) => candidate.id === selectedBrushId),
       );
       return owner ? [owner] : [];
     });
@@ -172,7 +178,7 @@ export class InspectorPresenter {
     this.ui.selectionBrushCount.textContent = `${objectBrushIds.length} ${objectBrushIds.length === 1 ? 'volume' : 'volumes'}`;
     const primaryBrushOwner = selection?.brushId
       ? document.entities.find((entity) =>
-          entity.brushes.some((candidate) => candidate.id === selection.brushId),
+          entity.primitives.some((candidate) => candidate.id === selection.brushId),
         )
       : null;
     this.ui.entitySection.hidden = Boolean(
@@ -261,7 +267,7 @@ export class InspectorPresenter {
     );
     const selectedBrushOwners = objectBrushIds.flatMap((selectedBrushId) => {
       const owner = document.entities.find((entity) =>
-        entity.brushes.some((candidate) => candidate.id === selectedBrushId),
+        entity.primitives.some((candidate) => candidate.id === selectedBrushId),
       );
       return owner ? [owner] : [];
     });

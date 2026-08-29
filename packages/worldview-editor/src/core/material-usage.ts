@@ -14,7 +14,8 @@ function normalizedMaterial(material: string): string {
 export function materialUsageInDocument(document: MapDocument): readonly EditorMaterialUsage[] {
   const usages = new Map<string, { material: string; faceCount: number; brushIds: Set<BrushId> }>();
   for (const entity of document.entities) {
-    for (const brush of entity.brushes) {
+    for (const brush of entity.primitives) {
+      if (brush.kind !== 'brush') continue;
       for (const face of brush.faces) {
         const key = normalizedMaterial(face.material);
         if (!key) continue;
@@ -47,15 +48,17 @@ export function faceReferencesWithMaterial(
   const normalized = normalizedMaterial(material);
   if (!normalized) return [];
   return document.entities.flatMap((entity) =>
-    entity.brushes.flatMap((brush) =>
-      brushIds && !brushIds.has(brush.id)
-        ? []
-        : brush.faces.flatMap((face) =>
-            normalizedMaterial(face.material) === normalized
-              ? [{ brushId: brush.id, faceId: face.id }]
-              : [],
-          ),
-    ),
+    entity.primitives
+      .filter((brush) => brush.kind === 'brush')
+      .flatMap((brush) =>
+        brushIds && !brushIds.has(brush.id)
+          ? []
+          : brush.faces.flatMap((face) =>
+              normalizedMaterial(face.material) === normalized
+                ? [{ brushId: brush.id, faceId: face.id }]
+                : [],
+            ),
+      ),
   );
 }
 

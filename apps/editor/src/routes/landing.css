@@ -1,0 +1,271 @@
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --landing-bg: oklch(12.63% 0.0069 258.37);
+  --landing-surface: oklch(17% 0.009 255.61);
+  --landing-input: oklch(13.93% 0.0094 255.63);
+  --landing-hover: oklch(25.37% 0.013 253.01);
+  --landing-active: oklch(29.32% 0.0163 255.63);
+  --landing-line: oklch(45% 0.016 252);
+  --landing-text: oklch(92.32% 0.0042 236.5);
+  --landing-muted: oklch(72.82% 0.0129 248);
+  --landing-accent: oklch(68% 0.11 245);
+  --landing-accent-hover: oklch(72% 0.105 243);
+  --landing-accent-active: oklch(63% 0.115 247);
+  --landing-on-accent: oklch(15% 0.02 250);
+  --landing-focus: oklch(80% 0.11 240);
+  --landing-shadow: oklch(0% 0 0 / 0.55);
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --landing-bg: oklch(96.5% 0.004 255);
+  --landing-surface: oklch(95% 0.004 255);
+  --landing-input: oklch(100% 0 0);
+  --landing-hover: oklch(86% 0.009 253);
+  --landing-active: oklch(80% 0.012 253);
+  --landing-line: oklch(55% 0.016 252);
+  --landing-text: oklch(19% 0.006 248);
+  --landing-muted: oklch(39% 0.012 248);
+  --landing-on-accent: oklch(15% 0.02 250);
+  --landing-focus: oklch(48% 0.14 245);
+  --landing-shadow: oklch(0% 0 0 / 0.18);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--landing-bg);
+  color: var(--landing-text);
+}
+button,
+input,
+select {
+  min-height: 38px;
+  border: 1px solid var(--landing-line);
+  border-radius: 5px;
+  background: var(--landing-input);
+  color: var(--landing-text);
+  font: inherit;
+}
+button {
+  padding: 0 14px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  border-color: var(--landing-text);
+  background: var(--landing-hover);
+}
+button:active:not(:disabled) {
+  background: var(--landing-active);
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.route-back:focus-visible {
+  outline: 3px solid var(--landing-focus);
+  outline-offset: 2px;
+}
+button:disabled {
+  color: var(--landing-muted);
+  cursor: default;
+  opacity: 0.72;
+}
+.primary {
+  border-color: var(--landing-accent);
+  background: var(--landing-accent);
+  color: var(--landing-on-accent);
+  font-weight: 700;
+}
+.primary:hover:not(:disabled) {
+  border-color: var(--landing-accent-hover);
+  background: var(--landing-accent-hover);
+  color: var(--landing-on-accent);
+}
+.primary:active:not(:disabled) {
+  border-color: var(--landing-accent-active);
+  background: var(--landing-accent-active);
+  color: var(--landing-on-accent);
+}
+.primary:disabled {
+  border-color: var(--landing-accent-active);
+  background: var(--landing-accent-active);
+  color: var(--landing-on-accent);
+  cursor: progress;
+  opacity: 1;
+}
+.landing-page,
+.new-map-route {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(
+      circle at 20% 0%,
+      color-mix(in oklch, var(--landing-accent) 12%, transparent),
+      transparent 42%
+    ),
+    var(--landing-bg);
+}
+.landing-card {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 28px;
+  padding: 36px;
+  border: 1px solid var(--landing-line);
+  border-radius: 12px;
+  background: var(--landing-surface);
+  box-shadow: 0 24px 80px var(--landing-shadow);
+}
+.landing-card header,
+.new-map-route-content > header {
+  text-align: center;
+}
+h1 {
+  margin: 0;
+  font-size: 30px;
+}
+.landing-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.landing-recents {
+  display: grid;
+  gap: 10px;
+}
+.landing-recents-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--landing-line);
+}
+.landing-recents-heading h2 {
+  margin: 0;
+  font-size: 14px;
+}
+.landing-recents-heading span,
+.landing-empty,
+.landing-recent span,
+.landing-recent small,
+.route-fields p {
+  color: var(--landing-muted);
+}
+.landing-recent-list {
+  display: grid;
+  gap: 6px;
+}
+.landing-recent {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 16px;
+  padding: 12px;
+  text-align: left;
+}
+.landing-recent small {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.landing-empty {
+  padding: 14px;
+  border: 1px dashed var(--landing-line);
+  border-radius: 6px;
+}
+.landing-error {
+  color: oklch(72% 0.16 25);
+}
+.landing-auth {
+  color: var(--landing-text);
+  font-weight: 650;
+}
+.hosted-project-card {
+  position: relative;
+}
+.hosted-project-card > header p {
+  color: var(--landing-muted);
+}
+.hosted-map-form {
+  margin-top: 8px;
+}
+.new-map-route-content {
+  width: min(640px, 100%);
+}
+.new-map-route-content > header {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin-bottom: 40px;
+}
+.route-back {
+  position: absolute;
+  left: 0;
+  padding: 5px 7px;
+  border-radius: 4px;
+  color: var(--landing-muted);
+  text-decoration: none;
+}
+.route-back:hover {
+  background: var(--landing-hover);
+  color: var(--landing-text);
+}
+.route-back:active {
+  background: var(--landing-active);
+}
+.route-form {
+  overflow: hidden;
+  border: 1px solid var(--landing-line);
+  border-radius: 10px;
+  background: var(--landing-surface);
+  box-shadow: 0 18px 60px var(--landing-shadow);
+}
+.route-fields {
+  display: grid;
+  gap: 18px;
+  padding: 24px 20px;
+}
+.route-fields label {
+  display: grid;
+  gap: 6px;
+  color: var(--landing-muted);
+}
+.route-fields input,
+.route-fields select {
+  padding: 0 10px;
+}
+.route-form footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 20px;
+  border-top: 1px solid var(--landing-line);
+}
+.route-form footer button {
+  min-width: 120px;
+}
+.route-loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--landing-bg);
+  color: var(--landing-muted);
+}
+@media (max-width: 680px) {
+  .landing-page,
+  .new-map-route {
+    padding: 12px;
+  }
+  .landing-card {
+    padding: 22px;
+  }
+  .landing-actions {
+    grid-template-columns: 1fr;
+  }
+  .new-map-route-content > header {
+    padding-top: 44px;
+  }
+  .route-back {
+    top: 0;
+  }
+}

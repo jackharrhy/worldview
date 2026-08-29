@@ -205,10 +205,17 @@ try {
     });
   });
   await page.goto(url);
-  await page
-    .locator('#status-message')
-    .filter({ hasText: 'Source renderer ready' })
-    .waitFor({ timeout: 30_000 });
+  const homeNewMap = page.getByRole('button', { name: 'New map', exact: true });
+  if (new URL(url).pathname === '/') await homeNewMap.waitFor();
+  if (await homeNewMap.isVisible()) {
+    await homeNewMap.click();
+    await page.waitForURL((current) => current.pathname.endsWith('/new-map'));
+    await page.getByRole('heading', { name: 'New map', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Create map', exact: true }).click();
+    await page.waitForURL((current) => current.pathname.endsWith('/editor'));
+    report.actions.push({ action: 'create-default-map-from-workspace' });
+  }
+  await page.locator('html[data-worldview-editor-ready="true"]').waitFor({ timeout: 30_000 });
   if (await page.locator('.viewport-error').isVisible())
     throw new Error('Viewport error is visible');
   await page

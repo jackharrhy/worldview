@@ -1,15 +1,11 @@
 import {
   brushesInDocument,
-  brushVertices,
   createObjectSelection,
   deriveBrush,
   editorGroupForObject,
   findBrush,
-  intersectBrushRay,
-  intersectPointEntityRay,
   pointEntitiesInDocument,
   selectedBrushIds,
-  selectedFaceReferences,
   selectedPointEntityIds,
   selectionForEditorGroup,
   type Bounds,
@@ -26,6 +22,7 @@ import type {
   EditorSpriteMaterial,
   EditorDiagnosticOverlay,
   EditorReferenceScene,
+  EditorRemotePresenceOverlay,
   EditorTool,
   EditorTopologyKind,
   EditorTransformDragEvent,
@@ -33,13 +30,14 @@ import type {
   EditorViewportKind,
 } from './types.js';
 import { buildSceneBuffers, objectSelectionBounds, type SceneBuffers } from './scene-buffers.js';
+import { replaceRemotePresenceBuffer } from './remote-presence-buffers.js';
 import { buildEditorObjectSpatialIndex, type IndexedEditorObject } from './object-spatial-index.js';
 import type { BoundsSpatialIndex } from '../core/index.js';
 import { SourceMaterialResources } from './materials/source-material-resources.js';
 import {
-  addScaled,
+  availableFaceHandles as deriveAvailableFaceHandles,
+  availableTopologyHandles as deriveAvailableTopologyHandles,
   dedupeHullPoints,
-  dot,
   encodedTopologyPoint,
   inferClipPlane,
   isTransformTool,
@@ -61,9 +59,18 @@ import {
 import { createRendererGpuRuntime } from './renderer-gpu.js';
 import { DEFAULT_EDITOR_RENDER_THEME, type EditorRenderTheme } from './theme.js';
 import { Viewport } from './viewport.js';
+import { releaseReplacedSceneBuffers } from './scene-lifetime.js';
+import {
+  brushFaceNormal,
+  hitTestEditorObjects,
+  interactionSelectionBounds,
+  selectedFaceHandle,
+  selectionCenter,
+  snapClipHitToGrid,
+} from './source-renderer-queries.js';
 export class EditorSourceRenderer {
   private scene: SceneBuffers;
-  private readonly theme: EditorRenderTheme;
+  private theme: EditorRenderTheme;
   private document: MapDocument;
   private selection: EditorSelection | null;
   private objectViewState: EditorObjectViewState;
@@ -84,6 +91,7 @@ export class EditorSourceRenderer {
   private lastClipViewport: EditorViewportKind = 'perspective';
   private referenceScenes: readonly EditorReferenceScene[];
   private diagnosticOverlays: readonly EditorDiagnosticOverlay[];
+  private remotePresence: readonly EditorRemotePresenceOverlay[];
   private sprites: readonly EditorSpriteMaterial[];
   private entityLinkMode: EntityLinkMode;
   private entityDefinitions: EditorSourceRendererOptions['entityDefinitions'];
@@ -96,6 +104,7 @@ export class EditorSourceRenderer {
   private readonly onHullCreate: EditorSourceRendererOptions['onHullCreate'];
   private readonly onTopologySelectionChange: EditorSourceRendererOptions['onTopologySelectionChange'];
   private readonly onRenderRequest: EditorSourceRendererOptions['onRenderRequest'];
+  private readonly onPreviewDocument: EditorSourceRendererOptions['onPreviewDocument'];
   private sceneVersion = 0;
   private disposed = false;
 
@@ -107,7 +116,7 @@ export class EditorSourceRenderer {
     materialBindGroupLayout: GPUBindGroupLayout,
     materialSampler: GPUSampler,
     options: EditorSourceRendererOptions,
-    private readonly clearColor: readonly [number, number, number, number],
+    private clearColor: readonly [number, number, number, number],
   ) {
     this.document = options.document;
     this.theme = options.theme ?? DEFAULT_EDITOR_RENDER_THEME;
@@ -126,6 +135,7 @@ export class EditorSourceRenderer {
     };
     this.referenceScenes = options.referenceScenes ?? [];
     this.diagnosticOverlays = options.diagnosticOverlays ?? [];
+    this.remotePresence = options.remotePresence ?? [];
     this.sprites = options.sprites ?? [];
     this.entityLinkMode = options.entityLinkMode ?? 'direct';
     this.entityDefinitions = options.entityDefinitions;
@@ -136,6 +146,11 @@ export class EditorSourceRenderer {
     this.onHullCreate = options.onHullCreate;
     this.onTopologySelectionChange = options.onTopologySelectionChange;
     this.onRenderRequest = options.onRenderRequest;
+    this.onPreviewDocument = options.onPreviewDocument;
+    void device.lost.then((info) => {
+      if (this.disposed || info.reason === 'destroyed') return;
+      options.onDeviceLost?.(`WebGPU device lost${info.message ? `: ${info.message}` : ''}`);
+    });
     this.scene = buildSceneBuffers(
       device,
       this.document,
@@ -159,6 +174,7 @@ export class EditorSourceRenderer {
       this.openGroupId,
       this.entityDefinitions,
       this.diagnosticOverlays,
+      this.remotePresence,
       this.sprites,
       this.theme,
     );
@@ -170,31 +186,13 @@ export class EditorSourceRenderer {
       this.sprites,
     );
     const hitTests = (origin: Vec3, direction: Vec3): readonly EditorObjectRayHit[] =>
-      this.objectSpatialIndex
-        .queryRay(origin, direction)
-        .flatMap<EditorObjectRayHit>(({ value }) => {
-          if (value.kind === 'brush') {
-            const brush = value.brush;
-            if (
-              this.objectViewState.hiddenBrushIds.includes(brush.id) ||
-              this.objectViewState.lockedBrushIds.includes(brush.id)
-            ) {
-              return [];
-            }
-            const hit = intersectBrushRay(brush, origin, direction);
-            return hit ? [hit] : [];
-          }
-          const entity = value.entity;
-          if (
-            this.objectViewState.hiddenEntityIds.includes(entity.id) ||
-            this.objectViewState.lockedEntityIds.includes(entity.id)
-          ) {
-            return [];
-          }
-          const hit = intersectPointEntityRay(entity, origin, direction, this.entityDefinitions);
-          return hit ? [hit] : [];
-        })
-        .toSorted((left, right) => left.distance - right.distance);
+      hitTestEditorObjects(
+        this.objectSpatialIndex,
+        this.objectViewState,
+        this.entityDefinitions,
+        origin,
+        direction,
+      );
     const hitTest = (origin: Vec3, direction: Vec3): EditorObjectRayHit | null =>
       hitTests(origin, direction)[0] ?? null;
     const interaction: ViewportInteraction = {
@@ -202,64 +200,15 @@ export class EditorSourceRenderer {
       hitTest,
       hitTests,
       entityPlacementBounds: () => this.entityPlacementBounds,
-      brushFaceNormal: (hit) => {
-        const brush = findBrush(this.document, hit.brushId);
-        return (
-          (brush
-            ? deriveBrush(brush).faces.find((face) => face.faceId === hit.faceId)?.normal
-            : null) ?? null
-        );
-      },
+      brushFaceNormal: (hit) => brushFaceNormal(this.document, hit),
       currentSelection: () => this.selection,
       transformPivot: () => this.transformPivot,
-      brushCenter: (selection) => {
-        const bounds = objectSelectionBounds(this.document, selection);
-        return bounds
-          ? [
-              (bounds.min[0] + bounds.max[0]) / 2,
-              (bounds.min[1] + bounds.max[1]) / 2,
-              (bounds.min[2] + bounds.max[2]) / 2,
-            ]
-          : null;
-      },
-      brushBounds: (selection) => {
-        if (isTransformTool(this.tool) && this.topologySelection.length > 0) {
-          return topologyHandleBounds(this.topologySelection);
-        }
-        if (selection.faceId) {
-          const brush = findBrush(this.document, selection.brushId);
-          return brush ? deriveBrush(brush).bounds : null;
-        }
-        return objectSelectionBounds(this.document, selection);
-      },
-      faceHandle: (selection) => {
-        if (!selection.faceId) return null;
-        const brush = findBrush(this.document, selection.brushId);
-        const face = brush
-          ? deriveBrush(brush).faces.find((candidate) => candidate.faceId === selection.faceId)
-          : null;
-        if (!face || face.vertices.length === 0) return null;
-        const center = face.vertices
-          .reduce<[number, number, number]>(
-            (sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]],
-            [0, 0, 0],
-          )
-          .map((component) => component / face.vertices.length) as [number, number, number];
-        return { center, normal: face.normal };
-      },
+      brushCenter: (selection) => selectionCenter(this.document, selection),
+      brushBounds: (selection) =>
+        interactionSelectionBounds(this.document, selection, this.tool, this.topologySelection),
+      faceHandle: (selection) => selectedFaceHandle(this.document, selection),
       faceHandles: () => this.availableFaceHandles(),
-      snapClipHit: (hit, gridSize) => {
-        const brush = findBrush(this.document, hit.brushId);
-        const face = brush
-          ? deriveBrush(brush).faces.find((candidate) => candidate.faceId === hit.faceId)
-          : null;
-        if (!face) return null;
-        const snapped = hit.point.map(
-          (component) => Math.round(component / gridSize) * gridSize,
-        ) as [number, number, number];
-        const correction = face.distance - dot(face.normal, snapped);
-        return addScaled(snapped, face.normal, correction);
-      },
+      snapClipHit: (hit, gridSize) => snapClipHitToGrid(this.document, hit, gridSize),
       clipPoints: () => this.clipPoints,
       addClipPoints: (points, viewport, viewDirection) => {
         const base = this.clipPoints.length >= 3 ? [] : this.clipPoints;
@@ -365,7 +314,11 @@ export class EditorSourceRenderer {
         this.hullPoints = dedupeHullPoints([...this.hullPoints, ...points]);
         this.hullPreviewPoints = [];
         this.rebuildScene();
-        this.onHullCreate?.({ phase: 'preview', viewport, points: this.hullPoints });
+        this.onHullCreate?.({
+          phase: 'preview',
+          viewport,
+          points: this.hullPoints,
+        });
       },
       addHullFace: (face, viewport, clickedPoint) => {
         const brush = findBrush(this.document, face.brushId);
@@ -380,7 +333,11 @@ export class EditorSourceRenderer {
         ]);
         this.hullPreviewPoints = [];
         this.rebuildScene();
-        this.onHullCreate?.({ phase: 'preview', viewport, points: this.hullPoints });
+        this.onHullCreate?.({
+          phase: 'preview',
+          viewport,
+          points: this.hullPoints,
+        });
       },
       clearHullPreview: () => {
         if (this.hullPreviewPoints.length === 0) return;
@@ -555,71 +512,11 @@ export class EditorSourceRenderer {
   }
 
   private availableTopologyHandles(kind: EditorTopologyKind): readonly TopologyHandle[] {
-    if (!this.selection || this.selection.faceId) return [];
-    const handles = new Map<string, TopologyHandle>();
-    for (const brushId of selectedBrushIds(this.selection)) {
-      const brush = findBrush(this.document, brushId);
-      if (!brush) continue;
-      const brushHandles: readonly TopologyHandle[] =
-        kind === 'vertex'
-          ? brushVertices(brush).map((point) => ({
-              kind,
-              center: point,
-              vertices: [point],
-              key: topologyHandleKey(kind, [point]),
-              brushIds: [brush.id],
-            }))
-          : deriveBrush(brush).edges.map((edge) => {
-              const vertices = [edge.start, edge.end] as const;
-              return {
-                kind,
-                center: [
-                  (edge.start[0] + edge.end[0]) / 2,
-                  (edge.start[1] + edge.end[1]) / 2,
-                  (edge.start[2] + edge.end[2]) / 2,
-                ],
-                vertices,
-                key: topologyHandleKey(kind, vertices),
-                brushIds: [brush.id],
-              };
-            });
-      for (const handle of brushHandles) {
-        const existing = handles.get(handle.key);
-        handles.set(
-          handle.key,
-          existing
-            ? { ...existing, brushIds: [...new Set([...existing.brushIds, brush.id])] }
-            : handle,
-        );
-      }
-    }
-    return [...handles.values()];
+    return deriveAvailableTopologyHandles(this.document, this.selection, kind);
   }
 
   private availableFaceHandles(): readonly FaceHandle[] {
-    if (!this.selection) return [];
-    const brushIds = this.selection.faceId
-      ? [...new Set(selectedFaceReferences(this.selection).map((face) => face.brushId))]
-      : selectedBrushIds(this.selection);
-    return brushIds.flatMap((brushId) => {
-      const brush = findBrush(this.document, brushId);
-      if (!brush) return [];
-      return deriveBrush(brush).faces.map<FaceHandle>((face) => {
-        const sum = face.vertices.reduce<[number, number, number]>(
-          (total, point) => [total[0] + point[0], total[1] + point[1], total[2] + point[2]],
-          [0, 0, 0],
-        );
-        return {
-          selection: { brushId, faceId: face.faceId },
-          center: [
-            sum[0] / face.vertices.length,
-            sum[1] / face.vertices.length,
-            sum[2] / face.vertices.length,
-          ],
-          normal: face.normal,
-        };
-      });
-    });
+    return deriveAvailableFaceHandles(this.document, this.selection);
   }
 
   public setDocument(
@@ -634,6 +531,7 @@ export class EditorSourceRenderer {
       this.objectSpatialIndex = buildEditorObjectSpatialIndex(document, this.entityDefinitions);
     this.selection = selection;
     this.objectViewState = objectViewState;
+    this.onPreviewDocument?.(document);
     const topologyKind = this.tool === 'vertex' || this.tool === 'edge' ? this.tool : null;
     if (topologyKind) {
       const previousCount = this.topologySelection.length;
@@ -655,13 +553,26 @@ export class EditorSourceRenderer {
         );
       }
     }
-    this.rebuildScene();
+    this.rebuildScene(!documentChanged);
   }
 
   public setReferenceScenes(referenceScenes: readonly EditorReferenceScene[]): void {
     if (this.disposed) return;
     this.referenceScenes = referenceScenes;
-    this.rebuildScene();
+    this.rebuildScene(false);
+  }
+
+  public setRemotePresence(presence: readonly EditorRemotePresenceOverlay[]): void {
+    if (this.disposed) return;
+    this.remotePresence = presence;
+    this.scene = replaceRemotePresenceBuffer(
+      this.device,
+      this.scene,
+      presence,
+      this.entityDefinitions,
+    );
+    this.sceneVersion += 1;
+    this.onRenderRequest?.();
   }
 
   public setEntityLinkMode(mode: EntityLinkMode): void {
@@ -687,7 +598,7 @@ export class EditorSourceRenderer {
     this.hoverSelection = null;
     this.topologySelection = [];
     this.topologyHover = null;
-    this.rebuildScene();
+    this.rebuildScene(false);
   }
 
   public setTransformPivot(pivot: Vec3 | null): void {
@@ -705,11 +616,9 @@ export class EditorSourceRenderer {
     this.rebuildScene();
   }
 
-  private rebuildScene(): void {
+  private rebuildScene(reuseWorldBuffers = true, reuseSolidBuffers = true): void {
     const started = performance.now();
     const previous = this.scene;
-    this.scene.lines.destroy();
-    this.scene.perspectiveGrid.destroy();
     this.scene = buildSceneBuffers(
       this.device,
       this.document,
@@ -733,14 +642,14 @@ export class EditorSourceRenderer {
       this.openGroupId,
       this.entityDefinitions,
       this.diagnosticOverlays,
+      this.remotePresence,
       this.sprites,
       this.theme,
-      previous.solids,
+      reuseSolidBuffers ? previous.solids : [],
+      previous,
+      reuseWorldBuffers,
     );
-    const retainedBuffers = new Set(this.scene.solids.map(({ buffer }) => buffer));
-    for (const batch of previous.solids) {
-      if (!retainedBuffers.has(batch.buffer)) batch.buffer.destroy();
-    }
+    releaseReplacedSceneBuffers(previous, this.scene);
     this.sceneVersion += 1;
     performance.measure('worldview.editor.scene-rebuild', {
       start: started,
@@ -756,11 +665,19 @@ export class EditorSourceRenderer {
     this.onRenderRequest?.();
   }
 
+  public setTheme(theme: EditorRenderTheme): void {
+    if (this.disposed) return;
+    this.theme = theme;
+    this.clearColor = theme.background;
+    for (const viewport of this.viewports) viewport.setTheme(theme);
+    this.rebuildScene(false, false);
+  }
+
   public setSprites(sprites: readonly EditorSpriteMaterial[]): void {
     if (this.disposed) return;
     this.sprites = sprites;
     this.materialResources.setSprites(sprites);
-    this.rebuildScene();
+    this.rebuildScene(false);
   }
 
   public setEntityDefinitions(
@@ -769,7 +686,7 @@ export class EditorSourceRenderer {
     if (this.entityDefinitions === entityDefinitions) return;
     this.entityDefinitions = entityDefinitions;
     this.objectSpatialIndex = buildEditorObjectSpatialIndex(this.document, entityDefinitions);
-    this.rebuildScene();
+    this.rebuildScene(false);
   }
 
   public setDiagnosticOverlays(overlays: readonly EditorDiagnosticOverlay[]): void {
@@ -888,7 +805,11 @@ export class EditorSourceRenderer {
     this.hullPoints = [];
     this.hullPreviewPoints = [];
     this.rebuildScene();
-    this.onHullCreate?.({ phase: 'cancel', viewport: 'perspective', points: [] });
+    this.onHullCreate?.({
+      phase: 'cancel',
+      viewport: 'perspective',
+      points: [],
+    });
     return true;
   }
 
@@ -932,9 +853,21 @@ export class EditorSourceRenderer {
   public render(): boolean {
     if (this.disposed) return false;
     const materialBindGroup = (name: string) => this.materialResources.bindGroup(name);
+    const encoder = this.device.createCommandEncoder({
+      label: 'Worldview editor frame',
+    });
+    let encoded = false;
     for (const viewport of this.viewports) {
-      viewport.render(this.scene, materialBindGroup, this.clearColor, this.sceneVersion);
+      encoded =
+        viewport.render(
+          this.scene,
+          materialBindGroup,
+          this.clearColor,
+          this.sceneVersion,
+          encoder,
+        ) || encoded;
     }
+    if (encoded) this.device.queue.submit([encoder.finish()]);
     return this.viewports.some((viewport) => viewport.requiresContinuousRender);
   }
 
@@ -972,6 +905,9 @@ export class EditorSourceRenderer {
     this.disposed = true;
     for (const batch of this.scene.solids) batch.buffer.destroy();
     this.scene.lines.destroy();
+    this.scene.overlayLines.destroy();
+    this.scene.remoteLines.destroy();
+    for (const batch of this.scene.remoteSolids) batch.buffer.destroy();
     this.scene.perspectiveGrid.destroy();
     this.materialResources.dispose();
     for (const viewport of this.viewports) viewport.dispose();

@@ -193,7 +193,7 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
           'error',
           duplicate.id,
           'The map contains an extra worldspawn entity.',
-          duplicate.brushes.map((brush) => brush.id),
+          duplicate.primitives.map((brush) => brush.id),
           [duplicate.id],
           {
             kind: 'merge-worldspawn',
@@ -206,7 +206,8 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
   }
 
   for (const entity of document.entities) {
-    for (const brush of entity.brushes) {
+    for (const brush of entity.primitives) {
+      if (brush.kind !== 'brush') continue;
       const derived = deriveBrush(brush);
       if (derived.valid) continue;
       const messages = [...new Set(derived.diagnostics.map((diagnostic) => diagnostic.message))];
@@ -240,7 +241,7 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
           'error',
           duplicate.id,
           `Group or layer ID ${persistentId} is used more than once.`,
-          duplicate.brushes.map((brush) => brush.id),
+          duplicate.primitives.map((brush) => brush.id),
           [duplicate.id],
           {
             kind: 'assign-persistent-id',
@@ -285,20 +286,20 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
           'error',
           entity.id,
           `Entity ${index + 1} has no classname.`,
-          entity.brushes.map((brush) => brush.id),
+          entity.primitives.map((brush) => brush.id),
           [entity.id],
           {
             kind: 'set-entity-property',
             entityId: entity.id,
             key: 'classname',
-            value: entity.brushes.length > 0 ? 'func_detail' : 'info_null',
+            value: entity.primitives.length > 0 ? 'func_detail' : 'info_null',
             label: 'Set fallback classname',
           },
         ),
       );
     }
 
-    if (!isWorldspawn && !isMetadata && entity.brushes.length === 0 && classname) {
+    if (!isWorldspawn && !isMetadata && entity.primitives.length === 0 && classname) {
       const hasOrigin = 'origin' in entity.properties;
       if (hasOrigin && !parseEntityOrigin(entity)) {
         issues.push(
@@ -359,7 +360,7 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
           'warning',
           entity.id,
           `${entityLabel(entity)} refers to missing group ${parentGroupId}.`,
-          entity.brushes.map((brush) => brush.id),
+          entity.primitives.map((brush) => brush.id),
           [entity.id],
           {
             kind: 'remove-entity-property',
@@ -378,7 +379,7 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
           'warning',
           entity.id,
           `${entityLabel(entity)} refers to missing layer ${layerId}.`,
-          entity.brushes.map((brush) => brush.id),
+          entity.primitives.map((brush) => brush.id),
           [entity.id],
           {
             kind: 'remove-entity-property',
@@ -400,7 +401,7 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
           'warning',
           `${entity.id}:${property}`,
           `${entityLabel(entity)} has ${property} "${targetName}", but no entity has that targetname.`,
-          entity.brushes.map((brush) => brush.id),
+          entity.primitives.map((brush) => brush.id),
           [entity.id],
           {
             kind: 'remove-entity-property',
@@ -419,7 +420,7 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
     const hasMembers = document.entities.some(
       (entity) => entity.id !== group.id && entity.properties['_tb_group']?.trim() === groupId,
     );
-    if (group.brushes.length > 0 || hasMembers) continue;
+    if (group.primitives.length > 0 || hasMembers) continue;
     issues.push(
       createEditorIssue(
         'empty-group',
@@ -439,7 +440,7 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
     const hasMembers = document.entities.some(
       (entity) => entity.id !== layer.id && entity.properties['_tb_layer']?.trim() === layerId,
     );
-    if (layer.brushes.length > 0 || hasMembers) continue;
+    if (layer.primitives.length > 0 || hasMembers) continue;
     issues.push(
       createEditorIssue(
         'empty-layer',
@@ -511,7 +512,7 @@ export function applyEditorIssueFix(
         ...document,
         revision: document.revision + 1,
         entities: [
-          { id: ids.entity(), properties: { classname: 'worldspawn' }, brushes: [] },
+          { id: ids.entity(), properties: { classname: 'worldspawn' }, primitives: [] },
           ...document.entities,
         ],
       },
@@ -533,7 +534,13 @@ export function applyEditorIssueFix(
         entities: document.entities.flatMap((entity) => {
           if (entity.id === duplicate.id) return [];
           return entity.id === primary.id
-            ? [{ ...entity, properties, brushes: [...entity.brushes, ...duplicate.brushes] }]
+            ? [
+                {
+                  ...entity,
+                  properties,
+                  primitives: [...entity.primitives, ...duplicate.primitives],
+                },
+              ]
             : [entity];
         }),
       },

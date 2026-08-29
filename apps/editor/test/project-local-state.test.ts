@@ -55,15 +55,19 @@ describe('machine-local project state', () => {
     const storage = new MemoryProjectStateStorage();
     const projects = new ProjectLocalStateService(storage);
     storage.states.set('old', {
-      version: 1,
+      version: 2,
+      workspaceId: 'workspace-old',
       projectKey: 'old',
+      displayName: 'Old',
       handle: handle('old'),
       buildBindings: {},
       updatedAt: 1,
     });
     storage.states.set('new', {
-      version: 1,
+      version: 2,
+      workspaceId: 'workspace-new',
       projectKey: 'new',
+      displayName: 'New',
       handle: handle('new'),
       buildBindings: {},
       updatedAt: 2,
@@ -80,6 +84,6 @@ describe('machine-local project state', () => {
     };
     const projects = new ProjectLocalStateService(storage);
 
-    expect(await projects.remember('volatile', handle('volatile'))).toBe(false);
+    expect(await projects.remember('volatile', handle('volatile'))).toBeNull();
   });
 });

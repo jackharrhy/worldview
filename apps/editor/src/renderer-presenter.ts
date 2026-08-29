@@ -46,6 +46,8 @@ interface RendererPresenterDependencies {
   readonly inspector: InspectorPresenter;
   readonly organization: OrganizationPresenter;
   readonly transform: TransformToolPresenter;
+  readonly publishCollaborationPreview: (document: EditorState['session']['document']) => void;
+  readonly publishCollaborationPointer: () => void;
 }
 
 export class RendererPresenter {
@@ -75,6 +77,12 @@ export class RendererPresenter {
           state.entityDefinitions,
         ).bounds,
         onRenderRequest: () => renderScheduler.request(),
+        onPreviewDocument: (document) => app.publishCollaborationPreview(document),
+        onDeviceLost(message) {
+          ui.viewportError.hidden = false;
+          ui.viewportError.textContent = `${message}. Reload the editor to restore rendering.`;
+          ui.statusMessage.textContent = 'WebGPU renderer stopped.';
+        },
         onCameraChange(event: EditorCameraChangeEvent) {
           ui.canvases[event.viewport].dataset.camera = JSON.stringify(event.camera);
           if (event.viewport !== 'perspective') return;
@@ -154,11 +162,11 @@ export class RendererPresenter {
               (intent.objectExpansion === 'siblings' || intent.objectExpansion === 'activate')
             ) {
               const owner = state.session.document.entities.find((entity) =>
-                entity.brushes.some((brush) => brush.id === selection.brushId),
+                entity.primitives.some((brush) => brush.id === selection.brushId),
               );
               const siblingIds =
-                owner && owner.properties.classname !== 'worldspawn' && owner.brushes.length > 1
-                  ? owner.brushes.map((brush) => brush.id)
+                owner && owner.properties.classname !== 'worldspawn' && owner.primitives.length > 1
+                  ? owner.primitives.map((brush) => brush.id)
                   : [selection.brushId];
               state.session.select(
                 createBrushSelection(
@@ -270,6 +278,7 @@ export class RendererPresenter {
         },
         onPointerPosition(event) {
           state.lastPointerPosition = event;
+          app.publishCollaborationPointer();
           ui.pasteHereButton.disabled = false;
         },
         onContextMenu(event) {
@@ -477,7 +486,10 @@ export class RendererPresenter {
 
           try {
             const selectedFaces = selectedFaceReferences(state.session.selection);
-            const eventFace = { brushId: event.selection.brushId, faceId: event.selection.faceId };
+            const eventFace = {
+              brushId: event.selection.brushId,
+              faceId: event.selection.faceId,
+            };
             const faces = selectedFaces.some(
               (face) => face.brushId === eventFace.brushId && face.faceId === eventFace.faceId,
             )

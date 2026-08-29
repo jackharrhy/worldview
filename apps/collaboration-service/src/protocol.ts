@@ -1,17 +1,29 @@
-import type { CollaborationOperation, MapDocument } from '@jackharrhy/worldview-editor/core';
+import type {
+  CollaborationEdit,
+  CollaborationOperation,
+  MapDocument,
+} from '@jackharrhy/worldview-editor/core';
 
 export type ClientFrame =
   | { readonly type: 'operation'; readonly operation: CollaborationOperation }
   | { readonly type: 'presence'; readonly presence: PresenceState };
 
 export type ServerFrame =
-  | { readonly type: 'ready'; readonly roomVersion: number; readonly document: MapDocument | null }
+  | {
+      readonly type: 'ready';
+      readonly roomVersion: number;
+      readonly document: MapDocument | null;
+    }
   | {
       readonly type: 'operation';
       readonly roomVersion: number;
       readonly operation: CollaborationOperation;
     }
-  | { readonly type: 'ack'; readonly operationId: string; readonly roomVersion: number }
+  | {
+      readonly type: 'ack';
+      readonly operationId: string;
+      readonly roomVersion: number;
+    }
   | {
       readonly type: 'conflict';
       readonly operationId: string;
@@ -25,7 +37,15 @@ export interface PresenceState {
   readonly displayName?: string;
   readonly color?: string;
   readonly selectedObjectIds?: readonly string[];
-  readonly viewport?: 'perspective' | 'top' | 'front' | 'side';
+  readonly viewport?: 'perspective' | 'xy' | 'xz' | 'yz';
+  readonly pointer?: readonly [number, number, number];
+  readonly tool?: string;
+  readonly preview?: {
+    readonly interactionId: string;
+    readonly sequence: number;
+    readonly baseRoomVersion: number;
+    readonly edits: readonly CollaborationEdit[];
+  };
   readonly sentAt: number;
 }
 
@@ -90,6 +110,29 @@ export function parseClientFrame(value: string | ArrayBuffer): ClientFrame {
       typeof parsed.presence.sentAt !== 'number'
     ) {
       throw new Error('Presence requires an actorId');
+    }
+    const presence = parsed.presence;
+    if (
+      (presence.selectedObjectIds !== undefined &&
+        (!Array.isArray(presence.selectedObjectIds) ||
+          presence.selectedObjectIds.length > 1_000 ||
+          !presence.selectedObjectIds.every((id) => typeof id === 'string'))) ||
+      (presence.pointer !== undefined &&
+        (!Array.isArray(presence.pointer) ||
+          presence.pointer.length !== 3 ||
+          !presence.pointer.every(
+            (component) => typeof component === 'number' && Number.isFinite(component),
+          ))) ||
+      (presence.preview !== undefined &&
+        (!isRecord(presence.preview) ||
+          typeof presence.preview.interactionId !== 'string' ||
+          !Number.isInteger(presence.preview.sequence) ||
+          !Number.isInteger(presence.preview.baseRoomVersion) ||
+          !Array.isArray(presence.preview.edits) ||
+          presence.preview.edits.length > 256 ||
+          !presence.preview.edits.every(isEdit)))
+    ) {
+      throw new Error('Invalid presence payload');
     }
     return parsed as ClientFrame;
   }

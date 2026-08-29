@@ -11,7 +11,7 @@ export interface RendererGpuRuntime {
 
 export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
   if (!navigator.gpu) throw new Error('This browser does not expose WebGPU');
-  const adapter = await navigator.gpu.requestAdapter();
+  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
   if (!adapter) throw new Error('No WebGPU adapter is available');
   const device = await adapter.requestDevice();
   const format = navigator.gpu.getPreferredCanvasFormat();
@@ -50,7 +50,8 @@ export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
   });
   const solidModule = device.createShaderModule({ code: SOLID_SHADER });
   const lineModule = device.createShaderModule({ code: LINE_SHADER });
-  const solid = device.createRenderPipeline({
+  const solidDescriptor: GPURenderPipelineDescriptor = {
+    label: 'Worldview editor solid pipeline',
     layout: solidPipelineLayout,
     vertex: {
       module: solidModule,
@@ -69,8 +70,9 @@ export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
     fragment: { module: solidModule, entryPoint: 'fragmentMain', targets: [{ format }] },
     primitive: { topology: 'triangle-list', cullMode: 'none' },
     depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' },
-  });
-  const lines = device.createRenderPipeline({
+  };
+  const lineDescriptor: GPURenderPipelineDescriptor = {
+    label: 'Worldview editor line pipeline',
     layout: linePipelineLayout,
     vertex: {
       module: lineModule,
@@ -88,7 +90,11 @@ export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
     fragment: { module: lineModule, entryPoint: 'fragmentMain', targets: [{ format }] },
     primitive: { topology: 'line-list' },
     depthStencil: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less-equal' },
-  });
+  };
+  const [solid, lines] = await Promise.all([
+    device.createRenderPipelineAsync(solidDescriptor),
+    device.createRenderPipelineAsync(lineDescriptor),
+  ]);
   return {
     device,
     format,

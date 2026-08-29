@@ -104,7 +104,10 @@ export function moveBrushesToEntity(
   const target = document.entities.find((entity) => entity.id === targetEntityId);
   if (!target) throw new Error(`Unknown entity ${targetEntityId}`);
   const moved = document.entities.flatMap((entity) =>
-    entity.brushes.filter((brush) => selected.has(brush.id)),
+    entity.primitives.filter(
+      (primitive): primitive is MapBrush =>
+        primitive.kind === 'brush' && selected.has(primitive.id),
+    ),
   );
   if (moved.length !== selected.size)
     throw new Error('The brush selection contains an unknown brush');
@@ -122,13 +125,16 @@ export function moveBrushesToEntity(
   const entities = document.entities
     .map<MapEntity>((entity) => ({
       ...entity,
-      brushes: [
-        ...entity.brushes.filter((brush) => !selected.has(brush.id)),
+      primitives: [
+        ...entity.primitives.filter(
+          (primitive) => primitive.kind !== 'brush' || !selected.has(primitive.id),
+        ),
         ...(entity.id === targetEntityId ? normalizedMoved : []),
       ],
     }))
     .filter(
-      (entity, index) => index === 0 || entity.brushes.length > 0 || 'origin' in entity.properties,
+      (entity, index) =>
+        index === 0 || entity.primitives.length > 0 || 'origin' in entity.properties,
     );
   return { ...document, revision: document.revision + 1, entities };
 }
@@ -138,7 +144,8 @@ export function createBrushEntity(
   brushIds: readonly BrushId[],
   entity: MapEntity,
 ): MapDocument {
-  if (entity.brushes.length > 0) throw new Error('A new brush entity must not contain brushes yet');
+  if (entity.primitives.length > 0)
+    throw new Error('A new brush entity must not contain brushes yet');
   if (!entity.properties.classname?.trim()) throw new Error('A brush entity requires a classname');
   const inserted = insertEntity(document, entity);
   return {
@@ -167,8 +174,11 @@ function facePoints(point: Vec3, normal: Vec3, size: number): readonly [Vec3, Ve
 }
 
 export function defaultTextureProjection(normal: Vec3): TextureProjection {
-  if (Math.abs(normal[2]) >= Math.max(Math.abs(normal[0]), Math.abs(normal[1]))) {
+  const axisEpsilon = 1e-6;
+  const absolute: Vec3 = [Math.abs(normal[0]), Math.abs(normal[1]), Math.abs(normal[2])];
+  if (absolute[2] + axisEpsilon >= Math.max(absolute[0], absolute[1])) {
     return {
+      kind: 'valve-220',
       uAxis: [1, 0, 0],
       vAxis: [0, -1, 0],
       offset: [0, 0],
@@ -176,8 +186,9 @@ export function defaultTextureProjection(normal: Vec3): TextureProjection {
       scale: [1, 1],
     };
   }
-  if (Math.abs(normal[0]) >= Math.abs(normal[1])) {
+  if (absolute[0] + axisEpsilon >= absolute[1]) {
     return {
+      kind: 'valve-220',
       uAxis: [0, 1, 0],
       vAxis: [0, 0, -1],
       offset: [0, 0],
@@ -185,7 +196,14 @@ export function defaultTextureProjection(normal: Vec3): TextureProjection {
       scale: [1, 1],
     };
   }
-  return { uAxis: [1, 0, 0], vAxis: [0, 0, -1], offset: [0, 0], rotationDegrees: 0, scale: [1, 1] };
+  return {
+    kind: 'valve-220',
+    uAxis: [1, 0, 0],
+    vAxis: [0, 0, -1],
+    offset: [0, 0],
+    rotationDegrees: 0,
+    scale: [1, 1],
+  };
 }
 
 export function createBoxBrush(
@@ -209,6 +227,7 @@ export function createBoxBrush(
     { point: [minimum[0], minimum[1], minimum[2]], normal: [0, 0, -1] },
   ];
   return {
+    kind: 'brush',
     id: ids.brush(),
     revision: 0,
     faces: definitions.map<MapFace>(({ point, normal }) => ({
@@ -254,7 +273,7 @@ export function createStarterDocument(): MapDocument {
   const worldspawn: MapEntity = {
     id: ids.entity(),
     properties: { classname: 'worldspawn', message: 'Worldview editor starter', light: '96' },
-    brushes: [
+    primitives: [
       createBoxBrush([-128, -128, -32], [128, 128, 0], 'DEV_FLOOR', ids),
       createBoxBrush([-96, -32, 0], [-32, 32, 96], 'DEV_PILLAR', ids),
       createBoxBrush([32, -32, 0], [96, 32, 160], 'DEV_PILLAR', ids),
@@ -267,7 +286,7 @@ export function createStarterDocument(): MapDocument {
       origin: '0 -96 24',
       angle: '90',
     },
-    brushes: [],
+    primitives: [],
   };
   const light: MapEntity = {
     id: ids.entity(),
@@ -276,12 +295,13 @@ export function createStarterDocument(): MapDocument {
       origin: '0 -48 144',
       light: '400',
     },
-    brushes: [],
+    primitives: [],
   };
   return {
     id: ids.document(),
     revision: 0,
-    format: 'valve-220',
+    format: 'quake-map',
+    faceSyntax: 'valve-220',
     entities: [worldspawn, playerStart, light],
   };
 }
@@ -291,12 +311,13 @@ export function createEmptyDocument(): MapDocument {
   return {
     id: ids.document(),
     revision: 0,
-    format: 'valve-220',
+    format: 'quake-map',
+    faceSyntax: 'valve-220',
     entities: [
       {
         id: ids.entity(),
         properties: { classname: 'worldspawn' },
-        brushes: [],
+        primitives: [],
       },
     ],
   };
@@ -305,11 +326,13 @@ export function createEmptyDocument(): MapDocument {
 export function replaceBrush(document: MapDocument, replacement: MapBrush): MapDocument {
   let found = false;
   const entities = document.entities.map((entity) => {
-    if (!entity.brushes.some((brush) => brush.id === replacement.id)) return entity;
+    if (!entity.primitives.some((brush) => brush.id === replacement.id)) return entity;
     found = true;
     return {
       ...entity,
-      brushes: entity.brushes.map((brush) => (brush.id === replacement.id ? replacement : brush)),
+      primitives: entity.primitives.map((brush) =>
+        brush.id === replacement.id ? replacement : brush,
+      ),
     };
   });
   if (!found) throw new Error(`Unknown brush ${replacement.id}`);
@@ -325,7 +348,7 @@ export function replaceBrushes(
   const found = new Set<BrushId>();
   const entities = document.entities.map((entity) => ({
     ...entity,
-    brushes: entity.brushes.map((brush) => {
+    primitives: entity.primitives.map((brush) => {
       const replacement = byId.get(brush.id);
       if (!replacement) return brush;
       found.add(brush.id);
@@ -363,7 +386,7 @@ export function replaceBrushSequences(
     if (!Number.isInteger(sequence.insertionIndex) || sequence.insertionIndex < 0) {
       throw new Error(`Invalid brush insertion index ${sequence.insertionIndex}`);
     }
-    const actual = entity.brushes
+    const actual = entity.primitives
       .slice(sequence.insertionIndex, sequence.insertionIndex + sequence.expectedBrushIds.length)
       .map((brush) => brush.id);
     if (
@@ -394,7 +417,7 @@ export function replaceBrushSequences(
   }
   const retainedIds = new Set(
     document.entities.flatMap((entity) =>
-      entity.brushes.filter((brush) => !removedIds.has(brush.id)).map((brush) => brush.id),
+      entity.primitives.filter((brush) => !removedIds.has(brush.id)).map((brush) => brush.id),
     ),
   );
   const replacementIds = new Set<BrushId>();
@@ -410,7 +433,7 @@ export function replaceBrushSequences(
     entities: document.entities.map((entity) => {
       const entitySequences = byEntity.get(entity.id);
       if (!entitySequences) return entity;
-      const brushes = [...entity.brushes];
+      const brushes = [...entity.primitives];
       for (const sequence of entitySequences.toSorted(
         (left, right) => right.insertionIndex - left.insertionIndex,
       )) {
@@ -420,7 +443,7 @@ export function replaceBrushSequences(
           ...sequence.replacements,
         );
       }
-      return { ...entity, brushes };
+      return { ...entity, primitives: brushes };
     }),
   };
 }
@@ -431,16 +454,18 @@ export function insertBrush(
   brush: MapBrush,
   index?: number,
 ): MapDocument {
-  if (document.entities.some((entity) => entity.brushes.some((entry) => entry.id === brush.id))) {
+  if (
+    document.entities.some((entity) => entity.primitives.some((entry) => entry.id === brush.id))
+  ) {
     throw new Error(`Brush ${brush.id} already exists`);
   }
   const target = document.entities.find((entity) => entity.id === entityId);
   if (!target) throw new Error(`Unknown entity ${entityId}`);
-  const insertionIndex = index ?? target.brushes.length;
+  const insertionIndex = index ?? target.primitives.length;
   if (
     !Number.isInteger(insertionIndex) ||
     insertionIndex < 0 ||
-    insertionIndex > target.brushes.length
+    insertionIndex > target.primitives.length
   ) {
     throw new Error(`Invalid brush insertion index ${insertionIndex}`);
   }
@@ -451,10 +476,10 @@ export function insertBrush(
       entity.id === entityId
         ? {
             ...entity,
-            brushes: [
-              ...entity.brushes.slice(0, insertionIndex),
+            primitives: [
+              ...entity.primitives.slice(0, insertionIndex),
               brush,
-              ...entity.brushes.slice(insertionIndex),
+              ...entity.primitives.slice(insertionIndex),
             ],
           }
         : entity,
@@ -468,7 +493,7 @@ export function insertBrushes(
 ): MapDocument {
   if (insertions.length === 0) return document;
   const existingIds = new Set(
-    document.entities.flatMap((entity) => entity.brushes.map((brush) => brush.id)),
+    document.entities.flatMap((entity) => entity.primitives.map((brush) => brush.id)),
   );
   const insertedIds = new Set<BrushId>();
   const byEntity = new Map<EntityId, BrushInsertion[]>();
@@ -493,7 +518,7 @@ export function insertBrushes(
     entities: document.entities.map((entity) => {
       const entityInsertions = byEntity.get(entity.id);
       if (!entityInsertions) return entity;
-      const brushes = [...entity.brushes];
+      const brushes = [...entity.primitives];
       for (const insertion of entityInsertions.toSorted(
         (left, right) => left.insertionIndex - right.insertionIndex,
       )) {
@@ -502,13 +527,15 @@ export function insertBrushes(
         }
         brushes.splice(insertion.insertionIndex, 0, insertion.brush);
       }
-      return { ...entity, brushes };
+      return { ...entity, primitives: brushes };
     }),
   };
 }
 
 export function removeBrush(document: MapDocument, brushId: BrushId): MapDocument {
-  if (!document.entities.some((entity) => entity.brushes.some((brush) => brush.id === brushId))) {
+  if (
+    !document.entities.some((entity) => entity.primitives.some((brush) => brush.id === brushId))
+  ) {
     throw new Error(`Unknown brush ${brushId}`);
   }
   return {
@@ -516,7 +543,7 @@ export function removeBrush(document: MapDocument, brushId: BrushId): MapDocumen
     revision: document.revision + 1,
     entities: document.entities.map((entity) => ({
       ...entity,
-      brushes: entity.brushes.filter((brush) => brush.id !== brushId),
+      primitives: entity.primitives.filter((brush) => brush.id !== brushId),
     })),
   };
 }
@@ -526,7 +553,7 @@ export function removeBrushes(document: MapDocument, brushIds: readonly BrushId[
   const uniqueIds = new Set(brushIds);
   if (uniqueIds.size !== brushIds.length) throw new Error('Brush ids must be unique');
   const existingIds = new Set(
-    document.entities.flatMap((entity) => entity.brushes.map((brush) => brush.id)),
+    document.entities.flatMap((entity) => entity.primitives.map((brush) => brush.id)),
   );
   for (const brushId of uniqueIds) {
     if (!existingIds.has(brushId)) throw new Error(`Unknown brush ${brushId}`);
@@ -536,7 +563,7 @@ export function removeBrushes(document: MapDocument, brushIds: readonly BrushId[
     revision: document.revision + 1,
     entities: document.entities.map((entity) => ({
       ...entity,
-      brushes: entity.brushes.filter((brush) => !uniqueIds.has(brush.id)),
+      primitives: entity.primitives.filter((brush) => !uniqueIds.has(brush.id)),
     })),
   };
 }

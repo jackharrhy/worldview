@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   EditorSession,
   brushesInDocument,
@@ -7,6 +7,7 @@ import {
   createSequentialIdFactory,
   createStarterDocument,
   deriveBrush,
+  findBrush,
   deriveEditorGroups,
   deriveEditorLayers,
   parseMap,
@@ -24,7 +25,7 @@ function adjacentBrushSource(): string {
 
   return serializeMap({
     ...starter,
-    entities: [{ ...worldspawn, brushes: [left, right] }, ...starter.entities.slice(1)],
+    entities: [{ ...worldspawn, primitives: [left, right] }, ...starter.entities.slice(1)],
   });
 }
 
@@ -36,7 +37,7 @@ function subtractionBrushSource(): string {
   const cutter = createBoxBrush([-16, -16, -48], [16, 16, 48], 'CUTTER', ids);
   return serializeMap({
     ...starter,
-    entities: [{ ...worldspawn, brushes: [target, cutter] }, ...starter.entities.slice(1)],
+    entities: [{ ...worldspawn, primitives: [target, cutter] }, ...starter.entities.slice(1)],
   });
 }
 
@@ -51,7 +52,7 @@ function selectionPaintSource(): string {
   ];
   return serializeMap({
     ...starter,
-    entities: [{ ...worldspawn, brushes }, ...starter.entities.slice(1)],
+    entities: [{ ...worldspawn, primitives: brushes }, ...starter.entities.slice(1)],
   });
 }
 
@@ -69,16 +70,16 @@ function selectionBrushSource(): string {
   return serializeMap({
     ...starter,
     entities: [
-      { ...worldspawn, brushes },
+      { ...worldspawn, primitives: brushes },
       {
         id: ids.entity(),
         properties: { classname: 'info_target', origin: '0 -48 16' },
-        brushes: [],
+        primitives: [],
       },
       {
         id: ids.entity(),
         properties: { classname: 'info_target', origin: '160 64 16' },
-        brushes: [],
+        primitives: [],
       },
     ],
   });
@@ -96,11 +97,11 @@ function regularGroupSource(): string {
       angle: '90',
       targetname: 'door_a',
     },
-    brushes: [],
+    primitives: [],
   };
   const document = {
     ...starter,
-    entities: [{ ...starter.entities[0]!, brushes: [brush] }, marker],
+    entities: [{ ...starter.entities[0]!, primitives: [brush] }, marker],
   };
   const session = new EditorSession(document);
   session.select(createObjectSelection([brush.id], [marker.id]));
@@ -116,7 +117,7 @@ function drillSelectionSource(): string {
   const back = createBoxBrush([16, -72, 48], [64, -24, 96], 'DRILL_BACK', ids);
   return serializeMap({
     ...starter,
-    entities: [{ ...worldspawn, brushes: [front, back] }, ...starter.entities.slice(1)],
+    entities: [{ ...worldspawn, primitives: [front, back] }, ...starter.entities.slice(1)],
   });
 }
 
@@ -130,8 +131,8 @@ function brushEntitySiblingSource(): string {
   return serializeMap({
     ...starter,
     entities: [
-      { ...worldspawn, brushes: [worldBrush] },
-      { id: ids.entity(), properties: { classname: 'func_detail' }, brushes: [first, second] },
+      { ...worldspawn, primitives: [worldBrush] },
+      { id: ids.entity(), properties: { classname: 'func_detail' }, primitives: [first, second] },
       ...starter.entities.slice(1),
     ],
   });
@@ -140,7 +141,7 @@ function brushEntitySiblingSource(): string {
 function entityLinkSource(): string {
   const ids = createSequentialIdFactory('browser-entity-links');
   const starter = createStarterDocument();
-  const worldspawn = { ...starter.entities[0]!, brushes: [] };
+  const worldspawn = { ...starter.entities[0]!, primitives: [] };
   const doorBrush = createBoxBrush([-16, -16, 0], [16, 16, 64], 'DOOR', ids);
   return serializeMap({
     ...starter,
@@ -154,12 +155,12 @@ function entityLinkSource(): string {
           target: 'door_a',
           killtarget: 'unused_a',
         },
-        brushes: [],
+        primitives: [],
       },
       {
         id: ids.entity(),
         properties: { classname: 'func_door', targetname: 'door_a', target: 'relay_a' },
-        brushes: [doorBrush],
+        primitives: [doorBrush],
       },
       {
         id: ids.entity(),
@@ -169,12 +170,12 @@ function entityLinkSource(): string {
           targetname: 'relay_a',
           target: 'unused_a',
         },
-        brushes: [],
+        primitives: [],
       },
       {
         id: ids.entity(),
         properties: { classname: 'info_null', origin: '192 0 32', targetname: 'unused_a' },
-        brushes: [],
+        primitives: [],
       },
     ],
   });
@@ -188,11 +189,11 @@ function issueBrowserSource(): string {
   return serializeMap({
     ...starter,
     entities: [
-      { ...starter.entities[0]!, brushes: [invalid] },
+      { ...starter.entities[0]!, primitives: [invalid] },
       {
         id: ids.entity(),
         properties: { classname: 'light', origin: 'not a vector' },
-        brushes: [],
+        primitives: [],
       },
       {
         id: ids.entity(),
@@ -201,7 +202,7 @@ function issueBrowserSource(): string {
           origin: '96 0 16',
           target: 'missing_door',
         },
-        brushes: [],
+        primitives: [],
       },
     ],
   });
@@ -217,19 +218,19 @@ function viewFilterSource(): string {
   return serializeMap({
     ...starter,
     entities: [
-      { ...starter.entities[0]!, brushes: [world] },
-      { id: ids.entity(), properties: { classname: 'func_detail' }, brushes: [detail] },
-      { id: ids.entity(), properties: { classname: 'trigger_once' }, brushes: [trigger] },
-      { id: ids.entity(), properties: { classname: 'func_wall' }, brushes: [clip] },
+      { ...starter.entities[0]!, primitives: [world] },
+      { id: ids.entity(), properties: { classname: 'func_detail' }, primitives: [detail] },
+      { id: ids.entity(), properties: { classname: 'trigger_once' }, primitives: [trigger] },
+      { id: ids.entity(), properties: { classname: 'func_wall' }, primitives: [clip] },
       {
         id: ids.entity(),
         properties: { classname: 'light', origin: '-48 96 24' },
-        brushes: [],
+        primitives: [],
       },
       {
         id: ids.entity(),
         properties: { classname: 'monster_army', origin: '48 96 24' },
-        brushes: [],
+        primitives: [],
       },
     ],
   });
@@ -248,7 +249,7 @@ function materialUsageSource(): string {
   const second = createBoxBrush([32, -32, 0], [96, 32, 64], 'DEV_FLOOR', ids);
   return serializeMap({
     ...starter,
-    entities: [{ ...worldspawn, brushes: [first, second] }, ...starter.entities.slice(1)],
+    entities: [{ ...worldspawn, primitives: [first, second] }, ...starter.entities.slice(1)],
   });
 }
 
@@ -271,7 +272,11 @@ function dotTestVectors(left: readonly number[], right: readonly number[]): numb
 
 async function openEditor(page: Page, options: { empty?: boolean } = {}): Promise<void> {
   await page.goto('http://127.0.0.1:5174/');
-  await expect(page.locator('#status-message')).toContainText('Source renderer ready');
+  await page.getByRole('button', { name: 'New map', exact: true }).click();
+  await expect(page).toHaveURL(/\/new-map$/);
+  await page.getByRole('button', { name: 'Create map', exact: true }).click();
+  await expect(page).toHaveURL('http://127.0.0.1:5174/editor');
+  await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
   await expect(page.locator('.viewport-error')).toBeHidden();
   if (!options.empty) {
     await page.getByRole('button', { name: 'Source', exact: true }).click();
@@ -279,6 +284,10 @@ async function openEditor(page: Page, options: { empty?: boolean } = {}): Promis
     await page.getByRole('button', { name: 'Apply source', exact: true }).click();
     await expect(page.locator('#status-message')).toContainText('Apply map source');
   }
+}
+
+async function openToolbarMenu(page: Page, name: string): Promise<void> {
+  await page.getByTitle(name, { exact: true }).click();
 }
 
 interface BrowserSiteToolResult {
@@ -452,7 +461,219 @@ function cameraDistance(left: readonly number[], right: readonly number[]): numb
   return Math.hypot(left[0]! - right[0]!, left[1]! - right[1]!, left[2]! - right[2]!);
 }
 
+async function controlContrast(locator: Locator): Promise<number> {
+  return locator.evaluate((element) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext('2d', { willReadFrequently: true })!;
+    const color = (value: string): [number, number, number, number] => {
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = value;
+      context.fillRect(0, 0, 1, 1);
+      const pixel = context.getImageData(0, 0, 1, 1).data;
+      return [pixel[0]!, pixel[1]!, pixel[2]!, pixel[3]! / 255];
+    };
+    // oxlint-disable-next-line consistent-function-scoping -- evaluated in the browser realm.
+    const blend = (
+      foreground: readonly [number, number, number, number],
+      background: readonly [number, number, number, number],
+    ): [number, number, number, number] => {
+      const alpha = foreground[3] + background[3] * (1 - foreground[3]);
+      if (alpha === 0) return [0, 0, 0, 0];
+      return [
+        (foreground[0] * foreground[3] + background[0] * background[3] * (1 - foreground[3])) /
+          alpha,
+        (foreground[1] * foreground[3] + background[1] * background[3] * (1 - foreground[3])) /
+          alpha,
+        (foreground[2] * foreground[3] + background[2] * background[3] * (1 - foreground[3])) /
+          alpha,
+        alpha,
+      ];
+    };
+    const ancestors: Element[] = [];
+    for (let current: Element | null = element; current; current = current.parentElement)
+      ancestors.push(current);
+    let background: [number, number, number, number] = [255, 255, 255, 1];
+    for (const current of ancestors.toReversed()) {
+      background = blend(color(getComputedStyle(current).backgroundColor), background);
+    }
+    const foreground = blend(color(getComputedStyle(element).color), background);
+    // oxlint-disable-next-line consistent-function-scoping -- evaluated in the browser realm.
+    const luminance = (rgb: readonly number[]) =>
+      rgb.slice(0, 3).reduce((sum, channel, index) => {
+        const value = channel! / 255;
+        const linear = value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        return sum + linear * [0.2126, 0.7152, 0.0722][index]!;
+      }, 0);
+    const foregroundLuminance = luminance(foreground);
+    const backgroundLuminance = luminance(background);
+    return (
+      (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+      (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+    );
+  });
+}
+
 test.describe('WebMCP site authoring', () => {
+  test('keeps button contrast legible across themes and interaction states', async ({ page }) => {
+    await page.goto('http://127.0.0.1:5174/');
+    const primary = page.getByRole('button', { name: 'New map', exact: true });
+    const neutral = page.getByRole('button', { name: 'Open project folder', exact: true });
+    for (const theme of ['dark', 'light'] as const) {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      expect(await controlContrast(primary)).toBeGreaterThanOrEqual(4.5);
+      expect(await controlContrast(neutral)).toBeGreaterThanOrEqual(4.5);
+      await primary.hover();
+      expect(await controlContrast(primary)).toBeGreaterThanOrEqual(4.5);
+      await page.mouse.down();
+      expect(await controlContrast(primary)).toBeGreaterThanOrEqual(4.5);
+      await page.mouse.move(0, 0);
+      await page.mouse.up();
+      await neutral.hover();
+      expect(await controlContrast(neutral)).toBeGreaterThanOrEqual(4.5);
+      await page.mouse.down();
+      expect(await controlContrast(neutral)).toBeGreaterThanOrEqual(4.5);
+      await page.mouse.move(0, 0);
+      await page.mouse.up();
+    }
+    await page.getByRole('button', { name: 'New map', exact: true }).click();
+    const create = page.getByRole('button', { name: 'Create map', exact: true });
+    await create.evaluate((button: HTMLButtonElement) => {
+      button.disabled = true;
+    });
+    for (const theme of ['dark', 'light'] as const) {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      expect(await controlContrast(create)).toBeGreaterThanOrEqual(4.5);
+      await expect(create).toHaveCSS('cursor', 'progress');
+    }
+  });
+
+  test('keeps visible editor controls above non-text contrast minimums', async ({ page }) => {
+    await openEditor(page, { empty: true });
+    for (const theme of ['dark', 'light'] as const) {
+      await page.getByLabel('Editor theme').selectOption(theme);
+      const buttons = page.locator('button:visible:not(:disabled)');
+      const failures: string[] = [];
+      for (let index = 0; index < (await buttons.count()); index += 1) {
+        const button = buttons.nth(index);
+        const ratio = await controlContrast(button);
+        if (ratio < 3) {
+          failures.push(
+            `${(await button.getAttribute('title')) ?? (await button.getAttribute('aria-label')) ?? (await button.innerText())}: ${ratio.toFixed(2)}`,
+          );
+        }
+      }
+      expect(failures, `${theme} editor controls below 3:1: ${failures.join(', ')}`).toEqual([]);
+      for (const control of [
+        page.getByTitle('Worldview Editor', { exact: true }),
+        page.getByRole('button', { name: 'Source', exact: true }),
+        page.locator('#issue-status'),
+      ]) {
+        await control.hover();
+        expect(await controlContrast(control)).toBeGreaterThanOrEqual(3);
+        await page.mouse.down();
+        expect(await controlContrast(control)).toBeGreaterThanOrEqual(3);
+        await page.mouse.move(0, 0);
+        await page.mouse.up();
+      }
+    }
+  });
+
+  test('uses a dedicated history-aware new-map page', async ({ page }) => {
+    const loadedScripts: string[] = [];
+    page.on('request', (request) => {
+      if (request.resourceType() === 'script') loadedScripts.push(request.url());
+    });
+    await page.goto('http://127.0.0.1:5174/');
+    await expect(page.locator('#status-message')).toHaveCount(0);
+    expect(loadedScripts.some((url) => url.includes('/routes/editor-route.'))).toBe(false);
+    await page.getByRole('button', { name: 'New map', exact: true }).click();
+    await expect(page).toHaveURL(/\/new-map$/);
+    await expect(page.getByRole('heading', { name: 'New map', exact: true })).toBeVisible();
+    await expect(page.locator('dialog#new-map-dialog')).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'New map', exact: true })).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole('heading', { name: 'Worldview Editor' })).toBeVisible();
+    await page.goForward();
+    await page.getByLabel('Game').selectOption('goldsrc');
+    await expect(page.getByLabel('Map format').locator('option')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Create map', exact: true }).click();
+    await expect(page).toHaveURL('http://127.0.0.1:5174/editor');
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
+    await page.reload();
+    await expect(page).toHaveURL('http://127.0.0.1:5174/editor');
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
+    expect(loadedScripts.some((url) => url.includes('/routes/editor-route.'))).toBe(true);
+  });
+
+  test('switches and persists the editor theme', async ({ page }) => {
+    await openEditor(page, { empty: true });
+    const selector = page.getByLabel('Editor theme');
+    await selector.selectOption('light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem('worldview.editor.theme')))
+      .toBe('light');
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe(
+      'light',
+    );
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--renderer-background'),
+      ),
+    ).toContain('96.5%');
+
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
+    await expect(selector).toHaveValue('light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await selector.selectOption('dark');
+  });
+
+  test('uses a resizable TrenchBroom-style four-pane workspace', async ({ page }) => {
+    await openEditor(page, { empty: true });
+    const perspective = page.locator('[data-viewport="perspective"]');
+    const top = page.locator('[data-viewport="xy"]');
+    const perspectiveBounds = await perspective.boundingBox();
+    const topBounds = await top.boundingBox();
+    if (!perspectiveBounds || !topBounds) throw new Error('Viewport layout has no bounds');
+    expect(perspectiveBounds.x).toBeLessThan(topBounds.x);
+    expect(Math.abs(perspectiveBounds.y - topBounds.y)).toBeLessThan(2);
+    expect(Math.abs(perspectiveBounds.width - topBounds.width)).toBeLessThan(2);
+    expect(Math.abs(perspectiveBounds.height - topBounds.height)).toBeLessThan(2);
+
+    const columnHandle = page.locator('[data-resize="viewport-column"]');
+    const beforeColumn = Number(await columnHandle.getAttribute('aria-valuenow'));
+    await columnHandle.press('ArrowRight');
+    expect(Number(await columnHandle.getAttribute('aria-valuenow'))).toBeGreaterThan(beforeColumn);
+
+    const rowHandle = page.locator('[data-resize="viewport-top"]');
+    const beforeRow = Number(await rowHandle.getAttribute('aria-valuenow'));
+    await rowHandle.press('ArrowDown');
+    expect(Number(await rowHandle.getAttribute('aria-valuenow'))).toBeGreaterThan(beforeRow);
+    await expect(page.locator('[data-resize]')).toHaveCount(3);
+
+    const inspectorHandle = page.locator('[data-resize="inspector"]');
+    const beforeInspector = Number(await inspectorHandle.getAttribute('aria-valuenow'));
+    const handleBounds = await inspectorHandle.boundingBox();
+    if (!handleBounds) throw new Error('Inspector resize handle has no bounds');
+    await page.mouse.move(handleBounds.x + handleBounds.width / 2, handleBounds.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(handleBounds.x - 48, handleBounds.y + 100, { steps: 4 });
+    await page.mouse.up();
+    expect(Number(await inspectorHandle.getAttribute('aria-valuenow'))).toBeGreaterThan(
+      beforeInspector,
+    );
+    await expect(inspectorHandle).not.toHaveClass(/dragging/);
+    await expect(inspectorHandle).not.toBeFocused();
+  });
+
   test('keeps the normal editor available when the browser has no site-tool API', async ({
     page,
   }) => {
@@ -460,6 +681,20 @@ test.describe('WebMCP site authoring', () => {
     await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tools', 'unsupported');
     await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tool-count', '0');
     await expect(page.getByRole('button', { name: 'Select', exact: true })).toBeEnabled();
+    const compile = page.locator('[data-action="compile"]');
+    const repeat = page.locator('[data-action="repeat-commands"]');
+    await expect(compile.locator('.ph')).toHaveCount(1);
+    await expect(repeat.locator('.ph')).toHaveCount(1);
+    expect(
+      await compile.evaluate((button) => ({
+        width: button.getBoundingClientRect().width,
+        overflow: getComputedStyle(button).overflow,
+      })),
+    ).toEqual({ width: 30, overflow: 'hidden' });
+    await expect(page.getByTitle('More document actions', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Versions', exact: true })).toBeHidden();
+    await openToolbarMenu(page, 'More document actions');
+    await expect(page.getByRole('button', { name: 'Versions', exact: true })).toBeVisible();
   });
 
   test('registers first-class live tools with revision guards, visible edits, and undo', async ({
@@ -490,7 +725,7 @@ test.describe('WebMCP site authoring', () => {
 
     const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
     expect(inspection.revision).toBe(0);
-    expect(inspection.counts).toMatchObject({ entities: 1, brushes: 0, faces: 0 });
+    expect(inspection.counts).toMatchObject({ entities: 1, primitives: 0, faces: 0 });
     const documentId = inspection.documentId as string;
     const initialBox = await executeSiteTool(page, 'worldview_create_box', {
       expectedDocumentId: documentId,
@@ -573,9 +808,13 @@ test.describe('WebMCP site authoring', () => {
     await expect(page.locator('#status-message')).toContainText('Site tool: created brush');
 
     await page.getByRole('button', { name: 'New', exact: true }).click();
+    await expect(page).toHaveURL(/\/new-map$/);
+    await page.getByRole('button', { name: 'Create map', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tool-count', '21');
     const blank = await executeSiteTool(page, 'worldview_inspect_editor');
     expect(blank.revision).toBe(0);
-    expect(blank.counts).toMatchObject({ entities: 1, brushes: 0, faces: 0 });
+    expect(blank.counts).toMatchObject({ entities: 1, primitives: 0, faces: 0 });
   });
 });
 
@@ -914,6 +1153,7 @@ test.describe('3D source authoring', () => {
     const second = await topWorldPoint(page, 0, 0);
 
     await page.mouse.click(first.x, first.y);
+    await openToolbarMenu(page, 'Visibility and locking');
     await page.getByRole('button', { name: 'Hide', exact: true }).click();
     await expect(page.locator('#hidden-object-count')).toHaveText('1');
     await expect(page.locator('#selection-kind')).toHaveText('None');
@@ -926,20 +1166,24 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
 
     await page.mouse.click(second.x, second.y);
+    await openToolbarMenu(page, 'Visibility and locking');
     await page.getByRole('button', { name: 'Isolate', exact: true }).click();
     await expect(page.locator('#hidden-object-count')).toHaveText('4');
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
     await page.mouse.click(first.x, first.y);
     await expect(page.locator('#selection-kind')).toHaveText('None');
+    await openToolbarMenu(page, 'Visibility and locking');
     await page.getByRole('button', { name: 'Show all', exact: true }).click();
     await expect(page.locator('#hidden-object-count')).toHaveText('0');
 
     await page.mouse.click(first.x, first.y);
+    await openToolbarMenu(page, 'Visibility and locking');
     await page.getByRole('button', { name: 'Lock', exact: true }).click();
     await expect(page.locator('#locked-object-count')).toHaveText('1');
     await expect(page.locator('#selection-kind')).toHaveText('None');
     await page.mouse.click(first.x, first.y);
     await expect(page.locator('#selection-kind')).toHaveText('None');
+    await openToolbarMenu(page, 'Visibility and locking');
     await page.getByRole('button', { name: 'Unlock all', exact: true }).click();
     await expect(page.locator('#locked-object-count')).toHaveText('0');
     await page.mouse.click(first.x, first.y);
@@ -978,7 +1222,7 @@ test.describe('3D source authoring', () => {
       _tb_name: 'West hall',
       _tb_id: '1',
     });
-    expect(groupEntity?.brushes).toHaveLength(2);
+    expect(groupEntity?.primitives).toHaveLength(2);
 
     await page.locator('[data-action="open-group"]').click();
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
@@ -1059,14 +1303,7 @@ test.describe('3D source authoring', () => {
     linkedGroups = deriveEditorGroups(linked);
     expect(
       linkedGroups
-        .map(
-          (group) =>
-            deriveBrush(
-              linked.entities
-                .flatMap((entity) => entity.brushes)
-                .find((brush) => brush.id === group.brushIds[0])!,
-            ).bounds?.min[2],
-        )
+        .map((group) => deriveBrush(findBrush(linked, group.brushIds[0]!)!).bounds?.min[2])
         .toSorted(),
     ).toEqual([16, 16]);
     const linkedAngles = linkedGroups
@@ -1242,7 +1479,7 @@ test.describe('3D source authoring', () => {
     const distantBrush = createBoxBrush([4800, 6800, 1200], [5200, 7200, 1600], 'DEV_FLOOR', ids);
     const source = serializeMap({
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [distantBrush] }],
+      entities: [{ ...starter.entities[0]!, primitives: [distantBrush] }],
     });
     await page.locator('#map-file').setInputFiles({
       name: 'distant.map',
@@ -1296,6 +1533,7 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#selection-kind')).toHaveText('None');
     let document = await readEditorDocument(page);
     expect(document.revision).toBe(0);
+    await openToolbarMenu(page, 'Visibility and locking');
     await page.getByRole('button', { name: 'Show all', exact: true }).click();
 
     await page.mouse.click(point.x, point.y, { button: 'right' });
@@ -1537,7 +1775,7 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#entity-classname')).toHaveText('func_detail');
     let document = await readEditorDocument(page);
     expect(
-      document.entities.find((entity) => entity.properties.classname === 'func_detail')?.brushes,
+      document.entities.find((entity) => entity.properties.classname === 'func_detail')?.primitives,
     ).toHaveLength(2);
 
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
@@ -1553,7 +1791,7 @@ test.describe('3D source authoring', () => {
       false,
     );
     expect(
-      document.entities.find((entity) => entity.properties.classname === 'worldspawn')?.brushes,
+      document.entities.find((entity) => entity.properties.classname === 'worldspawn')?.primitives,
     ).toHaveLength(2);
   });
 
@@ -1619,7 +1857,10 @@ test.describe('3D source authoring', () => {
     page,
   }) => {
     await openEditor(page);
-    await page.getByRole('button', { name: 'Brush', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     await expect(page.locator('#simple-shape-tool-section')).toBeVisible();
     await page.locator('#simple-shape-kind').selectOption('cylinder');
     await page.locator('#simple-shape-sides').fill('8');
@@ -1654,11 +1895,41 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#geometry-state')).toHaveText('valid');
   });
 
+  test('default tool selects on click and draws shapes only with an empty selection', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await expect(page.getByRole('button', { name: 'Brush', exact: true })).toHaveCount(0);
+    await expect(page.locator('#simple-shape-tool-section')).toBeVisible();
+
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#simple-shape-tool-section')).toBeHidden();
+
+    const start = await topWorldPoint(page, 256, 256);
+    const end = await topWorldPoint(page, 384, 384);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#brush-count')).toHaveText('3');
+
+    await page.mouse.click(start.x, start.y);
+    await expect(page.locator('#selection-kind')).toHaveText('None');
+    await expect(page.locator('#simple-shape-tool-section')).toBeVisible();
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+  });
+
   test('Simple Shape 3D drawing supports square, cube, and height-only modifiers', async ({
     page,
   }) => {
     await openEditor(page);
-    await page.getByRole('button', { name: 'Brush', exact: true }).click();
     const start = await perspectiveWorldPoint(page, [-64, -64, 0]);
     const end = await perspectiveWorldPoint(page, [64, 32, 0]);
     await page.keyboard.down('Shift');
@@ -1837,6 +2108,36 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#brush-count')).toHaveText('4');
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
     await expect(page.locator('#status-message')).toContainText('Split-extrude face');
+  });
+
+  test('Shift-drag acquires a selected brush face just outside its silhouette edge', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+
+    const center = await perspectiveWorldPoint(page, [0, 0, 0]);
+    const corner = await perspectiveWorldPoint(page, [128, 128, 0]);
+    const length = Math.hypot(corner.x - center.x, corner.y - center.y);
+    const outward = {
+      x: (corner.x - center.x) / length,
+      y: (corner.y - center.y) / length,
+    };
+    const nearEdge = { x: corner.x + outward.x * 6, y: corner.y + outward.y * 6 };
+    const end = { x: nearEdge.x + outward.x * 48, y: nearEdge.y + outward.y * 48 };
+
+    await page.keyboard.down('Shift');
+    await page.mouse.move(nearEdge.x, nearEdge.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('Extrude face');
+    await expect(page.locator('#brush-bounds')).not.toHaveText('-128 -128 -32 to 128 128 0');
   });
 
   test('permanent resize modifiers move a face freely or stamp a new brush from Select', async ({
@@ -2634,7 +2935,7 @@ test.describe('3D source authoring', () => {
 
     const editor = page.locator('#uv-editor');
     await expect(editor).toBeVisible();
-    await expect(page.locator('#uv-editor-status')).toContainText('DEV_FLOOR · 128×128 · 1 face');
+    await expect(page.locator('#uv-editor-status')).toContainText('DEV_FLOOR · 64×64 · 1 face');
     const bounds = await editor.boundingBox();
     if (!bounds) throw new Error('The UV editor has no bounds');
     const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };

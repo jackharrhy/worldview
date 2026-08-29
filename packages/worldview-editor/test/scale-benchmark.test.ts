@@ -27,7 +27,7 @@ function benchmarkDocument(): MapDocument {
   });
   return {
     ...starter,
-    entities: [{ ...starter.entities[0]!, brushes }, ...starter.entities.slice(1)],
+    entities: [{ ...starter.entities[0]!, primitives: brushes }, ...starter.entities.slice(1)],
   };
 }
 

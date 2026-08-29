@@ -8,6 +8,7 @@ import { parseClientFrame, type ServerFrame } from './protocol.js';
 
 interface SocketAttachment {
   readonly actorId: string;
+  readonly role: 'owner' | 'editor' | 'viewer';
 }
 
 export class MapRoom extends DurableObject<Env> {
@@ -53,16 +54,20 @@ export class MapRoom extends DurableObject<Env> {
     const url = new URL(request.url);
     const actorId = url.searchParams.get('actor');
     const roomId = url.searchParams.get('room');
+    const role = url.searchParams.get('role') ?? 'editor';
     if (!actorId || !roomId || actorId.length > 128 || roomId.length > 128) {
       return Response.json(
         { error: 'Valid room and actor parameters are required' },
         { status: 400 },
       );
     }
+    if (role !== 'owner' && role !== 'editor' && role !== 'viewer') {
+      return Response.json({ error: 'Valid collaboration role required' }, { status: 400 });
+    }
     this.initializeRoom(roomId);
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
-    server.serializeAttachment({ actorId } satisfies SocketAttachment);
+    server.serializeAttachment({ actorId, role } satisfies SocketAttachment);
     this.ctx.acceptWebSocket(server, [`actor:${actorId}`]);
     server.send(JSON.stringify(this.readyFrame()));
     return new Response(null, { status: 101, webSocket: client });
@@ -108,6 +113,8 @@ export class MapRoom extends DurableObject<Env> {
         this.broadcast({ type: 'presence', presence: frame.presence }, socket);
         return;
       }
+      const attachment = socket.deserializeAttachment() as SocketAttachment | null;
+      if (attachment?.role === 'viewer') throw new Error('Viewer connections cannot edit maps');
       this.acceptSocketOperation(socket, frame.operation);
     } catch (error) {
       socket.send(

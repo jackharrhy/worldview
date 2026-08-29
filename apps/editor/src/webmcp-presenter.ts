@@ -122,7 +122,7 @@ export class WebMcpPresenter {
           counts: {
             entities: document.entities.length,
             pointEntities: pointEntities.length,
-            brushes: brushes.length,
+            primitives: brushes.length,
             faces: brushes.reduce((sum, brush) => sum + brush.faces.length, 0),
             groups: deriveEditorGroups(document).length,
             layers: deriveEditorLayers(document).length,
@@ -190,7 +190,8 @@ export class WebMcpPresenter {
         const objects: JsonObject[] = [];
         if (kind !== 'entity') {
           for (const entity of document.entities) {
-            for (const brush of entity.brushes) {
+            for (const brush of entity.primitives) {
+              if (brush.kind !== 'brush') continue;
               const derived = deriveBrush(brush);
               objects.push({
                 kind: 'brush',
@@ -213,7 +214,7 @@ export class WebMcpPresenter {
               id: entity.id,
               selected: selectedEntities.has(entity.id),
               classname: entity.properties.classname ?? '',
-              brushCount: entity.brushes.length,
+              brushCount: entity.primitives.length,
               properties: entity.properties,
             });
           }

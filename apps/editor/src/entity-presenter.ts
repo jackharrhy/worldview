@@ -105,7 +105,7 @@ export class EntityPresenter {
       ? mapDocument.entities.find((candidate) => candidate.id === selection.entityId)
       : selection?.brushId
         ? mapDocument.entities.find((candidate) =>
-            candidate.brushes.some((brush) => brush.id === selection.brushId),
+            candidate.primitives.some((brush) => brush.id === selection.brushId),
           )
         : undefined;
     this.state.activeEntityId = entity?.id ?? null;

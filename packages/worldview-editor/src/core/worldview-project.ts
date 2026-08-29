@@ -1,4 +1,6 @@
-export type WorldviewGameProfile = 'quake' | 'goldsrc';
+import { isWorldviewGameProfile, type WorldviewGameProfile } from './game-profiles.js';
+
+export type { WorldviewGameProfile } from './game-profiles.js';
 export type EntityDefinitionFormat = 'fgd' | 'def' | 'ent';
 
 export interface WorldviewEntityDefinitionSource {
@@ -158,7 +160,7 @@ export function parseWorldviewProject(source: string): WorldviewProjectManifest 
     throw new WorldviewProjectParseError('only schemaVersion 1 is supported', 'schemaVersion');
   }
   const game = string(project.game, 'game');
-  if (game !== 'quake' && game !== 'goldsrc') {
+  if (!isWorldviewGameProfile(game)) {
     throw new WorldviewProjectParseError('must be quake or goldsrc', 'game');
   }
   const mapRoots = unique(

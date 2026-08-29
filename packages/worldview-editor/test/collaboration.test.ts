@@ -48,7 +48,7 @@ describe('collaboration operations', () => {
         ...baseline,
         entities: baseline.entities.with(worldIndex, {
           ...baselineWorld,
-          brushes: baselineWorld.brushes.map((brush) =>
+          primitives: baselineWorld.primitives.map((brush) =>
             brush.id === first.id ? firstAfter : brush,
           ),
         }),
@@ -61,7 +61,7 @@ describe('collaboration operations', () => {
         ...baseline,
         entities: baseline.entities.with(worldIndex, {
           ...baselineWorld,
-          brushes: baselineWorld.brushes.map((brush) =>
+          primitives: baselineWorld.primitives.map((brush) =>
             brush.id === second.id ? secondAfter : brush,
           ),
         }),

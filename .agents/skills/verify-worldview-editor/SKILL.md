@@ -38,7 +38,7 @@ Before manual driving, confirm the instance belongs to this app and is render-re
 curl -fsS http://127.0.0.1:5174/ >/dev/null
 ```
 
-Then require `#status-message` to contain `Source renderer ready`, `.viewport-error` to be hidden,
+Then require `<html data-worldview-editor-ready="true">`, `.viewport-error` to be hidden,
 and `<html data-worldview-site-tools="ready" data-worldview-site-tool-count="21">` after installing
 the registration shim before navigation. The helper performs all four checks. If WebGPU does not
 initialize, inspect `console.json` and `report.json` before changing launch flags.

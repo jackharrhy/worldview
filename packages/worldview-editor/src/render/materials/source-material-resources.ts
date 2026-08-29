@@ -9,6 +9,7 @@ import type { EditorSpriteMaterial } from '../types.js';
 /** Owns the source view's fallback, map-material, and sprite-material GPU resources. */
 export class SourceMaterialResources {
   private readonly resources = new Map<string, MaterialResource>();
+  private readonly materialByKey = new Map<string, EditorMaterial>();
   private readonly fallback: MaterialResource;
   private materials: readonly EditorMaterial[];
   private sprites: readonly EditorSpriteMaterial[];
@@ -48,20 +49,30 @@ export class SourceMaterialResources {
   }
 
   private rebuild(): void {
-    this.clear();
+    const desired = new Map<string, EditorMaterial>();
     for (const material of [...this.materials, ...this.sprites.map((sprite) => sprite.material)]) {
       const key = material.name.trim().toLowerCase();
-      const previous = this.resources.get(key);
-      if (previous) destroyMaterialResource(previous);
+      desired.set(key, material);
+    }
+    for (const [key, resource] of this.resources) {
+      if (desired.get(key) === this.materialByKey.get(key)) continue;
+      destroyMaterialResource(resource);
+      this.resources.delete(key);
+      this.materialByKey.delete(key);
+    }
+    for (const [key, material] of desired) {
+      if (this.materialByKey.get(key) === material) continue;
       this.resources.set(
         key,
         createMaterialResource(this.device, this.bindGroupLayout, this.sampler, material),
       );
+      this.materialByKey.set(key, material);
     }
   }
 
   private clear(): void {
     for (const resource of this.resources.values()) destroyMaterialResource(resource);
     this.resources.clear();
+    this.materialByKey.clear();
   }
 }

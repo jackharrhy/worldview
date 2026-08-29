@@ -432,7 +432,7 @@ export abstract class EditorSessionSelection extends EditorSessionState {
     if (selectionBrushIds.length === 0 || selectedPointEntityIds(selection).length > 0) return null;
     for (const brushId of selectionBrushIds) {
       const owner = this.currentDocument.entities.find((entity) =>
-        entity.brushes.some((brush) => brush.id === brushId),
+        entity.primitives.some((brush) => brush.id === brushId),
       );
       if (
         !owner ||

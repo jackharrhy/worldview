@@ -5,9 +5,11 @@ Worldview remains a local-first solo editor. Collaboration is an optional mode a
 a network for ordinary editing, or move pointer, camera, preview, renderer, or asset state into a
 remote service.
 
-This note records the current collaboration direction and implemented foundation. Multiplayer UX
-has not shipped, but the semantic operation layer, convergence buffer, offline outbox, multi-tab
-transport, and portable `MapRoom` service now exist behind opt-in APIs.
+This note records the current collaboration direction and implemented foundation. The editor now
+ships an accountless live-link mode over the semantic operation layer, convergence buffer, offline
+outbox, multi-tab transport, and portable `MapRoom` service. Game-inspired generated aliases and
+colored badges make each participant's active viewport and selection state visible without an
+account profile.
 
 ## Reference systems
 
@@ -192,14 +194,31 @@ the editor's 8,000-brush target.
 - `EditorApplication.joinCollaboration()` deliberately initializes or adopts a room baseline and
   owns the bridge/socket lifetime; `leaveCollaboration()` disconnects them while retaining the
   ordinary local document. Neither the constructor nor `start()` enables multiplayer implicitly.
+- The editor's Live collaboration dialog creates a 144-bit room token, places it only in the URL
+  fragment, initializes the current map as the room baseline, and exposes a copyable link. Opening
+  that link automatically joins with a stable browser-local actor ID and an editable guest name.
+  Leaving retains an ordinary local working copy. Presence carries colored selections, world-space
+  pointers, viewport/tool state, and sequenced gesture previews. Candidate documents are reduced to
+  bounded semantic edit patches and rendered as remote solid-and-wireframe overlays; they never enter room
+  history, source serialization, hit testing, SQLite, or the offline outbox. A durable commit or
+  cancellation clears its matching preview.
 - `apps/collaboration-service` is a Wrangler and celld-compatible Worker with one SQLite-backed
   `MapRoom` per room, generated binding types, RPC baseline/snapshot/submit methods, hibernating
   WebSockets, persist-before-ack operations, actor-bound sockets, and non-durable presence.
 - Workers-runtime tests verify SQLite recovery after Durable Object eviction. `wrangler deploy
 --dry-run` verifies the executable bundle without making a remote deployment.
 
-Room creation/join UI and identity and authorization ingress remain subsequent delivery work. Until
-identity is wired, the service is a local-development surface and must not be exposed publicly.
+The accountless room token is a possession capability, not an account or authorization system.
+Rooms are not end-to-end encrypted, revocable, permissioned, or suitable for public hostile ingress;
+the current service remains Tailnet/private-ingress only. Authentication, permissions, room
+revocation, rate limits, and richer conflict presentation remain subsequent delivery work.
+
+The hosted-project phase closes that public-ingress limitation without changing the semantic
+operation engine. 4orm-backed Worldview sessions and revocable guest grants mint short-lived map
+tickets; the Worker validates a ticket before routing the connection to the room. Hosted
+membership, personal folders, source ownership, resources, and builds live outside the room as
+described in [`server-side-projects.md`](./server-side-projects.md). The existing accountless flow
+remains available for deliberately local maps.
 `npm run test:collaboration-celld-compat` enforces celld's supported Wrangler-key and binding
 boundary locally. `npm run test:collaboration-celld-live` is the opt-in, infrastructure-backed gate:
 it starts or reuses loopback-only Azurite with a persistent Docker volume, creates an isolated test
@@ -220,7 +239,10 @@ and the pinned Azurite image and intentionally remains outside the ordinary herm
 5. **Done for the portable contract:** Run the room contract against local workerd/Cloudflare tooling and live celld with Azurite.
 6. **Single-node kill/restore done; fleet hardening pending:** Exercise multi-node ownership handoff, bucket
    throttling/outage, kill -9, restore, rolling/stop-the-world upgrade policy, and backup recovery.
-7. Add explicit room creation/join/leave UX, identity, permissions, presence, and conflict UI.
+7. **Accountless V0 done:** Add live-link room creation, automatic join, leave-with-local-copy,
+   browser-local guest identity, connection state, participant names, colored selections and
+   pointers, live transform/face/topology/creation previews, and conflict feedback. Authenticated
+   identity, permissions, and revocation remain deferred.
 8. **Done for V0:** Select the replication engine only after the Yjs/Automerge/custom-operation bake-off and fixed
    real-map performance gates pass.
 

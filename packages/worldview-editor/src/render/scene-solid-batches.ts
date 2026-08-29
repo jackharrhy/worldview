@@ -76,11 +76,9 @@ function includeBounds(target: Bounds, source: Bounds): Bounds {
 function upload(device: GPUDevice, data: Float32Array): GPUBuffer {
   const buffer = device.createBuffer({
     size: Math.max(4, data.byteLength),
-    usage: GPUBufferUsage.VERTEX,
-    mappedAtCreation: true,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  new Float32Array(buffer.getMappedRange()).set(data);
-  buffer.unmap();
+  if (data.byteLength > 0) device.queue.writeBuffer(buffer, 0, data);
   return buffer;
 }
 

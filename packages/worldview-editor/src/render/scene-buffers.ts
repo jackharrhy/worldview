@@ -12,7 +12,6 @@ import {
   pointEntitiesInDocument,
   pointEntityBounds,
   pointEntityYawDegrees,
-  projectedFaceGridSegments,
   selectedBrushIds,
   selectedEntityIdsForLinks,
   selectedEditorGroup,
@@ -20,22 +19,20 @@ import {
   selectedPointEntityIds,
   visibleEntityLinks,
   type Bounds,
-  type DerivedFace,
   type EditorObjectViewState,
   type EditorSelection,
   type EntityId,
   type EntityDefinitionCatalog,
   type EntityLinkMode,
   type MapDocument,
-  type TransformAxis,
   type Vec3,
 } from '../core/index.js';
 import type {
   EditorDiagnosticOverlay,
+  EditorRemotePresenceOverlay,
   EditorReferenceScene,
   EditorSpriteMaterial,
   EditorTool,
-  EditorViewportKind,
 } from './types.js';
 import {
   cross,
@@ -44,343 +41,26 @@ import {
   topologyHandleBounds,
   topologyHandleKey,
   type MovementTrace,
-  type ScaleHandle,
-  type ScaleSide,
   type TopologyHandle,
 } from './viewport-geometry.js';
+export { boundsCenter, scaleHandles, scalePivot, snappedScaleFactor } from './transform-handles.js';
+import { appendTransformOverlay } from './transform-overlay.js';
+import {
+  appendMovementTrace,
+  appendPointEntityHeading,
+  appendProjectedFaceGrid,
+  appendSweepOverlay,
+  appendTopologyMarker,
+} from './scene-tool-overlays.js';
+export { sweepCapsBounds, sweepScaleHandle } from './scene-tool-overlays.js';
+export { scaleOverlayVertices } from './transform-overlay.js';
 import { brushSolidSignature, SolidBatchBuilder, type SolidBatch } from './scene-solid-batches.js';
 import { DEFAULT_EDITOR_RENDER_THEME, type EditorRenderTheme } from './theme.js';
-
-export interface SceneBuffers {
-  readonly solids: readonly SolidBatch[];
-  readonly lines: GPUBuffer;
-  readonly lineCount: number;
-  readonly perspectiveGrid: GPUBuffer;
-  readonly perspectiveGridCount: number;
-  readonly scaleBounds: Bounds | null;
-}
-
-export function boundsCenter(bounds: Bounds): Vec3 {
-  return [
-    (bounds.min[0] + bounds.max[0]) / 2,
-    (bounds.min[1] + bounds.max[1]) / 2,
-    (bounds.min[2] + bounds.max[2]) / 2,
-  ];
-}
-
-export function scaleHandles(
-  bounds: Bounds,
-  activeAxes: readonly TransformAxis[],
-): readonly ScaleHandle[] {
-  const center = boundsCenter(bounds);
-  const active = new Set(activeAxes);
-  const choicesFor = (axis: TransformAxis): readonly ScaleSide[] =>
-    active.has(axis) && bounds.max[axis] - bounds.min[axis] > 1e-6 ? [-1, 0, 1] : [0];
-  const xChoices = choicesFor(0);
-  const yChoices = choicesFor(1);
-  const zChoices = choicesFor(2);
-  const handles: ScaleHandle[] = [];
-  for (const x of xChoices) {
-    for (const y of yChoices) {
-      for (const z of zChoices) {
-        const sides = [x, y, z] as const;
-        const axes = sides.flatMap((side, axis) => (side === 0 ? [] : [axis as TransformAxis]));
-        if (axes.length === 0) continue;
-        handles.push({
-          point: sides.map((side, axis) =>
-            side < 0 ? bounds.min[axis]! : side > 0 ? bounds.max[axis]! : center[axis]!,
-          ) as [number, number, number],
-          axes,
-          sides,
-        });
-      }
-    }
-  }
-  return handles;
-}
-
-export function scalePivot(bounds: Bounds, handle: ScaleHandle, centered: boolean): Vec3 {
-  const pivot = [...boundsCenter(bounds)] as [number, number, number];
-  if (centered) return pivot;
-  for (const axis of handle.axes) {
-    pivot[axis] = handle.sides[axis] < 0 ? bounds.max[axis] : bounds.min[axis];
-  }
-  return pivot;
-}
-
-export function snappedScaleFactor(value: number): number {
-  return Math.max(0.05, Math.min(20, Math.round(value * 20) / 20));
-}
-
-function appendTransformMarker(
-  lines: number[],
-  point: Vec3,
-  color: readonly [number, number, number],
-  radius: number,
-): void {
-  for (let axis = 0; axis < 3; axis += 1) {
-    const start = [...point] as [number, number, number];
-    const end = [...point] as [number, number, number];
-    start[axis] = start[axis]! - radius;
-    end[axis] = end[axis]! + radius;
-    lines.push(...start, ...color, ...end, ...color);
-  }
-}
-
-export function scaleOverlayVertices(
-  bounds: Bounds,
-  kind: EditorViewportKind,
-  theme: EditorRenderTheme = DEFAULT_EDITOR_RENDER_THEME,
-): Float32Array {
-  const size = bounds.max.map((component, axis) => component - bounds.min[axis]!) as [
-    number,
-    number,
-    number,
-  ];
-  const markerRadius = Math.max(3, Math.min(10, Math.max(...size) * 0.04));
-  const activeAxes: readonly TransformAxis[] =
-    kind === 'perspective' || kind === 'xy'
-      ? kind === 'perspective'
-        ? [0, 1, 2]
-        : [0, 1]
-      : kind === 'xz'
-        ? [0, 2]
-        : [1, 2];
-  const lines: number[] = [];
-  for (const handle of scaleHandles(bounds, activeAxes)) {
-    const color =
-      handle.axes.length === 1
-        ? theme.faceHandle
-        : handle.axes.length === 2
-          ? theme.accent
-          : theme.faceHover;
-    appendTransformMarker(lines, handle.point, color, markerRadius);
-  }
-  return new Float32Array(lines);
-}
-
-function appendTransformOverlay(
-  lines: number[],
-  bounds: Bounds,
-  tool: EditorTool,
-  transformPivot: Vec3 | null = null,
-  transformPivotHovered = false,
-  theme: EditorRenderTheme = DEFAULT_EDITOR_RENDER_THEME,
-): void {
-  const center = tool === 'rotate' && transformPivot ? transformPivot : boundsCenter(bounds);
-  const size: Vec3 = [
-    bounds.max[0] - bounds.min[0],
-    bounds.max[1] - bounds.min[1],
-    bounds.max[2] - bounds.min[2],
-  ];
-  const markerRadius = Math.max(3, Math.min(10, Math.max(...size) * 0.04));
-  if (tool === 'rotate') {
-    const radius = Math.max(...size) * 0.62 + markerRadius;
-    const axes = [
-      { first: 1, second: 2, color: theme.axisX },
-      { first: 0, second: 2, color: theme.axisY },
-      { first: 0, second: 1, color: theme.axisZ },
-    ] as const;
-    for (const { first, second, color } of axes) {
-      let previous: Vec3 | null = null;
-      for (let segment = 0; segment <= 32; segment += 1) {
-        const radians = (segment / 32) * Math.PI * 2;
-        const point = [...center] as [number, number, number];
-        point[first] += Math.cos(radians) * radius;
-        point[second] += Math.sin(radians) * radius;
-        if (previous) lines.push(...previous, ...color, ...point, ...color);
-        previous = point;
-      }
-    }
-    if (transformPivotHovered) {
-      appendTransformMarker(lines, center, theme.danger, markerRadius * 1.65);
-    }
-    appendTransformMarker(lines, center, theme.accent, markerRadius);
-    return;
-  }
-  if (tool === 'shear') {
-    for (let axis = 0; axis < 3; axis += 1) {
-      for (const side of [bounds.min[axis], bounds.max[axis]]) {
-        const point = [...center] as [number, number, number];
-        point[axis] = side!;
-        appendTransformMarker(lines, point, theme.special, markerRadius);
-      }
-    }
-  }
-}
-
-function appendMovementTrace(
-  lines: number[],
-  trace: MovementTrace,
-  theme: EditorRenderTheme,
-): void {
-  const color = theme.accent;
-  lines.push(...trace.start, ...color, ...trace.end, ...color);
-  appendTransformMarker(lines, trace.start, color, 2.5);
-  appendTransformMarker(lines, trace.end, theme.danger, 3.5);
-  if (trace.axisRestriction === null) return;
-  for (const axis of [0, 1, 2] as const) {
-    if (axis === trace.axisRestriction) continue;
-    for (const offset of [-0.8, 0.8]) {
-      const start = [...trace.start] as [number, number, number];
-      const end = [...trace.end] as [number, number, number];
-      start[axis] += offset;
-      end[axis] += offset;
-      lines.push(...start, ...color, ...end, ...color);
-    }
-  }
-}
-
-function appendProjectedFaceGrid(
-  lines: number[],
-  face: DerivedFace,
-  gridSize: number,
-  emphasized: boolean,
-  theme: EditorRenderTheme,
-): void {
-  const offset = 0.035;
-  for (const segment of projectedFaceGridSegments(face, gridSize)) {
-    const color = emphasized
-      ? segment.major
-        ? theme.accent
-        : theme.faceHandle
-      : segment.major
-        ? theme.gridMajor
-        : theme.gridMinor;
-    const start: Vec3 = [
-      segment.start[0] + face.normal[0] * offset,
-      segment.start[1] + face.normal[1] * offset,
-      segment.start[2] + face.normal[2] * offset,
-    ];
-    const end: Vec3 = [
-      segment.end[0] + face.normal[0] * offset,
-      segment.end[1] + face.normal[1] * offset,
-      segment.end[2] + face.normal[2] * offset,
-    ];
-    lines.push(...start, ...color, ...end, ...color);
-  }
-}
-
-export function sweepCapsBounds(caps: readonly (readonly Vec3[])[]): Bounds | null {
-  const points = caps.flat();
-  if (points.length === 0) return null;
-  return {
-    min: [
-      Math.min(...points.map((point) => point[0])),
-      Math.min(...points.map((point) => point[1])),
-      Math.min(...points.map((point) => point[2])),
-    ],
-    max: [
-      Math.max(...points.map((point) => point[0])),
-      Math.max(...points.map((point) => point[1])),
-      Math.max(...points.map((point) => point[2])),
-    ],
-  };
-}
-
-export function sweepScaleHandle(bounds: Bounds): Vec3 {
-  const center = boundsCenter(bounds);
-  const size: Vec3 = [
-    bounds.max[0] - bounds.min[0],
-    bounds.max[1] - bounds.min[1],
-    bounds.max[2] - bounds.min[2],
-  ];
-  const largestAxis = size.reduce<TransformAxis>(
-    (best, value, axis) => (value > size[best] ? (axis as TransformAxis) : best),
-    0,
-  );
-  const handle = [...bounds.max] as [number, number, number];
-  if (Math.abs(handle[largestAxis] - center[largestAxis]) <= 1e-6) {
-    handle[largestAxis] += Math.max(8, Math.max(...size) * 0.5);
-  }
-  return handle;
-}
-
-function appendSweepOverlay(
-  lines: number[],
-  caps: readonly (readonly Vec3[])[],
-  theme: EditorRenderTheme,
-): void {
-  const bounds = sweepCapsBounds(caps);
-  if (!bounds) return;
-  const capColor = theme.success;
-  const center = boundsCenter(bounds);
-  const size: Vec3 = [
-    bounds.max[0] - bounds.min[0],
-    bounds.max[1] - bounds.min[1],
-    bounds.max[2] - bounds.min[2],
-  ];
-  const markerRadius = Math.max(3, Math.min(10, Math.max(...size) * 0.04));
-  for (const cap of caps) {
-    for (let index = 0; index < cap.length; index += 1) {
-      lines.push(...cap[index]!, ...capColor, ...cap[(index + 1) % cap.length]!, ...capColor);
-    }
-  }
-  appendTransformMarker(lines, center, theme.accent, markerRadius);
-
-  const radius = Math.max(12, Math.max(...size) * 0.62 + markerRadius);
-  const rings = [
-    { first: 1, second: 2, color: theme.axisX },
-    { first: 0, second: 2, color: theme.axisY },
-    { first: 0, second: 1, color: theme.axisZ },
-  ] as const;
-  for (const { first, second, color } of rings) {
-    let previous: Vec3 | null = null;
-    for (let segment = 0; segment <= 32; segment += 1) {
-      const radians = (segment / 32) * Math.PI * 2;
-      const point = [...center] as [number, number, number];
-      point[first] += Math.cos(radians) * radius;
-      point[second] += Math.sin(radians) * radius;
-      if (previous) lines.push(...previous, ...color, ...point, ...color);
-      previous = point;
-    }
-  }
-  const scaleHandle = sweepScaleHandle(bounds);
-  lines.push(...center, ...capColor, ...scaleHandle, ...capColor);
-  appendTransformMarker(lines, scaleHandle, theme.success, markerRadius * 1.35);
-}
-
-function appendTopologyMarker(
-  lines: number[],
-  point: Vec3,
-  color: readonly [number, number, number],
-  radius = 4,
-): void {
-  for (let axis = 0; axis < 3; axis += 1) {
-    const start = [...point] as [number, number, number];
-    const end = [...point] as [number, number, number];
-    start[axis] = start[axis]! - radius;
-    end[axis] = end[axis]! + radius;
-    lines.push(...start, ...color, ...end, ...color);
-  }
-}
-
-function appendPointEntityHeading(
-  lines: number[],
-  center: Vec3,
-  yawDegrees: number,
-  color: readonly [number, number, number],
-  length: number,
-): void {
-  const radians = (yawDegrees * Math.PI) / 180;
-  const direction: Vec3 = [Math.cos(radians), Math.sin(radians), 0];
-  const end: Vec3 = [
-    center[0] + direction[0] * length,
-    center[1] + direction[1] * length,
-    center[2],
-  ];
-  lines.push(...center, ...color, ...end, ...color);
-  const wingLength = Math.max(4, length * 0.28);
-  for (const wingAngle of [yawDegrees + 150, yawDegrees - 150]) {
-    const wingRadians = (wingAngle * Math.PI) / 180;
-    const wing: Vec3 = [
-      end[0] + Math.cos(wingRadians) * wingLength,
-      end[1] + Math.sin(wingRadians) * wingLength,
-      end[2],
-    ];
-    lines.push(...end, ...color, ...wing, ...color);
-  }
-}
+import { buildRemotePresenceBuffer } from './remote-presence-buffers.js';
+import { uploadFloatBuffer } from './gpu-buffer.js';
+import type { SceneBuffers } from './scene-types.js';
+import { appendNonBrushPrimitives } from './scene-nonbrush-primitives.js';
+export type { SceneBuffers } from './scene-types.js';
 
 export function objectSelectionBounds(
   document: MapDocument,
@@ -413,23 +93,6 @@ export function objectSelectionBounds(
       Math.max(...bounds.map((entry) => entry.max[2])),
     ],
   };
-}
-
-export function upload(
-  device: GPUDevice,
-  data: Float32Array,
-  usage: GPUBufferUsageFlags,
-): GPUBuffer {
-  const buffer = device.createBuffer({
-    size: Math.max(4, (data.byteLength + 3) & ~3),
-    usage,
-    mappedAtCreation: data.byteLength > 0,
-  });
-  if (data.byteLength > 0) {
-    new Float32Array(buffer.getMappedRange()).set(data);
-    buffer.unmap();
-  }
-  return buffer;
 }
 
 function appendBoundsWireframe(
@@ -563,12 +226,17 @@ export function buildSceneBuffers(
   openGroupId: string | null,
   entityDefinitions?: EntityDefinitionCatalog,
   diagnosticOverlays: readonly EditorDiagnosticOverlay[] = [],
+  remotePresence: readonly EditorRemotePresenceOverlay[] = [],
   sprites: readonly EditorSpriteMaterial[] = [],
   theme: EditorRenderTheme = DEFAULT_EDITOR_RENDER_THEME,
   previousSolids: readonly SolidBatch[] = [],
+  previousScene?: SceneBuffers,
+  reuseWorldBuffers = false,
 ): SceneBuffers {
-  const solidBatches = new SolidBatchBuilder(previousSolids);
+  const reuseWorld = reuseWorldBuffers && previousScene !== undefined;
+  const solidBatches = reuseWorld ? null : new SolidBatchBuilder(previousSolids);
   const lines: number[] = [];
+  const overlayLines: number[] = [];
   const perspectiveGridLines: number[] = [];
   const renderedTopologyKeys = new Set<string>();
   const spriteByPath = new Map<string, EditorSpriteMaterial>();
@@ -595,13 +263,14 @@ export function buildSceneBuffers(
   const appendDocument = (source: MapDocument, offset: Vec3, reference: boolean) => {
     for (const brush of brushesInDocument(source)) {
       if (!reference && hiddenBrushIds.has(brush.id)) continue;
-      const derived = deriveBrush(brush);
-      if (!derived.valid) continue;
       const locked = !reference && lockedBrushIds.has(brush.id);
       const primaryBrush = !reference && selection?.brushId === brush.id;
       const selectedObject = !reference && isBrushSelected(selection, brush.id);
       const hoveredObject =
         !reference && !hoverSelection?.faceId && isBrushSelected(hoverSelection, brush.id);
+      if (reuseWorld && denseDocument && !selectedObject && !hoveredObject) continue;
+      const derived = deriveBrush(brush);
+      if (!derived.valid) continue;
       const solidSignature = brushSolidSignature(brush, offset);
       const faceOverlayLines: number[] = [];
       for (const face of derived.faces) {
@@ -616,13 +285,13 @@ export function buildSceneBuffers(
           : locked
             ? '__worldview_locked__'
             : face.material;
-        const solid = solidBatches.vertices(materialName, derived.bounds!, offset, solidSignature);
+        const solid = solidBatches?.vertices(materialName, derived.bounds!, offset, solidSignature);
         const base = reference ? theme.reference : locked ? theme.edgeLocked : theme.material;
         for (let index = 1; index < face.vertices.length - 1; index += 1) {
           for (const vertexIndex of [0, index, index + 1]) {
             const point = face.vertices[vertexIndex]!;
             const texture = face.textureCoordinates[vertexIndex]!;
-            solid.push(
+            solid?.push(
               point[0] + offset[0],
               point[1] + offset[1],
               point[2] + offset[2],
@@ -683,31 +352,48 @@ export function buildSceneBuffers(
         ? theme.referenceEdge
         : locked
           ? theme.edgeLocked
-          : selectedObject && tool === 'edge'
+          : selectedObject
             ? theme.edgeSelected
-            : selectedObject && tool !== 'face'
-              ? theme.edgeSelected
-              : hoveredObject
-                ? theme.edgeHover
-                : theme.edge;
-      for (const edge of derived.edges) {
-        lines.push(
-          edge.start[0] + offset[0],
-          edge.start[1] + offset[1],
-          edge.start[2] + offset[2],
-          ...edgeColor,
-          edge.end[0] + offset[0],
-          edge.end[1] + offset[1],
-          edge.end[2] + offset[2],
-          ...edgeColor,
-        );
-      }
+            : hoveredObject
+              ? theme.edgeHover
+              : theme.edge;
+      if (!reuseWorld)
+        for (const edge of derived.edges) {
+          const baseColor = reference
+            ? theme.referenceEdge
+            : locked
+              ? theme.edgeLocked
+              : theme.edge;
+          lines.push(
+            edge.start[0] + offset[0],
+            edge.start[1] + offset[1],
+            edge.start[2] + offset[2],
+            ...baseColor,
+            edge.end[0] + offset[0],
+            edge.end[1] + offset[1],
+            edge.end[2] + offset[2],
+            ...baseColor,
+          );
+        }
+      if (selectedObject || hoveredObject)
+        for (const edge of derived.edges) {
+          overlayLines.push(
+            edge.start[0] + offset[0],
+            edge.start[1] + offset[1],
+            edge.start[2] + offset[2],
+            ...edgeColor,
+            edge.end[0] + offset[0],
+            edge.end[1] + offset[1],
+            edge.end[2] + offset[2],
+            ...edgeColor,
+          );
+        }
       // Face targeting is an overlay. The selected brush stays red, then the prospective face's
       // coincident perimeter is drawn amber on top.
-      lines.push(...faceOverlayLines);
+      overlayLines.push(...faceOverlayLines);
       if (primaryBrush && selectedBounds && isTransformTool(tool) && tool !== 'scale') {
         appendTransformOverlay(
-          lines,
+          overlayLines,
           selectedBounds,
           tool,
           transformPivot,
@@ -753,9 +439,17 @@ export function buildSceneBuffers(
             : topologyHover?.key === handle.key
               ? theme.accent
               : theme.faceHandle;
-          appendTopologyMarker(lines, handle.center, color, selectedKeys.has(handle.key) ? 6 : 4);
+          appendTopologyMarker(
+            overlayLines,
+            handle.center,
+            color,
+            selectedKeys.has(handle.key) ? 6 : 4,
+          );
         }
       }
+    }
+    if (!reuseWorld) {
+      appendNonBrushPrimitives({ source, offset, lines, solidBatches, theme });
     }
     for (const entity of pointEntitiesInDocument(source, entityDefinitions)) {
       if (!reference && hiddenEntityIds.has(entity.id)) continue;
@@ -763,6 +457,7 @@ export function buildSceneBuffers(
       if (!bounds) continue;
       const selected = !reference && isPointEntitySelected(selection, entity.id);
       const hovered = !reference && isPointEntitySelected(hoverSelection, entity.id);
+      if (reuseWorld && denseDocument && !selected && !hovered) continue;
       const classname = entity.properties.classname?.toLowerCase() ?? '';
       const definitionColor = entityDefinitions
         ?.find(classname)
@@ -770,26 +465,25 @@ export function buildSceneBuffers(
         | readonly [number, number, number]
         | undefined;
       const locked = !reference && lockedEntityIds.has(entity.id);
-      const color = reference
+      const baseColor = reference
         ? theme.referenceEdge
         : locked
           ? theme.axisZ
-          : selected
-            ? theme.edgeHover
-            : hovered
-              ? theme.faceSelected
-              : classname === 'light'
-                ? theme.accent
-                : classname.startsWith('info_player')
-                  ? theme.info
-                  : (definitionColor ?? theme.special);
-      appendBoundsWireframe(lines, bounds, color, offset);
+          : classname === 'light'
+            ? theme.accent
+            : classname.startsWith('info_player')
+              ? theme.info
+              : (definitionColor ?? theme.special);
+      const color = selected ? theme.edgeHover : hovered ? theme.faceSelected : baseColor;
+      if (!reuseWorld) appendBoundsWireframe(lines, bounds, baseColor, offset);
+      if (selected || hovered) appendBoundsWireframe(overlayLines, bounds, color, offset);
       const center: Vec3 = [
         (bounds.min[0] + bounds.max[0]) / 2 + offset[0],
         (bounds.min[1] + bounds.max[1]) / 2 + offset[1],
         (bounds.min[2] + bounds.max[2]) / 2 + offset[2],
       ];
-      appendTopologyMarker(lines, center, color, 5);
+      if (!reuseWorld) appendTopologyMarker(lines, center, baseColor, 5);
+      if (selected || hovered) appendTopologyMarker(overlayLines, center, color, 5);
       const spriteReference =
         entity.properties.model ?? entityDefinitions?.find(classname)?.sprite ?? '';
       const normalizedSprite = spriteReference
@@ -802,31 +496,36 @@ export function buildSceneBuffers(
         spriteByPath.get(normalizedSprite.split('/').at(-1) ?? '');
       if (sprite) {
         const scale = Math.max(0.01, Number(entity.properties.scale ?? 1) || 1);
-        const solid = solidBatches.vertices(
+        const solid = solidBatches?.vertices(
           sprite.material.name,
           bounds,
           offset,
           `${entity.id}:${JSON.stringify(entity.properties)}:${sprite.path}:${sprite.material.width}x${sprite.material.height}:${offset.join(',')}`,
         );
-        appendSpritePlane(
-          solid,
-          center,
-          sprite.material.width * scale,
-          sprite.material.height * scale,
-          0,
-        );
-        appendSpritePlane(
-          solid,
-          center,
-          sprite.material.width * scale,
-          sprite.material.height * scale,
-          1,
-        );
+        if (solid)
+          appendSpritePlane(
+            solid,
+            center,
+            sprite.material.width * scale,
+            sprite.material.height * scale,
+            0,
+          );
+        if (solid)
+          appendSpritePlane(
+            solid,
+            center,
+            sprite.material.width * scale,
+            sprite.material.height * scale,
+            1,
+          );
       }
       const yaw = pointEntityYawDegrees(entity);
       if (yaw !== null) {
         const width = Math.max(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1]);
-        appendPointEntityHeading(lines, center, yaw, color, Math.max(18, width * 0.75));
+        if (!reuseWorld)
+          appendPointEntityHeading(lines, center, yaw, baseColor, Math.max(18, width * 0.75));
+        if (selected || hovered)
+          appendPointEntityHeading(overlayLines, center, yaw, color, Math.max(18, width * 0.75));
       }
       if (
         !reference &&
@@ -836,7 +535,7 @@ export function buildSceneBuffers(
         tool !== 'scale'
       ) {
         appendTransformOverlay(
-          lines,
+          overlayLines,
           selectedBounds,
           tool,
           transformPivot,
@@ -869,7 +568,7 @@ export function buildSceneBuffers(
             : group.linkedGroupId
               ? theme.special
               : theme.axisZ;
-    appendBoundsWireframe(lines, group.bounds, color);
+    appendBoundsWireframe(overlayLines, group.bounds, color);
   }
   const linkedArrowSource = editorGroups.find(
     (group) => group.linkedGroupId && (group.id === selectedGroupId || group.id === openGroupId),
@@ -884,7 +583,7 @@ export function buildSceneBuffers(
         continue;
       }
       const end = linkedGroupCenter(sibling);
-      if (end) appendEntityLinkArrow(lines, linkedArrowStart, end, theme.special);
+      if (end) appendEntityLinkArrow(overlayLines, linkedArrowStart, end, theme.special);
     }
   }
   const selectedLinkEntities = selectedEntityIdsForLinks(document, selection);
@@ -894,7 +593,8 @@ export function buildSceneBuffers(
     const entity = entityById.get(entityId);
     if (!entity || hiddenEntityIds.has(entityId)) return false;
     return (
-      entity.brushes.length === 0 || entity.brushes.some((brush) => !hiddenBrushIds.has(brush.id))
+      entity.primitives.length === 0 ||
+      entity.primitives.some((brush) => !hiddenBrushIds.has(brush.id))
     );
   };
   for (const link of visibleEntityLinks(
@@ -907,23 +607,23 @@ export function buildSceneBuffers(
       selectedLinkEntitySet.has(link.sourceEntityId) ||
       selectedLinkEntitySet.has(link.targetEntityId);
     appendEntityLinkArrow(
-      lines,
+      overlayLines,
       link.sourceAnchor,
       link.targetAnchor,
       selected ? theme.danger : theme.success,
     );
   }
   if (tool === 'rotate' && transformPivotTrace) {
-    appendMovementTrace(lines, transformPivotTrace, theme);
+    appendMovementTrace(overlayLines, transformPivotTrace, theme);
   }
-  for (const trace of movementTraces) appendMovementTrace(lines, trace, theme);
+  for (const trace of movementTraces) appendMovementTrace(overlayLines, trace, theme);
   if (isTransformTool(tool)) {
     for (const handle of topologySelection) {
-      appendTopologyMarker(lines, handle.center, theme.danger, 6);
+      appendTopologyMarker(overlayLines, handle.center, theme.danger, 6);
     }
   }
   if (tool === 'vertex' && topologyHover?.insertion) {
-    appendTopologyMarker(lines, topologyHover.center, theme.success, 6);
+    appendTopologyMarker(overlayLines, topologyHover.center, theme.success, 6);
   }
   if (tool === 'clip') {
     const color = theme.faceSelected;
@@ -934,31 +634,32 @@ export function buildSceneBuffers(
         const end = [...point] as [number, number, number];
         start[axis] = start[axis]! - radius;
         end[axis] = end[axis]! + radius;
-        lines.push(...start, ...color, ...end, ...color);
+        overlayLines.push(...start, ...color, ...end, ...color);
       }
     }
     for (let index = 1; index < clipPoints.length; index += 1) {
-      lines.push(...clipPoints[index - 1]!, ...color, ...clipPoints[index]!, ...color);
+      overlayLines.push(...clipPoints[index - 1]!, ...color, ...clipPoints[index]!, ...color);
     }
     if (clipPoints.length === 3) {
-      lines.push(...clipPoints[2]!, ...color, ...clipPoints[0]!, ...color);
+      overlayLines.push(...clipPoints[2]!, ...color, ...clipPoints[0]!, ...color);
     }
   }
   if (tool === 'hull') {
     const committedColor = theme.success;
     const previewColor = theme.info;
-    for (const point of hullPoints) appendTopologyMarker(lines, point, committedColor, 5);
-    for (const point of hullPreviewPoints) appendTopologyMarker(lines, point, previewColor, 5);
+    for (const point of hullPoints) appendTopologyMarker(overlayLines, point, committedColor, 5);
+    for (const point of hullPreviewPoints)
+      appendTopologyMarker(overlayLines, point, previewColor, 5);
     if (hullPreviewPoints.length >= 3) {
       for (let index = 0; index < hullPreviewPoints.length; index += 1) {
         const start = hullPreviewPoints[index]!;
         const end = hullPreviewPoints[(index + 1) % hullPreviewPoints.length]!;
-        lines.push(...start, ...previewColor, ...end, ...previewColor);
+        overlayLines.push(...start, ...previewColor, ...end, ...previewColor);
       }
     }
     if (hullPreviewPoints.length === hullPoints.length) {
       for (let index = 0; index < hullPoints.length; index += 1) {
-        lines.push(
+        overlayLines.push(
           ...hullPoints[index]!,
           ...previewColor,
           ...hullPreviewPoints[index]!,
@@ -967,21 +668,50 @@ export function buildSceneBuffers(
       }
     }
   }
-  if (tool === 'sweep') appendSweepOverlay(lines, sweepCaps, theme);
+  if (tool === 'sweep') appendSweepOverlay(overlayLines, sweepCaps, theme);
   for (const overlay of diagnosticOverlays) {
     const color = overlay.kind === 'leak-path' ? theme.danger : theme.info;
     for (let index = 1; index < overlay.points.length; index += 1) {
-      lines.push(...overlay.points[index - 1]!, ...color, ...overlay.points[index]!, ...color);
+      overlayLines.push(
+        ...overlay.points[index - 1]!,
+        ...color,
+        ...overlay.points[index]!,
+        ...color,
+      );
     }
     if (overlay.kind === 'portal' && overlay.points.length > 2) {
-      lines.push(...overlay.points.at(-1)!, ...color, ...overlay.points[0]!, ...color);
+      overlayLines.push(...overlay.points.at(-1)!, ...color, ...overlay.points[0]!, ...color);
     }
   }
+  const remote = reuseWorld
+    ? {
+        buffer: previousScene.remoteLines,
+        count: previousScene.remoteLineCount,
+        solids: previousScene.remoteSolids,
+      }
+    : buildRemotePresenceBuffer(device, remotePresence, entityDefinitions);
+  const solids = solidBatches?.finish(device) ?? previousScene!.solids;
   return {
-    solids: solidBatches.finish(device),
-    lines: upload(device, new Float32Array(lines), GPUBufferUsage.VERTEX),
-    lineCount: lines.length / 6,
-    perspectiveGrid: upload(device, new Float32Array(perspectiveGridLines), GPUBufferUsage.VERTEX),
+    solids,
+    lines: reuseWorld
+      ? previousScene.lines
+      : uploadFloatBuffer(device, new Float32Array(lines), GPUBufferUsage.VERTEX, 'World edges'),
+    lineCount: reuseWorld ? previousScene.lineCount : lines.length / 6,
+    overlayLines: uploadFloatBuffer(
+      device,
+      new Float32Array(overlayLines),
+      GPUBufferUsage.VERTEX,
+      'Worldview overlays',
+    ),
+    overlayLineCount: overlayLines.length / 6,
+    remoteLines: remote.buffer,
+    remoteLineCount: remote.count,
+    remoteSolids: remote.solids,
+    perspectiveGrid: uploadFloatBuffer(
+      device,
+      new Float32Array(perspectiveGridLines),
+      GPUBufferUsage.VERTEX,
+    ),
     perspectiveGridCount: perspectiveGridLines.length / 6,
     scaleBounds: tool === 'scale' ? selectedBounds : null,
   };

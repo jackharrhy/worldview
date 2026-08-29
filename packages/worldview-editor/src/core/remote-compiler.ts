@@ -9,6 +9,7 @@ import type {
   MapLaunchRequest,
   MapLaunchResult,
 } from './compiler.js';
+import { isWorldviewGameProfile } from './game-profiles.js';
 
 export type CompilerFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -56,10 +57,6 @@ function encodeBase64(value: ArrayBuffer): string {
     chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + chunkSize)));
   }
   return btoa(chunks.join(''));
-}
-
-function validGame(value: unknown): value is 'quake' | 'goldsrc' {
-  return value === 'quake' || value === 'goldsrc';
 }
 
 function remoteResponse(value: unknown): RemoteResponse {
@@ -124,7 +121,7 @@ function buildCapabilities(value: unknown): MapBuildCapabilities {
         !profile ||
         typeof profile.id !== 'string' ||
         typeof profile.label !== 'string' ||
-        !validGame(profile.game) ||
+        !isWorldviewGameProfile(profile.game) ||
         !Array.isArray(profile.qualities) ||
         profile.qualities.some((quality: unknown) => quality !== 'preview' && quality !== 'final'),
     ) ||
@@ -133,7 +130,7 @@ function buildCapabilities(value: unknown): MapBuildCapabilities {
         !profile ||
         typeof profile.id !== 'string' ||
         typeof profile.label !== 'string' ||
-        !validGame(profile.game),
+        !isWorldviewGameProfile(profile.game),
     )
   ) {
     throw new Error('Helper returned invalid capabilities');

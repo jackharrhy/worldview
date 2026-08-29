@@ -6,12 +6,19 @@ import type {
   MapDocument,
   MapEntity,
   MapFace,
-  MapFormat,
+  MapFaceSyntax,
+  MapFragment,
+  MapPrimitive,
+  MapPatch,
+  MapBrushDef,
+  MapBrushDefFace,
   SurfaceAttributes,
   TextureProjection,
   Vec3,
 } from './types.js';
 import { createSequentialIdFactory } from './types.js';
+import { MapParseError } from './map-parser-error.js';
+import { tokenizeMapSource, type MapToken as Token } from './map-tokenizer.js';
 import type {
   MapSourceBrushSpan,
   MapSourceDiagnostic,
@@ -23,116 +30,10 @@ import type {
   ParsedMapSource,
 } from './map-source-types.js';
 
-type TokenKind = 'string' | 'word' | 'symbol';
-
-interface Token {
-  readonly kind: TokenKind;
-  readonly value: string;
-  readonly line: number;
-  readonly column: number;
-  readonly start: number;
-  readonly end: number;
-}
-
-export class MapParseError extends Error {
-  public constructor(
-    message: string,
-    public readonly line: number,
-    public readonly column: number,
-  ) {
-    super(`${message} at ${line}:${column}`);
-    this.name = 'MapParseError';
-  }
-}
-
-function tokenize(source: string): Token[] {
-  const tokens: Token[] = [];
-  let offset = 0;
-  let line = 1;
-  let column = 1;
-  const advance = () => {
-    const character = source[offset++]!;
-    if (character === '\n') {
-      line += 1;
-      column = 1;
-    } else column += 1;
-    return character;
-  };
-  while (offset < source.length) {
-    const character = source[offset]!;
-    if (/\s/.test(character)) {
-      advance();
-      continue;
-    }
-    if (character === '/' && source[offset + 1] === '/') {
-      while (offset < source.length && source[offset] !== '\n') advance();
-      continue;
-    }
-    const startLine = line;
-    const startColumn = column;
-    if (character === '"') {
-      const start = offset;
-      advance();
-      let value = '';
-      let closed = false;
-      while (offset < source.length) {
-        const next = advance();
-        if (next === '"') {
-          closed = true;
-          break;
-        }
-        if (next === '\\' && offset < source.length) {
-          const escaped = advance();
-          value += escaped === 'n' ? '\n' : escaped;
-        } else value += next;
-      }
-      if (!closed) throw new MapParseError('Unterminated quoted string', startLine, startColumn);
-      tokens.push({
-        kind: 'string',
-        value,
-        line: startLine,
-        column: startColumn,
-        start,
-        end: offset,
-      });
-      continue;
-    }
-    if ('{}()[]'.includes(character)) {
-      const start = offset;
-      tokens.push({
-        kind: 'symbol',
-        value: advance(),
-        line: startLine,
-        column: startColumn,
-        start,
-        end: offset,
-      });
-      continue;
-    }
-    let value = '';
-    while (offset < source.length) {
-      const next = source[offset]!;
-      if (/\s/.test(next) || '{}()[]"'.includes(next)) break;
-      if (next === '/' && source[offset + 1] === '/') break;
-      value += advance();
-    }
-    if (value.length > 0)
-      tokens.push({
-        kind: 'word',
-        value,
-        line: startLine,
-        column: startColumn,
-        start: offset - value.length,
-        end: offset,
-      });
-  }
-  return tokens;
-}
-
 class Parser {
   private readonly tokens: readonly Token[];
   private index = 0;
-  private format: MapFormat = 'quake';
+  private faceSyntax: MapFaceSyntax = 'quake';
   private readonly entitySpans: MapSourceEntitySpan[] = [];
   private readonly rootOpaque: MapSourceOpaqueSpan[] = [];
   private readonly diagnostics: MapSourceDiagnostic[] = [];
@@ -141,7 +42,9 @@ class Parser {
     source: string,
     private readonly ids: IdFactory,
   ) {
-    this.tokens = tokenize(source);
+    const tokenized = tokenizeMapSource(source);
+    this.tokens = tokenized.tokens;
+    this.faceSyntax = tokenized.faceSyntaxHint ?? 'quake';
   }
 
   public parse(): MapDocument {
@@ -151,20 +54,20 @@ class Parser {
       else this.rootOpaque.push(this.skipOpaqueConstruct());
     }
     if (entities.length === 0) throw new MapParseError('Map contains no entities', 1, 1);
-    if (entities[0]?.properties.classname !== 'worldspawn') {
-      const token = this.tokens[0];
-      throw new MapParseError(
-        'First entity must be worldspawn',
-        token?.line ?? 1,
-        token?.column ?? 1,
-      );
-    }
     return {
       id: this.ids.document(),
       revision: 0,
-      format: this.format,
+      format: 'quake-map',
+      faceSyntax: this.faceSyntax,
       entities,
     };
+  }
+
+  public parseFragment(): MapFragment {
+    const primitives: MapBrush[] = [];
+    while (this.peek()) primitives.push(this.parseBrush().brush);
+    if (primitives.length === 0) throw new MapParseError('Map fragment contains no brushes', 1, 1);
+    return { format: 'quake-map', faceSyntax: this.faceSyntax, primitives };
   }
 
   public sourceState(source: string, document: MapDocument): MapSourceState {
@@ -173,6 +76,7 @@ class Parser {
       fingerprint: mapSourceFingerprint(source),
       originalDocument: document,
       format: document.format,
+      faceSyntax: document.faceSyntax,
       newline: source.includes('\r\n') ? '\r\n' : '\n',
       indent: inferIndent(source),
       entities: this.entitySpans,
@@ -184,15 +88,23 @@ class Parser {
   private parseEntity(): MapEntity {
     const opening = this.expect('{');
     const properties: Record<string, string> = {};
-    const brushes: MapBrush[] = [];
+    const primitives: MapPrimitive[] = [];
     const propertySpans: MapSourcePropertySpan[] = [];
     const brushSpans: MapSourceBrushSpan[] = [];
     const opaque: MapSourceOpaqueSpan[] = [];
     while (!this.check('}')) {
       if (this.check('{')) {
-        const parsed = this.parseBrush();
-        brushes.push(parsed.brush);
-        brushSpans.push(parsed.span);
+        if (this.peek(1)?.value === '(' || this.peek(1)?.value === '}') {
+          const parsed = this.parseBrush();
+          primitives.push(parsed.brush);
+          brushSpans.push(parsed.span);
+        } else if (this.peek(1)?.value === 'patchDef2') {
+          primitives.push(this.parsePatch());
+        } else if (this.peek(1)?.value === 'brushDef') {
+          primitives.push(this.parseBrushDef());
+        } else {
+          opaque.push(this.skipOpaquePrimitive());
+        }
       } else if (this.peek(1)?.value === '{') {
         opaque.push(this.skipOpaqueConstruct());
       } else {
@@ -203,7 +115,7 @@ class Parser {
       }
     }
     const closing = this.expect('}');
-    const entity = { id: this.ids.entity(), properties, brushes };
+    const entity = { id: this.ids.entity(), properties, primitives };
     this.entitySpans.push({
       entityId: entity.id,
       start: opening.start,
@@ -227,7 +139,7 @@ class Parser {
       faceSpans.push(parsed.span);
     }
     const closing = this.expect('}');
-    const brush = { id: this.ids.brush(), revision: 0, faces };
+    const brush = { kind: 'brush' as const, id: this.ids.brush(), revision: 0, faces };
     return {
       brush,
       span: {
@@ -245,6 +157,100 @@ class Parser {
     };
   }
 
+  private parsePatch(): MapPatch {
+    this.expect('{');
+    this.expect('patchDef2');
+    this.expect('{');
+    const material = this.takeMaterial();
+    this.expect('(');
+    const dimensions = [
+      this.takeInteger('Expected patch width'),
+      this.takeInteger('Expected patch height'),
+    ] as const;
+    const subdivisions = [
+      this.takeInteger('Expected patch subdivision'),
+      this.takeInteger('Expected patch subdivision'),
+      this.takeInteger('Expected patch subdivision'),
+    ] as const;
+    this.expect(')');
+    this.expect('(');
+    const controlPoints: MapPatch['controlPoints'][number][] = [];
+    while (!this.check(')')) {
+      this.expect('(');
+      const row: MapPatch['controlPoints'][number][number][] = [];
+      while (!this.check(')')) {
+        this.expect('(');
+        row.push({
+          position: [
+            this.takeNumber('Expected patch X coordinate'),
+            this.takeNumber('Expected patch Y coordinate'),
+            this.takeNumber('Expected patch Z coordinate'),
+          ],
+          uv: [
+            this.takeNumber('Expected patch U coordinate'),
+            this.takeNumber('Expected patch V coordinate'),
+          ],
+        });
+        this.expect(')');
+      }
+      this.expect(')');
+      controlPoints.push(row);
+    }
+    this.expect(')');
+    this.expect('}');
+    this.expect('}');
+    if (
+      controlPoints.length !== dimensions[1] ||
+      controlPoints.some((row) => row.length !== dimensions[0])
+    ) {
+      const token = this.tokens[Math.max(0, this.index - 1)]!;
+      throw new MapParseError(
+        'Patch control grid does not match its dimensions',
+        token.line,
+        token.column,
+      );
+    }
+    return {
+      kind: 'patch',
+      id: this.ids.patch(),
+      revision: 0,
+      material,
+      dimensions,
+      subdivisions,
+      controlPoints,
+    };
+  }
+
+  private parseBrushDef(): MapBrushDef {
+    this.expect('{');
+    this.expect('brushDef');
+    this.expect('{');
+    const faces: MapBrushDefFace[] = [];
+    while (!this.check('}')) {
+      const planePoints = [this.parsePoint(), this.parsePoint(), this.parsePoint()] as const;
+      this.expect('(');
+      const textureMatrix = [this.parseMatrixRow(), this.parseMatrixRow()] as const;
+      this.expect(')');
+      const material = this.takeMaterial();
+      const surface = this.takeSurfaceAttributes();
+      faces.push({ id: this.ids.face(), planePoints, textureMatrix, material, surface });
+    }
+    this.expect('}');
+    this.expect('}');
+    return { kind: 'brush-def', id: this.ids.brushDef(), revision: 0, faces };
+  }
+
+  private parseMatrixRow(): Vec3 {
+    this.expect('(');
+    const row: Vec3 = [
+      this.takeNumber('Expected texture-matrix component'),
+      this.takeNumber('Expected texture-matrix component'),
+      this.takeNumber('Expected texture-matrix component'),
+    ];
+    this.expect(')');
+    return row;
+  }
+
   private parseFace(): {
     readonly face: MapFace;
     readonly span: Omit<MapSourceFaceSpan, 'faceId'>;
@@ -254,13 +260,14 @@ class Parser {
     const material = this.takeMaterial();
     let projection: TextureProjection;
     if (this.check('[')) {
-      this.format = 'valve-220';
+      this.faceSyntax = 'valve-220';
       const u = this.parseAxis();
       const v = this.parseAxis();
       const rotationDegrees = this.takeNumber('Expected texture rotation');
       const scaleU = this.takeNumber('Expected U texture scale');
       const scaleV = this.takeNumber('Expected V texture scale');
       projection = {
+        kind: 'valve-220',
         uAxis: u.axis,
         vAxis: v.axis,
         offset: [u.offset, v.offset],
@@ -281,6 +288,7 @@ class Parser {
       const base = defaultTextureProjection(plane.normal);
       const radians = (rotationDegrees * Math.PI) / 180;
       projection = {
+        kind: 'axial',
         uAxis: rotateAroundAxis(base.uAxis, plane.normal, radians),
         vAxis: rotateAroundAxis(base.vAxis, plane.normal, radians),
         offset: [offsetU, offsetV],
@@ -288,9 +296,18 @@ class Parser {
         scale: [scaleU, scaleV],
       };
     }
-    const faceLine = this.tokens[Math.max(0, this.index - 1)]?.line;
+    const surface = this.takeSurfaceAttributes();
+    const face = { id: this.ids.face(), planePoints: points, material, projection, surface };
+    return {
+      face,
+      span: { start, end: this.tokens[Math.max(0, this.index - 1)]?.end ?? start },
+    };
+  }
+
+  private takeSurfaceAttributes(): SurfaceAttributes {
+    const valueLine = this.tokens[Math.max(0, this.index - 1)]?.line;
     const extra: number[] = [];
-    while (this.peek()?.line === faceLine && !this.check('(') && !this.check('}')) {
+    while (this.peek()?.line === valueLine && !this.check('(') && !this.check('}')) {
       const token = this.peek()!;
       const value = Number(token.value);
       if (!Number.isFinite(value)) break;
@@ -301,11 +318,7 @@ class Parser {
     if (extra[0] !== undefined) Object.assign(surface, { contents: extra[0] });
     if (extra[1] !== undefined) Object.assign(surface, { flags: extra[1] });
     if (extra[2] !== undefined) Object.assign(surface, { value: extra[2] });
-    const face = { id: this.ids.face(), planePoints: points, material, projection, surface };
-    return {
-      face,
-      span: { start, end: this.tokens[Math.max(0, this.index - 1)]?.end ?? start },
-    };
+    return surface;
   }
 
   private parsePoint(): Vec3 {
@@ -401,6 +414,16 @@ class Parser {
     return value;
   }
 
+  private takeInteger(message: string): number {
+    const token = this.peek();
+    const value = token ? Number(token.value) : Number.NaN;
+    if (!token || !Number.isSafeInteger(value)) {
+      throw new MapParseError(message, token?.line ?? 1, token?.column ?? 1);
+    }
+    this.index += 1;
+    return value;
+  }
+
   private skipOpaqueConstruct(): MapSourceOpaqueSpan {
     const keyword = this.takeValueToken('Expected an unsupported construct name');
     const opening = this.expect('{');
@@ -431,6 +454,13 @@ class Parser {
       keyword: keyword.value,
     });
     return span;
+  }
+
+  private skipOpaquePrimitive(): MapSourceOpaqueSpan {
+    const opening = this.expect('{');
+    const span = this.skipOpaqueConstruct();
+    const closing = this.expect('}');
+    return { ...span, start: opening.start, end: closing.end };
   }
 }
 
@@ -463,3 +493,12 @@ export function parseMapSource(
   const document = parser.parse();
   return { document, source: parser.sourceState(source, document) };
 }
+
+export function parseMapFragment(
+  source: string,
+  ids: IdFactory = createSequentialIdFactory('fragment'),
+): MapFragment {
+  return new Parser(source, ids).parseFragment();
+}
+
+export { MapParseError } from './map-parser-error.js';

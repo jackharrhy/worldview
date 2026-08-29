@@ -63,7 +63,15 @@ export abstract class ViewportPointerDown extends ViewportTools {
         }
       }
       const tool = this.interaction.currentTool();
-      const creating = event.button === 0 && tool === 'create';
+      const currentSelection = this.interaction.currentSelection();
+      const defaultCreating = Boolean(
+        event.button === 0 &&
+        tool === 'select' &&
+        !currentSelection &&
+        !event.ctrlKey &&
+        !event.metaKey,
+      );
+      const creating = (event.button === 0 && tool === 'create') || defaultCreating;
       const placingEntity = event.button === 0 && tool === 'entity';
       const hullBuilding = event.button === 0 && tool === 'hull';
       const sweep =
@@ -131,13 +139,16 @@ export abstract class ViewportPointerDown extends ViewportTools {
         creating && this.kind === 'perspective'
           ? this.interaction.hitTests(ray.origin, ray.direction).find(isBrushRayHit)
           : null;
-      const currentSelection = this.interaction.currentSelection();
       const needsBrushHit =
         tool !== 'select' ||
         event.shiftKey ||
         Boolean(this.kind === 'perspective' && event.altKey && currentSelection?.faceId);
       const hit =
-        event.button === 0 && !creating && !placingEntity && !topologyHandle && !sweep
+        event.button === 0 &&
+        (!creating || defaultCreating) &&
+        !placingEntity &&
+        !topologyHandle &&
+        !sweep
           ? needsBrushHit
             ? (this.interaction.hitTests(ray.origin, ray.direction).find(isBrushRayHit) ?? null)
             : this.interaction.hitTest(ray.origin, ray.direction)
@@ -171,13 +182,17 @@ export abstract class ViewportPointerDown extends ViewportTools {
       }
       const visibleFaceSelection =
         hit && isBrushRayHit(hit) ? { brushId: hit.brushId, faceId: hit.faceId } : null;
+      const proximateFaceSelection =
+        event.shiftKey && tool === 'select' && currentSelection && !currentSelection.faceId
+          ? (this.proximateSelectedFaceAt(event.clientX, event.clientY)?.selection ?? null)
+          : null;
       const togglingSelectedVisibleFace =
         event.shiftKey &&
         visibleFaceSelection &&
         isFaceSelected(currentSelection, visibleFaceSelection.brushId, visibleFaceSelection.faceId);
       const rawFaceSelection: EditorFaceDragEvent['selection'] | null = togglingSelectedVisibleFace
         ? visibleFaceSelection
-        : (hitFaceHandle?.selection ?? visibleFaceSelection);
+        : (hitFaceHandle?.selection ?? visibleFaceSelection ?? proximateFaceSelection);
       const faceTransferMode: FaceAttributeTransferMode | null =
         supportsFaceTransfer && this.faceTransferSequenceSource
           ? event.ctrlKey || event.metaKey
@@ -204,10 +219,9 @@ export abstract class ViewportPointerDown extends ViewportTools {
         tool === 'select' &&
         event.shiftKey &&
         rawFaceSelection &&
-        hit &&
         currentSelection &&
         !currentSelection.faceId &&
-        selectionContainsHit(currentSelection, hit)
+        ((hit && selectionContainsHit(currentSelection, hit)) || Boolean(proximateFaceSelection))
           ? rawFaceSelection
           : null;
       const moveSelection =

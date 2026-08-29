@@ -2,13 +2,10 @@ import {
   clipBrush,
   cloneBrush,
   convexMergeBrushes,
-  createBrushEntity as createBrushEntityInDocument,
   insertBrushes,
-  insertEntity,
   hollowBrush,
   intersectBrushes,
   moveBrushFace,
-  moveBrushesToEntity,
   replaceBrush,
   replaceBrushes,
   replaceBrushSequence,
@@ -19,16 +16,12 @@ import {
 } from './document.js';
 import { deriveBrush } from './geometry.js';
 import { type BrushClipEdit, type BrushEdit } from './history.js';
-import { editorLayerForSelection } from './layers.js';
-import { formatEntityOrigin, pointEntityDefinition } from './point-entities.js';
 import { stampBrushFace } from './sweep.js';
 import {
   createBrushSelection,
-  createObjectSelection,
   matchingBrushFaces,
   selectedBrushIds,
   selectedFaceReferences,
-  selectedPointEntityIds,
 } from './selection.js';
 import type {
   BrushId,
@@ -37,7 +30,6 @@ import type {
   FaceSelection,
   IdFactory,
   MapBrush,
-  MapEntity,
   Vec3,
 } from './types.js';
 import { findBrush } from './types.js';
@@ -57,7 +49,10 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     if (faces.length === 0 || !this.currentSelection?.faceId) return false;
     const candidate = this.createFaceSetExtrusionCandidate(
       faces,
-      { brushId: this.currentSelection.brushId, faceId: this.currentSelection.faceId },
+      {
+        brushId: this.currentSelection.brushId,
+        faceId: this.currentSelection.faceId,
+      },
       distance,
     );
     if (!candidate) return false;
@@ -227,10 +222,10 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
         throw new Error('Split extrusion is unavailable for opposing shared faces');
       }
       const owner = this.currentDocument.entities.find((entity) =>
-        entity.brushes.some((brush) => brush.id === before.id),
+        entity.primitives.some((brush) => brush.id === before.id),
       );
       if (!owner) throw new Error(`Unknown owner for brush ${before.id}`);
-      const insertionIndex = owner.brushes.findIndex((brush) => brush.id === before.id);
+      const insertionIndex = owner.primitives.findIndex((brush) => brush.id === before.id);
       return {
         entityId: owner.id,
         insertionIndex,
@@ -254,7 +249,9 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
       .map<BrushClipEdit>((edit) => {
         const offset = offsets.get(edit.entityId) ?? 0;
         offsets.set(edit.entityId, offset + edit.after.length - 1);
-        return Object.assign({}, edit, { afterInsertionIndex: edit.insertionIndex + offset });
+        return Object.assign({}, edit, {
+          afterInsertionIndex: edit.insertionIndex + offset,
+        });
       });
     if (edits.length === 1) {
       const edit = edits[0]!;
@@ -323,13 +320,13 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     const source = findBrush(this.currentDocument, primary.brushId);
     if (!source) return null;
     const owner = this.currentDocument.entities.find((entity) =>
-      entity.brushes.some((brush) => brush.id === source.id),
+      entity.primitives.some((brush) => brush.id === source.id),
     );
     if (!owner) throw new Error(`Stamp source brush ${source.id} has no owning entity`);
     const brush = stampBrushFace(source, primary.faceId, distance, ids, textureLock);
     const insertion: BrushInsertion = {
       entityId: owner.id,
-      insertionIndex: owner.brushes.length,
+      insertionIndex: owner.primitives.length,
       brush,
     };
     return {
@@ -347,7 +344,10 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     if (faces.length === 0 || !this.currentSelection?.faceId) return false;
     const candidate = this.createFaceStampCandidate(
       faces,
-      { brushId: this.currentSelection.brushId, faceId: this.currentSelection.faceId },
+      {
+        brushId: this.currentSelection.brushId,
+        faceId: this.currentSelection.faceId,
+      },
       distance,
       ids,
       textureLock,
@@ -422,7 +422,9 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
       .map<BrushClipEdit>((edit) => {
         const offset = offsets.get(edit.entityId) ?? 0;
         offsets.set(edit.entityId, offset + edit.after.length - 1);
-        return Object.assign({}, edit, { afterInsertionIndex: edit.insertionIndex + offset });
+        return Object.assign({}, edit, {
+          afterInsertionIndex: edit.insertionIndex + offset,
+        });
       });
     const byBeforeId = new Map(edits.map((edit) => [edit.before.id, edit] as const));
     const selectionAfter = selectionBefore.flatMap((brushId) => {
@@ -458,10 +460,10 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     const before = findBrush(this.currentDocument, brushId);
     if (!before) return null;
     const owner = this.currentDocument.entities.find((entity) =>
-      entity.brushes.some((brush) => brush.id === brushId),
+      entity.primitives.some((brush) => brush.id === brushId),
     );
     if (!owner) return null;
-    const insertionIndex = owner.brushes.findIndex((brush) => brush.id === brushId);
+    const insertionIndex = owner.primitives.findIndex((brush) => brush.id === brushId);
     let after: readonly MapBrush[];
     if (mode === 'split') {
       const back = clipBrush(before, planePoints, 'back', ids.face(), material);
@@ -590,7 +592,8 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     if (replacements.size === 0) return null;
     const rawEdits: BrushClipEdit[] = [];
     for (const entity of this.currentDocument.entities) {
-      for (const [insertionIndex, brush] of entity.brushes.entries()) {
+      for (const [insertionIndex, brush] of entity.primitives.entries()) {
+        if (brush.kind !== 'brush') continue;
         const after = replacements.get(brush.id);
         if (!after) continue;
         rawEdits.push({
@@ -608,7 +611,9 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     const edits = rawEdits.map<BrushClipEdit>((edit) => {
       const offset = offsets.get(edit.entityId) ?? 0;
       offsets.set(edit.entityId, offset + edit.after.length - 1);
-      return Object.assign({}, edit, { afterInsertionIndex: edit.insertionIndex + offset });
+      return Object.assign({}, edit, {
+        afterInsertionIndex: edit.insertionIndex + offset,
+      });
     });
     return {
       label,
@@ -681,7 +686,9 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     const selected = new Set(selectedBrushIds(this.currentSelection));
     if (selected.size < 2) return false;
     const inputs = this.currentDocument.entities.flatMap((entity) =>
-      entity.brushes.filter((brush) => selected.has(brush.id)),
+      entity.primitives.filter(
+        (brush): brush is MapBrush => brush.kind === 'brush' && selected.has(brush.id),
+      ),
     );
     if (inputs.length !== selected.size) return false;
     const result = convexMergeBrushes(inputs, ids, currentMaterial);
@@ -698,7 +705,9 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     const selected = new Set(selectedBrushIds(this.currentSelection));
     if (selected.size < 2) return false;
     const inputs = this.currentDocument.entities.flatMap((entity) =>
-      entity.brushes.filter((brush) => selected.has(brush.id)),
+      entity.primitives.filter(
+        (brush): brush is MapBrush => brush.kind === 'brush' && selected.has(brush.id),
+      ),
     );
     if (inputs.length !== selected.size) return false;
     const result = intersectBrushes(inputs, ids);
@@ -721,13 +730,16 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     const selected = new Set(selectedBrushIds(this.currentSelection));
     if (selected.size === 0) return false;
     const subtrahends = this.currentDocument.entities.flatMap((entity) =>
-      entity.brushes.filter((brush) => selected.has(brush.id)),
+      entity.primitives.filter(
+        (brush): brush is MapBrush => brush.kind === 'brush' && selected.has(brush.id),
+      ),
     );
     if (subtrahends.length !== selected.size) return false;
     const replacements = new Map<BrushId, readonly MapBrush[]>();
     const selectionAfter: BrushId[] = [];
     for (const entity of this.currentDocument.entities) {
-      for (const brush of entity.brushes) {
+      for (const brush of entity.primitives) {
+        if (brush.kind !== 'brush') continue;
         if (selected.has(brush.id)) {
           replacements.set(brush.id, []);
           continue;
@@ -760,7 +772,8 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     const replacements = new Map<BrushId, readonly MapBrush[]>();
     const selectionAfter: BrushId[] = [];
     for (const entity of this.currentDocument.entities) {
-      for (const brush of entity.brushes) {
+      for (const brush of entity.primitives) {
+        if (brush.kind !== 'brush') continue;
         if (!selected.has(brush.id)) continue;
         const walls = hollowBrush(brush, thickness, ids);
         replacements.set(brush.id, walls);
@@ -771,120 +784,6 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     const candidate = this.createSequenceCandidate('CSG hollow', replacements, selectionAfter);
     if (!candidate) return false;
     this.commitSequenceCandidate(candidate);
-    return true;
-  }
-
-  public createPointEntity(
-    classname: string,
-    origin: Vec3,
-    ids: IdFactory,
-    properties: Readonly<Record<string, string>> = {},
-  ): boolean {
-    const normalizedClassname = classname.trim();
-    if (!normalizedClassname) throw new Error('A point entity requires a classname');
-    const definition = pointEntityDefinition(normalizedClassname);
-    const layerProperties =
-      !properties['_tb_group'] && this.currentLayerId ? { _tb_layer: this.currentLayerId } : {};
-    const entity: MapEntity = {
-      id: ids.entity(),
-      properties: {
-        ...definition.defaults,
-        ...layerProperties,
-        ...properties,
-        classname: normalizedClassname,
-        origin: formatEntityOrigin(origin),
-      },
-      brushes: [],
-    };
-    const after = insertEntity(this.currentDocument, entity);
-    this.commitDocumentCandidate({
-      label: `Create ${normalizedClassname}`,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
-      after,
-      selectionBefore: this.currentSelection,
-      selectionAfter: { entityId: entity.id },
-      document: after,
-    });
-    return true;
-  }
-
-  public createBrushEntity(
-    classname: string,
-    ids: IdFactory,
-    properties: Readonly<Record<string, string>> = {},
-  ): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const brushIds = selectedBrushIds(this.currentSelection);
-    if (brushIds.length === 0) return false;
-    const normalizedClassname = classname.trim();
-    if (!normalizedClassname) throw new Error('A brush entity requires a classname');
-    const layer = editorLayerForSelection(this.currentDocument, this.currentSelection);
-    const entity: MapEntity = {
-      id: ids.entity(),
-      properties: {
-        ...(layer?.id ? { _tb_layer: layer.id } : {}),
-        ...properties,
-        classname: normalizedClassname,
-      },
-      brushes: [],
-    };
-    const after = createBrushEntityInDocument(this.currentDocument, brushIds, entity);
-    const selectionAfter = createObjectSelection(
-      brushIds,
-      selectedPointEntityIds(this.currentSelection),
-      { kind: 'brush', brushId: brushIds.at(-1)! },
-    );
-    this.commitDocumentCandidate({
-      label: `Make ${normalizedClassname}`,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
-      after,
-      selectionBefore: this.currentSelection,
-      selectionAfter,
-      document: after,
-    });
-    return true;
-  }
-
-  public moveSelectedBrushesToEntity(entityId: EntityId): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const brushIds = selectedBrushIds(this.currentSelection);
-    if (brushIds.length === 0) return false;
-    const after = moveBrushesToEntity(this.currentDocument, brushIds, entityId);
-    this.commitDocumentCandidate({
-      label: 'Move brushes to entity',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
-      after,
-      selectionBefore: this.currentSelection,
-      selectionAfter: this.currentSelection,
-      document: after,
-    });
-    return true;
-  }
-
-  public makeSelectedStructural(): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const brushIds = selectedBrushIds(this.currentSelection);
-    if (brushIds.length === 0) return false;
-    const layer = editorLayerForSelection(this.currentDocument, this.currentSelection);
-    const target = layer?.id
-      ? this.currentDocument.entities.find((entity) => entity.id === layer.entityId)
-      : this.currentDocument.entities.find(
-          (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
-        );
-    if (!target) throw new Error('The map has no structural layer entity');
-    const after = moveBrushesToEntity(this.currentDocument, brushIds, target.id, true);
-    this.commitDocumentCandidate({
-      label: brushIds.length === 1 ? 'Make brush structural' : 'Make brushes structural',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
-      after,
-      selectionBefore: this.currentSelection,
-      selectionAfter: this.currentSelection,
-      document: after,
-    });
     return true;
   }
 }

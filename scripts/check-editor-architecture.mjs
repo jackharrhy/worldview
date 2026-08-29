@@ -44,6 +44,24 @@ for (const file of files) {
   ) {
     violations.push(`${file}: presenters may not depend on the EditorApplication container`);
   }
+  if (
+    file.startsWith('apps/editor/src/') &&
+    /\.(?:ts|tsx)$/.test(file) &&
+    /\.innerHTML\b|\.outerHTML\b|insertAdjacentHTML\s*\(/.test(source)
+  ) {
+    violations.push(`${file}: HTML string injection is forbidden; render editor UI with React`);
+  }
+  if (/\bMapFormat\b/.test(source)) {
+    violations.push(
+      `${file}: MapFormat conflates document containers with face syntax; use MapDocumentFormat or MapFaceSyntax`,
+    );
+  }
+  if (/\bMapEntity\s*\[\s*['"]brushes['"]\s*\]|\bentity\.brushes\b/.test(source)) {
+    violations.push(`${file}: semantic entities own typed primitives, not a brush-only collection`);
+  }
+  if (/\.primitives\s+as\s+(?:readonly\s+)?MapBrush\[\]/.test(source)) {
+    violations.push(`${file}: narrow MapPrimitive by its kind instead of asserting a brush array`);
+  }
 }
 
 const compositionRoot = 'apps/editor/src/main.tsx';

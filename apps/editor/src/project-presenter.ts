@@ -26,6 +26,9 @@ import {
   planMapSave,
   serializeMap,
   rebaseMapSource,
+  worldviewGameProfile,
+  type MapFaceSyntax,
+  type WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor';
 
 import type { BuildPresenter } from './build-presenter.js';
@@ -115,7 +118,10 @@ export class ProjectPresenter {
       assertExpectedDocument();
       let parsed = parseMapSource(text, createSequentialIdFactory(`opened-${Date.now()}`));
       const fingerprint = mapSourceFingerprint(text);
-      const recovered = await this.state.recovery.latest(logicalName.toLowerCase());
+      const documentKey = belongsToCurrentProject
+        ? `${this.state.workspaceId}:map:${logicalName.toLowerCase()}`
+        : `file:${logicalName.toLowerCase()}:${fingerprint}`;
+      const recovered = await this.state.recovery.latest(documentKey);
       assertExpectedDocument();
       const restoreRecovery = Boolean(
         recovered &&
@@ -127,6 +133,7 @@ export class ProjectPresenter {
       );
       assertExpectedDocument();
       if (!belongsToCurrentProject) this.detachProjectContext();
+      this.state.documentKey = documentKey;
       if (recovered && restoreRecovery) {
         const sourceMatchesDisk = recovered.source.fingerprint === fingerprint;
         if (sourceMatchesDisk) parsed = parseMapSource(text, recoverySourceIdFactory(recovered));
@@ -157,6 +164,10 @@ export class ProjectPresenter {
         focusView: true,
       });
       this.session.setEditorTool('select');
+      if (belongsToCurrentProject && this.state.projectKey) {
+        await this.state.projectLocalState.setLastMap(this.state.projectKey, logicalName);
+      }
+      await this.restoreBrowserAssetMounts();
       this.ui.statusMessage.textContent = `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`;
     } catch (error) {
       this.ui.statusMessage.textContent = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
@@ -257,7 +268,14 @@ export class ProjectPresenter {
     await this.loadProjectResources(workspace);
     this.state.projectWorkspace = workspace;
     this.state.projectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
-    const remembered = await this.state.projectLocalState.remember(this.state.projectKey, handle);
+    const remembered = await this.state.projectLocalState.remember(
+      this.state.projectKey,
+      handle,
+      workspace.manifest.name,
+    );
+    if (remembered) this.state.projectKey = remembered.projectKey;
+    this.state.workspaceId = remembered?.workspaceId ?? `project:${this.state.projectKey}`;
+    this.state.activeGameProfile = workspace.manifest.game;
     this.ui.projectMap.replaceChildren(
       ...workspace.maps.map(({ path }) => {
         const option = document.createElement('option');
@@ -281,7 +299,7 @@ export class ProjectPresenter {
       workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? '';
     await this.build.checkCompilerService();
     const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
-    if (!remembered) {
+    if (remembered === null) {
       const warning =
         'The project is open, but its directory binding could not be saved; choose the directory again after reload.';
       this.ui.materialMessage.textContent = `${this.ui.materialMessage.textContent} · ${warning}`;
@@ -292,6 +310,77 @@ export class ProjectPresenter {
     this.ui.statusMessage.textContent = summary;
   }
 
+  public createNewMap(
+    profile: WorldviewGameProfile,
+    format: MapFaceSyntax = worldviewGameProfile(profile).defaultFaceSyntax,
+    name = 'untitled.map',
+  ): void {
+    const definition = worldviewGameProfile(profile);
+    if (!definition.supportedFaceSyntaxes.includes(format)) {
+      throw new Error(`${definition.label} does not support ${format}`);
+    }
+    this.detachProjectContext();
+    const document = { ...createEmptyDocument(), faceSyntax: format };
+    this.state.workspaceId = `browser:${crypto.randomUUID()}`;
+    this.state.documentKey = `${this.state.workspaceId}:map:${crypto.randomUUID()}`;
+    this.state.activeGameProfile = profile;
+    this.session.replaceDocument(document, `Create empty ${definition.label} map`, {
+      name: name.toLowerCase().endsWith('.map') ? name : `${name}.map`,
+      source: rebaseMapSource(document, serializeMap(document)),
+      fileHandle: null,
+      diskFingerprint: null,
+      dirty: true,
+      savedRevision: -1,
+      focusView: true,
+    });
+    this.ui.statusMessage.textContent = `Created an empty ${definition.label} ${format} map.`;
+  }
+
+  public async recentProjects() {
+    return this.state.projectLocalState.list();
+  }
+
+  public async reopenProject(projectKey: string): Promise<void> {
+    const recent = await this.state.projectLocalState.load(projectKey);
+    if (!recent) throw new Error('Recent project is no longer available');
+    if (!(await ensureProjectDirectoryPermission(recent.handle, true))) {
+      throw new Error('Project directory permission was not granted');
+    }
+    await this.openProjectDirectory(recent.handle);
+    if (!recent.lastMapPath) return;
+    const map = this.state.projectWorkspace?.maps.find(({ path }) => path === recent.lastMapPath);
+    if (map) await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
+  }
+
+  public async restoreBrowserAssetMounts(): Promise<void> {
+    const mounts = await this.state.assetMountState.list(this.state.documentKey).catch(() => []);
+    for (const mount of mounts) {
+      if (!mount.data || !('sourceName' in mount)) continue;
+      this.state.materialCatalog.importWad(mount.sourceName, mount.data, this.state.quakePalette);
+      this.state.loadedWadSources.set(mount.sourceName, mount.data);
+    }
+    if (mounts.length > 0) {
+      this.materials.renderMaterialCatalog();
+      this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
+    }
+  }
+
+  public loadHostedResources(
+    resources: readonly {
+      readonly name: string;
+      readonly kind: string;
+      readonly data: ArrayBuffer;
+    }[],
+  ): void {
+    for (const resource of resources) {
+      if (resource.kind !== 'wad' && !resource.name.toLowerCase().endsWith('.wad')) continue;
+      this.state.materialCatalog.importWad(resource.name, resource.data, this.state.quakePalette);
+      this.state.loadedWadSources.set(resource.name, resource.data);
+    }
+    this.materials.renderMaterialCatalog();
+    this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
+  }
+
   private async projectDirectoryForOpen(): Promise<EditorDirectoryHandle | null> {
     const remembered = await this.state.projectLocalState.latest().catch(() => null);
     if (remembered && (await ensureProjectDirectoryPermission(remembered.handle, true))) {
@@ -300,8 +389,22 @@ export class ProjectPresenter {
     return pickProjectDirectory();
   }
 
+  public async chooseProjectDirectory(): Promise<boolean> {
+    const handle = await this.projectDirectoryForOpen();
+    if (!handle) return false;
+    await this.openProjectDirectory(handle);
+    return true;
+  }
+
+  public async chooseMapFile(): Promise<boolean> {
+    const opened = await pickMapFile(this.ui.mapFile);
+    if (!opened) return false;
+    await this.openEditorMap(opened.file, opened.handle);
+    return true;
+  }
+
   public async renderRecoveryVersions(): Promise<void> {
-    const snapshots = await this.state.recovery.list(this.state.currentDocumentName.toLowerCase());
+    const snapshots = await this.state.recovery.list(this.state.documentKey);
     this.ui.recoveryList.replaceChildren(
       ...snapshots.map((snapshot) => {
         const row = document.createElement('div');
@@ -343,16 +446,7 @@ export class ProjectPresenter {
 
   public connect(): void {
     required<HTMLButtonElement>('[data-action="new"]').addEventListener('click', () => {
-      const document = createEmptyDocument();
-      this.session.replaceDocument(document, 'Create empty map', {
-        name: 'untitled.map',
-        source: rebaseMapSource(document, serializeMap(document)),
-        fileHandle: null,
-        diskFingerprint: null,
-        dirty: true,
-        savedRevision: -1,
-        focusView: true,
-      });
+      this.ui.workspaceHome.invoke('newMap');
     });
 
     required<HTMLButtonElement>('[data-action="show-source"]').addEventListener('click', () => {
@@ -387,13 +481,11 @@ export class ProjectPresenter {
       'click',
       async () => {
         try {
-          const handle = await this.projectDirectoryForOpen();
-          if (!handle) {
+          if (!(await this.chooseProjectDirectory())) {
             this.ui.statusMessage.textContent =
               'Persistent project directories require a Chromium browser with File System Access.';
             return;
           }
-          await this.openProjectDirectory(handle);
         } catch (error) {
           this.ui.statusMessage.textContent = `Project open failed: ${error instanceof Error ? error.message : String(error)}`;
         }
@@ -411,8 +503,7 @@ export class ProjectPresenter {
 
     required<HTMLButtonElement>('[data-action="open-file"]').addEventListener('click', async () => {
       try {
-        const opened = await pickMapFile(this.ui.mapFile);
-        if (opened) await this.openEditorMap(opened.file, opened.handle);
+        await this.chooseMapFile();
       } catch (error) {
         this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
       }

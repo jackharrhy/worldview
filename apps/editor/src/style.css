@@ -1,4 +1,5 @@
 @import url('./styles/layout.css');
+@import url('./styles/theme.css');
 @import url('./styles/viewports-tools.css');
 @import url('./styles/inspectors.css');
 @import url('./styles/dialogs-references.css');

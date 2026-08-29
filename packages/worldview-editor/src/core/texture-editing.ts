@@ -176,7 +176,14 @@ function parallelTextureProjection(normal: Vec3): TextureProjection {
   const uAxis = normalize(projectedU) ?? normalize(cross([0, 0, 1], normal)) ?? [1, 0, 0];
   let vAxis = normalize(cross(normal, uAxis)) ?? [0, 1, 0];
   if (dot(vAxis, fallback.vAxis) < 0) vAxis = [-vAxis[0], -vAxis[1], -vAxis[2]];
-  return { uAxis, vAxis, offset: [0, 0], rotationDegrees: 0, scale: [1, 1] };
+  return {
+    kind: 'valve-220',
+    uAxis,
+    vAxis,
+    offset: [0, 0],
+    rotationDegrees: 0,
+    scale: [1, 1],
+  };
 }
 
 interface TextureBounds {

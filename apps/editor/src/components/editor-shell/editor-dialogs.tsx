@@ -1,6 +1,8 @@
 import { EDITOR_SPECIAL_BRUSH_FILTER_INFO } from '@jackharrhy/worldview-editor';
+import type { EditorShellState } from '../../editor-shell-state.js';
+import { CollaborationDialog } from './collaboration-ui.js';
 
-export function EditorDialogs() {
+export function EditorDialogs({ shellState }: { readonly shellState: EditorShellState }) {
   return (
     <>
       <dialog
@@ -57,6 +59,7 @@ export function EditorDialogs() {
           </div>
         </div>
       </dialog>
+      <CollaborationDialog port={shellState.collaborationUi} />
       <aside
         id="view-filter-popover"
         className="view-filter-popover"

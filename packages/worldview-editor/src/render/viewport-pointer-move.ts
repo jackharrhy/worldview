@@ -74,6 +74,10 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
             ? (this.interaction.hitTests(ray.origin, ray.direction).find(isBrushRayHit) ?? null)
             : this.interaction.hitTest(ray.origin, ray.direction);
           const selection = this.interaction.currentSelection();
+          const proximateFace =
+            event.shiftKey && selection && !selection.faceId
+              ? this.proximateSelectedFaceAt(event.clientX, event.clientY)
+              : null;
           this.interaction.hover(
             hit &&
               event.shiftKey &&
@@ -82,9 +86,11 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
               !selection.faceId &&
               selectionContainsHit(selection, hit)
               ? { brushId: hit.brushId, faceId: hit.faceId }
-              : hit
-                ? selectionForHit(hit)
-                : null,
+              : proximateFace
+                ? proximateFace.selection
+                : hit
+                  ? selectionForHit(hit)
+                  : null,
           );
           this.interaction.hoverTopology(null);
         } else {

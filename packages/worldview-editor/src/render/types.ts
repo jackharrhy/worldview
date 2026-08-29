@@ -264,6 +264,16 @@ export interface EditorDiagnosticOverlay {
   readonly points: readonly Vec3[];
 }
 
+/** Lossy collaboration overlay. Its document is never installed as editor or history state. */
+export interface EditorRemotePresenceOverlay {
+  readonly actorId: string;
+  readonly color: readonly [number, number, number];
+  readonly document: MapDocument;
+  readonly selectedObjectIds: readonly string[];
+  readonly previewObjectIds: readonly string[];
+  readonly pointer?: Vec3;
+}
+
 export interface EditorSpriteMaterial {
   readonly path: string;
   readonly material: EditorMaterial;
@@ -278,6 +288,7 @@ export interface EditorSourceRendererOptions {
   readonly entityDefinitions?: EntityDefinitionCatalog;
   readonly referenceScenes?: readonly EditorReferenceScene[];
   readonly diagnosticOverlays?: readonly EditorDiagnosticOverlay[];
+  readonly remotePresence?: readonly EditorRemotePresenceOverlay[];
   readonly sprites?: readonly EditorSpriteMaterial[];
   readonly entityLinkMode?: EntityLinkMode;
   /** Persistent ID of the group currently opened for component editing. */
@@ -320,6 +331,10 @@ export interface EditorSourceRendererOptions {
   readonly onCameraChange?: (event: EditorCameraChangeEvent) => void;
   /** Requests one browser animation frame after renderer state or viewport input changes. */
   readonly onRenderRequest?: () => void;
+  /** Reports candidate documents; consumers must keep them ephemeral and non-authoritative. */
+  readonly onPreviewDocument?: (document: MapDocument) => void;
+  /** Reports an unexpected device loss so the host can replace the canvases or explain failure. */
+  readonly onDeviceLost?: (message: string) => void;
 }
 
 export interface EditorViewportCameraState {

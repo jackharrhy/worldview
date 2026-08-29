@@ -3,6 +3,7 @@ import {
   collaborationEditsBetween,
   inverseCollaborationEdits,
   type CollaborationOperation,
+  type CollaborationEdit,
   type EditorSession,
   type MapDocument,
 } from '@jackharrhy/worldview-editor/core';
@@ -26,8 +27,12 @@ interface StoredOperation {
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
-    request.addEventListener('success', () => resolve(request.result), { once: true });
-    request.addEventListener('error', () => reject(request.error), { once: true });
+    request.addEventListener('success', () => resolve(request.result), {
+      once: true,
+    });
+    request.addEventListener('error', () => reject(request.error), {
+      once: true,
+    });
   });
 }
 
@@ -39,12 +44,18 @@ export class IndexedDbCollaborationOutbox implements CollaborationOutbox {
       const request = factory.open(DATABASE_NAME, DATABASE_VERSION);
       request.addEventListener('upgradeneeded', () => {
         if (!request.result.objectStoreNames.contains(OUTBOX_STORE)) {
-          const store = request.result.createObjectStore(OUTBOX_STORE, { keyPath: 'key' });
+          const store = request.result.createObjectStore(OUTBOX_STORE, {
+            keyPath: 'key',
+          });
           store.createIndex('roomId', 'roomId');
         }
       });
-      request.addEventListener('success', () => resolve(request.result), { once: true });
-      request.addEventListener('error', () => reject(request.error), { once: true });
+      request.addEventListener('success', () => resolve(request.result), {
+        once: true,
+      });
+      request.addEventListener('error', () => reject(request.error), {
+        once: true,
+      });
     });
   }
 
@@ -123,18 +134,48 @@ export interface CollaborationPresence {
   readonly displayName?: string;
   readonly color?: string;
   readonly selectedObjectIds?: readonly string[];
-  readonly viewport?: 'perspective' | 'top' | 'front' | 'side';
+  readonly viewport?: 'perspective' | 'xy' | 'xz' | 'yz';
+  readonly pointer?: readonly [number, number, number];
+  readonly tool?: string;
+  readonly preview?: {
+    readonly interactionId: string;
+    readonly sequence: number;
+    readonly baseRoomVersion: number;
+    readonly edits: readonly CollaborationEdit[];
+  };
   readonly sentAt: number;
 }
 
+export interface JoinCollaborationOptions {
+  readonly endpoint: string;
+  readonly roomId: string;
+  readonly actorId: string;
+  readonly displayName?: string;
+  readonly color?: string;
+  /** Returns a fresh short-lived bearer token for protected hosted rooms. */
+  readonly authorize?: () => Promise<string>;
+  readonly onPresence?: (presence: CollaborationPresence) => void;
+  readonly onLocalPresence?: (presence: CollaborationPresence) => void;
+  readonly onConflict?: (operationId: string, conflicts: readonly unknown[]) => void;
+  readonly onConnectionChange?: (state: 'connecting' | 'connected' | 'disconnected') => void;
+}
+
 type CollaborationServerFrame =
-  | { readonly type: 'ready'; readonly roomVersion: number; readonly document: MapDocument | null }
+  | {
+      readonly type: 'ready';
+      readonly roomVersion: number;
+      readonly document: MapDocument | null;
+    }
   | {
       readonly type: 'operation';
       readonly roomVersion: number;
       readonly operation: CollaborationOperation;
     }
-  | { readonly type: 'ack'; readonly operationId: string; readonly roomVersion: number }
+  | {
+      readonly type: 'ack';
+      readonly operationId: string;
+      readonly roomVersion: number;
+    }
   | {
       readonly type: 'conflict';
       readonly operationId: string;
@@ -158,6 +199,7 @@ export class CollaborationController {
   private readonly outbox: CollaborationOutbox;
   private readonly channel: CollaborationChannel;
   private readonly createId: () => string;
+  private readonly localOperationListeners = new Set<(operation: CollaborationOperation) => void>();
 
   public constructor(private readonly options: CollaborationControllerOptions) {
     this.outbox = options.outbox ?? new IndexedDbCollaborationOutbox();
@@ -181,6 +223,10 @@ export class CollaborationController {
     this.roomVersion = Math.max(this.roomVersion, roomVersion);
   }
 
+  public getRoomVersion(): number {
+    return this.roomVersion;
+  }
+
   public async recordCommit(
     label: string,
     before: MapDocument,
@@ -201,7 +247,15 @@ export class CollaborationController {
     };
     await this.outbox.put(this.options.roomId, operation);
     this.channel.publish(operation);
+    for (const listener of this.localOperationListeners) listener(operation);
     return operation;
+  }
+
+  public subscribeLocalOperations(
+    listener: (operation: CollaborationOperation) => void,
+  ): () => void {
+    this.localOperationListeners.add(listener);
+    return () => this.localOperationListeners.delete(listener);
   }
 
   public pending(): Promise<readonly CollaborationOperation[]> {
@@ -237,6 +291,7 @@ export class CollaborationController {
     };
     await this.outbox.put(this.options.roomId, operation);
     this.channel.publish(operation);
+    for (const listener of this.localOperationListeners) listener(operation);
     return operation;
   }
 
@@ -249,6 +304,7 @@ export interface CollaborationSocketClientOptions {
   readonly endpoint: string;
   readonly roomId: string;
   readonly actorId: string;
+  readonly authorize?: () => Promise<string>;
   readonly controller: CollaborationController;
   readonly createSocket?: (url: string) => CollaborationSocket;
   readonly scheduleReconnect?: (callback: () => void, milliseconds: number) => number;
@@ -257,6 +313,7 @@ export interface CollaborationSocketClientOptions {
   readonly onPresence?: (presence: CollaborationPresence) => void;
   readonly onConflict?: (operationId: string, conflicts: readonly unknown[]) => void;
   readonly onError?: (error: unknown) => void;
+  readonly onConnectionChange?: (state: 'connecting' | 'connected' | 'disconnected') => void;
 }
 
 /** Reconnectable room transport. The IndexedDB outbox remains authoritative while disconnected. */
@@ -264,7 +321,10 @@ export class CollaborationSocketClient {
   private socket: CollaborationSocket | null = null;
   private reconnectHandle: number | null = null;
   private reconnectAttempt = 0;
+  private connecting = false;
   private stopped = false;
+  private serverReady = false;
+  private readonly unsubscribeLocalOperations: () => void;
   private readonly createSocket: (url: string) => CollaborationSocket;
   private readonly scheduleReconnect: (callback: () => void, milliseconds: number) => number;
   private readonly cancelReconnect: (handle: number) => void;
@@ -274,21 +334,55 @@ export class CollaborationSocketClient {
     this.scheduleReconnect =
       options.scheduleReconnect ?? ((callback, delay) => window.setTimeout(callback, delay));
     this.cancelReconnect = options.cancelReconnect ?? ((handle) => window.clearTimeout(handle));
+    this.unsubscribeLocalOperations = options.controller.subscribeLocalOperations((operation) => {
+      if (!this.serverReady) return;
+      this.socket?.send(JSON.stringify({ type: 'operation', operation }));
+    });
   }
 
   public connect(): void {
-    if (this.stopped || this.socket) return;
+    if (this.stopped || this.socket || this.connecting) return;
+    if (this.options.authorize) void this.connectAuthorizedSocket();
+    else {
+      this.options.onConnectionChange?.('connecting');
+      this.openSocket();
+    }
+  }
+
+  private async connectAuthorizedSocket(): Promise<void> {
+    if (this.stopped || this.socket || this.connecting) return;
+    this.connecting = true;
+    this.options.onConnectionChange?.('connecting');
+    try {
+      const token = await this.options.authorize!();
+      if (this.stopped) return;
+      this.openSocket(token);
+    } catch (error) {
+      this.options.onError?.(error);
+      this.options.onConnectionChange?.('disconnected');
+      this.scheduleNextReconnect();
+    } finally {
+      this.connecting = false;
+    }
+  }
+
+  private openSocket(token?: string): void {
     const url = new URL(this.options.endpoint);
     url.pathname = `/rooms/${encodeURIComponent(this.options.roomId)}`;
     url.searchParams.set('actor', this.options.actorId);
+    if (token) url.searchParams.set('access_token', token);
     const socket = this.createSocket(url.toString());
+    this.serverReady = false;
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.reconnectAttempt = 0;
+      this.options.onConnectionChange?.('connected');
     });
     socket.addEventListener('message', (event) => void this.receive(event.data));
     socket.addEventListener('close', () => {
       if (this.socket === socket) this.socket = null;
+      this.serverReady = false;
+      this.options.onConnectionChange?.('disconnected');
       this.scheduleNextReconnect();
     });
   }
@@ -303,6 +397,7 @@ export class CollaborationSocketClient {
     this.stopped = true;
     if (this.reconnectHandle !== null) this.cancelReconnect(this.reconnectHandle);
     this.reconnectHandle = null;
+    this.unsubscribeLocalOperations();
     this.socket?.close();
     this.socket = null;
   }
@@ -311,6 +406,7 @@ export class CollaborationSocketClient {
     try {
       const frame = JSON.parse(serialized) as CollaborationServerFrame;
       if (frame.type === 'ready') {
+        this.serverReady = true;
         this.options.controller.setRoomVersion(frame.roomVersion);
         this.options.onReady?.(frame.document, frame.roomVersion);
         await this.flushOutbox();

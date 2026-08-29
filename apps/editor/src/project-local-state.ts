@@ -1,14 +1,17 @@
 import type { EditorDirectoryHandle } from './project-workspace.js';
 
 const DATABASE_NAME = 'worldview-editor-local-projects';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const PROJECT_STORE = 'projects';
 
 export interface LocalProjectState {
-  readonly version: 1;
+  readonly version: 2;
+  readonly workspaceId: string;
   readonly projectKey: string;
+  readonly displayName: string;
   readonly handle: EditorDirectoryHandle;
   readonly buildBindings: Readonly<Record<string, string>>;
+  readonly lastMapPath?: string;
   readonly updatedAt: number;
 }
 
@@ -42,9 +45,30 @@ function transactionComplete(transaction: IDBTransaction): Promise<void> {
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.addEventListener('upgradeneeded', () => {
+    request.addEventListener('upgradeneeded', (event) => {
       if (!request.result.objectStoreNames.contains(PROJECT_STORE)) {
         request.result.createObjectStore(PROJECT_STORE, { keyPath: 'projectKey' });
+      } else if ((event as IDBVersionChangeEvent).oldVersion < 2 && request.transaction) {
+        const cursorRequest = request.transaction.objectStore(PROJECT_STORE).openCursor();
+        cursorRequest.addEventListener('success', () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) return;
+          const previous = cursor.value as {
+            readonly projectKey: string;
+            readonly handle: EditorDirectoryHandle;
+            readonly buildBindings?: Readonly<Record<string, string>>;
+            readonly updatedAt?: number;
+          };
+          cursor.update({
+            ...previous,
+            version: 2,
+            workspaceId: crypto.randomUUID(),
+            displayName: previous.handle.name,
+            buildBindings: previous.buildBindings ?? {},
+            updatedAt: previous.updatedAt ?? Date.now(),
+          });
+          cursor.continue();
+        });
       }
     });
     request.addEventListener('success', () => resolve(request.result), { once: true });
@@ -60,8 +84,10 @@ function isLocalProjectState(value: unknown): value is LocalProjectState {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<LocalProjectState>;
   return (
-    candidate.version === 1 &&
+    candidate.version === 2 &&
+    typeof candidate.workspaceId === 'string' &&
     typeof candidate.projectKey === 'string' &&
+    typeof candidate.displayName === 'string' &&
     candidate.handle?.kind === 'directory' &&
     Boolean(candidate.buildBindings) &&
     typeof candidate.updatedAt === 'number'
@@ -128,20 +154,56 @@ export class ProjectLocalStateService {
     return (await this.storage.list())[0] ?? null;
   }
 
-  public async remember(projectKey: string, handle: EditorDirectoryHandle): Promise<boolean> {
+  public list(): Promise<readonly LocalProjectState[]> {
+    return this.storage.list();
+  }
+
+  public async remember(
+    projectKey: string,
+    handle: EditorDirectoryHandle,
+    displayName = handle.name,
+  ): Promise<LocalProjectState | null> {
     try {
-      const previous = await this.load(projectKey);
-      await this.storage.save({
-        version: 1,
-        projectKey,
+      const exact = await this.load(projectKey);
+      const previous =
+        exact ??
+        (await this.storage.list()).find((candidate) => candidate.handle === handle) ??
+        (await this.findSameDirectory(handle));
+      const state: LocalProjectState = {
+        version: 2,
+        workspaceId: previous?.workspaceId ?? crypto.randomUUID(),
+        projectKey: previous?.projectKey ?? projectKey,
+        displayName,
         handle,
         buildBindings: previous?.buildBindings ?? {},
+        ...(previous?.lastMapPath ? { lastMapPath: previous.lastMapPath } : {}),
         updatedAt: Date.now(),
-      });
-      return true;
+      };
+      await this.storage.save(state);
+      return state;
     } catch {
-      return false;
+      return null;
     }
+  }
+
+  private async findSameDirectory(
+    handle: EditorDirectoryHandle,
+  ): Promise<LocalProjectState | null> {
+    if (!handle.isSameEntry) return null;
+    for (const candidate of await this.storage.list()) {
+      try {
+        if (await handle.isSameEntry(candidate.handle)) return candidate;
+      } catch {
+        // A revoked or stale handle is simply not a match.
+      }
+    }
+    return null;
+  }
+
+  public async setLastMap(projectKey: string, path: string): Promise<void> {
+    const previous = await this.load(projectKey);
+    if (!previous) return;
+    await this.storage.save({ ...previous, lastMapPath: path, updatedAt: Date.now() });
   }
 
   public async setBuildBinding(
@@ -152,10 +214,13 @@ export class ProjectLocalStateService {
   ): Promise<void> {
     const previous = await this.load(projectKey);
     await this.storage.save({
-      version: 1,
+      version: 2,
+      workspaceId: previous?.workspaceId ?? crypto.randomUUID(),
       projectKey,
+      displayName: previous?.displayName ?? handle.name,
       handle,
       buildBindings: { ...previous?.buildBindings, [logicalProfileId]: capabilityId },
+      ...(previous?.lastMapPath ? { lastMapPath: previous.lastMapPath } : {}),
       updatedAt: Date.now(),
     });
   }

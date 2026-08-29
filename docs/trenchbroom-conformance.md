@@ -46,6 +46,21 @@ do not run a permanent idle frame loop. Its perspective view requests the next f
 keys remain down. Worldview now uses the same scheduling contract: invalidations coalesce into one
 animation frame, and the renderer reports whether active fly input requires another.
 
+TrenchBroom's `BrushRenderer` keeps per-brush allocation records, invalidates individual brushes or
+materials, and prepares shared vertex/index arrays through dirty-range-tracked VBO holders before a
+render batch draws them. Worldview does not copy that GPL implementation. Its WebGPU analogue keeps
+immutable brush derivations, material-and-spatial-cell solid batches, structural signatures, and
+unchanged GPU buffers across document revisions. Scene updates encode every invalidated viewport
+pass into one command buffer and submit once. This retains the simple per-viewport render policy
+while avoiding four queue submissions for an ordinary shared-scene update.
+
+Worldview also follows the static/dynamic distinction without adopting TrenchBroom's allocation
+tracker: ordinary, locked, and reference world edges live in a retained buffer, while selection,
+hover, active-face, group, entity-link, diagnostic, and tool feedback use a compact overlay buffer
+drawn afterward. Immutable document identity memoizes entity-link anchors. Selection-only changes
+therefore neither regenerate world-edge vertices nor walk every brush to rediscover entity links;
+document edits still rebuild edges but preserve unchanged spatial solid batches.
+
 ## Camera behavior
 
 The current camera interactions conform closely:
@@ -72,20 +87,27 @@ Viewport focus also follows TrenchBroom's pointer policy: after any source viewp
 crossing into another source viewport transfers keyboard focus there. Merely hovering the editor
 from an inspector or dialog does not steal focus.
 
+The four-view workspace matches TrenchBroom's default balanced 2×2 arrangement: Perspective is
+upper-left, Top upper-right, Front lower-left, and Side lower-right. The shared row and column
+boundaries and the inspector boundary have visible-on-interaction drag targets, keyboard arrow
+support, and minimum-size constraints.
+
 ### Selection and manipulation audit
 
-| Interaction                                   | Worldview status |
-| --------------------------------------------- | ---------------- |
-| Click object; click void to clear             | Matched          |
-| Modifier-click adds or removes objects        | Matched          |
-| Modifier-click selects a face in perspective  | Matched          |
-| Modifier-double-click selects all brush faces | Matched          |
-| Paint/lasso object and face selection         | Matched          |
-| Selection drilling beneath the pointer        | Matched          |
-| Drag selected objects on the viewport plane   | Matched          |
-| Vertical modifier-drag in perspective         | Matched          |
-| Duplicate-and-move feedback flash             | Partial          |
-| Configurable keyboard shortcut preferences    | Deferred         |
+| Interaction                                    | Worldview status |
+| ---------------------------------------------- | ---------------- |
+| Click object; click void to clear              | Matched          |
+| Drag with an empty selection to create a shape | Matched          |
+| Modifier-click adds or removes objects         | Matched          |
+| Modifier-click selects a face in perspective   | Matched          |
+| Modifier-double-click selects all brush faces  | Matched          |
+| Paint/lasso object and face selection          | Matched          |
+| Selection drilling beneath the pointer         | Matched          |
+| Drag selected objects on the viewport plane    | Matched          |
+| Vertical modifier-drag in perspective          | Matched          |
+| Near-silhouette selected-face acquisition      | Matched          |
+| Duplicate-and-move feedback flash              | Partial          |
+| Configurable keyboard shortcut preferences     | Deferred         |
 
 Worldview keeps browser-safe fixed shortcuts for now. A future shortcut preference surface must
 resolve conflicts by viewport/tool context rather than adding global window handlers.

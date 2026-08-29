@@ -519,6 +519,13 @@ export class ToolEvents {
             this.state.quakePalette,
           );
           this.state.loadedWadSources.set(file.name, data.value);
+          await this.state.assetMountState.addBrowserWad(
+            this.state.documentKey,
+            this.state.activeGameProfile,
+            file.name,
+            data.value,
+            this.state.loadedWadSources.size,
+          );
           summaries.push(
             `${file.name}: ${result.added} added, ${result.replaced} replaced, ${result.skipped} skipped`,
           );

@@ -148,7 +148,26 @@ export {
   textureCoordinates,
   type BrushRayHit,
 } from './geometry.js';
-export { MapParseError, mapSourceFingerprint, parseMap, parseMapSource } from './map-parser.js';
+export {
+  brushDefToBrush,
+  deriveBrushDef,
+  derivePatch,
+  type DerivedPatch,
+  type DerivedPatchVertex,
+} from './primitive-geometry.js';
+export {
+  MapParseError,
+  mapSourceFingerprint,
+  parseMap,
+  parseMapFragment,
+  parseMapSource,
+} from './map-parser.js';
+export {
+  documentCodecForFormat,
+  QUAKE_MAP_DOCUMENT_CODEC,
+  type MapDocumentCodec,
+  type QuakeMapDocumentCodec,
+} from './document-codecs.js';
 export {
   BUILTIN_POINT_ENTITY_DEFINITIONS,
   formatEntityOrigin,
@@ -261,8 +280,11 @@ export { planMapSave, rebaseMapSource } from './map-save.js';
 export {
   serializeMap,
   serializeMapBrush,
+  serializeMapBrushDef,
   serializeMapEntity,
   serializeMapFace,
+  serializeMapPatch,
+  serializeMapPrimitive,
 } from './map-serializer.js';
 export type {
   MapSavePlan,
@@ -276,11 +298,26 @@ export {
   WorldviewProjectParseError,
   type EntityDefinitionFormat,
   type WorldviewEntityDefinitionSource,
-  type WorldviewGameProfile,
   type WorldviewProjectBuildProfile,
   type WorldviewProjectManifest,
   type WorldviewProjectResources,
 } from './worldview-project.js';
+export {
+  WORLDVIEW_GAME_PROFILES,
+  gameProfileSupportsFaceSyntax,
+  isWorldviewGameProfile,
+  worldviewGameProfile,
+  type WorldviewGameProfile,
+  type WorldviewGameProfileDefinition,
+} from './game-profiles.js';
+export {
+  orderAssetMounts,
+  type AssetMountDescriptor,
+  type AssetMountKind,
+  type BrowserWadAssetMount,
+  type BuiltinAssetMount,
+  type ProjectWadAssetMount,
+} from './asset-mounts.js';
 export {
   connectedCoplanarFaces,
   createBrushSelection,
@@ -348,10 +385,17 @@ export {
 } from './session.js';
 export {
   brushesInDocument,
+  brushDefsInDocument,
+  brushesInEntity,
+  primitivesInDocument,
+  patchesInDocument,
   createSequentialIdFactory,
   findBrush,
+  findPrimitive,
+  isMapBrush,
   type Bounds,
   type BrushId,
+  type BrushDefId,
   type BrushSelection,
   type DerivedBrush,
   type DerivedEdge,
@@ -365,13 +409,22 @@ export {
   type GeometryDiagnostic,
   type IdFactory,
   type MapBrush,
+  type MapBrushDef,
+  type MapBrushDefFace,
+  type MapPrimitive,
+  type MapPatch,
+  type MapPatchPoint,
   type MapDocument,
   type MapEntity,
   type MapFace,
-  type MapFormat,
+  type MapFragment,
+  type MapDocumentFormat,
+  type MapFaceSyntax,
   type SurfaceAttributes,
   type TextureProjection,
   type Vec2,
   type Vec3,
   type PointEntitySelection,
+  type PrimitiveId,
+  type PatchId,
 } from './types.js';

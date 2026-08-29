@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   createStarterDocument,
   createSequentialIdFactory,
+  deriveEditorIssues,
+  documentCodecForFormat,
+  derivePatch,
   mapSourceFingerprint,
   parseMapSource,
+  parseMapFragment,
   planMapSave,
   rebaseMapSource,
   serializeMap,
@@ -55,6 +59,198 @@ function replaceEntityProperties(
 }
 
 describe('source-backed map saving', () => {
+  it('keeps classic axial projection stable across normalized plane rounding', () => {
+    const source = [
+      '{',
+      '"classname" "worldspawn"',
+      '{',
+      '( -414.89602728784894 51.040974600749166 -184 ) ( -460.1508612837879 96.29580859668829 -248 ) ( -460.1508612837879 96.29580859668829 -184 ) crate0_side -55.81717 -56 180 0.70710677 -1',
+      '( -460.1508612837879 96.29580859668829 -184 ) ( -414.89602728784894 51.040974600749166 -184 ) ( -460.1508612837879 96.29580859668829 -120 ) crate0_side 0 0 0 1 1',
+      '( -460.1508612837879 96.29580859668829 -248 ) ( -414.89602728784894 51.040974600749166 -184 ) ( -460.1508612837879 96.29580859668829 -120 ) crate0_side 0 0 0 1 1',
+      '( -500 0 -300 ) ( -500 0 -100 ) ( -300 0 -300 ) crate0_side 0 0 0 1 1',
+      '}',
+      '}',
+    ].join('\n');
+    const firstBrush = parseMapSource(source).document.entities[0]!.primitives[0]!;
+    const reparsedBrush = parseMapSource(serializeMap(parseMapSource(source).document)).document
+      .entities[0]!.primitives[0]!;
+    if (firstBrush.kind !== 'brush' || reparsedBrush.kind !== 'brush') {
+      throw new Error('Expected classic brushes');
+    }
+    const first = firstBrush.faces[0]!;
+    const reparsed = reparsedBrush.faces[0]!;
+
+    const alignment = first.projection.uAxis.reduce(
+      (sum, component, index) => sum + component * reparsed.projection.uAxis[index]!,
+      0,
+    );
+    expect(alignment).toBeGreaterThan(0.999999);
+  });
+
+  it('parses brush-only fragments through an explicit interchange contract', () => {
+    const fragment = parseMapFragment(
+      [
+        '{',
+        '( 0 0 0 ) ( 0 64 0 ) ( 0 0 64 ) STONE 0 0 0 1 1',
+        '( 64 0 0 ) ( 64 0 64 ) ( 64 64 0 ) STONE 0 0 0 1 1',
+        '( 0 0 0 ) ( 0 0 64 ) ( 64 0 0 ) STONE 0 0 0 1 1',
+        '( 0 64 0 ) ( 64 64 0 ) ( 0 64 64 ) STONE 0 0 0 1 1',
+        '( 0 0 0 ) ( 64 0 0 ) ( 0 64 0 ) STONE 0 0 0 1 1',
+        '( 0 0 64 ) ( 0 64 64 ) ( 64 0 64 ) STONE 0 0 0 1 1',
+        '}',
+      ].join('\n'),
+    );
+
+    expect(fragment).toMatchObject({ format: 'quake-map', faceSyntax: 'quake' });
+    expect(fragment.primitives).toHaveLength(1);
+  });
+
+  it('parses and source-preserves idTech 3 patches semantically', () => {
+    const source = [
+      '{',
+      '"classname" "worldspawn"',
+      '{',
+      'patchDef2',
+      '{',
+      'textures/common/caulk',
+      '( 3 3 0 0 0 )',
+      '(',
+      '( ( 0 0 0 0 0 ) ( 64 0 0 1 0 ) ( 128 0 0 2 0 ) )',
+      '( ( 0 64 0 0 1 ) ( 64 64 16 1 1 ) ( 128 64 0 2 1 ) )',
+      '( ( 0 128 0 0 2 ) ( 64 128 0 1 2 ) ( 128 128 0 2 2 ) )',
+      ')',
+      '}',
+      '}',
+      '"message" "retained"',
+      '}',
+      '',
+    ].join('\n');
+    const parsed = parseMapSource(source);
+
+    const primitive = parsed.document.entities[0]?.primitives[0];
+    expect(primitive).toMatchObject({
+      kind: 'patch',
+      material: 'textures/common/caulk',
+      dimensions: [3, 3],
+    });
+    expect(primitive?.kind === 'patch' ? primitive.controlPoints[1]?.[1] : null).toEqual({
+      position: [64, 64, 16],
+      uv: [1, 1],
+    });
+    if (primitive?.kind !== 'patch') throw new Error('Expected patch');
+    const derived = derivePatch(primitive);
+    expect(derived).toMatchObject({ valid: true, bounds: { min: [0, 0, 0], max: [128, 128, 4] } });
+    expect(derived.triangles).toHaveLength(96);
+    expect(parsed.source.diagnostics).toEqual([]);
+    expect(planMapSave(parsed.document, parsed.source)).toEqual({
+      status: 'safe',
+      text: source,
+      diagnostics: [],
+    });
+    const edited = replaceEntityProperties(parsed.document, 0, {
+      ...parsed.document.entities[0]!.properties,
+      message: 'changed around patch',
+    });
+    const editedPlan = planMapSave(edited, parsed.source);
+    expect(editedPlan.status).toBe('safe');
+    if (editedPlan.status === 'safe') expect(editedPlan.text).toContain('patchDef2');
+    expect(
+      parseMapSource(serializeMap(parsed.document)).document.entities[0]?.primitives[0],
+    ).toMatchObject(primitive);
+  });
+
+  it('parses structurally valid maps before reporting playable-world issues', () => {
+    const parsed = parseMapSource(
+      ['{', '"classname" "light"', '"origin" "0 0 64"', '}', ''].join('\n'),
+    );
+
+    expect(parsed.document.entities).toHaveLength(1);
+    expect(deriveEditorIssues(parsed.document).map((issue) => issue.type)).toContain(
+      'missing-worldspawn',
+    );
+  });
+
+  it('parses and normalizes idTech 3 brush definitions semantically', () => {
+    const source = [
+      '{',
+      '"classname" "worldspawn"',
+      '{',
+      'brushDef',
+      '{',
+      '( 64 0 0 ) ( 64 0 64 ) ( 64 64 0 ) ( ( 0.5 0 8 ) ( 0 0.5 16 ) ) common/caulk 1 2 3',
+      '}',
+      '}',
+      '}',
+      '',
+    ].join('\n');
+    const parsed = parseMapSource(source);
+    const primitive = parsed.document.entities[0]?.primitives[0];
+
+    expect(primitive).toMatchObject({
+      kind: 'brush-def',
+      faces: [
+        {
+          textureMatrix: [
+            [0.5, 0, 8],
+            [0, 0.5, 16],
+          ],
+          material: 'common/caulk',
+          surface: { contents: 1, flags: 2, value: 3 },
+        },
+      ],
+    });
+    expect(
+      parseMapSource(serializeMap(parsed.document)).document.entities[0]?.primitives[0],
+    ).toMatchObject(primitive!);
+  });
+
+  it('preserves unknown nested primitives opaquely', () => {
+    const source = [
+      '{',
+      '"classname" "worldspawn"',
+      '{',
+      'futureDef',
+      '{',
+      '( 1 2 3 )',
+      '}',
+      '}',
+      '}',
+      '',
+    ].join('\n');
+    const parsed = parseMapSource(source);
+
+    expect(parsed.document.entities[0]?.primitives).toEqual([]);
+    expect(parsed.source.entities[0]?.opaque).toMatchObject([{ keyword: 'futureDef' }]);
+    expect(planMapSave(parsed.document, parsed.source)).toMatchObject({
+      status: 'safe',
+      text: source,
+    });
+  });
+
+  it('uses source headers and QuArK comments as lexical metadata', () => {
+    const parsed = parseMapSource(
+      ['; generated by QuArK', '// Format: Valve', '{', '"classname" "worldspawn"', '}', ''].join(
+        '\n',
+      ),
+    );
+
+    expect(parsed.document.faceSyntax).toBe('valve-220');
+  });
+
+  it('routes the complete source lifecycle through the document format codec', () => {
+    const codec = documentCodecForFormat('quake-map');
+    const parsed = codec.parseSource(SOURCE);
+
+    expect(codec.format).toBe('quake-map');
+    expect(codec.extensions).toEqual(['.map']);
+    expect(codec.serialize(parsed.document)).toBe(serializeMap(parsed.document));
+    expect(codec.planSave(parsed.document, parsed.source)).toEqual({
+      status: 'safe',
+      text: SOURCE,
+      diagnostics: [],
+    });
+  });
+
   it('returns unedited source byte-for-byte', () => {
     const parsed = parseMapSource(SOURCE);
     const plan = planMapSave(parsed.document, parsed.source);
@@ -85,7 +281,10 @@ describe('source-backed map saving', () => {
 
     const rebased = rebaseMapSource(edited, plan.text);
     expect(rebased.originalDocument.entities[0]?.id).toBe(worldspawn.id);
-    expect(planMapSave(edited, rebased)).toMatchObject({ status: 'safe', text: plan.text });
+    expect(planMapSave(edited, rebased)).toMatchObject({
+      status: 'safe',
+      text: plan.text,
+    });
   });
 
   it('blocks reordering existing entities and provides a normalized copy', () => {
@@ -137,7 +336,8 @@ describe('source-backed map saving', () => {
     });
     const plan = planMapSave(edited, parsed.source);
 
-    expect(parsed.document.format).toBe('quake');
+    expect(parsed.document.format).toBe('quake-map');
+    expect(parsed.document.faceSyntax).toBe('quake');
     expect(plan.status).toBe('safe');
     if (plan.status !== 'safe') return;
     expect(plan.text).toContain('( 0 0 0 ) ( 0 64 0 ) ( 0 0 64 ) STONE 8 16 0 1 1\r\n');
@@ -150,13 +350,18 @@ describe('source-backed map saving', () => {
     const parsed = parseMapSource(source);
     const plan = planMapSave(parsed.document, parsed.source);
 
-    expect(parsed.document.entities[0]?.brushes[0]?.faces[0]?.material).toBe('{char_trans');
+    const primitive = parsed.document.entities[0]?.primitives[0];
+    expect(primitive?.kind === 'brush' ? primitive.faces[0]?.material : null).toBe('{char_trans');
     expect(plan).toEqual({ status: 'safe', text: source, diagnostics: [] });
   });
 
   it('converts classic faces only after the document format is explicitly changed', () => {
     const parsed = parseMapSource(CLASSIC_SOURCE);
-    const converted = { ...parsed.document, revision: 1, format: 'valve-220' as const };
+    const converted = {
+      ...parsed.document,
+      revision: 1,
+      faceSyntax: 'valve-220' as const,
+    };
     const plan = planMapSave(converted, parsed.source);
 
     expect(plan.status).toBe('safe');
@@ -178,8 +383,8 @@ describe('source-backed map saving', () => {
         entityIndex === 0
           ? {
               ...entity,
-              brushes: entity.brushes.map((brush, brushIndex) =>
-                brushIndex === 0
+              primitives: entity.primitives.map((brush, brushIndex) =>
+                brushIndex === 0 && brush.kind === 'brush'
                   ? {
                       ...brush,
                       revision: brush.revision + 1,
@@ -211,7 +416,7 @@ describe('source-backed map saving', () => {
       ...parsed.document,
       revision: 1,
       entities: [
-        { ...worldspawn, brushes: worldspawn.brushes.slice(1) },
+        { ...worldspawn, primitives: worldspawn.primitives.slice(1) },
         ...parsed.document.entities.slice(1),
       ],
     };
@@ -226,7 +431,7 @@ describe('source-backed map saving', () => {
         {
           id: insertedIds.entity(),
           properties: { classname: 'info_null', targetname: 'pasted' },
-          brushes: [],
+          primitives: [],
         },
       ],
     };
@@ -238,7 +443,7 @@ describe('source-backed map saving', () => {
       ...parsed.document,
       revision: 1,
       entities: [
-        { ...worldspawn, brushes: worldspawn.brushes.toReversed() },
+        { ...worldspawn, primitives: worldspawn.primitives.toReversed() },
         ...parsed.document.entities.slice(1),
       ],
     };
@@ -249,6 +454,7 @@ describe('source-backed map saving', () => {
   });
 
   it('defaults new documents to Valve 220', () => {
-    expect(createStarterDocument().format).toBe('valve-220');
+    expect(createStarterDocument().format).toBe('quake-map');
+    expect(createStarterDocument().faceSyntax).toBe('valve-220');
   });
 });

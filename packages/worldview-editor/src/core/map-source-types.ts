@@ -1,4 +1,11 @@
-import type { BrushId, EntityId, FaceId, MapDocument, MapFormat } from './types.js';
+import type {
+  BrushId,
+  EntityId,
+  FaceId,
+  MapDocument,
+  MapDocumentFormat,
+  MapFaceSyntax,
+} from './types.js';
 
 export interface MapSourceDiagnostic {
   readonly severity: 'warning' | 'error';
@@ -54,7 +61,8 @@ export interface MapSourceState {
   readonly originalText: string;
   readonly fingerprint: string;
   readonly originalDocument: MapDocument;
-  readonly format: MapFormat;
+  readonly format: MapDocumentFormat;
+  readonly faceSyntax: MapFaceSyntax;
   readonly newline: '\n' | '\r\n';
   readonly indent: string;
   readonly entities: readonly MapSourceEntitySpan[];

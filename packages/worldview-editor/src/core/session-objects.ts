@@ -69,8 +69,8 @@ import {
   type DocumentEditCandidate,
   type SweepCandidate,
 } from './session-common.js';
-import { EditorSessionGeometry } from './session-geometry.js';
-export abstract class EditorSessionObjects extends EditorSessionGeometry {
+import { EditorSessionEntities } from './session-entities.js';
+export abstract class EditorSessionObjects extends EditorSessionEntities {
   public createBrushCandidate(brush: MapBrush, entityId?: EntityId): BrushCreationCandidate {
     const target = entityId
       ? this.currentDocument.entities.find((entity) => entity.id === entityId)
@@ -82,7 +82,7 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
     if (!derived.valid) {
       throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
     }
-    const insertionIndex = target.brushes.length;
+    const insertionIndex = target.primitives.length;
     return {
       label: 'Create brush',
       entityId: target.id,
@@ -116,7 +116,7 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
     }
     const insertions = brushes.map((brush, index) => ({
       entityId: target.id,
-      insertionIndex: target.brushes.length + index,
+      insertionIndex: target.primitives.length + index,
       brush,
     }));
     return {
@@ -148,7 +148,7 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
       const sourceBrush = findBrush(this.currentDocument, face.brushId);
       if (!sourceBrush) throw new Error(`Unknown sweep source brush ${face.brushId}`);
       const owner = this.currentDocument.entities.find((entity) =>
-        entity.brushes.some((brush) => brush.id === sourceBrush.id),
+        entity.primitives.some((brush) => brush.id === sourceBrush.id),
       );
       if (!owner) throw new Error(`Sweep source brush ${face.brushId} has no owning entity`);
       const result = sweepBrushFace(sourceBrush, face.faceId, transform, options, ids);
@@ -158,7 +158,7 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
       if (insertions.length + result.brushes.length > 1024) {
         throw new Error('A multi-face sweep may create at most 1024 brushes');
       }
-      let insertionIndex = nextInsertionByEntity.get(owner.id) ?? owner.brushes.length;
+      let insertionIndex = nextInsertionByEntity.get(owner.id) ?? owner.primitives.length;
       for (const brush of result.brushes) {
         insertions.push({ entityId: owner.id, insertionIndex, brush });
         insertionIndex += 1;
@@ -201,8 +201,9 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
     const selectedIds = new Set(normalizedIds);
     const insertions: BrushInsertion[] = [];
     for (const entity of this.currentDocument.entities) {
-      let insertionIndex = entity.brushes.length;
-      for (const brush of entity.brushes) {
+      let insertionIndex = entity.primitives.length;
+      for (const brush of entity.primitives) {
+        if (brush.kind !== 'brush') continue;
         if (!selectedIds.has(brush.id)) continue;
         insertions.push({
           entityId: entity.id,
@@ -277,7 +278,7 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
       Object.assign({}, entity, {
         id: ids.entity(),
         properties: { ...entity.properties },
-        brushes: [],
+        primitives: [],
       }),
     );
     for (const entity of duplicatedEntities) after = insertEntity(after, entity);
@@ -433,7 +434,7 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
     const pointEntities = clipboard.entities.filter(
       (entity) =>
         entity.id !== sourceWorldspawn.id &&
-        entity.brushes.length === 0 &&
+        entity.primitives.length === 0 &&
         !isEditorGroupEntity(entity) &&
         !isEditorLayerEntity(entity),
     );
@@ -468,18 +469,20 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
     const pastedBrushIds: BrushId[] = [];
     const pastedEntityIds: EntityId[] = [];
     const worldBrushes = [
-      ...sourceWorldspawn.brushes,
-      ...clipboard.entities.filter(isEditorLayerEntity).flatMap((entity) => entity.brushes),
-    ].map((brush) => {
-      const clone = cloneBrush(brush, ids, delta, textureLock);
-      pastedBrushIds.push(clone.id);
-      return clone;
-    });
+      ...sourceWorldspawn.primitives,
+      ...clipboard.entities.filter(isEditorLayerEntity).flatMap((entity) => entity.primitives),
+    ]
+      .filter((primitive) => primitive.kind === 'brush')
+      .map((brush) => {
+        const clone = cloneBrush(brush, ids, delta, textureLock);
+        pastedBrushIds.push(clone.id);
+        return clone;
+      });
     let after = insertBrushes(
       this.currentDocument,
       worldBrushes.map((brush, index) => ({
         entityId: destinationBrushEntity.id,
-        insertionIndex: destinationBrushEntity.brushes.length + index,
+        insertionIndex: destinationBrushEntity.primitives.length + index,
         brush,
       })),
     );
@@ -509,15 +512,21 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
           origin[1] + delta[1],
           origin[2] + delta[2],
         ]);
-      } else if (sourceEntity.brushes.length === 0 && !isEditorGroupEntity(sourceEntity)) {
+      } else if (sourceEntity.primitives.length === 0 && !isEditorGroupEntity(sourceEntity)) {
         throw new Error(`Clipboard point entity ${sourceEntity.id} has no origin`);
       }
-      const brushes = sourceEntity.brushes.map((brush) => {
-        const clone = cloneBrush(brush, ids, delta, textureLock);
-        pastedBrushIds.push(clone.id);
-        return clone;
-      });
-      const entity: MapEntity = { id: ids.entity(), properties, brushes };
+      const brushes = sourceEntity.primitives
+        .filter((primitive) => primitive.kind === 'brush')
+        .map((brush) => {
+          const clone = cloneBrush(brush, ids, delta, textureLock);
+          pastedBrushIds.push(clone.id);
+          return clone;
+        });
+      const entity: MapEntity = {
+        id: ids.entity(),
+        properties,
+        primitives: brushes,
+      };
       after = insertEntity(after, entity);
       if (brushes.length === 0 && !isEditorGroupEntity(entity)) pastedEntityIds.push(entity.id);
     }
@@ -609,8 +618,10 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
     if (brushIds.length === 1) return this.deleteBrush(brushIds[0]!);
     const selectedIds = new Set(brushIds);
     const insertions = this.currentDocument.entities.flatMap((entity) =>
-      entity.brushes.flatMap((brush, insertionIndex) =>
-        selectedIds.has(brush.id) ? [{ entityId: entity.id, insertionIndex, brush }] : [],
+      entity.primitives.flatMap((brush, insertionIndex) =>
+        brush.kind === 'brush' && selectedIds.has(brush.id)
+          ? [{ entityId: entity.id, insertionIndex, brush }]
+          : [],
       ),
     );
     if (insertions.length !== selectedIds.size) return false;
@@ -629,19 +640,23 @@ export abstract class EditorSessionObjects extends EditorSessionGeometry {
     }
     this.currentDocument = removeBrushes(this.currentDocument, brushIds);
     this.currentSelection = null;
-    this.history.record({ kind: 'delete-brushes', label: 'Delete brushes', insertions });
+    this.history.record({
+      kind: 'delete-brushes',
+      label: 'Delete brushes',
+      insertions,
+    });
     this.notify('document', 'Delete brushes');
     return true;
   }
 
   public deleteBrush(brushId: BrushId): boolean {
     const owner = this.currentDocument.entities.find((entity) =>
-      entity.brushes.some((brush) => brush.id === brushId),
+      entity.primitives.some((brush) => brush.id === brushId),
     );
     if (!owner) return false;
-    const insertionIndex = owner.brushes.findIndex((brush) => brush.id === brushId);
-    const brush = owner.brushes[insertionIndex];
-    if (!brush) return false;
+    const insertionIndex = owner.primitives.findIndex((brush) => brush.id === brushId);
+    const brush = owner.primitives[insertionIndex];
+    if (!brush || brush.kind !== 'brush') return false;
     if (this.hasLinkedEditingGroup()) {
       const after = removeBrush(this.currentDocument, brushId);
       this.commitDocumentCandidate({

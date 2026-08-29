@@ -22,6 +22,7 @@ export interface EditorDirectoryHandle {
   >;
   queryPermission?(options: { readonly mode: 'readwrite' }): Promise<PermissionState>;
   requestPermission?(options: { readonly mode: 'readwrite' }): Promise<PermissionState>;
+  isSameEntry?(other: EditorDirectoryHandle): Promise<boolean>;
 }
 
 export async function ensureProjectDirectoryPermission(

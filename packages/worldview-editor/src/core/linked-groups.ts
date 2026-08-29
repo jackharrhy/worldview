@@ -18,6 +18,7 @@ import type {
   MapBrush,
   MapDocument,
   MapEntity,
+  MapPrimitive,
   Vec3,
 } from './types.js';
 
@@ -351,6 +352,47 @@ function cloneTransformedBrush(brush: MapBrush, matrix: AffineMatrix, ids: IdFac
   return translateBrush(transformed, [matrix[3], matrix[7], matrix[11]], true);
 }
 
+function cloneTransformedPrimitive(
+  primitive: MapPrimitive,
+  matrix: AffineMatrix,
+  ids: IdFactory,
+): MapPrimitive {
+  switch (primitive.kind) {
+    case 'brush':
+      return cloneTransformedBrush(primitive, matrix, ids);
+    case 'patch':
+      return {
+        ...primitive,
+        id: ids.patch(),
+        revision: 0,
+        controlPoints: primitive.controlPoints.map((row) =>
+          row.map((point) => ({
+            ...point,
+            position: transformAffinePoint(matrix, point.position),
+          })),
+        ),
+      };
+    case 'brush-def':
+      return {
+        ...primitive,
+        id: ids.brushDef(),
+        revision: 0,
+        faces: primitive.faces.map((face) => {
+          const [first, second, third] = face.planePoints;
+          return {
+            ...face,
+            id: ids.face(),
+            planePoints: [
+              transformAffinePoint(matrix, first),
+              transformAffinePoint(matrix, second),
+              transformAffinePoint(matrix, third),
+            ],
+          };
+        }),
+      };
+  }
+}
+
 function escapedPropertyNames(value: string | undefined): string[] {
   if (!value) return [];
   const result: string[] = [];
@@ -421,10 +463,12 @@ function transformedRegularEntity(
   const cloned: MapEntity = {
     id: ids.entity(),
     properties: { ...source.properties, [GROUP_PARENT]: parentGroupId },
-    brushes: source.brushes.map((brush) => cloneTransformedBrush(brush, matrix, ids)),
+    primitives: source.primitives.map((primitive) =>
+      cloneTransformedPrimitive(primitive, matrix, ids),
+    ),
   };
   const transformed =
-    source.brushes.length === 0 && parseEntityOrigin(source)
+    source.primitives.length === 0 && parseEntityOrigin(source)
       ? transformPointEntityAffine(
           cloned,
           [
@@ -515,7 +559,9 @@ export function createLinkedGroupDuplicate(
     added.push({
       id: ids.entity(),
       properties,
-      brushes: sourceEntity.brushes.map((brush) => cloneBrush(brush, ids)),
+      primitives: sourceEntity.primitives.map((primitive) =>
+        cloneTransformedPrimitive(primitive, IDENTITY_AFFINE_MATRIX, ids),
+      ),
     });
     for (const entityId of group.directEntityIds) {
       const entity = document.entities.find((candidate) => candidate.id === entityId);
@@ -523,7 +569,9 @@ export function createLinkedGroupDuplicate(
       added.push({
         id: ids.entity(),
         properties: { ...entity.properties, [GROUP_PARENT]: persistentId },
-        brushes: entity.brushes.map((brush) => cloneBrush(brush, ids)),
+        primitives: entity.primitives.map((primitive) =>
+          cloneTransformedPrimitive(primitive, IDENTITY_AFFINE_MATRIX, ids),
+        ),
       });
     }
   }
@@ -584,8 +632,8 @@ export function synchronizeLinkedGroupContents(
       .map((entity) =>
         entity.id === targetRootEntity.id
           ? Object.assign({}, entity, {
-              brushes: sourceRootEntity.brushes.map((brush) =>
-                cloneTransformedBrush(brush, matrix, ids),
+              primitives: sourceRootEntity.primitives.map((primitive) =>
+                cloneTransformedPrimitive(primitive, matrix, ids),
               ),
             })
           : entity,
@@ -639,7 +687,9 @@ export function synchronizeLinkedGroupContents(
       added.push({
         id: ids.entity(),
         properties: transformedGroupProperties(sourceEntity, persistentId, parentId, matrix),
-        brushes: sourceEntity.brushes.map((brush) => cloneTransformedBrush(brush, matrix, ids)),
+        primitives: sourceEntity.primitives.map((primitive) =>
+          cloneTransformedPrimitive(primitive, matrix, ids),
+        ),
       });
       const counterpartGroup = counterpartBySourceGroup.get(sourceGroup.id) ?? null;
       sourceGroup.directEntityIds.forEach((entityId, index) => {
@@ -793,7 +843,7 @@ export function linkedGroupForSelection(
   const owner = selection.entityId
     ? document.entities.find((entity) => entity.id === selection.entityId)
     : document.entities.find((entity) =>
-        entity.brushes.some((brush) => brush.id === selection.brushId),
+        entity.primitives.some((brush) => brush.id === selection.brushId),
       );
   const ownerId =
     owner && isEditorGroupEntity(owner)

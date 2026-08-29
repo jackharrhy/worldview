@@ -8,6 +8,7 @@ export type {
   EditorCameraNavigationMode,
   EditorClipPlaneEvent,
   EditorDiagnosticOverlay,
+  EditorRemotePresenceOverlay,
   EditorFaceDragEvent,
   EditorFaceTransferEvent,
   EditorHullCreateEvent,

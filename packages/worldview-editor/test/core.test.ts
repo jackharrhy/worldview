@@ -112,19 +112,19 @@ function selectionQueryFixture() {
   const marker = {
     id: ids.entity(),
     properties: { classname: 'info_target', origin: '0 -32 16' },
-    brushes: [],
+    primitives: [],
   };
   const remoteMarker = {
     id: ids.entity(),
     properties: { classname: 'info_target', origin: '160 0 16' },
-    brushes: [],
+    primitives: [],
   };
   const document: MapDocument = {
     ...starter,
     entities: [
       {
         ...starter.entities[0]!,
-        brushes: [query, inside, crossing, outside, elevated],
+        primitives: [query, inside, crossing, outside, elevated],
       },
       marker,
       remoteMarker,
@@ -150,17 +150,17 @@ function layerFixture() {
       _tb_id: '7',
       _tb_layer_sort_index: '3',
     },
-    brushes: [layerBrush],
+    primitives: [layerBrush],
   };
   const detail = {
     id: ids.entity(),
     properties: { classname: 'func_detail', _tb_layer: '7' },
-    brushes: [detailBrush],
+    primitives: [detailBrush],
   };
   const marker = {
     id: ids.entity(),
     properties: { classname: 'info_target', origin: '0 96 16', _tb_layer: '7' },
-    brushes: [],
+    primitives: [],
   };
   const rootGroup = {
     id: ids.entity(),
@@ -171,7 +171,7 @@ function layerFixture() {
       _tb_id: '8',
       _tb_layer: '7',
     },
-    brushes: [groupBrush],
+    primitives: [groupBrush],
   };
   const nestedGroup = {
     id: ids.entity(),
@@ -182,17 +182,17 @@ function layerFixture() {
       _tb_id: '9',
       _tb_group: '8',
     },
-    brushes: [nestedBrush],
+    primitives: [nestedBrush],
   };
   const groupedMarker = {
     id: ids.entity(),
     properties: { classname: 'light', origin: '144 0 48', _tb_group: '9' },
-    brushes: [],
+    primitives: [],
   };
   const document: MapDocument = {
     ...starter,
     entities: [
-      { ...starter.entities[0]!, brushes: [defaultBrush] },
+      { ...starter.entities[0]!, primitives: [defaultBrush] },
       layerEntity,
       detail,
       marker,
@@ -225,7 +225,10 @@ function repetitionFixture() {
   const second = createBoxBrush([128, 0, 0], [144, 16, 16], 'OTHER', ids);
   const document: MapDocument = {
     ...starter,
-    entities: [{ ...starter.entities[0]!, brushes: [first, second] }, ...starter.entities.slice(1)],
+    entities: [
+      { ...starter.entities[0]!, primitives: [first, second] },
+      ...starter.entities.slice(1),
+    ],
   };
   return { document, first, second };
 }
@@ -239,22 +242,22 @@ function issueFixture() {
   const invalidOrigin = {
     id: ids.entity(),
     properties: { classname: 'light', origin: 'not a vector' },
-    brushes: [],
+    primitives: [],
   };
   const missingOrigin = {
     id: ids.entity(),
     properties: { classname: 'info_target' },
-    brushes: [],
+    primitives: [],
   };
   const unresolved = {
     id: ids.entity(),
     properties: { classname: 'trigger_once', origin: '96 0 16', target: 'missing_door' },
-    brushes: [],
+    primitives: [],
   };
   const emptyBrushEntity = {
     id: ids.entity(),
     properties: { classname: 'func_door' },
-    brushes: [],
+    primitives: [],
   };
   const emptyGroup = {
     id: ids.entity(),
@@ -264,12 +267,12 @@ function issueFixture() {
       _tb_name: 'Empty Room',
       _tb_id: '7',
     },
-    brushes: [],
+    primitives: [],
   };
   const document: MapDocument = {
     ...starter,
     entities: [
-      { ...starter.entities[0]!, brushes: [valid, invalid] },
+      { ...starter.entities[0]!, primitives: [valid, invalid] },
       invalidOrigin,
       missingOrigin,
       unresolved,
@@ -290,32 +293,32 @@ function viewFilterFixture() {
   const detailEntity = {
     id: ids.entity(),
     properties: { classname: 'func_detail' },
-    brushes: [detail],
+    primitives: [detail],
   };
   const triggerEntity = {
     id: ids.entity(),
     properties: { classname: 'trigger_once' },
-    brushes: [trigger],
+    primitives: [trigger],
   };
   const clipEntity = {
     id: ids.entity(),
     properties: { classname: 'func_wall' },
-    brushes: [clip],
+    primitives: [clip],
   };
   const light = {
     id: ids.entity(),
     properties: { classname: 'light', origin: '0 96 24' },
-    brushes: [],
+    primitives: [],
   };
   const monster = {
     id: ids.entity(),
     properties: { classname: 'monster_army', origin: '96 96 24' },
-    brushes: [],
+    primitives: [],
   };
   const document: MapDocument = {
     ...starter,
     entities: [
-      { ...starter.entities[0]!, brushes: [world] },
+      { ...starter.entities[0]!, primitives: [world] },
       detailEntity,
       triggerEntity,
       clipEntity,
@@ -338,7 +341,7 @@ function materialUsageFixture() {
   const second = createBoxBrush([32, -32, 0], [64, 32, 32], 'brick', ids);
   const document: MapDocument = {
     ...starter,
-    entities: [{ ...starter.entities[0]!, brushes: [first, second] }],
+    entities: [{ ...starter.entities[0]!, primitives: [first, second] }],
   };
   return { document, first, second };
 }
@@ -595,7 +598,10 @@ describe('sweep brush generation', () => {
     const starter = createStarterDocument();
     const document = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [left, right] }, ...starter.entities.slice(1)],
+      entities: [
+        { ...starter.entities[0]!, primitives: [left, right] },
+        ...starter.entities.slice(1),
+      ],
     };
     const faces = [
       { brushId: left.id, faceId: left.faces[4]!.id },
@@ -764,7 +770,7 @@ describe('simple shape brush generation', () => {
   it('previews and commits a compound shape as one selection-restoring history entry', () => {
     const ids = createSequentialIdFactory('shape-session');
     const session = new EditorSession(createStarterDocument());
-    const original = session.document.entities[0]!.brushes[0]!;
+    const original = session.document.entities[0]!.primitives[0]!;
     session.select({ brushId: original.id });
     const brushes = createSimpleShapeBrushes(
       bounds,
@@ -880,7 +886,7 @@ describe('constructive solid geometry', () => {
     const starter = createStarterDocument();
     const document: MapDocument = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [target, cutter, side] }],
+      entities: [{ ...starter.entities[0]!, primitives: [target, cutter, side] }],
     };
     const session = new EditorSession(document);
     session.selectBrush(target.id);
@@ -964,7 +970,8 @@ describe('Valve 220 source documents', () => {
     const originalBrushes = brushesInDocument(original);
     const parsedBrushes = brushesInDocument(parsed);
 
-    expect(parsed.format).toBe('valve-220');
+    expect(parsed.format).toBe('quake-map');
+    expect(parsed.faceSyntax).toBe('valve-220');
     expect(parsed.entities[0]?.properties).toEqual(original.entities[0]?.properties);
     expect(parsedBrushes).toHaveLength(originalBrushes.length);
     for (let index = 0; index < originalBrushes.length; index += 1) {
@@ -982,10 +989,11 @@ describe('Valve 220 source documents', () => {
 
   it('imports classic Quake projection fields into explicit face axes', () => {
     const valve = createStarterDocument();
-    const quake = { ...valve, format: 'quake' as const };
+    const quake = { ...valve, faceSyntax: 'quake' as const };
     const parsed = parseMap(serializeMap(quake));
 
-    expect(parsed.format).toBe('quake');
+    expect(parsed.format).toBe('quake-map');
+    expect(parsed.faceSyntax).toBe('quake');
     expect(deriveBrush(brushesInDocument(parsed)[0]!).valid).toBe(true);
   });
 
@@ -1612,7 +1620,10 @@ describe('editor transactions', () => {
     const starter = createStarterDocument();
     const document = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [left, right] }, ...starter.entities.slice(1)],
+      entities: [
+        { ...starter.entities[0]!, primitives: [left, right] },
+        ...starter.entities.slice(1),
+      ],
     };
     const session = new EditorSession(document);
     session.selectBrush(left.id);
@@ -1898,7 +1909,7 @@ describe('editor transactions', () => {
     const document = {
       ...starter,
       entities: [
-        { ...starter.entities[0]!, brushes: [left, right, isolated] },
+        { ...starter.entities[0]!, primitives: [left, right, isolated] },
         ...starter.entities.slice(1),
       ],
     };
@@ -1952,7 +1963,7 @@ describe('editor transactions', () => {
       entities: [
         {
           ...createStarterDocument().entities[0]!,
-          brushes: [brush],
+          primitives: [brush],
         },
       ],
     });
@@ -2025,7 +2036,7 @@ describe('editor transactions', () => {
       ...starter,
       entities: [
         starter.entities[0]!,
-        { id: entityId, properties: { classname: 'func_detail' }, brushes: [source] },
+        { id: entityId, properties: { classname: 'func_detail' }, primitives: [source] },
         ...starter.entities.slice(1),
       ],
     };
@@ -2066,7 +2077,10 @@ describe('editor transactions', () => {
     const starter = createStarterDocument();
     const document = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [left, right] }, ...starter.entities.slice(1)],
+      entities: [
+        { ...starter.entities[0]!, primitives: [left, right] },
+        ...starter.entities.slice(1),
+      ],
     };
     const session = new EditorSession(document);
     const face = { brushId: left.id, faceId: left.faces[0]!.id };
@@ -2111,7 +2125,7 @@ describe('editor transactions', () => {
     const document = {
       ...starter,
       entities: [
-        { ...starter.entities[0]!, brushes: [first, second] },
+        { ...starter.entities[0]!, primitives: [first, second] },
         ...starter.entities.slice(1),
       ],
     };
@@ -2166,7 +2180,10 @@ describe('editor transactions', () => {
     const starter = createStarterDocument();
     const document = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [left, right] }, ...starter.entities.slice(1)],
+      entities: [
+        { ...starter.entities[0]!, primitives: [left, right] },
+        ...starter.entities.slice(1),
+      ],
     };
     const seed = { brushId: left.id, faceId: left.faces[0]!.id };
     const faces = matchingBrushFaces(document, seed, [left.id, right.id]);
@@ -2205,7 +2222,10 @@ describe('editor transactions', () => {
     const starter = createStarterDocument();
     const document = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [left, right] }, ...starter.entities.slice(1)],
+      entities: [
+        { ...starter.entities[0]!, primitives: [left, right] },
+        ...starter.entities.slice(1),
+      ],
     };
     const faces = [
       { brushId: left.id, faceId: left.faces[4]!.id },
@@ -2246,7 +2266,7 @@ describe('editor transactions', () => {
     const starter = createStarterDocument();
     const document = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [brush] }, ...starter.entities.slice(1)],
+      entities: [{ ...starter.entities[0]!, primitives: [brush] }, ...starter.entities.slice(1)],
     };
     const vertices = brushVertices(brush).filter((point) => point[2] === 16);
     const session = new EditorSession(document);
@@ -2585,7 +2605,7 @@ describe('editor transactions', () => {
       ...source,
       entities: source.entities.map((entity) =>
         Object.assign({}, entity, {
-          brushes: entity.brushes.map((candidate) =>
+          primitives: entity.primitives.map((candidate) =>
             candidate.id === brush.id ? brush : candidate,
           ),
         }),
@@ -2623,6 +2643,7 @@ describe('editor transactions', () => {
     const sourceFace = {
       ...sourceBrush.faces[4]!,
       projection: {
+        kind: 'valve-220' as const,
         uAxis: [1, 0, 0] as const,
         vAxis: [0, -1, 0] as const,
         offset: [24, -8] as const,
@@ -2634,6 +2655,7 @@ describe('editor transactions', () => {
     const originalTarget = {
       ...targetBrush.faces[0]!,
       projection: {
+        kind: 'valve-220' as const,
         uAxis: [0, 1, 0] as const,
         vAxis: [0, 0, -1] as const,
         offset: [3, 4] as const,
@@ -2685,7 +2707,7 @@ describe('editor transactions', () => {
     const document = {
       ...starter,
       entities: [
-        { ...starter.entities[0]!, brushes: [source, first, second] },
+        { ...starter.entities[0]!, primitives: [source, first, second] },
         ...starter.entities.slice(1),
       ],
     };
@@ -2738,7 +2760,7 @@ describe('editor transactions', () => {
     const document = {
       ...starter,
       entities: [
-        { ...starter.entities[0]!, brushes: [first, second] },
+        { ...starter.entities[0]!, primitives: [first, second] },
         ...starter.entities.slice(1),
       ],
     };
@@ -2882,7 +2904,7 @@ describe('point and brush entities', () => {
     const entity = {
       id: createSequentialIdFactory('point-helper').entity(),
       properties: { classname: 'light', origin: formatEntityOrigin([16, -32, 48]) },
-      brushes: [],
+      primitives: [],
     };
 
     expect(parseEntityOrigin(entity)).toEqual([16, -32, 48]);
@@ -2907,12 +2929,12 @@ describe('point and brush entities', () => {
         target: 'door_a',
         killtarget: 'unused_a',
       },
-      brushes: [],
+      primitives: [],
     };
     const door = {
       id: ids.entity(),
       properties: { classname: 'func_door', targetname: 'door_a', target: 'relay_a' },
-      brushes: [doorBrush],
+      primitives: [doorBrush],
     };
     const relay = {
       id: ids.entity(),
@@ -2922,12 +2944,12 @@ describe('point and brush entities', () => {
         targetname: 'relay_a',
         target: 'unused_a',
       },
-      brushes: [],
+      primitives: [],
     };
     const unused = {
       id: ids.entity(),
       properties: { classname: 'info_null', origin: '192 0 32', targetname: 'unused_a' },
-      brushes: [],
+      primitives: [],
     };
     const document = {
       ...starter,
@@ -2935,6 +2957,7 @@ describe('point and brush entities', () => {
     };
 
     const links = deriveEntityLinks(document);
+    expect(deriveEntityLinks(document)).toBe(links);
     expect(links).toHaveLength(4);
     expect(links[0]).toMatchObject({
       sourceEntityId: trigger.id,
@@ -2964,16 +2987,16 @@ describe('point and brush entities', () => {
     const light = {
       id: ids.entity(),
       properties: { classname: 'light', origin: '112 0 24' },
-      brushes: [],
+      primitives: [],
     };
     const detail = {
       id: ids.entity(),
       properties: { classname: 'func_detail' },
-      brushes: [detailBrush],
+      primitives: [detailBrush],
     };
     const document: MapDocument = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [worldBrush] }, detail, light],
+      entities: [{ ...starter.entities[0]!, primitives: [worldBrush] }, detail, light],
     };
     const session = new EditorSession(document);
     session.select(createObjectSelection([worldBrush.id, detailBrush.id], [light.id]));
@@ -3009,9 +3032,9 @@ describe('point and brush entities', () => {
 
     expect(session.ungroupSelected(groupId)).toBe(true);
     expect(deriveEditorGroups(session.document)).toHaveLength(0);
-    expect(session.document.entities[0]!.brushes.some((brush) => brush.id === worldBrush.id)).toBe(
-      true,
-    );
+    expect(
+      session.document.entities[0]!.primitives.some((brush) => brush.id === worldBrush.id),
+    ).toBe(true);
     expect(
       session.document.entities.find((entity) => entity.id === detail.id)!.properties['_tb_group'],
     ).toBeUndefined();
@@ -3031,7 +3054,8 @@ describe('point and brush entities', () => {
     const clipboard = createObjectClipboardDocument(session.document, session.selection)!;
     expect(deriveEditorGroups(clipboard)).toHaveLength(1);
     expect(
-      clipboard.entities.find((entity) => entity.properties['_tb_id'] === sourceGroupId)?.brushes,
+      clipboard.entities.find((entity) => entity.properties['_tb_id'] === sourceGroupId)
+        ?.primitives,
     ).toEqual([]);
 
     const pasted = session.createPasteCandidate(
@@ -3059,7 +3083,7 @@ describe('point and brush entities', () => {
     const second = createBoxBrush([32, -16, 0], [64, 16, 32], 'SECOND', ids);
     const document: MapDocument = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [first, second] }],
+      entities: [{ ...starter.entities[0]!, primitives: [first, second] }],
     };
     const session = new EditorSession(document);
     session.select(createObjectSelection([first.id, second.id], []));
@@ -3098,11 +3122,11 @@ describe('point and brush entities', () => {
         angle: '90',
         targetname: 'door_a',
       },
-      brushes: [],
+      primitives: [],
     };
     const document: MapDocument = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [doorway] }, marker],
+      entities: [{ ...starter.entities[0]!, primitives: [doorway] }, marker],
     };
     const session = new EditorSession(document);
     session.select(createObjectSelection([doorway.id], [marker.id]));
@@ -3202,7 +3226,7 @@ describe('point and brush entities', () => {
     const inset = createBoxBrush([-16, -16, 0], [16, 16, 32], 'INSET', ids);
     const document: MapDocument = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [frame, inset] }],
+      entities: [{ ...starter.entities[0]!, primitives: [frame, inset] }],
     };
     const session = new EditorSession(document);
     session.select(createObjectSelection([frame.id, inset.id], []));
@@ -3253,7 +3277,7 @@ describe('point and brush entities', () => {
           classname: 'info_target',
           _tb_protected_properties: String.raw`origin;target;with\;semicolon;path\\name`,
         },
-        brushes: [],
+        primitives: [],
       }),
     ).toEqual(['origin', 'target', 'with;semicolon', 'path\\name']);
   });
@@ -3263,7 +3287,7 @@ describe('point and brush entities', () => {
     const player = {
       id: ids.entity(),
       properties: { classname: 'info_player_start', origin: '16 0 8', angle: '30' },
-      brushes: [],
+      primitives: [],
     };
     const rotatedPlayer = rotatePointEntity(player, [0, 0, 0], 2, 90);
     expect(parseEntityOrigin(rotatedPlayer)).toEqual([0, 16, 8]);
@@ -3274,7 +3298,7 @@ describe('point and brush entities', () => {
     const angled = {
       id: ids.entity(),
       properties: { classname: 'monster_ogre', origin: '0 0 0', angles: '0 0 0' },
-      brushes: [],
+      primitives: [],
     };
     expect(rotatePointEntity(angled, [0, 0, 0], 0, 15).properties.angles).toBe('0 0 15');
     expect(rotatePointEntity(angled, [0, 0, 0], 1, 15).properties.angles).toBe('15 0 0');
@@ -3283,7 +3307,7 @@ describe('point and brush entities', () => {
     const spotlight = {
       id: ids.entity(),
       properties: { classname: 'light_spot', origin: '0 0 0', mangle: '0 0 0' },
-      brushes: [],
+      primitives: [],
     };
     expect(rotatePointEntity(spotlight, [0, 0, 0], 1, 15).properties.mangle).toBe('0 -15 0');
     expect(rotatePointEntity(spotlight, [0, 0, 0], 2, 15).properties.mangle).toBe('15 0 0');
@@ -3293,7 +3317,7 @@ describe('point and brush entities', () => {
     const entity = {
       id: createSequentialIdFactory('point-flip').entity(),
       properties: { classname: 'info_player_start', origin: '32 16 8', angle: '45' },
-      brushes: [],
+      primitives: [],
     };
 
     const flippedX = flipPointEntity(entity, [0, 0, 0], 0);
@@ -3410,7 +3434,7 @@ describe('point and brush entities', () => {
       entities: base.entities.map((entity) => ({
         id: entity.id,
         properties: entity.properties,
-        brushes: entity.brushes.map((brush) => selectedById.get(brush.id) ?? brush),
+        primitives: entity.primitives.map((brush) => selectedById.get(brush.id) ?? brush),
       })),
     });
     const session = new EditorSession(document);
@@ -3422,7 +3446,7 @@ describe('point and brush entities', () => {
     const detail = session.document.entities.find(
       (entity) => entity.properties.classname === 'func_detail',
     );
-    expect(detail?.brushes.map((brush) => brush.id)).toEqual(
+    expect(detail?.primitives.map((brush) => brush.id)).toEqual(
       sourceBrushes.map((brush) => brush.id),
     );
     expect(session.undo()).toBe(true);
@@ -3435,11 +3459,12 @@ describe('point and brush entities', () => {
     const worldspawn = session.document.entities.find(
       (entity) => entity.properties.classname === 'worldspawn',
     )!;
-    expect(worldspawn.brushes.map((brush) => brush.id)).toEqual(
+    expect(worldspawn.primitives.map((brush) => brush.id)).toEqual(
       expect.arrayContaining(sourceBrushes.map((brush) => brush.id)),
     );
     expect(
-      worldspawn.brushes
+      worldspawn.primitives
+        .filter((brush) => brush.kind === 'brush')
         .filter((brush) => selectedById.has(brush.id))
         .every((brush) => brush.faces.every((face) => face.surface.contents === undefined)),
     ).toBe(true);
@@ -3449,7 +3474,7 @@ describe('point and brush entities', () => {
     expect(session.undo()).toBe(true);
     expect(
       session.document.entities.find((entity) => entity.properties.classname === 'func_detail')
-        ?.brushes,
+        ?.primitives,
     ).toHaveLength(2);
   });
 });
@@ -3582,7 +3607,7 @@ describe('TrenchBroom-compatible layers', () => {
     expect(session.removeLayer('7')).toBe(true);
     expect(deriveEditorLayers(session.document)).toHaveLength(1);
     expect(
-      session.document.entities[0]!.brushes.some((brush) => brush.id === fixture.layerBrush.id),
+      session.document.entities[0]!.primitives.some((brush) => brush.id === fixture.layerBrush.id),
     ).toBe(true);
     expect(
       session.document.entities.find((entity) => entity.id === fixture.detail.id)!.properties[
@@ -3616,7 +3641,7 @@ describe('TrenchBroom-compatible layers', () => {
       (entity) => entity.properties['_tb_id'] === groupId,
     )!;
     expect(groupEntity.properties['_tb_layer']).toBe('7');
-    expect(groupEntity.brushes.map((brush) => brush.id)).toEqual([fixture.layerBrush.id]);
+    expect(groupEntity.primitives.map((brush) => brush.id)).toEqual([fixture.layerBrush.id]);
     expect(
       session.document.entities.find((entity) => entity.id === fixture.marker.id)!.properties[
         '_tb_group'
@@ -3625,7 +3650,7 @@ describe('TrenchBroom-compatible layers', () => {
 
     expect(session.ungroupSelected(groupId)).toBe(true);
     expect(
-      session.document.entities.find((entity) => entity.id === fixture.layerEntity.id)!.brushes,
+      session.document.entities.find((entity) => entity.id === fixture.layerEntity.id)!.primitives,
     ).toEqual(expect.arrayContaining([expect.objectContaining({ id: fixture.layerBrush.id })]));
     expect(
       session.document.entities.find((entity) => entity.id === fixture.marker.id)!.properties,
@@ -3663,7 +3688,7 @@ describe('object visibility and locking', () => {
   it('hides a mixed selection without dirtying the map and restores it through history', () => {
     const document = createStarterDocument();
     const brush = brushesInDocument(document)[0]!;
-    const entity = document.entities.find((candidate) => candidate.brushes.length === 0)!;
+    const entity = document.entities.find((candidate) => candidate.primitives.length === 0)!;
     const selection = createObjectSelection([brush.id], [entity.id], {
       kind: 'entity',
       entityId: entity.id,
@@ -3696,7 +3721,7 @@ describe('object visibility and locking', () => {
   it('isolates selected objects, shows all, and keeps both operations undoable', () => {
     const document = createStarterDocument();
     const brushes = brushesInDocument(document);
-    const entity = document.entities.find((candidate) => candidate.brushes.length === 0)!;
+    const entity = document.entities.find((candidate) => candidate.primitives.length === 0)!;
     const selection = createObjectSelection([brushes[0]!.id], [entity.id], {
       kind: 'brush',
       brushId: brushes[0]!.id,
@@ -3711,7 +3736,7 @@ describe('object visibility and locking', () => {
     );
     expect(session.objectViewState.hiddenEntityIds).toEqual(
       document.entities
-        .filter((candidate) => candidate.brushes.length === 0 && candidate.id !== entity.id)
+        .filter((candidate) => candidate.primitives.length === 0 && candidate.id !== entity.id)
         .map((candidate) => candidate.id),
     );
     expect(session.canShowAll).toBe(true);
@@ -3729,7 +3754,7 @@ describe('object visibility and locking', () => {
   it('locks mixed objects against selection and unlocks them without changing source data', () => {
     const document = createStarterDocument();
     const brush = brushesInDocument(document)[1]!;
-    const entity = document.entities.find((candidate) => candidate.brushes.length === 0)!;
+    const entity = document.entities.find((candidate) => candidate.primitives.length === 0)!;
     const session = new EditorSession(document);
     session.select(createObjectSelection([brush.id], [entity.id])!);
 
@@ -3924,7 +3949,7 @@ describe('live issue diagnostics', () => {
             target: '!activator',
             killtarget: 'temporary_*',
           },
-          brushes: [],
+          primitives: [],
         },
         {
           id: ids.entity(),
@@ -3933,7 +3958,7 @@ describe('live issue diagnostics', () => {
             origin: '16 0 0',
             target: '<rotatable_brush.1',
           },
-          brushes: [],
+          primitives: [],
         },
         {
           id: ids.entity(),
@@ -3942,7 +3967,7 @@ describe('live issue diagnostics', () => {
             origin: '32 0 0',
             netname: 'spawned_monster',
           },
-          brushes: [],
+          primitives: [],
         },
         {
           id: ids.entity(),
@@ -3951,7 +3976,7 @@ describe('live issue diagnostics', () => {
             origin: '64 0 0',
             target: 'spawned_monster',
           },
-          brushes: [],
+          primitives: [],
         },
         {
           id: ids.entity(),
@@ -3960,7 +3985,7 @@ describe('live issue diagnostics', () => {
             origin: '96 0 0',
             target: 'nothing',
           },
-          brushes: [],
+          primitives: [],
         },
       ],
     };
@@ -4070,7 +4095,7 @@ describe('live viewport filters', () => {
     const previewLight = {
       id: ids.entity(),
       properties: { classname: 'light', origin: '256 0 32' },
-      brushes: [],
+      primitives: [],
     };
     const preview = { ...document, entities: [...document.entities, previewLight] };
     expect(session.objectViewStateFor(preview).hiddenEntityIds).toContain(previewLight.id);
@@ -4147,6 +4172,7 @@ describe('face attribute clipboard transactions', () => {
     const source = withTestFace(sourceBase, sourceFace.id, {
       ...sourceFace,
       projection: {
+        kind: 'valve-220',
         uAxis: [0, 1, 0],
         vAxis: [0, 0, -1],
         offset: [24, -12],
@@ -4157,7 +4183,7 @@ describe('face attribute clipboard transactions', () => {
     });
     const document: MapDocument = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [source] }],
+      entities: [{ ...starter.entities[0]!, primitives: [source] }],
     };
     const text = serializeFaceAttributeClipboard(
       document,
@@ -4209,7 +4235,7 @@ describe('face attribute clipboard transactions', () => {
     });
     const document: MapDocument = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [source, firstTarget, secondTarget] }],
+      entities: [{ ...starter.entities[0]!, primitives: [source, firstTarget, secondTarget] }],
     };
     const payload = parseFaceAttributeClipboard(
       serializeFaceAttributeClipboard(
@@ -4266,11 +4292,11 @@ describe('object clipboard transactions', () => {
     const document: MapDocument = {
       ...starter,
       entities: [
-        { ...starter.entities[0]!, brushes: [worldBrush] },
+        { ...starter.entities[0]!, primitives: [worldBrush] },
         {
           id: ids.entity(),
           properties: { classname: 'func_detail', targetname: 'copied_detail' },
-          brushes: [detailBrush],
+          primitives: [detailBrush],
         },
         player,
       ],
@@ -4281,7 +4307,7 @@ describe('object clipboard transactions', () => {
     expect(clipboard.entities).toHaveLength(3);
     expect(clipboard.entities[0]!.properties).toEqual({ classname: 'worldspawn' });
     expect(clipboard.entities[1]!.properties.targetname).toBe('copied_detail');
-    expect(clipboard.entities[1]!.brushes).toEqual([detailBrush]);
+    expect(clipboard.entities[1]!.primitives).toEqual([detailBrush]);
     const text = serializeObjectClipboard(document, selection)!;
     const reparsed = parseMap(text, createSequentialIdFactory('clipboard-reparsed'));
     expect(brushesInDocument(reparsed)).toHaveLength(2);
@@ -4303,11 +4329,11 @@ describe('object clipboard transactions', () => {
     const source: MapDocument = {
       ...starter,
       entities: [
-        { ...starter.entities[0]!, brushes: [worldBrush] },
+        { ...starter.entities[0]!, primitives: [worldBrush] },
         {
           id: sourceIds.entity(),
           properties: { classname: 'func_detail', targetname: 'detail_clip' },
-          brushes: [detailBrush],
+          primitives: [detailBrush],
         },
         player,
       ],
@@ -4338,8 +4364,10 @@ describe('object clipboard transactions', () => {
     const pastedDetail = candidate.document.entities.find(
       (entity) => entity.properties.targetname === 'detail_clip',
     )!;
-    expect(pastedDetail.brushes).toHaveLength(1);
-    expect(deriveBrush(pastedDetail.brushes[0]!).bounds).toEqual({
+    expect(pastedDetail.primitives).toHaveLength(1);
+    const pastedBrush = pastedDetail.primitives[0]!;
+    if (pastedBrush.kind !== 'brush') throw new Error('Expected pasted brush');
+    expect(deriveBrush(pastedBrush).bounds).toEqual({
       min: [160, 32, 16],
       max: [192, 96, 48],
     });
@@ -4366,7 +4394,7 @@ describe('object clipboard transactions', () => {
     const brush = createBoxBrush([-16, -8, 0], [16, 8, 32], 'CLIP', ids);
     const clipboard: MapDocument = {
       ...starter,
-      entities: [{ ...starter.entities[0]!, brushes: [brush] }],
+      entities: [{ ...starter.entities[0]!, primitives: [brush] }],
     };
 
     expect(objectClipboardPasteOffset(clipboard, [128, 64, 48], [0, 0, 1])).toEqual([128, 64, 48]);

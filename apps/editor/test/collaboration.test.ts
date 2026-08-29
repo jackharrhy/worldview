@@ -100,15 +100,67 @@ describe('CollaborationController', () => {
     await vi.waitFor(() => expect(sent).toHaveLength(1));
     expect(JSON.parse(sent[0]!).operation.operationId).toBe(queued?.operationId);
     listeners.get('message')?.({
-      data: JSON.stringify({ type: 'ack', roomVersion: 1, operationId: queued!.operationId }),
+      data: JSON.stringify({
+        type: 'ack',
+        roomVersion: 1,
+        operationId: queued!.operationId,
+      }),
     } as MessageEvent<string>);
     await vi.waitFor(async () => expect(await controller.pending()).toEqual([]));
     listeners.get('message')?.({
-      data: JSON.stringify({ type: 'operation', roomVersion: 2, operation: queued }),
+      data: JSON.stringify({
+        type: 'operation',
+        roomVersion: 2,
+        operation: queued,
+      }),
     } as MessageEvent<string>);
     expect(peers).toHaveBeenCalledWith(queued);
     listeners.get('close')?.();
     expect(reconnect).not.toBeNull();
+    client.close();
+  });
+
+  it('sends operations committed after the room is ready without waiting for reconnect', async () => {
+    const listeners = new Map<string, (event?: MessageEvent<string>) => void>();
+    const sent: string[] = [];
+    const socket: CollaborationSocket = {
+      readyState: 1,
+      addEventListener: (type: string, listener: (event?: MessageEvent<string>) => void) =>
+        listeners.set(type, listener),
+      send: (data) => sent.push(data),
+      close: vi.fn(),
+    } as CollaborationSocket;
+    const controller = new CollaborationController({
+      roomId: 'room',
+      actorId: 'alice',
+      outbox: new MemoryCollaborationOutbox(),
+      channel: channel(() => {}),
+      createId: () => 'live',
+    });
+    const client = new CollaborationSocketClient({
+      endpoint: 'ws://localhost:8787',
+      roomId: 'room',
+      actorId: 'alice',
+      controller,
+      createSocket: () => socket,
+    });
+    client.connect();
+    listeners.get('message')?.({
+      data: JSON.stringify({ type: 'ready', roomVersion: 0, document: null }),
+    } as MessageEvent<string>);
+    await vi.waitFor(() => expect(sent).toHaveLength(0));
+
+    const before = createStarterDocument();
+    const ids = createSequentialIdFactory('live');
+    const after = insertBrush(
+      before,
+      before.entities[0]!.id,
+      createBoxBrush([0, 0, 0], [64, 64, 64], 'STONE', ids),
+    );
+    const operation = await controller.recordCommit('Live edit', before, after);
+
+    expect(sent).toHaveLength(1);
+    expect(JSON.parse(sent[0]!).operation.operationId).toBe(operation?.operationId);
     client.close();
   });
 
@@ -131,8 +183,8 @@ describe('CollaborationController', () => {
     const remote = (await controller.pending())[0]!;
     const inverse = await bridge.undo(remote);
     expect(inverse.label).toBe('Undo Create brush');
-    expect(session.document.entities[0]!.brushes).toHaveLength(
-      createStarterDocument().entities[0]!.brushes.length,
+    expect(session.document.entities[0]!.primitives).toHaveLength(
+      createStarterDocument().entities[0]!.primitives.length,
     );
     await controller.acknowledge(inverse.operationId, 2);
     await controller.acknowledge(remote.operationId, 1);

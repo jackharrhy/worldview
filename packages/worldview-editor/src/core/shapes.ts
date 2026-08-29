@@ -193,7 +193,7 @@ function createPolyhedronBrush(
       surface: {},
     });
   }
-  const brush: MapBrush = { id: ids.brush(), revision: 0, faces };
+  const brush: MapBrush = { kind: 'brush', id: ids.brush(), revision: 0, faces };
   const derived = deriveBrushFromVertices(brush, vertices);
   if (!derived.valid) {
     throw new Error(

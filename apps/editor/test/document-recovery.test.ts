@@ -78,8 +78,8 @@ describe('document recovery', () => {
     expect(reopened.document.entities.map(({ id }) => id)).toEqual(
       snapshot.source.originalDocument.entities.map(({ id }) => id),
     );
-    expect(reopened.document.entities[0]?.brushes[0]?.faces[0]?.id).toBe(
-      snapshot.source.originalDocument.entities[0]?.brushes[0]?.faces[0]?.id,
+    expect(reopened.document.entities[0]?.primitives[0]?.faces[0]?.id).toBe(
+      snapshot.source.originalDocument.entities[0]?.primitives[0]?.faces[0]?.id,
     );
   });
 

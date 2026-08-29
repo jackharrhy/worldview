@@ -32,6 +32,7 @@ import {
   type MapCompileResult,
   type MapCompileQuality,
   type MapDocument,
+  type WorldviewGameProfile,
   type MapSourceState,
   type SimpleShapeOptions,
   type SweepCandidate,
@@ -49,6 +50,7 @@ import {
 } from './editor-material-fixtures.js';
 import type { EditorFileHandle } from './project-files.js';
 import { ProjectLocalStateService } from './project-local-state.js';
+import { AssetMountStateService } from './asset-mount-state.js';
 import type { WorldviewProjectWorkspace } from './project-workspace.js';
 import { TextureUvEditor } from './uv-editor.js';
 
@@ -77,6 +79,9 @@ export class EditorState {
   public lastRecoveryLabel = 'Initial document';
   public projectWorkspace: WorldviewProjectWorkspace | null = null;
   public projectKey: string | null = null;
+  public workspaceId = `browser:${crypto.randomUUID()}`;
+  public documentKey = `${this.workspaceId}:untitled`;
+  public activeGameProfile: WorldviewGameProfile = 'quake';
   public entityDefinitions = new EntityDefinitionCatalog();
   public projectSprites: readonly EditorSpriteMaterial[] = [];
   public renderer: EditorSourceRenderer | null = null;
@@ -169,12 +174,13 @@ export class EditorState {
   public readonly compilerCoordinator: MapCompileCoordinator;
   public readonly buildHistory: MapBuildHistoryService;
   public readonly projectLocalState = new ProjectLocalStateService();
+  public readonly assetMountState = new AssetMountStateService();
   public readonly materialCatalog = new EditorMaterialCatalog();
   public readonly builtInMaterials = [
-    createDeveloperMaterial('DEV_FLOOR', [143, 66, 18], [222, 112, 28]),
-    createDeveloperMaterial('DEV_PILLAR', [48, 52, 57], [112, 121, 128]),
-    createDeveloperMaterial('DEV_ORANGE_128', [89, 37, 10], [238, 112, 18], [255, 170, 72]),
-    createDeveloperMaterial('DEV_GREY_128', [34, 37, 41], [102, 108, 114], [205, 211, 214]),
+    createDeveloperMaterial('DEV_FLOOR', [205, 82, 13], [255, 214, 154]),
+    createDeveloperMaterial('DEV_PILLAR', [70, 75, 79], [214, 219, 216]),
+    createDeveloperMaterial('DEV_ORANGE_64', [220, 91, 12], [255, 220, 164]),
+    createDeveloperMaterial('DEV_GREY_64', [83, 88, 91], [224, 228, 225]),
   ] as const;
   public readonly uvEditor: TextureUvEditor;
   public readonly loadedWadSources = new Map<string, ArrayBuffer>();
@@ -271,7 +277,7 @@ export class EditorState {
     });
     this.recovery = new DocumentRecoveryService(
       () => ({
-        documentKey: this.currentDocumentName.toLowerCase(),
+        documentKey: this.documentKey,
         fileName: this.currentDocumentName,
         document: this.session.document,
         source: this.currentMapSource,

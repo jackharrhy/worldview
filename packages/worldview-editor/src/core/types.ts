@@ -8,12 +8,17 @@ type BrandedId<Name extends string> = string & { readonly [idBrand]: Name };
 
 export type DocumentId = BrandedId<'document'>;
 export type EntityId = BrandedId<'entity'>;
-export type BrushId = BrandedId<'brush'>;
+export type PrimitiveId = BrandedId<'primitive'>;
+/** Legacy brush-tool name for the shared primitive identifier namespace. */
+export type BrushId = PrimitiveId;
+export type PatchId = PrimitiveId;
+export type BrushDefId = PrimitiveId;
 export type FaceId = BrandedId<'face'>;
 
-export type MapFormat = 'valve-220' | 'quake';
+export type MapDocumentFormat = 'quake-map';
+export type MapFaceSyntax = 'valve-220' | 'quake';
 
-export interface TextureProjection {
+interface TextureProjectionBase {
   /** Valve 220 world-space texture axes. */
   readonly uAxis: Vec3;
   readonly vAxis: Vec3;
@@ -23,6 +28,16 @@ export interface TextureProjection {
   readonly rotationDegrees: number;
   readonly scale: Vec2;
 }
+
+export interface AxialTextureProjection extends TextureProjectionBase {
+  readonly kind: 'axial';
+}
+
+export interface Valve220TextureProjection extends TextureProjectionBase {
+  readonly kind: 'valve-220';
+}
+
+export type TextureProjection = AxialTextureProjection | Valve220TextureProjection;
 
 export interface SurfaceAttributes {
   readonly contents?: number;
@@ -39,22 +54,64 @@ export interface MapFace {
 }
 
 export interface MapBrush {
+  readonly kind: 'brush';
   readonly id: BrushId;
   readonly revision: number;
   readonly faces: readonly MapFace[];
 }
 
+export interface MapPatchPoint {
+  readonly position: Vec3;
+  readonly uv: Vec2;
+}
+
+export interface MapPatch {
+  readonly kind: 'patch';
+  readonly id: PatchId;
+  readonly revision: number;
+  readonly material: string;
+  readonly dimensions: readonly [number, number];
+  readonly subdivisions: readonly [number, number, number];
+  readonly controlPoints: readonly (readonly MapPatchPoint[])[];
+}
+
+export interface MapBrushDefFace {
+  readonly id: FaceId;
+  readonly planePoints: readonly [Vec3, Vec3, Vec3];
+  readonly textureMatrix: readonly [Vec3, Vec3];
+  readonly material: string;
+  readonly surface: SurfaceAttributes;
+}
+
+export interface MapBrushDef {
+  readonly kind: 'brush-def';
+  readonly id: BrushDefId;
+  readonly revision: number;
+  readonly faces: readonly MapBrushDefFace[];
+}
+
+/** Closed semantic primitive union. Tool support must explicitly narrow by primitive kind. */
+export type MapPrimitive = MapBrush | MapPatch | MapBrushDef;
+
 export interface MapEntity {
   readonly id: EntityId;
   readonly properties: Readonly<Record<string, string>>;
-  readonly brushes: readonly MapBrush[];
+  readonly primitives: readonly MapPrimitive[];
 }
 
 export interface MapDocument {
   readonly id: DocumentId;
   readonly revision: number;
-  readonly format: MapFormat;
+  readonly format: MapDocumentFormat;
+  readonly faceSyntax: MapFaceSyntax;
   readonly entities: readonly MapEntity[];
+}
+
+/** Brush-only interchange used by prefabs, clipboard adapters, and geometry test fixtures. */
+export interface MapFragment {
+  readonly format: 'quake-map';
+  readonly faceSyntax: MapFaceSyntax;
+  readonly primitives: readonly MapBrush[];
 }
 
 export interface Bounds {
@@ -154,6 +211,8 @@ export interface IdFactory {
   document(): DocumentId;
   entity(): EntityId;
   brush(): BrushId;
+  patch(): PatchId;
+  brushDef(): BrushDefId;
   face(): FaceId;
 }
 
@@ -161,31 +220,74 @@ export function createSequentialIdFactory(prefix = 'worldview'): IdFactory {
   let document = 0;
   let entity = 0;
   let brush = 0;
+  let patch = 0;
+  let brushDef = 0;
   let face = 0;
   return {
     document: () => `${prefix}-document-${++document}` as DocumentId,
     entity: () => `${prefix}-entity-${++entity}` as EntityId,
-    brush: () => `${prefix}-brush-${++brush}` as BrushId,
+    brush: () => `${prefix}-brush-${++brush}` as PrimitiveId,
+    patch: () => `${prefix}-patch-${++patch}` as PrimitiveId,
+    brushDef: () => `${prefix}-brush-def-${++brushDef}` as PrimitiveId,
     face: () => `${prefix}-face-${++face}` as FaceId,
   };
 }
 
-const documentBrushes = new WeakMap<MapDocument, readonly MapBrush[]>();
-const documentBrushesById = new WeakMap<MapDocument, ReadonlyMap<BrushId, MapBrush>>();
+const documentPrimitives = new WeakMap<MapDocument, readonly MapPrimitive[]>();
+const documentPrimitivesById = new WeakMap<
+  MapDocument,
+  ReadonlyMap<MapPrimitive['id'], MapPrimitive>
+>();
+
+export function primitivesInDocument(document: MapDocument): readonly MapPrimitive[] {
+  const cached = documentPrimitives.get(document);
+  if (cached) return cached;
+  const primitives = document.entities.flatMap((entity) => entity.primitives);
+  documentPrimitives.set(document, primitives);
+  return primitives;
+}
+
+export function findPrimitive(
+  document: MapDocument,
+  primitiveId: MapPrimitive['id'],
+): MapPrimitive | null {
+  let primitivesById = documentPrimitivesById.get(document);
+  if (!primitivesById) {
+    primitivesById = new Map(
+      primitivesInDocument(document).map((primitive) => [primitive.id, primitive] as const),
+    );
+    documentPrimitivesById.set(document, primitivesById);
+  }
+  return primitivesById.get(primitiveId) ?? null;
+}
 
 export function brushesInDocument(document: MapDocument): readonly MapBrush[] {
-  const cached = documentBrushes.get(document);
-  if (cached) return cached;
-  const brushes = document.entities.flatMap((entity) => entity.brushes);
-  documentBrushes.set(document, brushes);
-  return brushes;
+  return primitivesInDocument(document).filter(
+    (primitive): primitive is MapBrush => primitive.kind === 'brush',
+  );
+}
+
+export function brushesInEntity(entity: MapEntity): readonly MapBrush[] {
+  return entity.primitives.filter((primitive): primitive is MapBrush => primitive.kind === 'brush');
+}
+
+export function patchesInDocument(document: MapDocument): readonly MapPatch[] {
+  return primitivesInDocument(document).filter(
+    (primitive): primitive is MapPatch => primitive.kind === 'patch',
+  );
+}
+
+export function brushDefsInDocument(document: MapDocument): readonly MapBrushDef[] {
+  return primitivesInDocument(document).filter(
+    (primitive): primitive is MapBrushDef => primitive.kind === 'brush-def',
+  );
+}
+
+export function isMapBrush(primitive: MapPrimitive): primitive is MapBrush {
+  return primitive.kind === 'brush';
 }
 
 export function findBrush(document: MapDocument, brushId: BrushId): MapBrush | null {
-  let brushesById = documentBrushesById.get(document);
-  if (!brushesById) {
-    brushesById = new Map(brushesInDocument(document).map((brush) => [brush.id, brush] as const));
-    documentBrushesById.set(document, brushesById);
-  }
-  return brushesById.get(brushId) ?? null;
+  const primitive = findPrimitive(document, brushId);
+  return primitive?.kind === 'brush' ? primitive : null;
 }

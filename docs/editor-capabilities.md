@@ -264,12 +264,18 @@ an independent prism in perspective. A click without a drag retains Shift face s
 modifier-driven material transfer remains available when a face—not an object—is the current
 selection. Object movement maps to the horizontal XY plane by default; Alt switches live gestures to
 vertical Z movement, while Shift retains only the dominant grid-snapped axis. Orthographic drags
-use the viewport plane with the same Shift restriction. A yellow trace connects the original and
+use the viewport plane with the same Shift restriction. Shift-resize targeting also considers a
+ten-CSS-pixel screen-space band around selected-brush silhouette edges. When there is no direct face
+hit, the horizon edge chooses its back-facing adjacent face, making hidden side faces reachable
+without letting arbitrary internal edges become sticky. A yellow trace connects the original and
 current drag reference points, becomes visually heavier under Shift restriction, and is cleared on
 commit or cancellation without entering document state. Vertex and Edge movement draws the same
-guide from every selected handle. Construction-plane box creation works in
-perspective and orthographic views;
-the drag is a derived preview and the final valid brush is one undoable transaction. Plain clicks
+guide from every selected handle. Construction-plane shape creation works in perspective and
+orthographic views as a permanently available part of the default Select tool whenever the
+document selection is empty. A click still selects the object under the pointer; crossing the drag
+threshold instead gives the Simple Shape controller ownership and begins creation. This matches
+TrenchBroom's no-modal-tool controller stack rather than requiring a separate brush-creation mode.
+The drag is a derived preview and the final valid brush is one undoable transaction. Plain clicks
 select one brush, Ctrl/Command-click toggles brushes in a normalized object set, Shift-click selects
 the intersected source face, and the modal Face tool exposes
 face outlines and directly pickable center handles on every selected brush, including handles for
@@ -728,11 +734,20 @@ redo restore both the original object set and the resulting selection. This beha
 no TrenchBroom implementation source is adapted.
 
 The application shell follows a compact desktop-editor layout informed by TrenchBroom: document
-commands and functional tools occupy two thin strips, the four viewports receive the main workspace,
-and a collapsible Object, Textures, and Map inspector contains contextual controls. At narrow widths
-the inspector becomes an overlay rather than shrinking the viewports. Normalized source remains
+commands and functional tools occupy two thin strips, and Perspective, Top, Front, and Side use the
+default balanced 2×2 grid with Perspective in the upper-left. Pointer- and keyboard-operable
+splitters resize both viewport rows and columns along with the collapsible
+Object, Textures, and Map inspector. Minimum sizes keep every pane usable. At narrow widths the
+inspector becomes an overlay rather than shrinking the viewports. Normalized source remains
 authoritative but opens in a modal editor instead of consuming a permanent workspace column. Local
 `.map` files can be opened and saved from the shell.
+
+The top bar offers System, Dark, and Light theme selection. The preference persists locally and
+System follows the operating-system color-scheme setting. Theme changes update the CSS shell and
+the live WebGPU renderer together, including viewport backgrounds, grids, edges, selections, and
+tool overlays; they do not reload or alter the map session. Theme CSS exposes semantic roles for
+surfaces, borders, text, states, overlays, renderer colors, and the UV diagram instead of
+color-value-encoded aliases.
 
 Brush duplication and deletion, live grid-size changes, texture-lock control for movement, and
 selected-entity key/value editing are revisioned session commands with undo and redo. Object-set

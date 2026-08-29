@@ -93,8 +93,42 @@ React is an application-shell dependency, not an engine dependency. Published vi
 packages remain framework-independent. Stable canvas elements outlive shell-state updates; pointer,
 camera, gesture, and per-frame GPU state do not flow through React. Immutable external snapshots
 cross into React through `useSyncExternalStore`. Both application roots run in React Strict Mode.
-External-system lifetimes attach through stable callback refs with explicit cleanup rather than
-component effects; neither application currently needs `useEffect`.
+External-system lifetimes attach through stable callback refs with explicit cleanup. Focused layout
+effects are reserved for synchronizing native dialog and measurement lifetimes.
+
+The editor application uses React Router v7 in Data Mode (`createBrowserRouter` and
+`RouterProvider`), without the Framework Mode Vite plugin. `/` loads the browser-local workspace
+library, `/new-map` owns validated map-creation form actions, and `/editor` is a lazy route boundary.
+Validated new-map options cross that boundary in browser history state, keeping the editor URL clean
+while preserving reload and back/forward behavior.
+The home route does not import or initialize the editor package, WebGPU renderer, presenters,
+WebMCP registration, compiler probes, collaboration UI, TanStack Query, or editor icon/style
+assets. Because new-map creation always enters the editor, `/new-map` warms its lazy module graph
+during idle time and on submit intent, but presenter construction and WebGPU initialization remain
+exclusive to `/editor`. Home loaders read recent local workspaces; future remote workspace
+providers can join that loader boundary without changing editor document ownership.
+
+Hosted projects are the next delivery slice and remain peers of local projects rather than a
+replacement. Their identity, persistence, asset, realtime, and build boundaries are specified in
+[`4orm-oauth.md`](./4orm-oauth.md), [`server-side-projects.md`](./server-side-projects.md), and
+[`artbin-integration.md`](./artbin-integration.md).
+
+The first hosted-project slice is delivered on Newport: 4orm PKCE login, private project/map
+routes, optimistic source-preserving autosave, named checkpoint storage, scoped fragment shares,
+signed short-lived room tickets, guest/editor/viewer enforcement, Artbin search and pinned mounts,
+cached WAD delivery into the editor, and queued server-owned compiler jobs all cross explicit
+service boundaries. The filesystem `BlobStore`, SQLite metadata store, and local compiler worker
+are deployment adapters rather than browser authority. Membership management, personal folders,
+checkpoint/history UI, deterministic loose-image WAD3 packing, build controls/history UI, and a
+production multi-node room fleet remain follow-up hosted-product work; their tables and service
+boundaries exist but they are not claimed as delivered UI.
+
+Every visible editor DOM node and user-visible DOM property is React-owned. Presenters project
+external state through typed snapshot ports rather than constructing or mutating UI. Stable refs
+remain the boundary for canvases, focus/selection, pointer capture, measurement, native file inputs,
+and dialog lifetimes; portals place modal and floating UI outside clipped layout without changing
+React ownership. The detailed boundary and migration rule live in
+[`react-ui-ownership.md`](./react-ui-ownership.md).
 
 TanStack React Query owns pending/error lifecycle for asynchronous commands initiated by React UI.
 It does not replace editor document, selection, history, camera, gesture, or GPU state. The viewer's
@@ -147,29 +181,83 @@ ownership changes. The pinned behavior and architecture comparison is recorded i
 The browser shell gives the viewports visual priority. A compact, consistently sized icon toolbar
 groups file, mode, selection/history, visibility, and build commands; document and build-profile
 selectors retain text where context matters. Every icon action keeps an accessible text name,
-keyboard path, focus treatment, and descriptive tooltip. Rare-command menus remain future shell
-work because a browser cannot delegate them to a native operating-system menu bar.
+keyboard path, focus treatment, and descriptive tooltip. Secondary document actions, uncommon
+selection commands, and visibility/locking controls live in compact accessible toolbar menus;
+frequent file, source, build, mode, history, clipboard, and transform controls remain directly
+available.
 
 Source viewport navigation follows the TrenchBroom editing model: once a viewport has keyboard
 focus, focus follows the pointer between source panes; orthographic panes share zoom and synchronize
 their common pan axes. Inspector and dialog focus is never stolen merely by crossing a viewport.
+The desktop four-view layout uses TrenchBroom's default balanced 2×2 arrangement with Perspective
+in the upper-left, Top in the upper-right, Front in the lower-left, and Side in the lower-right. Its
+row, column, and inspector boundaries are directly resizable with pointer or keyboard handles and
+enforce usable minimum sizes.
+The default Select tool is likewise a permanent controller stack: clicks select, selected objects
+move or resize, and a left drag creates the configured simple shape whenever the selection is empty.
+Brush drawing is not exposed as a separate modal toolbar mode. Shift-resize can acquire the hidden
+adjacent face from a narrow screen-space band outside a selected brush's silhouette, while direct
+face hits and ordinary internal edges retain their normal priority.
 
 Editor theming has one CSS-owned color source. Shell, panel, inspector, dialog, border, SVG, and
 viewport-chrome colors consume custom properties whose concrete palette values use OKLCH. The app
+uses semantic surface, border, text, state, overlay, and focused UV roles rather than encoded source
+color names; translucent states derive from those roles with OKLCH color mixing. The app
 resolves semantic `--renderer-*` properties through the browser color engine and injects a typed RGB
 theme into the framework-neutral WebGPU renderer; source rendering and compiled-preview clear colors
-therefore follow the same theme without importing DOM or CSS APIs into the package.
+therefore follow the same theme without importing DOM or CSS APIs into the package. The shell exposes
+persistent System, Dark, and Light choices; runtime changes rebuild color-dependent GPU buffers but
+preserve the document, selection, camera state, and undo history.
 
 Renderer solids are partitioned by material and spatial cell. Structural-sharing signatures reuse
 unchanged GPU buffers across revisions, conservative frustum tests skip invisible batches, and an
 immutable median-split AABB index supplies broad-phase picking and region queries. Dense documents
 avoid generating unselected projected face grids. Immutable-document query indexes memoize brush,
-group, and layer lookup, while each viewport redraws only when its camera, dimensions, grid, or the
-shared scene version changes. The application schedules frames on demand and runs continuously only
-during fly-camera movement. Performance measures cover scene rebuild, change presentation, and
-material-catalog reconciliation.
+group, layer, and entity-link geometry. Static world edges remain resident across selection, hover,
+tool, group, link-mode, and diagnostic changes; those states draw through a separate compact overlay
+buffer. Document/reference/visibility/theme changes rebuild world edges, while document edits still
+retain unchanged spatial solid batches. Each viewport redraws only when its camera, dimensions,
+grid, or the shared scene version changes. Material catalog changes retain GPU textures and bind groups for
+unchanged immutable material entries and replace only changed or removed names. The application
+schedules frames on demand and runs continuously only
+during fly-camera movement. All invalidated viewport passes encode into one command buffer and use
+one queue submission per editor frame. Pipeline compilation uses WebGPU's asynchronous API, the
+editor requests the high-performance adapter preference, and unexpected device loss becomes a
+visible recoverable-by-reload error instead of a silently frozen canvas. Performance measures cover
+scene rebuild, change presentation, and material-catalog reconciliation.
 
 ## Public editor contracts
+
+### Format-ready document model
+
+The editor distinguishes game profiles, document formats, and face syntax. `MapDocument.format`
+identifies the source container (`quake-map` today), while `MapDocument.faceSyntax` records the
+classic Quake or Valve 220 serialization policy. Face texture projections carry an explicit
+`axial` or `valve-220` kind even though both currently expose the canonical world-space axes used
+by geometry and texture tools. This prevents future Quake 2, idTech 3, and VMF support from turning
+a texture-projection choice into a false document-format abstraction.
+
+Game-profile labels, accepted face syntaxes, WAD versions, definition formats, and defaults have
+one canonical typed registry in `worldview-editor`. Application routes and compiler/project
+decoders consume its validation functions rather than repeating Quake/GoldSrc string branches.
+Entities own a closed `MapPrimitive` union rather than a brush-only collection. Convex brushes,
+idTech 3 `patchDef2` surfaces, and idTech 3 `brushDef` brushes are semantic variants with stable IDs.
+Patches tessellate through a format-neutral geometry boundary and brush definitions adapt into the
+canonical convex geometry view for rendering. Selection, CSG, face editing, topology tools, and the
+collaboration baseline remain deliberately brush-only; each boundary narrows by primitive kind
+instead of pretending every command applies to every primitive. Primitive IDs share one document
+namespace so lookup, cloning, and future cross-format references cannot collide by variant.
+
+Document source lifecycles are routed through a closed, typed codec registry keyed by
+`MapDocumentFormat`. The Quake-map codec owns normalized parsing, retained-source parsing,
+serialization, structure-preserving save planning, and source rebasing. Adding another container
+therefore creates one compile-time registry obligation instead of scattering profile or extension
+checks through application code. The registry is deliberately static; runtime codec plugins are
+not part of the current product contract.
+
+Editor session behavior is layered by responsibility. Entity creation and brush/entity ownership
+live above brush geometry operations, so future non-brush primitives do not force entity-definition
+and layer policy into the geometry implementation.
 
 ### Source-safe map model
 
@@ -178,11 +266,21 @@ material-catalog reconciliation.
 `serializeMap` remain available for deliberately normalized workflows.
 
 The source state retains original bytes, tokens/spans, comments, whitespace, property ordering,
-face syntax, and opaque unsupported constructs beside the semantic `MapDocument`. A save plan
-patches changed regions and preserves untouched bytes. Unedited files round-trip byte-for-byte;
-new nodes infer enclosing style; new files use Valve 220. Normal Save is blocked when an opaque
-construct cannot be safely reanchored. **Export normalized copy** is separate and never overwrites
-the original.
+face syntax, and opaque unsupported constructs beside the semantic `MapDocument`. The tokenizer
+accepts `//` and QuArK-style semicolon line comments and treats recognized format headers as syntax
+metadata. Full-document parsing accepts structurally valid entity collections; playable-world
+requirements such as a first, unique `worldspawn` are live editor issues rather than grammar rules.
+An explicit fragment parser handles root-level primitive blocks used by clipboard/interchange paths.
+Unknown nested primitive families remain opaque and byte-preserved instead of being mistaken for
+classic brushes.
+
+A save plan patches changed regions and preserves untouched bytes. Unedited files round-trip
+byte-for-byte; new nodes infer enclosing style; new files use Valve 220. Unchanged `patchDef2` and
+`brushDef` blocks survive structure-preserving property edits, while unsafe mutation or deletion is
+blocked until those primitives have retained subspans. Normalized export serializes their semantic
+forms. Classic axial projection uses a small deterministic dominant-axis tolerance so harmless
+plane rounding cannot flip texture bases. Normal Save is blocked when an opaque construct cannot be
+safely reanchored. **Export normalized copy** is separate and never overwrites the original.
 
 ### Projects and local state
 
@@ -282,6 +380,15 @@ keeps a local IndexedDB outbox and remains editable while disconnected. Durable 
 and ephemeral presence use separate channels; pointer/drag previews, cameras, selections, GPU state,
 and local commercial/shareware resources are never canonical room state.
 
+The delivered accountless entry mode starts from the current local map, creates an unguessable
+144-bit room token, stores it in the URL fragment, and produces a shareable link. Link recipients
+automatically join with a browser-local actor ID and game-inspired alias. Colored presence overlays
+show selections, world-space pointers, active viewports, and in-progress transform, face, topology,
+and creation candidates. Those candidates travel as lossy sequenced semantic patches and never
+become document, history, outbox, or persisted room state. Stopping the session leaves the current
+map editable locally. This possession-link mode is explicitly private-ingress preview UX, not
+authentication, authorization, revocation, or end-to-end encryption.
+
 The preferred room-runtime experiment targets the Cloudflare Workers/Durable Objects API with one
 named `MapRoom` per collaborative map, private SQLite, and hibernatable WebSockets. [celld](https://celld.dev/)
 is the preferred self-hosted runtime; workerd/Cloudflare execution remains a compatibility oracle
@@ -299,15 +406,16 @@ delivery gates are recorded in [`collaboration.md`](./collaboration.md).
 
 ## Delivery milestones
 
-| Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| --------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Architecture hardening         | In progress | The Vanilla-to-React shell translation, Strict Mode roots, effect-free callback-ref lifetimes, React Query command state, narrow shell stores/ports, presenter dependency injection, composed viewport gesture routing, shared frame/camera runtime, domain modules, split document/CSS/TSX, and architecture gates are delivered; focused scene contributions remain                                                                                                                                                                          |
-| 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                                                                                                                                                                                                                                                                                                                                            |
-| 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                                                                                                                                                                                                                                                                                                                                              |
-| 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                                                                                                                                                                                                                                                                                                                                             |
-| 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                                                                                                                                                                                                                                                                                                                                                        |
-| 6. Collaboration foundation       | Complete    | Typed domain operations, seeded three-replica convergence, IndexedDB outbox, multi-tab and reconnect transport, conditional personalized undo, Yjs/Automerge/custom bake-off, explicit editor join/leave integration, and a chunked SQLite-backed hibernating `MapRoom` pass local Workers-runtime gates plus a live celld/Azurite deploy, WebSocket operation, `SIGKILL`, empty-local-state recovery drill; identity/room UX and multi-node/outage/backup fleet hardening belong to multiplayer delivery; solo mode has no service dependency |
-| 7. After dependable solo          | Deferred    | Collision-aware editor walk mode and the remaining explicitly deferred features listed under Product boundaries                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Architecture hardening         | In progress | The Vanilla-to-React shell translation, Strict Mode roots, effect-free callback-ref lifetimes, React Query command state, narrow shell stores/ports, presenter dependency injection, composed viewport gesture routing, shared frame/camera runtime, domain modules, split document/CSS/TSX, and architecture gates are delivered; focused scene contributions remain                                                                                                                                                                                                                                                     |
+| 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 6. Collaboration foundation       | Complete    | Typed domain operations, seeded three-replica convergence, IndexedDB outbox, multi-tab and reconnect transport, conditional personalized undo, accountless live-link create/join/leave UI, browser-local guest identity and participant presence, Yjs/Automerge/custom bake-off, and a chunked SQLite-backed hibernating `MapRoom` pass local Workers-runtime gates plus a live celld/Azurite deploy, WebSocket operation, `SIGKILL`, empty-local-state recovery drill; authenticated identity/permissions and multi-node/outage/backup fleet hardening remain multiplayer hardening; solo mode has no service dependency |
+| 7. Hosted project foundation      | In progress | Newport deployment, 4orm identity, projects/maps, source autosave/checkpoints, signed hosted-room access, scoped guest shares, Artbin pinned mounts and cached WAD loading, and server-owned queued build records are delivered; membership/folder/history/build UI and production room-fleet hardening remain                                                                                                                                                                                                                                                                                                            |
+| 8. After dependable solo          | Deferred    | Collision-aware editor walk mode and the remaining explicitly deferred features listed under Product boundaries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Worker parsing/catalog work and list virtualization remain available optimizations rather than
 mandatory architecture: the fixed scale gate passes without them, so the roadmap's “as required”
@@ -365,3 +473,16 @@ six-face-brush map, runs Chromium at 2560×1440/DPR 1 on the reference developme
 The gate passed on 2026-08-25. The Playwright test attaches its measured JSON report and remains
 opt-in so ordinary browser tests do not pretend that shared CI hardware is the recorded reference
 machine.
+
+The same gate also runs as a headless portability drill. On 2026-08-28, Linux Chromium 149 with
+SwiftShader loaded the 8,000-brush map in 2.25 seconds, kept translate/material/undo dispatch at
+0.6/43.4/33.3 ms, and sustained a 16.8 ms p95 frame interval. The drill found and removed a
+SwiftShader mapped-buffer size failure: immutable scene vertices now use ordinary
+`VERTEX | COPY_DST` buffers with `queue.writeBuffer`, consistent with the renderer's dynamic upload
+paths. Encoding the four viewport passes into one command buffer reduced dense-map material and undo
+presentation by roughly 20–25% in the same local before/after drill. This remains a portability data
+point rather than a replacement for the reference-hardware gate.
+
+A follow-up retained-edge drill measured single-brush selection in the same 8,000-brush document at
+12.0 ms versus 19.4 ms with world-buffer reuse disabled. The performance gate now records and caps
+selection independently so future scene refactors cannot hide selection latency inside load timing.

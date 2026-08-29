@@ -14,6 +14,8 @@ export interface EntityLink {
   readonly targetAnchor: Vec3;
 }
 
+const entityLinksByDocument = new WeakMap<MapDocument, readonly EntityLink[]>();
+
 function boundsCenter(bounds: Bounds): Vec3 {
   return [
     (bounds.min[0] + bounds.max[0]) / 2,
@@ -23,11 +25,12 @@ function boundsCenter(bounds: Bounds): Vec3 {
 }
 
 function entityAnchor(entity: MapEntity): Vec3 | null {
-  if (entity.brushes.length === 0) {
+  if (entity.primitives.length === 0) {
     const bounds = pointEntityBounds(entity);
     return bounds ? boundsCenter(bounds) : null;
   }
-  const bounds = entity.brushes.flatMap((brush) => {
+  const bounds = entity.primitives.flatMap((brush) => {
+    if (brush.kind !== 'brush') return [];
     const derived = deriveBrush(brush);
     return derived.valid && derived.bounds ? [derived.bounds] : [];
   });
@@ -48,6 +51,8 @@ function entityAnchor(entity: MapEntity): Vec3 | null {
 
 /** Resolves Quake target and killtarget properties into directed, viewport-ready entity links. */
 export function deriveEntityLinks(document: MapDocument): readonly EntityLink[] {
+  const cached = entityLinksByDocument.get(document);
+  if (cached) return cached;
   const targets = new Map<string, MapEntity[]>();
   const anchors = new Map<EntityId, Vec3>();
   for (const entity of document.entities) {
@@ -81,6 +86,7 @@ export function deriveEntityLinks(document: MapDocument): readonly EntityLink[] 
       }
     }
   }
+  entityLinksByDocument.set(document, links);
   return links;
 }
 
@@ -101,7 +107,7 @@ export function selectedEntityIdsForLinks(
   if (brushIds.length > 0) {
     const ids = new Set(brushIds);
     for (const entity of document.entities) {
-      if (entity.brushes.some((brush) => ids.has(brush.id))) selected.add(entity.id);
+      if (entity.primitives.some((brush) => ids.has(brush.id))) selected.add(entity.id);
     }
   }
   return [...selected];

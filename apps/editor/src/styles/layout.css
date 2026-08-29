@@ -23,113 +23,61 @@
   --renderer-grid-major: oklch(43% 0.008 255);
   --uv-grid: oklch(42% 0.015 248.1);
   --uv-grid-major: oklch(54% 0.018 248.3);
-  --wv-101215: oklch(12.63% 0.0069 258.37);
-  --wv-101317: oklch(13.03% 0.0095 255.64);
-  --wv-101419: oklch(13.43% 0.012 254.12);
-  --wv-11161b: oklch(14.23% 0.0127 248.47);
-  --wv-121519: oklch(13.93% 0.0094 255.63);
-  --wv-14171b: oklch(14.82% 0.0093 255.62);
-  --wv-15181c: oklch(15.26% 0.0092 255.62);
-  --wv-15191e: oklch(15.65% 0.0117 254.09);
-  --wv-16191d: oklch(15.7% 0.0092 255.61);
-  --wv-161a1f: oklch(16.08% 0.0116 254.08);
-  --wv-171a1e: oklch(16.14% 0.0091 255.61);
-  --wv-171b20: oklch(16.52% 0.0115 254.08);
-  --wv-191c20: oklch(17% 0.009 255.61);
-  --wv-191d22: oklch(17.38% 0.0114 254.07);
-  --wv-1b1f24: oklch(18.23% 0.0113 254.06);
-  --wv-1d2126: oklch(19.08% 0.0112 254.05);
-  --wv-20202a: oklch(19.3% 0.0189 284.94);
-  --wv-20242a: oklch(21.38% 0.0127 258.37);
-  --wv-20252b: oklch(21.7% 0.0134 253.06);
-  --wv-22262b: oklch(22.17% 0.011 254.03);
-  --wv-271b1b: oklch(18.21% 0.0191 18.6);
-  --wv-272c32: oklch(24.57% 0.0131 253.02);
-  --wv-28241e: oklch(21.76% 0.0124 78.06);
-  --wv-292e34: oklch(25.37% 0.013 253.01);
-  --wv-2b3138: oklch(26.53% 0.0151 252.33);
-  --wv-30233e: oklch(23.94% 0.051 305.53);
-  --wv-30353b: oklch(28.15% 0.0127 252.99);
-  --wv-30363d: oklch(28.5% 0.0149 252.31);
-  --wv-303740: oklch(28.89% 0.0186 254.78);
-  --wv-323840: oklch(29.32% 0.0163 255.63);
-  --wv-343a41: oklch(30.06% 0.0147 252.29);
-  --wv-38271d: oklch(24.51% 0.0311 51.58);
-  --wv-39434d: oklch(33.28% 0.0216 248.4);
-  --wv-484f57: oklch(37.93% 0.0161 251.73);
-  --wv-4c545d: oklch(39.71% 0.018 251.35);
-  --wv-4f5964: oklch(41.44% 0.0219 250.81);
-  --wv-59341f: oklch(32.07% 0.0627 49.46);
-  --wv-5c6269: oklch(44.83% 0.0135 252.2);
-  --wv-626a73: oklch(47.56% 0.0173 251.29);
-  --wv-67b27c: oklch(70.02% 0.1094 151.71);
-  --wv-6d9fd2: oklch(68.74% 0.0928 249.78);
-  --wv-6e5d25: oklch(43.81% 0.0776 92.34);
-  --wv-70532e: oklch(41.92% 0.0653 71.77);
-  --wv-71c68a: oklch(75.68% 0.1202 152.09);
-  --wv-737b84: oklch(53.42% 0.0168 251.26);
-  --wv-876435: oklch(48.38% 0.0781 72.84);
-  --wv-8fbd91: oklch(75.36% 0.0792 145.83);
-  --wv-9a5729: oklch(48.12% 0.1069 52.51);
-  --wv-9b6544: oklch(51.24% 0.0843 51.68);
-  --wv-a18735: oklch(63.15% 0.105 91.39);
-  --wv-a1a8af: oklch(72.82% 0.0129 248);
-  --wv-b46cff: oklch(67.52% 0.213 303.81);
-  --wv-c5cacf: oklch(83.66% 0.0089 247.93);
-  --wv-c89aff: oklch(76.71% 0.1475 304.11);
-  --wv-cbd0d5: oklch(85.52% 0.0088 247.93);
-  --wv-d6b7ff: oklch(83.08% 0.104 303.92);
-  --wv-d6ba79: oklch(79.84% 0.0894 87.08);
-  --wv-d96565: oklch(64.74% 0.1463 21.99);
-  --wv-d99a43: oklch(73.17% 0.1267 72.02);
-  --wv-e06f67: oklch(67.23% 0.1425 25.72);
-  --wv-e2c782: oklch(83.71% 0.0929 88.94);
-  --wv-e36d6d: oklch(67.47% 0.1475 21.78);
-  --wv-e3e6e8: oklch(92.32% 0.0042 236.5);
-  --wv-e7a19b: oklch(77.5% 0.0844 24.65);
-  --wv-ef938c: oklch(75.65% 0.1124 24.74);
-  --wv-f0b35f: oklch(80.7% 0.1235 73.25);
-  --wv-f1b6b2: oklch(82.91% 0.0692 23.1);
-  --wv-f2b760: oklch(81.68% 0.1246 75.1);
-  --wv-f4c273: oklch(84.22% 0.1127 77.72);
-  --wv-f6c55f: oklch(84.75% 0.1316 83.52);
-  --wv-ffc18b: oklch(85.52% 0.0996 61.94);
-  --wv-ffc34f: oklch(85.12% 0.1461 80.76);
-  --wv-ffd1a6: oklch(89.02% 0.0765 64.66);
-  --wv-ffd28d: oklch(88.75% 0.1002 77.59);
-  --wv-ffd37a: oklch(88.66% 0.1185 83.69);
-  --wv-fff: oklch(100% 0 89.88);
-  --wv-rgb-0-0-0-0-42: oklch(0% 0 0 / 0.42);
-  --wv-rgb-0-0-0-0-5: oklch(0% 0 0 / 0.5);
-  --wv-rgb-0-0-0-45: oklch(0% 0 0 / 0.45);
-  --wv-rgb-0-0-0-55: oklch(0% 0 0 / 0.55);
-  --wv-rgb-12-15-18-88: oklch(11.15% 0.008 248.31 / 0.88);
-  --wv-rgb-224-111-103-42: oklch(67.23% 0.1425 25.72 / 0.42);
-  --wv-rgb-224-111-103-8: oklch(67.23% 0.1425 25.72 / 0.08);
-  --wv-rgb-242-183-96-72: oklch(81.68% 0.1246 75.1 / 0.72);
-  --wv-rgb-255-195-79-12: oklch(85.12% 0.1461 80.76 / 0.12);
-  --wv-rgb-255-195-79-42: oklch(85.12% 0.1461 80.76 / 0.42);
-  --wv-rgb-255-195-79-55: oklch(85.12% 0.1461 80.76 / 0.55);
-  --wv-rgb-255-255-255-2: oklch(100% 0 89.88 / 0.02);
-  --wv-rgb-4-7-10-72: oklch(9% 0.0104 241.77 / 0.72);
-  --wv-rgb-5-7-9-0-68: oklch(9% 0.007 243.79 / 0.68);
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-synthesis: none;
-  --bg: var(--wv-101215);
-  --surface: var(--wv-191c20);
-  --surface-raised: var(--wv-22262b);
-  --surface-input: var(--wv-121519);
-  --line: var(--wv-30353b);
-  --line-strong: var(--wv-484f57);
-  --text: var(--wv-e3e6e8);
-  --muted: var(--wv-a1a8af);
-  --quiet: var(--wv-737b84);
-  --accent: var(--wv-d99a43);
-  --accent-bright: var(--wv-f0b35f);
-  --danger: var(--wv-e06f67);
-  --success: var(--wv-8fbd91);
-  --reference: var(--wv-6d9fd2);
+  --font-mono: 'SFMono-Regular', Consolas, monospace;
+  --bg: oklch(12.63% 0.0069 258.37);
+  --surface: oklch(17% 0.009 255.61);
+  --surface-raised: oklch(22.17% 0.011 254.03);
+  --surface-input: oklch(13.93% 0.0094 255.63);
+  --surface-deep: oklch(15.65% 0.0117 254.09);
+  --surface-hover: oklch(25.37% 0.013 253.01);
+  --surface-active: oklch(29.32% 0.0163 255.63);
+  --surface-popover: oklch(18.23% 0.0113 254.06);
+  --surface-danger: oklch(18.21% 0.0191 18.6);
+  --surface-warning: oklch(21.76% 0.0124 78.06);
+  --surface-special: oklch(23.94% 0.051 305.53);
+  --line-subtle: oklch(24.57% 0.0131 253.02);
+  --line: oklch(28.15% 0.0127 252.99);
+  --line-strong: oklch(37.93% 0.0161 251.73);
+  --line-emphasis: oklch(44.83% 0.0135 252.2);
+  --text: oklch(92.32% 0.0042 236.5);
+  --text-strong: oklch(100% 0 89.88);
+  --muted: oklch(72.82% 0.0129 248);
+  --quiet: oklch(53.42% 0.0168 251.26);
+  --accent: oklch(68% 0.11 245);
+  --accent-bright: oklch(78% 0.1 240);
+  --accent-text: oklch(88% 0.055 235);
+  --danger: oklch(67.23% 0.1425 25.72);
+  --danger-text: oklch(82.91% 0.0692 23.1);
+  --success: oklch(75.36% 0.0792 145.83);
+  --reference: oklch(68.74% 0.0928 249.78);
+  --special: oklch(76.71% 0.1475 304.11);
+  --collaborator-red: oklch(67% 0.21 25);
+  --collaborator-orange: oklch(73% 0.17 55);
+  --collaborator-yellow: oklch(83% 0.16 92);
+  --collaborator-green: oklch(72% 0.17 145);
+  --collaborator-cyan: oklch(76% 0.13 205);
+  --collaborator-blue: oklch(65% 0.2 255);
+  --collaborator-violet: oklch(68% 0.2 300);
+  --collaborator-pink: oklch(74% 0.18 345);
+  --shadow: oklch(0% 0 0 / 0.45);
+  --shadow-strong: oklch(0% 0 0 / 0.55);
+  --overlay: oklch(9% 0.007 243.79 / 0.68);
+  --readout-bg: oklch(11.15% 0.008 248.31 / 0.88);
+  --accent-soft: color-mix(in oklch, var(--accent) 12%, transparent);
+  --accent-border: color-mix(in oklch, var(--accent) 55%, transparent);
+  --danger-soft: color-mix(in oklch, var(--danger) 8%, transparent);
+  --danger-border: color-mix(in oklch, var(--danger) 42%, transparent);
+  --uv-face: oklch(14.23% 0.0127 248.47);
+  --uv-empty: oklch(41.44% 0.0219 250.81);
+  --uv-outline: oklch(33.28% 0.0216 248.4);
+  --uv-control: oklch(81.68% 0.1246 75.1);
+  --uv-control-strong: oklch(88.75% 0.1002 77.59);
+  --uv-axis-u: oklch(64.74% 0.1463 21.99);
+  --uv-axis-v: oklch(70.02% 0.1094 151.71);
+  --uv-pivot: oklch(84.75% 0.1316 83.52);
 }
 
 * {
@@ -173,14 +121,20 @@ button {
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--wv-626a73);
-  background: var(--wv-292e34);
+  border-color: var(--line-emphasis);
+  background: var(--surface-hover);
+}
+
+button:active:not(:disabled) {
+  border-color: var(--line-emphasis);
+  background: var(--surface-active);
+  color: var(--text-strong);
 }
 
 button:disabled {
   color: var(--quiet);
   cursor: default;
-  opacity: 0.52;
+  opacity: 0.7;
 }
 
 button:focus-visible,
@@ -316,6 +270,7 @@ textarea:focus-visible {
   height: 30px;
   min-height: 30px;
   padding: 0;
+  overflow: hidden;
   border: 1px solid transparent;
   border-radius: 3px;
   background: transparent;
@@ -325,6 +280,79 @@ textarea:focus-visible {
 .icon-button .ph {
   font-size: 17px;
   line-height: 1;
+}
+
+.toolbar-menu {
+  position: relative;
+  flex: none;
+}
+
+.toolbar-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.toolbar-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.toolbar-menu[open] > summary {
+  border-color: var(--line);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.toolbar-menu-items {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 4px);
+  left: 0;
+  display: grid;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  box-shadow: 0 12px 28px var(--shadow-strong);
+  background: var(--surface-raised);
+}
+
+.toolbar-menu-items button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.toolbar-menu-items button:hover:not(:disabled),
+.toolbar-menu-items button:focus-visible {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.toolbar-menu-items button:disabled {
+  color: var(--quiet);
+}
+
+.toolbar-menu-items .toolbar-label {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+}
+
+.top-actions:has(.toolbar-menu[open]),
+.toolrail:has(.toolbar-menu[open]) {
+  overflow: visible;
 }
 
 .top-actions button:hover:not(:disabled),
@@ -387,13 +415,13 @@ textarea:focus-visible {
   width: min(920px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   padding: 0;
-  color: var(--text-primary);
-  background: var(--panel);
-  border: 1px solid var(--border-bright);
+  color: var(--text);
+  background: var(--surface-popover);
+  border: 1px solid var(--line-emphasis);
 }
 
 .build-log-dialog::backdrop {
-  background: var(--wv-rgb-4-7-10-72);
+  background: var(--overlay);
 }
 
 .build-log-dialog header {
@@ -401,7 +429,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 
 .build-log-dialog pre {
@@ -427,7 +455,7 @@ textarea:focus-visible {
   gap: 8px;
   align-items: center;
   padding: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
 }
 
 .checkpoint-dialog {
@@ -464,7 +492,7 @@ textarea:focus-visible {
   color: var(--accent-bright);
 }
 .compile-state[data-state='stale'] {
-  color: var(--wv-d6ba79);
+  color: var(--accent);
 }
 
 .toolrail {
@@ -472,7 +500,7 @@ textarea:focus-visible {
   padding: 2px 5px;
   overflow-x: auto;
   border-bottom: 1px solid var(--line);
-  background: var(--wv-15181c);
+  background: var(--surface-deep);
   scrollbar-width: none;
 }
 
@@ -483,9 +511,9 @@ textarea:focus-visible {
 }
 
 .toolrail .tool-button.active {
-  border-color: var(--wv-70532e);
+  border-color: var(--accent-border);
   box-shadow: inset 0 -2px var(--accent);
-  background: var(--wv-28241e);
+  background: var(--surface-warning);
   color: var(--text);
 }
 
@@ -501,7 +529,7 @@ textarea:focus-visible {
   min-width: 15px;
   padding: 1px 4px;
   border-radius: 8px;
-  background: var(--wv-323840);
+  background: var(--surface-active);
   color: var(--muted);
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 8px;
@@ -509,8 +537,8 @@ textarea:focus-visible {
 }
 
 .toolrail > .view-filter-toggle.active-filter {
-  box-shadow: inset 0 -2px var(--wv-d6ba79);
-  color: var(--wv-e2c782);
+  box-shadow: inset 0 -2px var(--accent);
+  color: var(--accent-text);
 }
 
 .tool-select,
@@ -570,7 +598,7 @@ textarea:focus-visible {
   border: 1px solid var(--line-strong);
   border-radius: 2px;
   background: var(--surface);
-  box-shadow: 0 14px 42px var(--wv-rgb-0-0-0-55);
+  box-shadow: 0 14px 42px var(--shadow-strong);
 }
 
 .view-filter-popover > header {
@@ -579,7 +607,7 @@ textarea:focus-visible {
   gap: 10px;
   padding: 0 7px 0 11px;
   border-bottom: 1px solid var(--line-strong);
-  background: var(--wv-20242a);
+  background: var(--surface-raised);
 }
 
 .view-filter-popover > header > div {
@@ -729,9 +757,11 @@ textarea:focus-visible {
 }
 
 .workspace {
+  --inspector-width: 288px;
+
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 288px;
+  grid-template-columns: minmax(0, 1fr) var(--inspector-width);
   min-width: 0;
   min-height: 0;
 }
@@ -746,14 +776,34 @@ textarea:focus-visible {
 }
 
 .viewport-grid {
+  --viewport-column: 50%;
+  --viewport-top: 50%;
+
   position: relative;
   display: grid;
-  grid-template: repeat(2, minmax(0, 1fr)) / repeat(2, minmax(0, 1fr));
+  grid-template-columns: var(--viewport-column) minmax(0, 1fr);
+  grid-template-rows: var(--viewport-top) minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   gap: 1px;
   overflow: hidden;
   background: var(--line-strong);
+}
+
+.viewport-pane[data-viewport='perspective'] {
+  grid-area: 1 / 1;
+}
+
+.viewport-pane[data-viewport='xy'] {
+  grid-area: 1 / 2;
+}
+
+.viewport-pane[data-viewport='xz'] {
+  grid-area: 2 / 1;
+}
+
+.viewport-pane[data-viewport='yz'] {
+  grid-area: 2 / 2;
 }
 
 .viewport-context-menu {
@@ -763,10 +813,10 @@ textarea:focus-visible {
   max-height: min(620px, calc(100vh - 16px));
   overflow: auto;
   padding: 5px;
-  border: 1px solid var(--wv-5c6269);
+  border: 1px solid var(--line-emphasis);
   border-radius: 2px;
-  background: var(--wv-1b1f24);
-  box-shadow: 0 12px 36px var(--wv-rgb-0-0-0-55);
+  background: var(--surface-popover);
+  box-shadow: 0 12px 36px var(--shadow-strong);
   color: var(--text);
 }
 
@@ -776,7 +826,7 @@ textarea:focus-visible {
   justify-content: space-between;
   gap: 8px;
   padding: 6px 7px 7px;
-  border-bottom: 1px solid var(--wv-343a41);
+  border-bottom: 1px solid var(--line);
 }
 
 .viewport-context-heading strong {
@@ -798,7 +848,7 @@ textarea:focus-visible {
   display: grid;
   gap: 2px;
   padding: 6px 0;
-  border-bottom: 1px solid var(--wv-30363d);
+  border-bottom: 1px solid var(--line);
 }
 
 .viewport-context-section:last-child {
@@ -830,7 +880,7 @@ textarea:focus-visible {
   padding: 5px 8px;
   border-color: transparent;
   background: transparent;
-  color: var(--text-dim);
+  color: var(--quiet);
   font-size: 9px;
   text-align: left;
 }
@@ -839,9 +889,9 @@ textarea:focus-visible {
 .viewport-context-section button:focus-visible,
 .viewport-context-submenu > summary:hover,
 .viewport-context-submenu > summary:focus-visible {
-  border-color: var(--wv-4c545d);
-  background: var(--wv-2b3138);
-  color: var(--wv-fff);
+  border-color: var(--line-strong);
+  background: var(--surface-active);
+  color: var(--text-strong);
 }
 
 .viewport-context-section button:disabled {
@@ -878,7 +928,7 @@ textarea:focus-visible {
 
 .viewport-context-submenu-items button {
   padding-inline: 6px;
-  border-color: var(--wv-30363d);
-  background: var(--wv-20252b);
+  border-color: var(--line);
+  background: var(--surface-raised);
   font-size: 8px;
 }

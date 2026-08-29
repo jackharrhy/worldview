@@ -32,8 +32,17 @@ export interface DocumentRecoveryStorage {
 export function recoverySourceIdFactory(snapshot: DocumentRecoverySnapshot): IdFactory {
   const document = snapshot.source.originalDocument;
   const entities = [...document.entities];
-  const brushes = document.entities.flatMap((entity) => entity.brushes);
-  const faces = brushes.flatMap((brush) => brush.faces);
+  const primitives = document.entities.flatMap((entity) => entity.primitives);
+  const brushes = primitives.filter((primitive) => primitive.kind === 'brush');
+  const patches = primitives.filter((primitive) => primitive.kind === 'patch');
+  const brushDefs = primitives.filter((primitive) => primitive.kind === 'brush-def');
+  const faceIds = primitives.flatMap((primitive) =>
+    primitive.kind === 'brush'
+      ? primitive.faces.map((face) => face.id)
+      : primitive.kind === 'brush-def'
+        ? primitive.faces.map((face) => face.id)
+        : [],
+  );
   return {
     document: () => document.id,
     entity: () => {
@@ -46,10 +55,21 @@ export function recoverySourceIdFactory(snapshot: DocumentRecoverySnapshot): IdF
       if (!brush) throw new Error('Recovery source contains fewer brush IDs than the disk map');
       return brush.id;
     },
+    patch: () => {
+      const patch = patches.shift();
+      if (!patch) throw new Error('Recovery source contains fewer patch IDs than the disk map');
+      return patch.id;
+    },
+    brushDef: () => {
+      const brushDef = brushDefs.shift();
+      if (!brushDef)
+        throw new Error('Recovery source contains fewer brushDef IDs than the disk map');
+      return brushDef.id;
+    },
     face: () => {
-      const face = faces.shift();
-      if (!face) throw new Error('Recovery source contains fewer face IDs than the disk map');
-      return face.id;
+      const faceId = faceIds.shift();
+      if (!faceId) throw new Error('Recovery source contains fewer face IDs than the disk map');
+      return faceId;
     },
   };
 }

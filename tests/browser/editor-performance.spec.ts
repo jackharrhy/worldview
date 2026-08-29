@@ -21,7 +21,7 @@ function scaleMapSource(): string {
   }
   return serializeMap({
     ...starter,
-    entities: [{ ...starter.entities[0]!, brushes }, ...starter.entities.slice(1)],
+    entities: [{ ...starter.entities[0]!, primitives: brushes }, ...starter.entities.slice(1)],
   });
 }
 
@@ -33,8 +33,24 @@ test.describe('recorded dependable-solo performance gate', () => {
   }, testInfo) => {
     test.setTimeout(90_000);
     await page.setViewportSize({ width: 2560, height: 1440 });
-    await page.goto('http://127.0.0.1:5174/');
-    await expect(page.locator('#status-message')).toContainText('Source renderer ready');
+    await page.addInitScript(() => {
+      interface SiteTool {
+        readonly name: string;
+        execute(input: unknown): unknown | Promise<unknown>;
+      }
+      const tools = new Map<string, SiteTool>();
+      Object.defineProperty(document, 'modelContext', {
+        configurable: true,
+        value: {
+          registerTool(tool: SiteTool) {
+            tools.set(tool.name, tool);
+          },
+        },
+      });
+      Object.defineProperty(window, 'worldviewPerformanceTools', { value: tools });
+    });
+    await page.goto('http://127.0.0.1:5174/editor');
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
     await page.evaluate(() => {
       Object.assign(window, { worldviewLoadStarted: performance.now() });
     });
@@ -50,9 +66,32 @@ test.describe('recorded dependable-solo performance gate', () => {
         (window as typeof window & { worldviewLoadStarted: number }).worldviewLoadStarted,
     );
 
-    const top = await page.locator('.source-canvas').nth(0).boundingBox();
-    if (!top) throw new Error('Top viewport has no bounds');
-    await page.mouse.click(top.x + top.width / 2, top.y + top.height / 2);
+    const selectionMilliseconds = await page.evaluate(async () => {
+      const tools = (
+        window as typeof window & {
+          worldviewPerformanceTools: Map<
+            string,
+            { execute(input: unknown): unknown | Promise<unknown> }
+          >;
+        }
+      ).worldviewPerformanceTools;
+      const inspection = (await tools.get('worldview_inspect_editor')!.execute({})) as {
+        documentId: string;
+        revision: number;
+      };
+      const listing = (await tools.get('worldview_list_objects')!.execute({
+        kind: 'brush',
+        limit: 1,
+      })) as { objects: Array<{ id: string }> };
+      const started = performance.now();
+      await tools.get('worldview_select')!.execute({
+        expectedDocumentId: inspection.documentId,
+        expectedRevision: inspection.revision,
+        mode: 'objects',
+        brushIds: [listing.objects[0]!.id],
+      });
+      return performance.now() - started;
+    });
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
     const translateMilliseconds = await page.evaluate(() => {
       const start = performance.now();
@@ -82,7 +121,9 @@ test.describe('recorded dependable-solo performance gate', () => {
       };
       requestAnimationFrame(frame);
     });
-    const perspective = await page.locator('.source-canvas').nth(1).boundingBox();
+    const perspective = await page
+      .locator('[data-viewport="perspective"] .source-canvas')
+      .boundingBox();
     if (!perspective) throw new Error('Perspective viewport has no bounds');
     await page.mouse.move(
       perspective.x + perspective.width / 2,
@@ -114,6 +155,7 @@ test.describe('recorded dependable-solo performance gate', () => {
       viewport: await page.viewportSize(),
       devicePixelRatio: await page.evaluate(() => devicePixelRatio),
       loadMilliseconds,
+      selectionMilliseconds,
       translateMilliseconds,
       materialMilliseconds,
       undoMilliseconds,
@@ -141,6 +183,7 @@ test.describe('recorded dependable-solo performance gate', () => {
 
     expect(report.devicePixelRatio, metrics).toBe(1);
     expect(loadMilliseconds, metrics).toBeLessThan(3_000);
+    expect(selectionMilliseconds, metrics).toBeLessThan(50);
     expect(translateMilliseconds, metrics).toBeLessThan(100);
     expect(materialMilliseconds, metrics).toBeLessThan(100);
     expect(undoMilliseconds, metrics).toBeLessThan(100);

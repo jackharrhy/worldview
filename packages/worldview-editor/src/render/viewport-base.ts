@@ -14,12 +14,15 @@ import type {
   EditorViewportCameraState,
   EditorViewportKind,
 } from './types.js';
-import { scaleOverlayVertices, upload, type SceneBuffers } from './scene-buffers.js';
+import { scaleOverlayVertices, type SceneBuffers } from './scene-buffers.js';
+import { uploadFloatBuffer } from './gpu-buffer.js';
 import { gridVertices } from './scene-grid.js';
 import { boundsVisible } from './scene-visibility.js';
 import {
   addScaled,
   cross,
+  dot,
+  encodedTopologyPoint,
   normalize,
   topologyHandleKey,
   type FaceHandle,
@@ -110,7 +113,7 @@ export abstract class ViewportBase {
     protected readonly interaction: ViewportInteraction,
     protected gridSize: number,
     private readonly requestRender: () => void,
-    private readonly theme: EditorRenderTheme,
+    private theme: EditorRenderTheme,
   ) {
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('WebGPU canvas context is unavailable');
@@ -126,7 +129,7 @@ export abstract class ViewportBase {
       entries: [{ binding: 0, resource: { buffer: this.uniform } }],
     });
     const grid = gridVertices(kind, gridSize, theme);
-    this.grid = upload(device, grid, GPUBufferUsage.VERTEX);
+    this.grid = uploadFloatBuffer(device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
     this.state = initialState(kind);
     this.flyCamera = new FlyCameraController({
@@ -238,7 +241,16 @@ export abstract class ViewportBase {
     this.gridSize = next;
     this.grid.destroy();
     const grid = gridVertices(this.kind, next, this.theme);
-    this.grid = upload(this.device, grid, GPUBufferUsage.VERTEX);
+    this.grid = uploadFloatBuffer(this.device, grid, GPUBufferUsage.VERTEX);
+    this.gridCount = grid.length / 6;
+    this.renderRequested = true;
+  }
+
+  public setTheme(theme: EditorRenderTheme): void {
+    this.theme = theme;
+    this.grid.destroy();
+    const grid = gridVertices(this.kind, this.gridSize, theme);
+    this.grid = uploadFloatBuffer(this.device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
     this.renderRequested = true;
   }
@@ -248,13 +260,14 @@ export abstract class ViewportBase {
     materialBindGroup: (name: string) => GPUBindGroup,
     clearColor: readonly [number, number, number, number],
     renderVersion: number,
-  ): void {
-    if (this.disposed) return;
+    encoder: GPUCommandEncoder,
+  ): boolean {
+    if (this.disposed) return false;
     this.flyCamera.update();
     this.resize();
     this.positionTransformReadout();
-    if (!this.depth || this.width === 0 || this.height === 0) return;
-    if (!this.renderRequested && this.lastRenderedVersion === renderVersion) return;
+    if (!this.depth || this.width === 0 || this.height === 0) return false;
+    if (!this.renderRequested && this.lastRenderedVersion === renderVersion) return false;
     this.updateScaleOverlay(scene);
     const matrix = this.projectionView();
     this.device.queue.writeBuffer(
@@ -264,14 +277,19 @@ export abstract class ViewportBase {
       matrix.byteOffset,
       matrix.byteLength,
     );
-    const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
+      label: `Worldview ${this.kind} viewport`,
       colorAttachments: [
         {
           view: this.context.getCurrentTexture().createView(),
           loadOp: 'clear',
           storeOp: 'store',
-          clearValue: { r: clearColor[0], g: clearColor[1], b: clearColor[2], a: clearColor[3] },
+          clearValue: {
+            r: clearColor[0],
+            g: clearColor[1],
+            b: clearColor[2],
+            a: clearColor[3],
+          },
         },
       ],
       depthStencilAttachment: {
@@ -282,13 +300,29 @@ export abstract class ViewportBase {
       },
     });
     pass.setBindGroup(0, this.bindGroup);
+    let activeMaterial: string | null = null;
+    const bindMaterial = (name: string) => {
+      const key = name.trim().toLowerCase();
+      if (key === activeMaterial) return;
+      pass.setBindGroup(1, materialBindGroup(name));
+      activeMaterial = key;
+    };
     // Match the source-editor convention: textured faces belong to 3D, while orthographic views
     // remain uncluttered projected wireframes.
     if (this.kind === 'perspective' && scene.solids.length > 0) {
       pass.setPipeline(this.pipelines.solid);
       for (const batch of scene.solids) {
         if (!boundsVisible(matrix, batch.bounds)) continue;
-        pass.setBindGroup(1, materialBindGroup(batch.materialName));
+        bindMaterial(batch.materialName);
+        pass.setVertexBuffer(0, batch.buffer);
+        pass.draw(batch.count);
+      }
+    }
+    if (this.kind === 'perspective' && scene.remoteSolids.length > 0) {
+      pass.setPipeline(this.pipelines.solid);
+      for (const batch of scene.remoteSolids) {
+        if (!boundsVisible(matrix, batch.bounds)) continue;
+        bindMaterial(batch.materialName);
         pass.setVertexBuffer(0, batch.buffer);
         pass.draw(batch.count);
       }
@@ -304,14 +338,22 @@ export abstract class ViewportBase {
       pass.setVertexBuffer(0, scene.lines);
       pass.draw(scene.lineCount);
     }
+    if (scene.remoteLineCount > 0) {
+      pass.setVertexBuffer(0, scene.remoteLines);
+      pass.draw(scene.remoteLineCount);
+    }
+    if (scene.overlayLineCount > 0) {
+      pass.setVertexBuffer(0, scene.overlayLines);
+      pass.draw(scene.overlayLineCount);
+    }
     if (this.scaleOverlay && this.scaleOverlayCount > 0) {
       pass.setVertexBuffer(0, this.scaleOverlay);
       pass.draw(this.scaleOverlayCount);
     }
     pass.end();
-    this.device.queue.submit([encoder.finish()]);
     this.renderRequested = false;
     this.lastRenderedVersion = renderVersion;
+    return true;
   }
 
   public dispose(): void {
@@ -363,7 +405,7 @@ export abstract class ViewportBase {
     if (!scene.scaleBounds) return;
     const vertices = scaleOverlayVertices(scene.scaleBounds, this.kind, this.theme);
     if (vertices.length === 0) return;
-    this.scaleOverlay = upload(this.device, vertices, GPUBufferUsage.VERTEX);
+    this.scaleOverlay = uploadFloatBuffer(this.device, vertices, GPUBufferUsage.VERTEX);
     this.scaleOverlayCount = vertices.length / 6;
   }
 
@@ -498,7 +540,10 @@ export abstract class ViewportBase {
     const bounds = this.canvas.getBoundingClientRect();
     const localX = clientX - bounds.left;
     const localY = clientY - bounds.top;
-    let nearest: { readonly handle: TopologyHandle; readonly distance: number } | null = null;
+    let nearest: {
+      readonly handle: TopologyHandle;
+      readonly distance: number;
+    } | null = null;
     for (const handle of this.interaction.topologyHandles(kind)) {
       const projected = this.projectToCanvas(handle.center);
       if (!projected) continue;
@@ -515,7 +560,10 @@ export abstract class ViewportBase {
     const localX = clientX - bounds.left;
     const localY = clientY - bounds.top;
     const selection = this.interaction.currentSelection();
-    let nearest: { readonly handle: FaceHandle; readonly score: number } | null = null;
+    let nearest: {
+      readonly handle: FaceHandle;
+      readonly score: number;
+    } | null = null;
     for (const handle of this.interaction.faceHandles()) {
       const projected = this.projectToCanvas(handle.center);
       if (!projected) continue;
@@ -529,6 +577,78 @@ export abstract class ViewportBase {
       }
     }
     return nearest?.handle ?? null;
+  }
+
+  protected proximateSelectedFaceAt(clientX: number, clientY: number): FaceHandle | null {
+    const selection = this.interaction.currentSelection();
+    if (!selection || selection.faceId) return null;
+    const selectedBrushes = new Set(
+      'brushIds' in selection ? selection.brushIds : selection.brushId ? [selection.brushId] : [],
+    );
+    if (selectedBrushes.size === 0) return null;
+
+    const edges = new Map<
+      string,
+      {
+        readonly start: Vec3;
+        readonly end: Vec3;
+        readonly faces: FaceHandle[];
+      }
+    >();
+    for (const face of this.interaction
+      .faceHandles()
+      .filter((handle) => selectedBrushes.has(handle.selection.brushId))) {
+      for (let index = 0; index < face.vertices.length; index += 1) {
+        const start = face.vertices[index]!;
+        const end = face.vertices[(index + 1) % face.vertices.length]!;
+        const points = [encodedTopologyPoint(start), encodedTopologyPoint(end)].toSorted();
+        const key = `${face.selection.brushId}:${points.join('|')}`;
+        const existing = edges.get(key);
+        if (existing) existing.faces.push(face);
+        else edges.set(key, { start, end, faces: [face] });
+      }
+    }
+
+    const canvasBounds = this.canvas.getBoundingClientRect();
+    const pointerX = clientX - canvasBounds.left;
+    const pointerY = clientY - canvasBounds.top;
+    const viewDirection = this.viewDirection();
+    let nearest: {
+      readonly face: FaceHandle;
+      readonly distance: number;
+    } | null = null;
+    for (const edge of edges.values()) {
+      if (edge.faces.length !== 2) continue;
+      const firstDot = dot(edge.faces[0]!.normal, viewDirection);
+      const secondDot = dot(edge.faces[1]!.normal, viewDirection);
+      if (firstDot < -1e-6 === secondDot < -1e-6) continue;
+      const start = this.projectToCanvas(edge.start);
+      const end = this.projectToCanvas(edge.end);
+      if (!start || !end) continue;
+      const deltaX = end[0] - start[0];
+      const deltaY = end[1] - start[1];
+      const denominator = deltaX * deltaX + deltaY * deltaY;
+      const amount =
+        denominator <= Number.EPSILON
+          ? 0
+          : Math.max(
+              0,
+              Math.min(
+                1,
+                ((pointerX - start[0]) * deltaX + (pointerY - start[1]) * deltaY) / denominator,
+              ),
+            );
+      const distance = Math.hypot(
+        start[0] + deltaX * amount - pointerX,
+        start[1] + deltaY * amount - pointerY,
+      );
+      if (distance > 10 || (nearest && distance >= nearest.distance)) continue;
+      nearest = {
+        face: firstDot > secondDot ? edge.faces[0]! : edge.faces[1]!,
+        distance,
+      };
+    }
+    return nearest?.face ?? null;
   }
 
   protected prospectiveVertexHandleAt(clientX: number, clientY: number): TopologyHandle | null {

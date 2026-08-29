@@ -207,7 +207,7 @@ export function translatedObjects(
       const entity = document.entities.find((candidate) => candidate.id === entityId);
       if (!entity) throw new Error(`Unknown point entity ${entityId}`);
       const origin = parseEntityOrigin(entity);
-      if (!origin || entity.brushes.length > 0)
+      if (!origin || entity.primitives.length > 0)
         throw new Error(`Entity ${entityId} is not a point entity`);
       return Object.assign({}, entity, {
         properties: {

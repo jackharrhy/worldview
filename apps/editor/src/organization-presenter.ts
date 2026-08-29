@@ -184,7 +184,7 @@ export class OrganizationPresenter {
       selected: this.state.selectedLayerId,
       selection: selection
         ? {
-            brushes: selectedBrushIds(selection),
+            primitives: selectedBrushIds(selection),
             entities: selectedPointEntityIds(selection),
             face: selection.faceId,
           }
@@ -196,7 +196,7 @@ export class OrganizationPresenter {
         hidden: layer.hidden,
         locked: layer.locked,
         omit: layer.omitFromExport,
-        brushes: layer.brushIds,
+        primitives: layer.brushIds,
         entities: layer.pointEntityIds,
       })),
     });

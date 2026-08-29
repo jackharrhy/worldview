@@ -140,7 +140,7 @@ export function deriveEditorGroups(document: MapDocument): readonly EditorGroup[
       parentGroupId: entity.properties[GROUP_PARENT_PROPERTY]?.trim() || null,
       childGroupIds: [],
       directEntityIds: [],
-      directBrushIds: entity.brushes.map((brush) => brush.id),
+      directBrushIds: entity.primitives.map((brush) => brush.id),
     });
   }
 
@@ -171,8 +171,8 @@ export function deriveEditorGroups(document: MapDocument): readonly EditorGroup[
       return entity ? [entity] : [];
     });
     const brushes = [
-      ...source.entity.brushes,
-      ...directEntities.flatMap((entity) => entity.brushes),
+      ...source.entity.primitives,
+      ...directEntities.flatMap((entity) => entity.primitives),
       ...children.flatMap((child) =>
         child.brushIds.flatMap((brushId) => {
           const brush = brushById.get(brushId);
@@ -203,10 +203,12 @@ export function deriveEditorGroups(document: MapDocument): readonly EditorGroup[
       brushIds: [...new Set(brushes.map((brush) => brush.id))],
       pointEntityIds: [...new Set(pointEntities.map((entity) => entity.id))],
       bounds: combinedBounds([
-        ...brushes.flatMap((brush) => {
-          const bounds = deriveBrush(brush).bounds;
-          return bounds ? [bounds] : [];
-        }),
+        ...brushes
+          .filter((brush) => brush.kind === 'brush')
+          .flatMap((brush) => {
+            const bounds = deriveBrush(brush).bounds;
+            return bounds ? [bounds] : [];
+          }),
         ...pointEntities.flatMap((entity) => {
           const bounds = pointEntityBounds(entity);
           return bounds ? [bounds] : [];
@@ -263,7 +265,7 @@ export function selectedEditorGroup(
 function directContainingGroupId(document: MapDocument, selection: EditorSelection): string | null {
   if (selection.brushId) {
     const owner = document.entities.find((entity) =>
-      entity.brushes.some((brush) => brush.id === selection.brushId),
+      entity.primitives.some((brush) => brush.id === selection.brushId),
     );
     if (!owner) return null;
     return isGroupEntity(owner)
@@ -350,7 +352,7 @@ export function groupObjects(
   const groupEntityId = ids.entity();
   const brushOwners = new Map<BrushId, MapEntity>();
   for (const entity of document.entities) {
-    for (const brush of entity.brushes) brushOwners.set(brush.id, entity);
+    for (const brush of entity.primitives) brushOwners.set(brush.id, entity);
   }
   const groupedRegularEntityIds = new Set<EntityId>();
   const movedBrushIds = new Set<BrushId>();
@@ -374,12 +376,15 @@ export function groupObjects(
   for (const group of selectedGroups) groupedRegularEntityIds.add(group.entityId);
 
   const movedBrushes = document.entities.flatMap((entity) =>
-    entity.brushes.filter((brush) => movedBrushIds.has(brush.id)),
+    entity.primitives.filter((brush) => movedBrushIds.has(brush.id)),
   );
   const entities = document.entities.map((entity) => {
     const withoutMoved =
       movedBrushIds.size > 0
-        ? { ...entity, brushes: entity.brushes.filter((brush) => !movedBrushIds.has(brush.id)) }
+        ? {
+            ...entity,
+            primitives: entity.primitives.filter((brush) => !movedBrushIds.has(brush.id)),
+          }
         : entity;
     return groupedRegularEntityIds.has(entity.id)
       ? entityWithParent(withoutMoved, groupId)
@@ -397,7 +402,7 @@ export function groupObjects(
   const groupEntity: MapEntity = {
     id: groupEntityId,
     properties: groupProperties,
-    brushes: movedBrushes,
+    primitives: movedBrushes,
   };
   const after: MapDocument = {
     ...document,
@@ -434,8 +439,8 @@ export function ungroupObjects(document: MapDocument, groupId: string): GroupDoc
     .filter((entity) => entity.id !== group.entityId)
     .map((entity) => {
       let next = entity;
-      if (entity.id === parentEntity.id && groupEntity.brushes.length > 0) {
-        next = { ...next, brushes: [...next.brushes, ...groupEntity.brushes] };
+      if (entity.id === parentEntity.id && groupEntity.primitives.length > 0) {
+        next = { ...next, primitives: [...next.primitives, ...groupEntity.primitives] };
       }
       if (
         directMemberIds.has(entity.id) ||
@@ -503,7 +508,7 @@ export function moveObjectsIntoEditorGroup(
   const groupedEntityIds = new Set<EntityId>();
   if (selectedGroup) groupedEntityIds.add(selectedGroup.entityId);
   for (const entity of document.entities) {
-    const selectedOwnedBrushes = entity.brushes.filter((brush) => selectedBrushes.has(brush.id));
+    const selectedOwnedBrushes = entity.primitives.filter((brush) => selectedBrushes.has(brush.id));
     if (selectedOwnedBrushes.length === 0) continue;
     if (isGroupEntity(entity)) {
       if (entity.id !== target.entityId && !selectedGroup) {
@@ -518,14 +523,14 @@ export function moveObjectsIntoEditorGroup(
   for (const entityId of selectedPoints) groupedEntityIds.add(entityId);
   if (movedBrushIds.size === 0 && groupedEntityIds.size === 0) return document;
   const movedBrushes = document.entities.flatMap((entity) =>
-    entity.brushes.filter((brush) => movedBrushIds.has(brush.id)),
+    entity.primitives.filter((brush) => movedBrushIds.has(brush.id)),
   );
   const entities = document.entities.map((entity) => {
     let next = movedBrushIds.size
-      ? { ...entity, brushes: entity.brushes.filter((brush) => !movedBrushIds.has(brush.id)) }
+      ? { ...entity, primitives: entity.primitives.filter((brush) => !movedBrushIds.has(brush.id)) }
       : entity;
     if (entity.id === target.entityId && movedBrushes.length > 0) {
-      next = { ...next, brushes: [...next.brushes, ...movedBrushes] };
+      next = { ...next, primitives: [...next.primitives, ...movedBrushes] };
     }
     if (groupedEntityIds.has(entity.id)) next = entityWithParent(next, groupId);
     return next;

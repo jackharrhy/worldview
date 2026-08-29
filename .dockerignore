@@ -1,0 +1,8 @@
+.git
+node_modules
+**/node_modules
+**/dist
+apps/viewer/public/local
+data
+playwright-report
+test-results
