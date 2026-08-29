@@ -1,4 +1,4 @@
-import { apiJson, type HostedProject } from './hosted-project-api.js';
+import { authenticatedApiJson, type HostedProject } from './hosted-project-api.js';
 
 export async function loader({
   request,
@@ -12,12 +12,16 @@ export async function loader({
   const url = new URL(request.url);
   const query = url.searchParams.get('assets')?.trim() ?? '';
   const [projectResult, resourceResult, assetResult] = await Promise.all([
-    apiJson<{ project: HostedProject }>(new URL(`/api/projects/${projectId}`, request.url)),
-    apiJson<{ mounts: readonly Record<string, unknown>[] }>(
+    authenticatedApiJson<{ project: HostedProject }>(
+      request,
+      new URL(`/api/projects/${projectId}`, request.url),
+    ),
+    authenticatedApiJson<{ mounts: readonly Record<string, unknown>[] }>(
+      request,
       new URL(`/api/projects/${projectId}/resources`, request.url),
     ),
     query
-      ? apiJson<{
+      ? authenticatedApiJson<{
           assets: readonly {
             id: string;
             name: string;
@@ -25,9 +29,10 @@ export async function loader({
             size: number;
             sha256: string | null;
           }[];
-        }>(new URL(`/api/assets/search?q=${encodeURIComponent(query)}`, request.url)).catch(() => ({
-          assets: [],
-        }))
+        }>(
+          request,
+          new URL(`/api/assets/search?q=${encodeURIComponent(query)}`, request.url),
+        ).catch(() => ({ assets: [] }))
       : Promise.resolve({ assets: [] }),
   ]);
   return {

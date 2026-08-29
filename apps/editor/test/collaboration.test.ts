@@ -212,6 +212,39 @@ describe('CollaborationController', () => {
     client.close();
   });
 
+  it('authorizes the hosted WebSocket URL before opening it', async () => {
+    let openedUrl = '';
+    const socket: CollaborationSocket = {
+      readyState: 1,
+      addEventListener: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+    const controller = new CollaborationController({
+      mapId: 'hosted-map',
+      actorId: 'alice',
+      outbox: new MemoryCollaborationOutbox(),
+      channel: channel(() => {}),
+    });
+    const client = new CollaborationSocketClient({
+      endpoint: 'wss://worldview.example',
+      mapId: 'hosted-map',
+      actorId: 'alice',
+      authorize: async () => 'signed-ticket',
+      controller,
+      createSocket: (url) => {
+        openedUrl = url;
+        return socket;
+      },
+    });
+
+    client.connect();
+
+    await vi.waitFor(() => expect(openedUrl).not.toBe(''));
+    expect(new URL(openedUrl).searchParams.get('access_token')).toBe('signed-ticket');
+    client.close();
+  });
+
   it('bridges real EditorSession commits while keeping remote commits out of the local outbox', async () => {
     const outbox = new MemoryCollaborationOutbox();
     const controller = new CollaborationController({

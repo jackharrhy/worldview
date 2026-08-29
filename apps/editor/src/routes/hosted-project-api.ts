@@ -52,3 +52,23 @@ export async function apiJson<T>(request: RequestInfo | URL, init?: RequestInit)
     );
   return payload as T;
 }
+
+export async function authenticatedApiJson<T>(
+  routeRequest: Request,
+  request: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(request, init);
+  if (response.status === 401) {
+    const route = new URL(routeRequest.url);
+    const returnTo = `${route.pathname}${route.search}`;
+    throw redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  }
+  const payload = (await response.json().catch(() => null)) as ({ error?: unknown } & T) | null;
+  if (!response.ok)
+    throw new Error(
+      typeof payload?.error === 'string' ? payload.error : `Request failed (${response.status})`,
+    );
+  return payload as T;
+}
+import { redirect } from 'react-router';

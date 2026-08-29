@@ -177,7 +177,7 @@ export class CollaborationPresenter {
         onLocalPresence: (presence) => this.receivePresence(presence),
         onConflict: () => this.setError('A remote edit conflicted with this map.'),
         onConnectionChange: (state) => {
-          if (state === 'connected') this.setState('Live');
+          if (state === 'connected') this.renderLiveState();
           else if (state === 'disconnected') this.setState('Reconnecting…');
         },
       });
@@ -187,7 +187,14 @@ export class CollaborationPresenter {
         color: collaboratorColor(actorId),
         sentAt: Date.now(),
       });
-      this.renderLiveState();
+      this.ui.collaborationUi.update({
+        shareLink: window.location.href,
+        live: true,
+        joining: true,
+        state: 'Connecting…',
+        description: 'Connecting this hosted map to its live session.',
+      });
+      this.renderParticipants();
     } catch (error) {
       this.leaveCollaboration();
       this.mapId = null;

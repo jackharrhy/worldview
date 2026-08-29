@@ -412,6 +412,7 @@ export class EditorApplication implements EditorStateHost {
       endpoint: socketEndpoint.toString(),
       mapId: options.mapId,
       actorId: options.actorId,
+      ...(options.authorize ? { authorize: options.authorize } : {}),
       controller,
       onPresence: receivePresence,
       ...(options.onConflict ? { onConflict: options.onConflict } : {}),
