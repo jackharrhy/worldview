@@ -10,7 +10,30 @@ export async function action({
   const projectId = params.projectId;
   if (!projectId) throw new Response('Project ID required', { status: 400 });
   const data = await request.formData();
-  if (data.get('intent') === 'mount-asset') {
+  const intent = String(data.get('intent') ?? '');
+  if (intent === 'set-member-role' || intent === 'remove-member') {
+    const userId = String(data.get('userId') ?? '');
+    if (!userId) return { error: 'Choose a user.' };
+    try {
+      await apiJson(
+        new URL(
+          `/api/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`,
+          request.url,
+        ),
+        intent === 'remove-member'
+          ? { method: 'DELETE' }
+          : {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ role: String(data.get('role') ?? '') }),
+            },
+      );
+      return { accessUpdated: true };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  if (intent === 'mount-asset') {
     try {
       const result = await apiJson<{ mount: { id: string } }>(
         new URL(`/api/projects/${encodeURIComponent(projectId)}/resources`, request.url),

@@ -1,4 +1,8 @@
-import { authenticatedApiJson, type HostedProject } from './hosted-project-api.js';
+import {
+  authenticatedApiJson,
+  type HostedProject,
+  type HostedProjectAccessUser,
+} from './hosted-project-api.js';
 
 export async function loader({
   request,
@@ -35,10 +39,20 @@ export async function loader({
         ).catch(() => ({ assets: [] }))
       : Promise.resolve({ assets: [] }),
   ]);
+  const accessUsers =
+    projectResult.project.role === 'owner'
+      ? (
+          await authenticatedApiJson<{ users: readonly HostedProjectAccessUser[] }>(
+            request,
+            new URL(`/api/projects/${projectId}/members`, request.url),
+          )
+        ).users
+      : [];
   return {
     ...projectResult,
     mounts: resourceResult.mounts,
     assets: assetResult.assets,
     assetQuery: query,
+    accessUsers,
   };
 }

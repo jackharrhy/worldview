@@ -4,7 +4,7 @@ import type { action } from './project-action.js';
 import type { loader } from './project-loader.js';
 
 export function Component() {
-  const { project, mounts, assets, assetQuery } = useLoaderData<typeof loader>();
+  const { project, mounts, assets, assetQuery, accessUsers } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigate = useNavigate();
   const navigation = useNavigation();
@@ -72,6 +72,46 @@ export function Component() {
               </button>
             </footer>
           </Form>
+        ) : null}
+        {project.role === 'owner' ? (
+          <section className="landing-recents project-access">
+            <div className="landing-recents-heading">
+              <h2>Project access</h2>
+              <span>{accessUsers.filter((user) => user.role !== null).length}</span>
+            </div>
+            <p className="landing-empty">
+              People appear here after signing into Worldview with 4orm.
+            </p>
+            <div className="landing-recent-list">
+              {accessUsers.map((user) => (
+                <Form method="post" className="landing-recent project-access-row" key={user.id}>
+                  <input type="hidden" name="userId" value={user.id} />
+                  <span className="project-access-person">
+                    <strong>{user.displayName}</strong>
+                    <small>@{user.username}</small>
+                  </span>
+                  {user.role === 'owner' ? (
+                    <span className="project-access-role">Owner</span>
+                  ) : (
+                    <>
+                      <select name="role" defaultValue={user.role ?? 'editor'}>
+                        <option value="editor">Editor</option>
+                        <option value="viewer">Viewer</option>
+                      </select>
+                      <button name="intent" value="set-member-role">
+                        {user.role ? 'Update' : 'Add'}
+                      </button>
+                      {user.role ? (
+                        <button name="intent" value="remove-member" className="danger-subtle">
+                          Remove
+                        </button>
+                      ) : null}
+                    </>
+                  )}
+                </Form>
+              ))}
+            </div>
+          </section>
         ) : null}
         <section className="landing-recents">
           <div className="landing-recents-heading">

@@ -284,6 +284,45 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           ? json(response, 200, { project })
           : json(response, 404, { error: 'Project not found' });
       }
+      const membersMatch = /^\/api\/projects\/([^/]+)\/members$/.exec(url.pathname);
+      if (request.method === 'GET' && membersMatch) {
+        const user = requireUser(request, response, options.database);
+        if (!user) return;
+        const users = options.database.listProjectAccess(
+          decodeURIComponent(membersMatch[1]!),
+          user.id,
+        );
+        return users
+          ? json(response, 200, { users })
+          : json(response, 403, { error: 'Project owner access required' });
+      }
+      const memberMatch = /^\/api\/projects\/([^/]+)\/members\/([^/]+)$/.exec(url.pathname);
+      if ((request.method === 'PUT' || request.method === 'DELETE') && memberMatch) {
+        if (!mutationAllowed(request, options.oauth.publicUrl))
+          return json(response, 403, { error: 'Cross-origin mutation rejected' });
+        const user = requireUser(request, response, options.database);
+        if (!user) return;
+        const projectId = decodeURIComponent(memberMatch[1]!);
+        const memberId = decodeURIComponent(memberMatch[2]!);
+        if (request.method === 'DELETE') {
+          const removed = options.database.removeProjectMember(projectId, user.id, memberId);
+          return removed
+            ? json(response, 200, { ok: true })
+            : json(response, 403, { error: 'Project owner access required' });
+        }
+        const input = await body(request);
+        if (input.role !== 'editor' && input.role !== 'viewer')
+          return json(response, 400, { error: 'role must be editor or viewer' });
+        const updated = options.database.setProjectMemberRole(
+          projectId,
+          user.id,
+          memberId,
+          input.role,
+        );
+        return updated
+          ? json(response, 200, { ok: true })
+          : json(response, 403, { error: 'Project owner access required' });
+      }
       const mapsMatch = /^\/api\/projects\/([^/]+)\/maps$/.exec(url.pathname);
       if (request.method === 'POST' && mapsMatch) {
         if (!mutationAllowed(request, options.oauth.publicUrl))

@@ -18,6 +18,13 @@ export interface ProjectSummary {
   readonly updatedAt: number;
 }
 
+export interface ProjectAccessUser {
+  readonly id: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly role: ProjectRole | null;
+}
+
 export interface HostedBuildArtifact {
   readonly name: string;
   readonly kind: string;
@@ -288,6 +295,57 @@ export class WorldviewDatabase {
       .prepare('SELECT role FROM project_members WHERE project_id=? AND user_id=?')
       .get(projectId, userId) as { role: ProjectRole } | undefined;
     return row?.role ?? null;
+  }
+
+  public listProjectAccess(
+    projectId: string,
+    ownerId: string,
+  ): readonly ProjectAccessUser[] | null {
+    if (this.role(projectId, ownerId) !== 'owner') return null;
+    const rows = this.sql
+      .prepare(`
+      SELECT u.id,u.username,u.display_name,pm.role
+      FROM users u
+      LEFT JOIN project_members pm ON pm.user_id=u.id AND pm.project_id=?
+      ORDER BY CASE WHEN pm.role='owner' THEN 0 WHEN pm.role IS NOT NULL THEN 1 ELSE 2 END,
+        u.username COLLATE NOCASE
+    `)
+      .all(projectId) as {
+      id: string;
+      username: string;
+      display_name: string;
+      role: ProjectRole | null;
+    }[];
+    return rows.map((row) => ({
+      id: row.id,
+      username: row.username,
+      displayName: row.display_name,
+      role: row.role,
+    }));
+  }
+
+  public setProjectMemberRole(
+    projectId: string,
+    ownerId: string,
+    userId: string,
+    role: Exclude<ProjectRole, 'owner'>,
+  ): boolean {
+    if (this.role(projectId, ownerId) !== 'owner') return false;
+    const target = this.sql.prepare('SELECT id FROM users WHERE id=?').get(userId);
+    if (!target || this.role(projectId, userId) === 'owner') return false;
+    this.sql
+      .prepare(`INSERT INTO project_members(project_id,user_id,role) VALUES(?,?,?)
+      ON CONFLICT(project_id,user_id) DO UPDATE SET role=excluded.role`)
+      .run(projectId, userId, role);
+    return true;
+  }
+
+  public removeProjectMember(projectId: string, ownerId: string, userId: string): boolean {
+    if (this.role(projectId, ownerId) !== 'owner') return false;
+    const result = this.sql
+      .prepare("DELETE FROM project_members WHERE project_id=? AND user_id=? AND role!='owner'")
+      .run(projectId, userId);
+    return result.changes === 1;
   }
 
   public project(

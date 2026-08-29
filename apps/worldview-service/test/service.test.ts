@@ -286,6 +286,82 @@ describe('Worldview hosted project service', () => {
     expect(rejected.status).toBe(403);
   });
 
+  test('lets project owners manage access for known Worldview users', async () => {
+    const app = await fixture();
+    const owner = session(app.database);
+    const collaborator = app.database.upsertUser({
+      fourmSub: 'fourm-collaborator',
+      username: 'carson',
+      displayName: 'Carson',
+      isAdmin: false,
+    });
+    const collaboratorCookie = `worldview_session=${app.database.createSession(collaborator.id).token}`;
+    const project = app.database.createProject(owner.user.id, 'Shared project', 'quake');
+
+    const ownerListing = await fetch(`${app.origin}/api/projects/${project.id}/members`, {
+      headers: { Cookie: owner.cookie },
+    });
+    expect(ownerListing.status).toBe(200);
+    expect(await ownerListing.json()).toMatchObject({
+      users: [
+        { id: owner.user.id, username: 'mapper', role: 'owner' },
+        { id: collaborator.id, username: 'carson', role: null },
+      ],
+    });
+    expect(
+      (
+        await fetch(`${app.origin}/api/projects/${project.id}/members`, {
+          headers: { Cookie: collaboratorCookie },
+        })
+      ).status,
+    ).toBe(403);
+
+    const grant = await fetch(
+      `${app.origin}/api/projects/${project.id}/members/${collaborator.id}`,
+      {
+        method: 'PUT',
+        headers: { Cookie: owner.cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'editor' }),
+      },
+    );
+    expect(grant.status).toBe(200);
+    expect(
+      await (
+        await fetch(`${app.origin}/api/projects/${project.id}`, {
+          headers: { Cookie: collaboratorCookie },
+        })
+      ).json(),
+    ).toMatchObject({ project: { id: project.id, role: 'editor' } });
+
+    const forbiddenChange = await fetch(
+      `${app.origin}/api/projects/${project.id}/members/${owner.user.id}`,
+      {
+        method: 'PUT',
+        headers: { Cookie: collaboratorCookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'viewer' }),
+      },
+    );
+    expect(forbiddenChange.status).toBe(403);
+    const removeOwner = await fetch(
+      `${app.origin}/api/projects/${project.id}/members/${owner.user.id}`,
+      { method: 'DELETE', headers: { Cookie: owner.cookie } },
+    );
+    expect(removeOwner.status).toBe(403);
+
+    const remove = await fetch(
+      `${app.origin}/api/projects/${project.id}/members/${collaborator.id}`,
+      { method: 'DELETE', headers: { Cookie: owner.cookie } },
+    );
+    expect(remove.status).toBe(200);
+    expect(
+      (
+        await fetch(`${app.origin}/api/projects/${project.id}`, {
+          headers: { Cookie: collaboratorCookie },
+        })
+      ).status,
+    ).toBe(404);
+  });
+
   test('admits only one active build per user and bounds hourly build attempts', async () => {
     const app = await fixture();
     const { user } = session(app.database);

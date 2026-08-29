@@ -29,6 +29,11 @@ gesture previews remain ephemeral. Project metadata does not move into the map r
 - Member viewers inspect, preview, view history, and export.
 - Personal folders organize references to accessible projects. Their arrangement is never shared.
 
+The project route exposes owner-only membership management. It lists the 4orm identities that have
+already signed into Worldview, permits granting or changing `editor` and `viewer` roles, and permits
+revoking those roles. The service enforces the owner check for both enumeration and mutation;
+project ownership cannot be reassigned or removed through this API.
+
 Only 4orm-backed Worldview sessions receive short-lived, signed map connection tickets after
 project authorization. The collaboration Worker rejects accountless rooms, verifies the ticket
 before routing to the room, and treats the attached principal and role—not client frames—as

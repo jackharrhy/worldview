@@ -24,6 +24,13 @@ export interface HostedProject extends HostedProjectSummary {
   readonly maps: readonly HostedProjectMap[];
 }
 
+export interface HostedProjectAccessUser {
+  readonly id: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly role: HostedProjectSummary['role'] | null;
+}
+
 export interface HostedMapLaunch {
   readonly id: string;
   readonly projectId: string;

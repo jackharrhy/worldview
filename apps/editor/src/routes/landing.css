@@ -319,6 +319,44 @@ a:focus-visible {
   grid-row: 1 / span 2;
   align-self: center;
 }
+
+.project-access-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-access-person {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.project-access-person strong,
+.project-access-person small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-access-row select {
+  min-width: 7rem;
+}
+
+.project-access-role {
+  padding-inline: 8px;
+}
+
+.danger-subtle {
+  color: var(--danger-text);
+}
+
+@media (max-width: 42rem) {
+  .project-access-row {
+    grid-template-columns: 1fr auto;
+  }
+}
 .resource-row span {
   display: grid;
   gap: 3px;
