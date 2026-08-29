@@ -6,6 +6,10 @@ export function releaseReplacedSceneBuffers(previous: SceneBuffers, next: SceneB
   if (previous.overlayLines !== next.overlayLines) previous.overlayLines.destroy();
   if (previous.perspectiveGrid !== next.perspectiveGrid) previous.perspectiveGrid.destroy();
   if (previous.remoteLines !== next.remoteLines) previous.remoteLines.destroy();
+  const retainedLines = new Set(next.lineBatches.map(({ buffer }) => buffer));
+  for (const batch of previous.lineBatches) {
+    if (!retainedLines.has(batch.buffer)) batch.buffer.destroy();
+  }
   const retained = new Set(next.solids.map(({ buffer }) => buffer));
   for (const batch of previous.solids) if (!retained.has(batch.buffer)) batch.buffer.destroy();
   const retainedRemote = new Set(next.remoteSolids.map(({ buffer }) => buffer));

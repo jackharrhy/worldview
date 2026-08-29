@@ -436,6 +436,11 @@ export abstract class ViewportBase {
       pass.draw(6, scene.perspectiveGridCount / 2);
     }
     pass.setBindGroup(0, this.root.unwrap(this.bindGroup));
+    for (const batch of scene.lineBatches) {
+      if (!boundsVisible(matrix, batch.bounds)) continue;
+      pass.setVertexBuffer(0, batch.buffer);
+      pass.draw(6, batch.count / 2);
+    }
     if (scene.lineCount > 0) {
       pass.setVertexBuffer(0, scene.lines);
       pass.draw(6, scene.lineCount / 2);

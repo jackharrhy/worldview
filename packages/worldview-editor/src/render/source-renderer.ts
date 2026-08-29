@@ -900,6 +900,7 @@ export class EditorSourceRenderer {
     if (this.disposed) return;
     this.disposed = true;
     for (const batch of this.scene.solids) batch.buffer.destroy();
+    for (const batch of this.scene.lineBatches) batch.buffer.destroy();
     this.scene.lines.destroy();
     this.scene.overlayLines.destroy();
     this.scene.remoteLines.destroy();

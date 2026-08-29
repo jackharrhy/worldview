@@ -55,6 +55,7 @@ import {
 export { sweepCapsBounds, sweepScaleHandle } from './scene-tool-overlays.js';
 export { scaleOverlayVertices } from './transform-overlay.js';
 import { brushSolidSignature, SolidBatchBuilder, type SolidBatch } from './scene-solid-batches.js';
+import { LineBatchBuilder } from './scene-line-batches.js';
 import { DEFAULT_EDITOR_RENDER_THEME, type EditorRenderTheme } from './theme.js';
 import { buildRemotePresenceBuffer } from './remote-presence-buffers.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
@@ -141,7 +142,7 @@ function appendBoundsWireframe(
 }
 
 function appendSpritePlane(
-  solid: number[],
+  solid: { push(...vertices: number[]): number },
   center: Vec3,
   width: number,
   height: number,
@@ -235,6 +236,9 @@ export function buildSceneBuffers(
 ): SceneBuffers {
   const reuseWorld = reuseWorldBuffers && previousScene !== undefined;
   const solidBatches = reuseWorld ? null : new SolidBatchBuilder(previousSolids);
+  const lineBatches = reuseWorld
+    ? null
+    : new LineBatchBuilder(device, previousScene?.lineBatches ?? []);
   const lines: number[] = [];
   const overlayLines: number[] = [];
   const perspectiveGridLines: number[] = [];
@@ -260,7 +264,12 @@ export function buildSceneBuffers(
       ? selectedFaceReferences(selection).map((face) => face.brushId)
       : selectedBrushIds(selection),
   );
-  const appendDocument = (source: MapDocument, offset: Vec3, reference: boolean) => {
+  const appendDocument = (
+    source: MapDocument,
+    offset: Vec3,
+    reference: boolean,
+    sourcePrefix: string,
+  ) => {
     for (const brush of brushesInDocument(source)) {
       if (!reference && hiddenBrushIds.has(brush.id)) continue;
       const locked = !reference && lockedBrushIds.has(brush.id);
@@ -357,24 +366,31 @@ export function buildSceneBuffers(
             : hoveredObject
               ? theme.edgeHover
               : theme.edge;
-      if (!reuseWorld)
-        for (const edge of derived.edges) {
-          const baseColor = reference
-            ? theme.referenceEdge
-            : locked
-              ? theme.edgeLocked
-              : theme.edge;
-          lines.push(
-            edge.start[0] + offset[0],
-            edge.start[1] + offset[1],
-            edge.start[2] + offset[2],
-            ...baseColor,
-            edge.end[0] + offset[0],
-            edge.end[1] + offset[1],
-            edge.end[2] + offset[2],
-            ...baseColor,
-          );
-        }
+      if (!reuseWorld && derived.bounds) {
+        const baseColor = reference ? theme.referenceEdge : locked ? theme.edgeLocked : theme.edge;
+        lineBatches?.add(
+          `${sourcePrefix}:${brush.id}`,
+          `${solidSignature}:${baseColor.join(',')}`,
+          derived.bounds,
+          offset,
+          () => {
+            const vertices: number[] = [];
+            for (const edge of derived.edges) {
+              vertices.push(
+                edge.start[0] + offset[0],
+                edge.start[1] + offset[1],
+                edge.start[2] + offset[2],
+                ...baseColor,
+                edge.end[0] + offset[0],
+                edge.end[1] + offset[1],
+                edge.end[2] + offset[2],
+                ...baseColor,
+              );
+            }
+            return vertices;
+          },
+        );
+      }
       if (selectedObject || hoveredObject)
         for (const edge of derived.edges) {
           overlayLines.push(
@@ -545,9 +561,11 @@ export function buildSceneBuffers(
       }
     }
   };
-  appendDocument(document, [0, 0, 0], false);
-  for (const reference of referenceScenes) {
-    if (reference.visible) appendDocument(reference.document, reference.offset, true);
+  appendDocument(document, [0, 0, 0], false, 'document');
+  for (const [index, reference] of referenceScenes.entries()) {
+    if (reference.visible) {
+      appendDocument(reference.document, reference.offset, true, `reference:${index}`);
+    }
   }
   const selectedGroupId = selectedEditorGroup(document, selection)?.id ?? null;
   const hoveredGroupId = selectedEditorGroup(document, hoverSelection)?.id ?? null;
@@ -693,6 +711,7 @@ export function buildSceneBuffers(
   const solids = solidBatches?.finish(device) ?? previousScene!.solids;
   return {
     solids,
+    lineBatches: lineBatches?.finish() ?? previousScene!.lineBatches,
     lines: reuseWorld
       ? previousScene.lines
       : uploadFloatBuffer(device, new Float32Array(lines), GPUBufferUsage.VERTEX, 'World edges'),

@@ -2761,7 +2761,7 @@ test.describe('3D source authoring', () => {
       canvas.addEventListener(
         'pointerdown',
         (event) => {
-          canvas.dataset.testPointerId = String(event.pointerId);
+          canvas.dataset.testPointerId = String((event as PointerEvent).pointerId);
         },
         { once: true },
       );

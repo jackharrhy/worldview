@@ -245,8 +245,12 @@ immutable median-split AABB index supplies broad-phase picking and region querie
 avoid generating unselected projected face grids. Immutable-document query indexes memoize brush,
 group, layer, and entity-link geometry. Static world edges remain resident across selection, hover,
 tool, group, link-mode, and diagnostic changes; those states draw through a separate compact overlay
-buffer. Document/reference/visibility/theme changes rebuild world edges, while document edits still
-retain unchanged spatial solid batches. Each viewport redraws only when its camera, dimensions,
+buffer. Document/reference/visibility/theme changes rebuild the scene index, but immutable per-brush
+edge and solid sources survive document revisions. The renderer repacks and uploads only the
+512-unit spatial batches containing changed brushes, then frustum-culls those batches per viewport.
+This stays inside the native TypeGPU architecture: TypeGPU owns schemas, shaders, bind groups, and
+pipelines, while immutable batch uploads use the deliberate raw WebGPU interoperability boundary.
+Each viewport redraws only when its camera, dimensions,
 grid, or the shared scene version changes. Material catalog changes retain GPU textures and bind groups for
 unchanged immutable material entries and replace only changed or removed names. Editor viewports
 render into four-sample color and depth targets before resolving to each canvas. World and overlay
@@ -588,6 +592,12 @@ point rather than a replacement for the reference-hardware gate.
 A follow-up retained-edge drill measured single-brush selection in the same 8,000-brush document at
 12.0 ms versus 19.4 ms with world-buffer reuse disabled. The performance gate now records and caps
 selection independently so future scene refactors cannot hide selection latency inside load timing.
+
+On 2026-08-29, spatial source retention removed full-map edge and solid reconstruction from
+single-brush document edits. The native Linux GPU drill loaded the 8,000-brush fixture in 2.19
+seconds, measured selection/translate/material/undo at 12.5/0.7/56.0/37.0 ms, and sustained a 16.8
+ms p95 frame interval. Focused batch tests assert that unchanged CPU vertex sources and GPU buffers
+are retained, while a changed source replaces only its containing spatial batch.
 
 GitHub-hosted CI keeps browser coverage deliberately bounded: `npm run test:browser:ci` runs a
 serial smoke set for routing and a real WebGPU-backed WebMCP edit/undo after the complete static,

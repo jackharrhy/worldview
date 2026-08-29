@@ -1,8 +1,10 @@
 import type { Bounds } from '../core/index.js';
 import type { SolidBatch } from './scene-solid-batches.js';
+import type { LineBatch } from './scene-line-batches.js';
 
 export interface SceneBuffers {
   readonly solids: readonly SolidBatch[];
+  readonly lineBatches: readonly LineBatch[];
   readonly lines: GPUBuffer;
   readonly lineCount: number;
   readonly overlayLines: GPUBuffer;

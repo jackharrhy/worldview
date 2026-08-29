@@ -7,14 +7,23 @@ export interface SolidBatch {
   readonly buffer: GPUBuffer;
   readonly count: number;
   readonly bounds: Bounds;
+  readonly sources: readonly SolidBatchSource[];
+}
+
+interface SolidBatchSource {
+  readonly key: string;
+  readonly vertices: number[];
 }
 
 interface PendingSolidBatch {
   readonly cacheKey: string;
   readonly materialName: string;
-  readonly vertices: number[];
-  readonly signatures: Set<string>;
+  readonly sources: Map<string, SolidBatchSource>;
   bounds: Bounds;
+}
+
+interface VertexSink {
+  push(...vertices: number[]): number;
 }
 
 const SPATIAL_BATCH_SIZE = 512;
@@ -85,55 +94,73 @@ function upload(device: GPUDevice, data: Float32Array): GPUBuffer {
 /** Collects material batches in stable world-space cells so viewports can frustum-cull dense maps. */
 export class SolidBatchBuilder {
   private readonly batches = new Map<string, PendingSolidBatch>();
+  private readonly previousSources: ReadonlyMap<string, SolidBatchSource>;
+  private readonly retainedSourceKeys = new Set<string>();
+  private readonly discardedWrites: VertexSink = { push: () => 0 };
 
-  public constructor(private readonly previous: readonly SolidBatch[] = []) {}
+  public constructor(private readonly previous: readonly SolidBatch[] = []) {
+    this.previousSources = new Map(
+      previous.flatMap((batch) => batch.sources.map((source) => [source.key, source] as const)),
+    );
+  }
 
   public vertices(
     materialName: string,
     bounds: Bounds,
     offset: Vec3,
     sourceSignature: string,
-  ): number[] {
+  ): VertexSink {
     const translated = translatedBounds(bounds, offset);
     const center = translated.min.map((minimum, axis) => (minimum + translated.max[axis]!) / 2);
     const cell = center.map((value) => Math.floor(value / SPATIAL_BATCH_SIZE));
     const key = `${materialName.trim().toLowerCase()}\0${cell.join(',')}`;
+    const sourceKey = `${key}\0${sourceSignature}`;
     const existing = this.batches.get(key);
     if (existing) {
       existing.bounds = includeBounds(existing.bounds, translated);
-      existing.signatures.add(sourceSignature);
-      return existing.vertices;
+      const source = existing.sources.get(sourceKey);
+      if (source) {
+        return this.retainedSourceKeys.has(sourceKey) ? this.discardedWrites : source.vertices;
+      }
+      const previousSource = this.previousSources.get(sourceKey);
+      const created = previousSource ?? { key: sourceKey, vertices: [] };
+      if (previousSource) this.retainedSourceKeys.add(sourceKey);
+      existing.sources.set(sourceKey, created);
+      return previousSource ? this.discardedWrites : created.vertices;
     }
+    const previousSource = this.previousSources.get(sourceKey);
+    const source = previousSource ?? { key: sourceKey, vertices: [] };
+    if (previousSource) this.retainedSourceKeys.add(sourceKey);
     const created: PendingSolidBatch = {
       cacheKey: key,
       materialName,
-      vertices: [],
-      signatures: new Set([sourceSignature]),
+      sources: new Map([[sourceKey, source]]),
       bounds: translated,
     };
     this.batches.set(key, created);
-    return created.vertices;
+    return previousSource ? this.discardedWrites : source.vertices;
   }
 
   public finish(device: GPUDevice): readonly SolidBatch[] {
     const previousByKey = new Map(this.previous.map((batch) => [batch.cacheKey, batch]));
-    return [...this.batches.values()].map(
-      ({ cacheKey, materialName, vertices, signatures, bounds }) => {
-        const signature = [...signatures].join('\0');
-        const count = vertices.length / 8;
-        const previous = previousByKey.get(cacheKey);
-        return {
-          cacheKey,
-          signature,
-          materialName,
-          buffer:
-            previous?.signature === signature && previous.count === count
-              ? previous.buffer
-              : upload(device, new Float32Array(vertices)),
-          count,
-          bounds,
-        };
-      },
-    );
+    return [...this.batches.values()].map(({ cacheKey, materialName, sources, bounds }) => {
+      const sourceList = [...sources.values()];
+      const signature = sourceList.map(({ key }) => key).join('\0');
+      const vertices = sourceList.flatMap((source) => source.vertices);
+      const count = vertices.length / 8;
+      const previous = previousByKey.get(cacheKey);
+      return {
+        cacheKey,
+        signature,
+        materialName,
+        buffer:
+          previous?.signature === signature && previous.count === count
+            ? previous.buffer
+            : upload(device, new Float32Array(vertices)),
+        count,
+        bounds,
+        sources: sourceList,
+      };
+    });
   }
 }
