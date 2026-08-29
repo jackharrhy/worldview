@@ -30,7 +30,7 @@ endpoint in 4orm. Registration tests and a Worldview callback integration test p
 
 ## Identity versus authorization
 
-The 4orm subject is the durable external identity. Worldview project roles, personal folders,
-guest grants, and sessions are Worldview data. A refreshed userinfo response updates presentation
+The 4orm subject is the durable external identity. Worldview project roles, personal folders, and
+sessions are Worldview data. A refreshed userinfo response updates presentation
 fields but never changes project ownership. The 4orm administrator bit grants an audited support
 override; normal authorization continues to use project membership.

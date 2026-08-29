@@ -202,7 +202,8 @@ export class CollaborationUiPort {
   private readonly store = new SnapshotStore<CollaborationUiSnapshot>({
     dialogOpen: false,
     state: 'Local only',
-    description: 'Start an accountless session from this map, then share the private room link.',
+    description:
+      'Live collaboration requires a hosted project and a 4orm account. This local map stays offline.',
     displayName: '',
     shareLink: '',
     live: false,

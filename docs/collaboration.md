@@ -5,11 +5,11 @@ Worldview remains a local-first solo editor. Collaboration is an optional mode a
 a network for ordinary editing, or move pointer, camera, preview, renderer, or asset state into a
 remote service.
 
-This note records the current collaboration direction and implemented foundation. The editor now
-ships an accountless live-link mode over the semantic operation layer, convergence buffer, offline
-outbox, multi-tab transport, and portable `MapRoom` service. Game-inspired generated aliases and
-colored badges make each participant's active viewport and selection state visible without an
-account profile.
+This note records the current collaboration direction and implemented foundation. The editor ships
+the semantic operation layer, convergence buffer, offline outbox, multi-tab transport, and portable
+`MapRoom` service. Public deployments expose rooms only for hosted maps authorized by short-lived
+tickets issued to 4orm-backed Worldview sessions. Game-inspired aliases and colored badges make
+each participant's active viewport and selection state visible.
 
 ## Reference systems
 
@@ -194,10 +194,8 @@ the editor's 8,000-brush target.
 - `EditorApplication.joinCollaboration()` deliberately initializes or adopts a room baseline and
   owns the bridge/socket lifetime; `leaveCollaboration()` disconnects them while retaining the
   ordinary local document. Neither the constructor nor `start()` enables multiplayer implicitly.
-- The editor's Live collaboration dialog creates a 144-bit room token, places it only in the URL
-  fragment, initializes the current map as the room baseline, and exposes a copyable link. Opening
-  that link automatically joins with a stable browser-local actor ID and an editable guest name.
-  Leaving retains an ordinary local working copy. Presence carries colored selections, world-space
+- Hosted maps join their assigned room with a short-lived signed ticket. Local maps do not contact
+  the room service and remain ordinary offline working copies. Presence carries colored selections, world-space
   pointers, viewport/tool state, and sequenced gesture previews. Candidate documents are reduced to
   bounded semantic edit patches and rendered as remote solid-and-wireframe overlays; they never enter room
   history, source serialization, hit testing, SQLite, or the offline outbox. A durable commit or
@@ -214,17 +212,11 @@ development mode rebuilds the Worker and persists its object store beneath
 The editor's unconfigured localhost endpoint is `http://127.0.0.1:8787`, matching this command.
 `npm run dev:collaboration` remains the workerd compatibility path through Wrangler.
 
-The accountless room token is a possession capability, not an account or authorization system.
-Rooms are not end-to-end encrypted, revocable, permissioned, or suitable for public hostile ingress;
-the current service remains Tailnet/private-ingress only. Authentication, permissions, room
-revocation, rate limits, and richer conflict presentation remain subsequent delivery work.
-
-The hosted-project phase closes that public-ingress limitation without changing the semantic
-operation engine. 4orm-backed Worldview sessions and revocable guest grants mint short-lived map
-tickets; the Worker validates a ticket before routing the connection to the room. Hosted
+The hosted-project layer protects public ingress without changing the semantic operation engine.
+4orm-backed Worldview sessions mint short-lived map tickets; the Worker rejects every non-hosted
+room and validates a ticket before routing a hosted connection to the room. Hosted
 membership, personal folders, source ownership, resources, and builds live outside the room as
-described in [`server-side-projects.md`](./server-side-projects.md). The existing accountless flow
-remains available for deliberately local maps.
+described in [`server-side-projects.md`](./server-side-projects.md).
 `npm run test:collaboration-celld-compat` enforces celld's supported Wrangler-key and binding
 boundary locally. `npm run test:collaboration-celld-live` is the opt-in, infrastructure-backed gate:
 it starts or reuses loopback-only Azurite with a persistent Docker volume, creates an isolated test
@@ -239,8 +231,8 @@ Newport's initial public deployment deliberately uses a single celld 0.4.0 node 
 Azurite on the same host. This is an availability tradeoff for a small, non-critical service, not a
 qualified production fleet: losing the host or its data volume can lose collaboration rooms.
 Traefik sends only `https://worldview.harrhy.xyz/rooms/*` to celld; its operator listener remains on
-loopback. The Worldview service and celld read the same realtime-ticket secret, while accountless
-rooms remain possession-capability links.
+loopback. The Worldview service and celld read the same realtime-ticket secret, and all routed room
+requests require a valid hosted-map ticket.
 
 Newport's Compose stack runs the published `worldview-celld-deployer:main` target as a one-shot
 bootstrap after Azurite becomes healthy. It creates the fixed `worldview-celld` blob container when

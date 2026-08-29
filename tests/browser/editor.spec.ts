@@ -612,6 +612,23 @@ test.describe('WebMCP site authoring', () => {
     expect(loadedScripts.some((url) => url.includes('/routes/editor-route.'))).toBe(true);
   });
 
+  test('keeps anonymous local maps offline when collaboration is opened @ci-smoke', async ({
+    page,
+  }) => {
+    const roomRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/rooms/')) roomRequests.push(request.url());
+    });
+    await openEditor(page, { empty: true });
+    await page.locator('#collaboration-toggle').click();
+    await expect(page.locator('#collaboration-dialog')).toBeVisible();
+    await expect(page.locator('#collaboration-description')).toContainText(
+      'requires a hosted project and a 4orm account',
+    );
+    await expect(page.getByRole('button', { name: 'Open hosted projects' })).toBeVisible();
+    expect(roomRequests).toEqual([]);
+  });
+
   test('switches and persists the editor theme', async ({ page }) => {
     await openEditor(page, { empty: true });
     const selector = page.getByLabel('Editor theme');

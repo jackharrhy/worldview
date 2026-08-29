@@ -44,31 +44,10 @@ export function Component() {
                     <span>{map.format === 'valve-220' ? 'Valve 220' : 'Classic Quake'}</span>
                     <small>r{map.room_version}</small>
                   </button>
-                  {project.role === 'owner' ? (
-                    <Form method="post">
-                      <input type="hidden" name="intent" value="share-map" />
-                      <input type="hidden" name="mapId" value={map.id} />
-                      <select name="role" defaultValue="editor" aria-label="Share permission">
-                        <option value="editor">Can edit</option>
-                        <option value="viewer">Can view</option>
-                      </select>
-                      <button>Share</button>
-                    </Form>
-                  ) : null}
                 </div>
               ))
             )}
           </div>
-          {actionData && 'shareLink' in actionData ? (
-            <label>
-              Possession share link
-              <input
-                readOnly
-                value={actionData.shareLink}
-                onFocus={(event) => event.currentTarget.select()}
-              />
-            </label>
-          ) : null}
         </section>
         {canEdit ? (
           <Form method="post" className="route-form hosted-map-form">

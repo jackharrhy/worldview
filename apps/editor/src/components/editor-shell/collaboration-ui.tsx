@@ -153,7 +153,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
             disabled={state.joining}
             onClick={() => port.invoke('start')}
           >
-            {state.joining ? 'Joining…' : 'Start session'}
+            {state.joining ? 'Joining…' : 'Open hosted projects'}
           </button>
         </div>
       </div>

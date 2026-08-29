@@ -6,10 +6,6 @@ import './routes/landing.css';
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('Editor root is missing');
 
-if (location.pathname === '/' && new URLSearchParams(location.hash.slice(1)).has('room')) {
-  history.replaceState(null, '', `/editor${location.search}${location.hash}`);
-}
-
 function RouteLoading() {
   return <main className="route-loading">Loading…</main>;
 }
@@ -54,13 +50,6 @@ const router = createBrowserRouter([
     lazy: {
       loader: async () => (await import('./routes/hosted-map-loader.js')).loader,
       Component: async () => (await import('./routes/hosted-map-route.js')).Component,
-    },
-  },
-  {
-    path: '/shared/:projectId/maps/:mapId',
-    HydrateFallback: RouteLoading,
-    lazy: {
-      Component: async () => (await import('./routes/shared-map-route.js')).Component,
     },
   },
   {

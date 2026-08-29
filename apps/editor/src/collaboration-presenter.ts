@@ -71,14 +71,6 @@ function persist(key: string, value: string): void {
   }
 }
 
-function randomToken(bytes: number): string {
-  const value = crypto.getRandomValues(new Uint8Array(bytes));
-  return btoa(String.fromCharCode(...value))
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '');
-}
-
 function collaborationEndpoint(): string {
   const configured = import.meta.env.VITE_WORLDVIEW_COLLABORATION_ENDPOINT as string | undefined;
   if (configured) return configured;
@@ -92,11 +84,6 @@ function collaborationEndpoint(): string {
     endpoint.port = '8443';
   }
   return endpoint.toString();
-}
-
-function roomFromLocation(): string | null {
-  const room = new URLSearchParams(window.location.hash.slice(1)).get('room');
-  return room && /^[A-Za-z0-9_-]{16,128}$/.test(room) ? room : null;
 }
 
 export class CollaborationPresenter {
@@ -126,12 +113,10 @@ export class CollaborationPresenter {
         this.ui.collaborationUi.update({ displayName: name });
         persist(NAME_KEY, name.trim().slice(0, 48));
       },
-      start: () => void this.startSession(),
+      start: () => location.assign('/'),
       stop: () => this.stopSession(),
       copyLink: () => void this.copyLink(),
     });
-    const roomId = roomFromLocation();
-    if (roomId) await this.join(roomId, true);
   }
 
   public async joinHostedMap(
@@ -163,12 +148,6 @@ export class CollaborationPresenter {
 
   private displayName(): string {
     return this.ui.collaborationUi.getSnapshot().displayName.trim().slice(0, 48) || 'Guest mapper';
-  }
-
-  private async startSession(): Promise<void> {
-    const roomId = randomToken(18);
-    this.setRoomLocation(roomId);
-    await this.join(roomId, false);
   }
 
   private async join(
@@ -219,7 +198,6 @@ export class CollaborationPresenter {
       this.roomId = null;
       this.setError(error instanceof Error ? error.message : String(error));
       this.ui.collaborationUi.update({ joining: false });
-      if (!fromLink && !identity?.hosted) this.clearRoomLocation();
     }
   }
 
@@ -279,14 +257,14 @@ export class CollaborationPresenter {
     this.leaveCollaboration();
     this.roomId = null;
     this.participants.clear();
-    this.clearRoomLocation();
     this.ui.collaborationUi.update({
       live: false,
       joining: false,
       shareLink: '',
       participants: [],
       state: 'Local only',
-      description: 'Start an accountless session from this map, then share the private room link.',
+      description:
+        'Live collaboration requires a hosted project and a 4orm account. This local map stays offline.',
     });
   }
 
@@ -297,16 +275,6 @@ export class CollaborationPresenter {
     } catch {
       this.setState('Copy the selected share link manually');
     }
-  }
-
-  private setRoomLocation(roomId: string): void {
-    const url = new URL(window.location.href);
-    url.hash = new URLSearchParams({ room: roomId }).toString();
-    history.replaceState(null, '', url);
-  }
-
-  private clearRoomLocation(): void {
-    history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
   }
 
   private setState(value: string): void {

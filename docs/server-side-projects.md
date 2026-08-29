@@ -11,7 +11,7 @@ owns 4orm callbacks and Worldview sessions, exposes project/build/resource APIs,
 realtime entry. Newport is the first deployment target.
 
 SQLite in WAL mode stores relational metadata: users, sessions, projects, memberships, personal
-folders, maps, resource mounts, guest grants, checkpoints, builds, and artifact references. Large
+folders, maps, resource mounts, checkpoints, builds, and artifact references. Large
 immutable values use a content-addressed `BlobStore`; the first implementation is an atomic-write
 filesystem directory on a backed-up server volume. The interface does not expose filesystem paths
 and can later target S3 or Azure Blob without changing editor contracts.
@@ -23,20 +23,15 @@ gesture previews remain ephemeral. Project metadata does not move into the map r
 
 ## Project and permission model
 
-- Owners manage project configuration, members, resource mounts, shares, maps, builds, and archive
+- Owners manage project configuration, members, resource mounts, maps, builds, and archive
   or deletion.
 - Member editors edit maps, create maps, use resources, and run builds.
 - Member viewers inspect, preview, view history, and export.
-- Guest editor/viewer grants may target one map or the whole project. Guest editors can edit the
-  granted maps but cannot build, change resources, manage membership, or perform destructive
-  project actions.
 - Personal folders organize references to accessible projects. Their arrangement is never shared.
 
-Guest tokens are random possession capabilities placed in the URL fragment. The server stores only
-a digest, supports expiration and revocation, exchanges the token for an opaque guest session, and
-removes the fragment from browser history. Authenticated and guest sessions receive short-lived,
-signed map connection tickets only after authorization. The collaboration Worker verifies the
-ticket before routing to the room and treats the attached principal and role—not client frames—as
+Only 4orm-backed Worldview sessions receive short-lived, signed map connection tickets after
+project authorization. The collaboration Worker rejects accountless rooms, verifies the ticket
+before routing to the room, and treats the attached principal and role—not client frames—as
 authoritative.
 
 ## Editor behavior

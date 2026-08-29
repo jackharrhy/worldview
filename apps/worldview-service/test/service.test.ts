@@ -50,7 +50,7 @@ function session(database: WorldviewDatabase) {
 }
 
 describe('Worldview hosted project service', () => {
-  test('creates private projects, remote maps, content-addressed source, and guest shares', async () => {
+  test('creates private projects and keeps remote maps behind a 4orm session', async () => {
     const app = await fixture();
     const { cookie } = session(app.database);
     const projectResponse = await fetch(`${app.origin}/api/projects`, {
@@ -82,37 +82,16 @@ describe('Worldview hosted project service', () => {
       project: { name: 'Lambda Complex', maps: [{ id: map.id, name: 'test-chamber.map' }] },
     });
 
-    const shareResponse = await fetch(`${app.origin}/api/projects/${project.id}/shares`, {
-      method: 'POST',
-      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mapId: map.id, role: 'editor' }),
-    });
-    const share = ((await shareResponse.json()) as { share: { token: string } }).share;
-    expect(share.token.length).toBeGreaterThan(30);
     const guestResponse = await fetch(`${app.origin}/api/guest-sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: share.token, displayName: 'Blue Headcrab' }),
+      body: JSON.stringify({ token: 'no-accountless-access' }),
     });
-    expect(guestResponse.status).toBe(201);
-    expect(guestResponse.headers.get('set-cookie')).toContain('worldview_guest=');
-    const guestCookie = guestResponse.headers.get('set-cookie')!.split(';', 1)[0]!;
-    const guestMap = await fetch(`${app.origin}/api/maps/${map.id}`, {
-      headers: { Cookie: guestCookie },
-    });
-    expect(guestMap.status).toBe(200);
-    expect(await guestMap.json()).toMatchObject({
-      map: { id: map.id, role: 'editor', displayName: 'Blue Headcrab' },
-    });
-    const guestTicket = await fetch(`${app.origin}/api/maps/${map.id}/realtime-ticket`, {
-      method: 'POST',
-      headers: { Cookie: guestCookie },
-    });
-    expect(guestTicket.status).toBe(201);
-    expect(await guestTicket.json()).toMatchObject({
-      actorId: expect.any(String),
-      displayName: 'Blue Headcrab',
-    });
+    expect(guestResponse.status).toBe(404);
+    expect((await fetch(`${app.origin}/api/maps/${map.id}`)).status).toBe(404);
+    expect(
+      (await fetch(`${app.origin}/api/maps/${map.id}/realtime-ticket`, { method: 'POST' })).status,
+    ).toBe(404);
 
     const hashes = await readFile(join(app.root, 'worldview.db'));
     expect(hashes.byteLength).toBeGreaterThan(0);

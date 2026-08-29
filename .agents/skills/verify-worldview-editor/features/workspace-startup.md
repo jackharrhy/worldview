@@ -14,7 +14,7 @@
   empty document is installed before renderer startup so the renderer initializes it once.
 - The submit button remains disabled and explicitly busy throughout the action and route load, with
   primary-button contrast retained in both themes.
-- Collaboration room hashes bypass both setup views.
+- Legacy collaboration room hashes have no routing behavior.
 
 ## Proof
 

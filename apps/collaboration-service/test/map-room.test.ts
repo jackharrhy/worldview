@@ -36,7 +36,7 @@ function hostedTicket(roomId: string, role: 'owner' | 'editor' | 'viewer' = 'edi
 }
 
 describe('MapRoom', () => {
-  it('allows accountless editor origins to initialize rooms through CORS', async () => {
+  it('answers CORS preflight but rejects accountless rooms', async () => {
     const response = await SELF.fetch('https://collaboration.test/rooms/cors-room', {
       method: 'OPTIONS',
       headers: {
@@ -47,6 +47,11 @@ describe('MapRoom', () => {
     expect(response.status).toBe(204);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     expect(response.headers.get('Access-Control-Allow-Methods')).toContain('PUT');
+    const accountless = await SELF.fetch('https://collaboration.test/rooms/cors-room');
+    expect(accountless.status).toBe(401);
+    expect(await accountless.json()).toEqual({
+      error: 'A 4orm-authenticated hosted map is required',
+    });
   });
 
   it('requires and validates signed access for hosted map rooms', async () => {

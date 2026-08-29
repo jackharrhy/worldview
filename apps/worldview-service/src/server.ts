@@ -13,7 +13,6 @@ import { RemoteBuildQueue } from './build-queue.js';
 
 const SESSION_COOKIE = 'worldview_session';
 const OAUTH_COOKIE = 'worldview_oauth';
-const GUEST_COOKIE = 'worldview_guest';
 
 export interface WorldviewServiceOptions {
   readonly database: WorldviewDatabase;
@@ -116,22 +115,15 @@ function requireUser(
 
 function mapPrincipal(request: IncomingMessage, database: WorldviewDatabase, mapId: string) {
   const user = userFor(request, database);
-  if (user) {
-    const map = database.map(mapId, user.id);
-    return map
-      ? { map, actorId: user.id, displayName: user.displayName, principalId: user.id, user }
-      : null;
-  }
-  const access = database.guestAccess(cookie(request, GUEST_COOKIE), mapId);
-  if (!access) return null;
-  const map = database.mapForGuest(mapId, access);
+  if (!user) return null;
+  const map = database.map(mapId, user.id);
   return map
     ? {
         map,
-        actorId: access.actorId,
-        displayName: access.displayName,
-        principalId: `guest:${access.shareId}`,
-        access,
+        actorId: user.id,
+        displayName: user.displayName,
+        principalId: user.id,
+        user,
       }
     : null;
 }
@@ -223,25 +215,6 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const user = userFor(request, options.database);
         return json(response, 200, { user });
       }
-      if (request.method === 'POST' && url.pathname === '/api/guest-sessions') {
-        if (!mutationAllowed(request, options.oauth.publicUrl))
-          return json(response, 403, { error: 'Cross-origin mutation rejected' });
-        const input = await body(request);
-        const result = options.database.exchangeShare(
-          text(input.token, 'token', 256),
-          text(input.displayName ?? 'Guest mapper', 'displayName', 48),
-        );
-        if (!result)
-          return json(response, 404, { error: 'Share link is invalid, expired, or revoked' });
-        setCookie(
-          response,
-          GUEST_COOKIE,
-          result.token,
-          (result.expiresAt - Date.now()) / 1000,
-          secure,
-        );
-        return json(response, 201, { ok: true });
-      }
       if (request.method === 'GET' && url.pathname === '/api/projects') {
         const user = requireUser(request, response, options.database);
         if (!user) return;
@@ -312,15 +285,9 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
       const resourcesMatch = /^\/api\/projects\/([^/]+)\/resources$/.exec(url.pathname);
       if (request.method === 'GET' && resourcesMatch) {
         const projectId = decodeURIComponent(resourcesMatch[1]!);
-        const user = userFor(request, options.database);
-        const guestMapId = url.searchParams.get('mapId');
-        const guest =
-          !user && guestMapId ? mapPrincipal(request, options.database, guestMapId) : null;
-        if (!user && (!guest || guest.map.projectId !== projectId))
-          return json(response, 401, { error: 'Authentication required' });
-        const mounts = user
-          ? options.database.listResourceMounts(projectId, user.id)
-          : options.database.listResourceMountsForProject(projectId);
+        const user = requireUser(request, response, options.database);
+        if (!user) return;
+        const mounts = options.database.listResourceMounts(projectId, user.id);
         return mounts
           ? json(response, 200, { mounts })
           : json(response, 404, { error: 'Project not found' });
@@ -357,22 +324,13 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
       );
       if (request.method === 'GET' && resourceContentMatch) {
         const projectId = decodeURIComponent(resourceContentMatch[1]!);
-        const user = userFor(request, options.database);
-        const guestMapId = url.searchParams.get('mapId');
-        const guest =
-          !user && guestMapId ? mapPrincipal(request, options.database, guestMapId) : null;
-        if (!user && (!guest || guest.map.projectId !== projectId))
-          return json(response, 401, { error: 'Authentication required' });
-        const mount = user
-          ? options.database.resourceMount(
-              projectId,
-              decodeURIComponent(resourceContentMatch[2]!),
-              user.id,
-            )
-          : options.database.resourceMountForProject(
-              projectId,
-              decodeURIComponent(resourceContentMatch[2]!),
-            );
+        const user = requireUser(request, response, options.database);
+        if (!user) return;
+        const mount = options.database.resourceMount(
+          projectId,
+          decodeURIComponent(resourceContentMatch[2]!),
+          user.id,
+        );
         if (!mount) return json(response, 404, { error: 'Resource not found' });
         const bytes = await options.blobs.get(mount.expectedSha256);
         if (!bytes) return json(response, 503, { error: 'Pinned resource cache is unavailable' });
@@ -426,10 +384,10 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           sourceHash: blob.sha256,
           sourceFingerprint: createHash('sha256').update(bytes).digest('hex'),
         };
-        const version =
-          'user' in principal
-            ? options.database.saveMapSource({ ...saveInput, userId: principal.user.id })
-            : options.database.saveGuestMapSource({ ...saveInput, access: principal.access });
+        const version = options.database.saveMapSource({
+          ...saveInput,
+          userId: principal.user.id,
+        });
         return version === null
           ? json(response, 409, { error: 'The hosted map changed; reload before overwriting it' })
           : json(response, 200, { sourceVersion: version, sha256: blob.sha256 });
@@ -524,27 +482,6 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         return json(response, 202, {
           build: { ...build, status: 'queued', sourceVersion: map.sourceVersion, quality },
         });
-      }
-      const shareMatch = /^\/api\/projects\/([^/]+)\/shares$/.exec(url.pathname);
-      if (request.method === 'POST' && shareMatch) {
-        if (!mutationAllowed(request, options.oauth.publicUrl))
-          return json(response, 403, { error: 'Cross-origin mutation rejected' });
-        const user = requireUser(request, response, options.database);
-        if (!user) return;
-        const projectId = decodeURIComponent(shareMatch[1]!);
-        if (options.database.role(projectId, user.id) !== 'owner' && !user.isAdmin)
-          return json(response, 403, { error: 'Owner access required' });
-        const input = await body(request);
-        if (input.role !== 'editor' && input.role !== 'viewer')
-          return json(response, 400, { error: 'Invalid share role' });
-        const share = options.database.createShare({
-          projectId,
-          userId: user.id,
-          role: input.role,
-          ...(typeof input.mapId === 'string' ? { mapId: input.mapId } : {}),
-          ...(typeof input.expiresAt === 'number' ? { expiresAt: input.expiresAt } : {}),
-        });
-        return json(response, 201, { share });
       }
       if (
         options.staticRoot &&

@@ -90,25 +90,26 @@ export default {
         return new Response(null, { status: 204, headers: corsHeaders });
       const roomId = roomFromPath(url.pathname);
       if (!roomId || roomId.length > 128) return json({ error: 'Not found' }, { status: 404 });
-      const stub = env.MAP_ROOMS.getByName(roomId);
-      if (roomId.startsWith('hosted_')) {
-        const authorization = request.headers.get('Authorization');
-        const ticketValue = authorization?.startsWith('Bearer ')
-          ? authorization.slice(7)
-          : url.searchParams.get('access_token');
-        const ticket = ticketValue
-          ? await verifyHostedRealtimeTicket(ticketValue, env.WORLDVIEW_REALTIME_TICKET_SECRET)
-          : null;
-        if (!ticket || ticket.roomId !== roomId) {
-          return json({ error: 'A valid hosted-map ticket is required' }, { status: 401 });
-        }
-        if (request.method === 'PUT' && ticket.role === 'viewer') {
-          return json({ error: 'Editor access is required' }, { status: 403 });
-        }
-        url.searchParams.delete('access_token');
-        url.searchParams.set('actor', ticket.actorId);
-        url.searchParams.set('role', ticket.role);
+      if (!roomId.startsWith('hosted_')) {
+        return json({ error: 'A 4orm-authenticated hosted map is required' }, { status: 401 });
       }
+      const authorization = request.headers.get('Authorization');
+      const ticketValue = authorization?.startsWith('Bearer ')
+        ? authorization.slice(7)
+        : url.searchParams.get('access_token');
+      const ticket = ticketValue
+        ? await verifyHostedRealtimeTicket(ticketValue, env.WORLDVIEW_REALTIME_TICKET_SECRET)
+        : null;
+      if (!ticket || ticket.roomId !== roomId) {
+        return json({ error: 'A valid hosted-map ticket is required' }, { status: 401 });
+      }
+      if (request.method === 'PUT' && ticket.role === 'viewer') {
+        return json({ error: 'Editor access is required' }, { status: 403 });
+      }
+      url.searchParams.delete('access_token');
+      url.searchParams.set('actor', ticket.actorId);
+      url.searchParams.set('role', ticket.role);
+      const stub = env.MAP_ROOMS.getByName(roomId);
       if (request.method === 'PUT') {
         const document: unknown = await request.json();
         if (!isMapDocument(document)) {

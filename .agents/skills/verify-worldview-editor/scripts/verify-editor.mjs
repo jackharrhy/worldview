@@ -244,8 +244,8 @@ try {
   await page.screenshot({ path: `${evidence}/01-loaded.png`, fullPage: true });
 
   if (!options.map) {
-    if (inspection.counts?.brushes !== 0) {
-      throw new Error(`New document contains ${inspection.counts?.brushes} placeholder brushes`);
+    if (inspection.counts?.primitives !== 0) {
+      throw new Error(`New document contains ${inspection.counts?.primitives} placeholder brushes`);
     }
     const created = await executeTool(page, 'worldview_create_box', {
       expectedDocumentId: inspection.documentId,
