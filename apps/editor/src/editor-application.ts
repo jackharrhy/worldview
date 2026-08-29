@@ -403,8 +403,10 @@ export class EditorApplication implements EditorStateHost {
       presenceFrame = window.requestAnimationFrame(tick);
     };
     const publishPreview = (document: MapDocument) => {
-      const edits = collaborationEditsBetween(this.state.session.document, document);
-      previewDocument = edits.length > 0 ? document : null;
+      // Pointer previews are local-first and may arrive faster than the display can paint. Keep
+      // only the latest immutable candidate here; sendPresence computes its semantic diff at the
+      // bounded presence cadence instead of repeating that document walk for every pointer event.
+      previewDocument = document === this.state.session.document ? null : document;
       if (previewDocument) {
         interactionId ??= crypto.randomUUID();
         previewSequence += 1;

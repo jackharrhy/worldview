@@ -535,7 +535,9 @@ export class RendererPresenter {
             if (event.phase === 'preview') {
               state.faceCandidate = candidate;
               state.renderer?.setDocument(candidate.document, state.session.selection);
-              app.inspector.updateInspector(candidate.document, state.session.selection);
+              // The viewport is the latency-critical feedback surface during a drag. Inspector
+              // values settle from the committed session change; rebuilding its derived model on
+              // every snapped pointer position only competes with the next visual frame.
               ui.statusMessage.textContent =
                 event.mode === 'translate'
                   ? `Face move preview: ${app.build.formatVector(event.delta)}. Release to commit.`

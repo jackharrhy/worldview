@@ -418,7 +418,10 @@ into canonical `.map` geometry or the portable project manifest.
 Collaboration wraps validated `EditorSession` commits and leaves solo editing unchanged. The client
 keeps a local IndexedDB outbox and remains editable while disconnected. Durable semantic operations
 and ephemeral presence use separate channels; pointer/drag previews, cameras, selections, GPU state,
-and local commercial/shareware resources are never canonical room state.
+and local commercial/shareware resources are never canonical room state. Local gesture candidates
+render before any network acknowledgement. Multiplayer presence retains only the newest immutable
+candidate and derives its semantic preview at a bounded 30 Hz, so collaboration work cannot create
+an unbounded pointer-event backlog.
 
 Public collaboration is available only to hosted maps. A 4orm-backed Worldview session must have a
 project role before the application service issues its short-lived room ticket; the room Worker

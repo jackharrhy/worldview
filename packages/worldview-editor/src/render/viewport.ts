@@ -355,8 +355,14 @@ export class Viewport extends ViewportPointerMove {
         expansion: event.altKey ? 'coplanar' : 'brush',
       });
     });
-    this.canvas.addEventListener('pointercancel', () => {
-      this.cancelDrag();
+    this.canvas.addEventListener('pointercancel', (event) => {
+      if (this.gestures.activePointerId === event.pointerId) this.cancelDrag();
+    });
+    this.canvas.addEventListener('lostpointercapture', () => {
+      // Capture can be lost without a pointerup when the browser, OS, or another element takes
+      // ownership. End our transient candidate immediately so the next gesture cannot inherit a
+      // logically stuck drag.
+      if (this.dragState) this.cancelDrag();
     });
     this.canvas.addEventListener('pointerleave', () => {
       if (!this.dragState) {
