@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorMaterial } from '../src/core/index.js';
 import { SourceMaterialResources } from '../src/render/materials/source-material-resources.js';
+import type { TgpuRoot, TgpuSampler } from 'typegpu';
 
 function material(name: string, value: number): EditorMaterial {
   return {
@@ -18,28 +19,31 @@ describe('source material GPU resources', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('retains unchanged textures and replaces only changed normalized names', () => {
-    vi.stubGlobal('GPUTextureUsage', { TEXTURE_BINDING: 1, COPY_DST: 2 });
-    vi.stubGlobal('GPUBufferUsage', { UNIFORM: 4, COPY_DST: 8 });
     const destroyed: string[] = [];
-    const createTexture = vi.fn(({ label }: { label: string }) => ({
-      createView: () => ({}),
-      destroy: () => destroyed.push(label),
-    }));
-    const device = {
-      queue: { writeTexture: vi.fn(), writeBuffer: vi.fn() },
+    const rawByTexture = new Map<object, { createView(): object; destroy(): void }>();
+    const createTexture = vi.fn(() => {
+      let label = '';
+      const texture = {
+        $usage: () => texture,
+        $name: (name: string) => {
+          label = name;
+          return texture;
+        },
+        write: vi.fn(),
+        destroy: () => destroyed.push(label),
+      };
+      rawByTexture.set(texture, { createView: () => ({}), destroy: texture.destroy });
+      return texture;
+    });
+    const root = {
       createTexture,
-      createBuffer: () => ({ destroy: vi.fn() }),
+      createUniform: () => ({ buffer: { destroy: vi.fn() } }),
       createBindGroup: () => ({}),
-    } as unknown as GPUDevice;
+      unwrap: (texture: object) => rawByTexture.get(texture),
+    } as unknown as TgpuRoot;
     const stone = material('STONE', 32);
     const metal = material('METAL', 96);
-    const resources = new SourceMaterialResources(
-      device,
-      {} as GPUBindGroupLayout,
-      {} as GPUSampler,
-      [stone],
-      [],
-    );
+    const resources = new SourceMaterialResources(root, {} as TgpuSampler, [stone], []);
 
     expect(createTexture).toHaveBeenCalledTimes(2); // fallback + stone
     resources.setMaterials([stone, metal]);

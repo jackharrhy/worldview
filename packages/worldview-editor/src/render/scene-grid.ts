@@ -2,6 +2,17 @@ import type { Vec3 } from '../core/index.js';
 import type { EditorViewportKind } from './types.js';
 import { DEFAULT_EDITOR_RENDER_THEME, type EditorRenderTheme } from './theme.js';
 
+export function adaptiveGridSpacing(
+  requestedSpacing: number,
+  worldUnitsPerPixel: number,
+  minimumPixels = 8,
+): number {
+  let spacing = Math.max(1, requestedSpacing);
+  const unitsPerPixel = Math.max(Number.EPSILON, worldUnitsPerPixel);
+  while (spacing / unitsPerPixel < minimumPixels) spacing *= 2;
+  return spacing;
+}
+
 export function gridVertices(
   kind: EditorViewportKind,
   requestedSpacing: number,

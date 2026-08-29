@@ -20,6 +20,17 @@ Worldview now follows that default. Solid material batches are submitted only in
 viewport; orthographic panes draw the shared projected edge buffer and their own grid/tool overlays.
 A future view preference may make faces configurable, but the default stays wireframe.
 
+The editable renderer now shares the viewer's native TypeGPU architecture: authored TypeScript GPU
+functions and typed schemas own shaders, layouts, pipelines, uniforms, textures, samplers, and bind
+groups. Command encoding and large retained vertex uploads intentionally remain at the raw WebGPU
+boundary. The first visual-quality pass on that foundation now uses four-sample render targets,
+screen-space triangle strips for consistent editor edges, and a derivative-antialiased orthographic
+grid generated in the fragment shader. Grid, ordinary geometry, and interaction overlays use
+separate screen-space widths: perspective grid lines remain fine at every camera distance while
+selection feedback stays prominent. The grid preserves the selected snap interval and promotes its
+visible interval by powers of two when zoomed out, keeping geometry aligned while preventing
+dense-grid shimmer.
+
 ### Visual selection audit
 
 | TrenchBroom convention                                 | Worldview status |
@@ -97,6 +108,7 @@ support, and minimum-size constraints.
 | Interaction                                    | Worldview status |
 | ---------------------------------------------- | ---------------- |
 | Click object; click void to clear              | Matched          |
+| 2D smallest-visible-face object picking        | Matched          |
 | Drag with an empty selection to create a shape | Matched          |
 | Modifier-click adds or removes objects         | Matched          |
 | Modifier-click selects a face in perspective   | Matched          |
@@ -106,11 +118,45 @@ support, and minimum-size constraints.
 | Drag selected objects on the viewport plane    | Matched          |
 | Vertical modifier-drag in perspective          | Matched          |
 | Near-silhouette selected-face acquisition      | Matched          |
+| Selected-brush face priority during resize     | Matched          |
+| Creation bounds align to the active grid       | Matched          |
+| Number keys select power-of-two grid sizes     | Matched          |
+| Brackets step the active grid size             | Matched          |
+| Snap selected brush/face vertices to grid      | Matched          |
 | Duplicate-and-move feedback flash              | Partial          |
 | Configurable keyboard shortcut preferences     | Deferred         |
 
 Worldview keeps browser-safe fixed shortcuts for now. A future shortcut preference surface must
 resolve conflicts by viewport/tool context rather than adding global window handlers.
+
+Grid input follows Radiant's established construction cadence: number keys 1 through 9 select
+1 through 256 unit power-of-two grids, and `[` / `]` step down or up. TrenchBroom's current grid
+model uses the same power-of-two sizes and snaps brush drawing to the active grid. Worldview snaps
+both visible drag endpoints and the orthographic view's implicit depth, including depth inherited
+from an existing selection. Its explicit Snap to grid command applies to every vertex of selected
+brushes, or only the selected face vertices in face mode; convex validation runs before one
+undoable transaction is committed.
+
+The permanent resize gesture resolves faces only from the current brush selection before it
+considers unrelated geometry under the pointer. A directly hit face on a selected brush wins first;
+near a selected silhouette, the inferred front/back face wins next. A neighboring unselected brush
+cannot steal that resize merely because its surface is closer to the camera. This follows
+TrenchBroom's resize contract and Radiant's older wording: the face nearest the cursor belongs to
+the currently selected brush.
+
+Ordinary object picking intentionally differs by viewport. Perspective keeps ray-depth ordering,
+so the frontmost object wins. XY, XZ, and YZ first
+collect every editable object under the pointer, then choose the object whose hit face has the
+smallest projected area; point entities fall back to projected bounds. Equal areas retain depth as
+the tie-breaker. This makes a small brush behind a wall selectable from an orthographic view without
+changing geometric hit rules for clip, hull, face, or topology tools.
+
+Ctrl/Command-wheel drills through the complete object candidate order in either direction and wraps
+in every viewport; Shift+Ctrl/Command-wheel drills through depth-ordered face candidates. TrenchBroom
+provides reversible object drilling with Ctrl+wheel and its 2D smallest-area heuristic. GtkRadiant's
+Shift+Alt click cycling confirms the value of an explicit orthographic drill gesture. Worldview uses
+one wheel-based vocabulary for objects and faces rather than stateful repeated clicks. These GPL
+projects informed behavior only; their implementations were not adapted.
 
 ## Controller ownership
 

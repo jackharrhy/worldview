@@ -8,7 +8,8 @@ import {
   createPointerGestureControllers,
   pointerGestureKind,
 } from '../src/render/viewport-gesture-controllers.js';
-import type { PointerDrag } from '../src/render/viewport-common.js';
+import { preferredResizeFace, type PointerDrag } from '../src/render/viewport-common.js';
+import type { FaceSelection } from '../src/core/index.js';
 
 const pointerDrag = (overrides: Partial<PointerDrag> = {}): PointerDrag =>
   ({
@@ -110,5 +111,16 @@ describe('viewport pointer gesture controllers', () => {
     const router = new ViewportGestureRouter(createPointerGestureControllers());
     expect(router.begin(value)).toBe('clip');
     expect(router.activeTracker?.drag).toBe(value);
+  });
+});
+
+describe('resize face targeting', () => {
+  it('keeps a proximate face on the selected brush ahead of unrelated visible geometry', () => {
+    const selected = { brushId: 'selected', faceId: 'selected-face' } as FaceSelection;
+    const neighbor = { brushId: 'neighbor', faceId: 'neighbor-face' } as FaceSelection;
+
+    expect(preferredResizeFace(null, null, selected, neighbor)).toBe(selected);
+    expect(preferredResizeFace(null, selected, null, neighbor)).toBe(selected);
+    expect(preferredResizeFace(null, null, null, neighbor)).toBe(neighbor);
   });
 });

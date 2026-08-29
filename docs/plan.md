@@ -156,6 +156,12 @@ that policy. Editable source rendering stays in `worldview-editor` because its f
 IDs, tool overlays, and mutable source geometry have different ownership from the BSP/lightmap
 renderer.
 
+Both rendering packages use the same native TypeGPU boundary: TypeScript-authored GPU functions,
+typed vertex and bind-group schemas, TypeGPU pipelines, uniforms, textures, samplers, and bind
+groups. Raw WebGPU remains only at the deliberate command-encoding and bulk immutable vertex-buffer
+upload boundary. The editor architecture gate rejects reintroduction of raw WGSL strings, shader
+modules, pipeline layouts, bind-group layouts, or raw render-pipeline construction.
+
 ## Editor architecture
 
 The application entrypoint is composition-only. The Vanilla-to-React shell translation is
@@ -185,13 +191,14 @@ architecture check prevents a presenter from importing that composition containe
 ownership changes. The pinned behavior and architecture comparison is recorded in
 [`trenchbroom-conformance.md`](./trenchbroom-conformance.md).
 
-The browser shell gives the viewports visual priority. A compact, consistently sized icon toolbar
-groups file, mode, selection/history, visibility, and build commands; document and build-profile
-selectors retain text where context matters. Every icon action keeps an accessible text name,
-keyboard path, focus treatment, and descriptive tooltip. Secondary document actions, uncommon
-selection commands, and visibility/locking controls live in compact accessible toolbar menus;
-frequent file, source, build, mode, history, clipboard, and transform controls remain directly
-available.
+The browser shell gives the viewports visual priority. A compact top command bar keeps frequent
+Home, New, Save, Undo, Redo, Source, and Compile actions visible, while short accessible menus hold
+open/create, recovery, build-result, and other document commands. Editing modes occupy a single
+vertical rail beside the viewports; applicable selection commands appear contextually, with grid,
+texture-lock, visibility, and uncommon edit controls anchored at the rail's foot. Document and
+build-profile selectors retain text where context matters. Every icon action keeps an accessible
+text name, keyboard path, focus treatment, descriptive tooltip, and stable presenter action
+contract. The hierarchy simplifies scanning without removing editor capability.
 
 Source viewport navigation follows the TrenchBroom editing model: once a viewport has keyboard
 focus, focus follows the pointer between source panes; orthographic panes share zoom and synchronize
@@ -202,9 +209,16 @@ row, column, and inspector boundaries are directly resizable with pointer or key
 enforce usable minimum sizes.
 The default Select tool is likewise a permanent controller stack: clicks select, selected objects
 move or resize, and a left drag creates the configured simple shape whenever the selection is empty.
+Orthographic and perspective construction bounds align component-wise to the active power-of-two
+grid. Radiant-compatible number keys 1–9 select 1–256 unit grids, brackets step the grid, and an
+undoable Snap to grid command repairs all selected brush vertices or the vertices of selected faces
+while rejecting degenerate convex results.
 Brush drawing is not exposed as a separate modal toolbar mode. Shift-resize can acquire the hidden
 adjacent face from a narrow screen-space band outside a selected brush's silhouette, while direct
 face hits and ordinary internal edges retain their normal priority.
+Ctrl/Command-wheel reversibly drills through overlapping object candidates in every viewport;
+adding Shift drills through depth-ordered face candidates. Candidate traversal wraps, retains the
+normal perspective-depth or orthographic-smallest-area ordering, and does not alter the document.
 
 Editor theming has one CSS-owned color source. Shell, panel, inspector, dialog, border, SVG, and
 viewport-chrome colors consume custom properties whose concrete palette values use OKLCH. The app
@@ -216,6 +230,12 @@ therefore follow the same theme without importing DOM or CSS APIs into the packa
 persistent System, Dark, and Light choices; runtime changes rebuild color-dependent GPU buffers but
 preserve the document, selection, camera state, and undo history.
 
+Pre-editor routes and editor chrome share the same compact, geometric interface language through
+semantic CSS variables and focused React primitives. The development-only `/design` specimen shows
+both palettes, controls, forms, project states, and representative editor chrome. Native CSS remains
+the styling foundation so presenter-owned DOM and the WebGPU theme bridge use one inspectable token
+model rather than parallel utility or CSS-in-JS systems.
+
 Renderer solids are partitioned by material and spatial cell. Structural-sharing signatures reuse
 unchanged GPU buffers across revisions, conservative frustum tests skip invisible batches, and an
 immutable median-split AABB index supplies broad-phase picking and region queries. Dense documents
@@ -225,8 +245,15 @@ tool, group, link-mode, and diagnostic changes; those states draw through a sepa
 buffer. Document/reference/visibility/theme changes rebuild world edges, while document edits still
 retain unchanged spatial solid batches. Each viewport redraws only when its camera, dimensions,
 grid, or the shared scene version changes. Material catalog changes retain GPU textures and bind groups for
-unchanged immutable material entries and replace only changed or removed names. The application
-schedules frames on demand and runs continuously only
+unchanged immutable material entries and replace only changed or removed names. Editor viewports
+render into four-sample color and depth targets before resolving to each canvas. World and overlay
+segments expand into pixel-width triangle strips in the TypeGPU vertex stage, giving stable
+antialiased edges independently of camera distance. Grid, ordinary-edge, and interaction-overlay
+draws use distinct screen-space widths so construction lines stay subordinate during close camera
+movement. Orthographic grids are generated directly in a
+derivative-antialiased fragment pass; the displayed interval promotes by powers of two below an
+eight-pixel readability threshold without changing the active snap size. The application schedules
+frames on demand and runs continuously only
 during fly-camera movement. All invalidated viewport passes encode into one command buffer and use
 one queue submission per editor frame. Pipeline compilation uses WebGPU's asynchronous API, the
 editor requests the high-performance adapter preference, and unexpected device loss becomes a

@@ -481,6 +481,32 @@ export function moveBrushVertices(
   );
 }
 
+/** Snaps selected derived brush corners component-wise and rebuilds a valid convex brush. */
+export function snapBrushVerticesToGrid(
+  brush: MapBrush,
+  vertices: readonly Vec3[],
+  gridSize: number,
+  ids: IdFactory,
+  textureLock = true,
+): MapBrush {
+  if (!Number.isFinite(gridSize) || gridSize <= 0) {
+    throw new Error('Grid size must be positive');
+  }
+  if (vertices.length === 0) throw new Error('Select at least one brush vertex to snap');
+  const snap = (value: number) => Math.round(value / gridSize) * gridSize;
+  return rebuildBrushFromHullPoints(
+    brush,
+    brushVertices(brush).map<VertexHullPoint>((point) => ({
+      point: vertices.some((selected) => samePoint(selected, point))
+        ? [snap(point[0]), snap(point[1]), snap(point[2])]
+        : point,
+      sourcePoints: [point],
+    })),
+    ids,
+    textureLock,
+  );
+}
+
 function transformBrushVertexSelection(
   brush: MapBrush,
   vertices: readonly Vec3[],

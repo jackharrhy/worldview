@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
+import '@phosphor-icons/web/regular/style.css';
 import './routes/landing.css';
 
 const root = document.querySelector<HTMLDivElement>('#app');
@@ -17,6 +18,13 @@ const router = createBrowserRouter([
     lazy: {
       loader: async () => (await import('./routes/home-loader.js')).loader,
       Component: async () => (await import('./routes/home-route.js')).Component,
+    },
+  },
+  {
+    path: '/design',
+    HydrateFallback: RouteLoading,
+    lazy: {
+      Component: async () => (await import('./routes/design-route.js')).Component,
     },
   },
   {

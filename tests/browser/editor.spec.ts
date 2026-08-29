@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   EditorSession,
   brushesInDocument,
+  brushVertices,
   createBoxBrush,
   createObjectSelection,
   createSequentialIdFactory,
@@ -85,6 +86,16 @@ function selectionBrushSource(): string {
   });
 }
 
+function offGridBrushSource(): string {
+  const ids = createSequentialIdFactory('browser-grid-snap');
+  const starter = createStarterDocument();
+  const brush = createBoxBrush([3, 5, 7], [27, 29, 31], 'GRID_SNAP', ids);
+  return serializeMap({
+    ...starter,
+    entities: [{ ...starter.entities[0]!, primitives: [brush] }, ...starter.entities.slice(1)],
+  });
+}
+
 function regularGroupSource(): string {
   const ids = createSequentialIdFactory('browser-linked-group');
   const starter = createStarterDocument();
@@ -118,6 +129,21 @@ function drillSelectionSource(): string {
   return serializeMap({
     ...starter,
     entities: [{ ...worldspawn, primitives: [front, back] }, ...starter.entities.slice(1)],
+  });
+}
+
+function orthographicDrillSelectionSource(): string {
+  const ids = createSequentialIdFactory('browser-orthographic-selection-drill');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const lowerWall = createBoxBrush([-96, -96, 0], [96, 96, 64], 'DRILL_WALL', ids);
+  const upperDetail = createBoxBrush([-32, -32, 128], [32, 32, 192], 'DRILL_DETAIL', ids);
+  return serializeMap({
+    ...starter,
+    entities: [
+      { ...worldspawn, primitives: [lowerWall, upperDetail] },
+      ...starter.entities.slice(1),
+    ],
   });
 }
 
@@ -253,6 +279,17 @@ function materialUsageSource(): string {
   });
 }
 
+function orthographicPickPrioritySource(): string {
+  const ids = createSequentialIdFactory('browser-orthographic-pick');
+  const starter = createStarterDocument();
+  const wall = createBoxBrush([-192, -192, 0], [192, 192, 16], 'PICK_WALL', ids);
+  const detail = createBoxBrush([-32, -32, 0], [32, 32, 16], 'PICK_DETAIL', ids);
+  return serializeMap({
+    ...starter,
+    entities: [{ ...starter.entities[0]!, primitives: [wall, detail] }],
+  });
+}
+
 function normalizeTestVector(value: readonly number[]): number[] {
   const magnitude = Math.hypot(...value);
   return value.map((component) => component / magnitude);
@@ -349,7 +386,7 @@ async function perspectivePoint(
   xFraction: number,
   yFraction: number,
 ): Promise<{ readonly x: number; readonly y: number }> {
-  const bounds = await page.locator('.source-canvas').nth(1).boundingBox();
+  const bounds = await page.locator('.source-canvas').nth(0).boundingBox();
   if (!bounds) throw new Error('The perspective editor canvas has no bounds');
   return {
     x: bounds.x + bounds.width * xFraction,
@@ -361,7 +398,7 @@ async function perspectiveWorldPoint(
   page: Page,
   point: readonly [number, number, number],
 ): Promise<{ readonly x: number; readonly y: number }> {
-  const bounds = await page.locator('.source-canvas').nth(1).boundingBox();
+  const bounds = await page.locator('.source-canvas').nth(0).boundingBox();
   if (!bounds) throw new Error('The perspective editor canvas has no bounds');
   const yaw = Math.PI * 0.72;
   const pitch = -0.43;
@@ -405,7 +442,7 @@ async function topWorldPoint(
   x: number,
   y: number,
 ): Promise<{ readonly x: number; readonly y: number }> {
-  const bounds = await page.locator('.source-canvas').nth(0).boundingBox();
+  const bounds = await page.locator('.source-canvas').nth(1).boundingBox();
   if (!bounds) throw new Error('The top editor canvas has no bounds');
   const span = 640;
   const aspect = bounds.width / bounds.height;
@@ -610,6 +647,15 @@ test.describe('WebMCP site authoring', () => {
     await expect(page).toHaveURL('http://127.0.0.1:5174/editor');
     await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
     expect(loadedScripts.some((url) => url.includes('/routes/editor-route.'))).toBe(true);
+  });
+
+  test('exposes the shared interface specimens in both themes @ci-smoke', async ({ page }) => {
+    await page.goto('http://127.0.0.1:5174/design');
+    await expect(page.getByRole('heading', { name: 'Interface system' })).toBeVisible();
+    await expect(page.locator('.design-theme[data-preview-theme="dark"]')).toBeVisible();
+    await expect(page.locator('.design-theme[data-preview-theme="light"]')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Editor chrome' })).toBeVisible();
+    await expect(page.locator('main [style]')).toHaveCount(0);
   });
 
   test('keeps anonymous local maps offline when collaboration is opened @ci-smoke', async ({
@@ -836,6 +882,28 @@ test.describe('WebMCP site authoring', () => {
 });
 
 test.describe('3D source authoring', () => {
+  test('orthographic views prefer the smallest visible face over the frontmost brush', async ({
+    page,
+  }) => {
+    await openEditor(page, { empty: true });
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(orthographicPickPrioritySource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('2');
+
+    const overlaps = [
+      await viewportPoint(page, 1, 0.5, 0.5),
+      await viewportPoint(page, 2, 0.5, 0.5625),
+      await viewportPoint(page, 3, 0.5, 0.5625),
+    ];
+    for (const overlap of overlaps) {
+      await page.mouse.click(overlap.x, overlap.y);
+      await expect(page.locator('#selection-kind')).toHaveText('Brush');
+      await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 0 to 32 32 16');
+      await page.keyboard.press('Escape');
+    }
+  });
+
   test('browses live issues, locates objects, filters findings, and quick-fixes with undo', async ({
     page,
   }) => {
@@ -1417,7 +1485,7 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#perspective-mode')).toContainText('PAN');
 
     await page.locator('#grid-size').selectOption('32');
-    await page.locator('.source-canvas').nth(1).focus();
+    await page.locator('.source-canvas').nth(0).focus();
     const flyStart = await perspectiveCamera(page);
     await page.keyboard.down('w');
     await page.waitForTimeout(180);
@@ -1634,13 +1702,66 @@ test.describe('3D source authoring', () => {
     await page.mouse.wheel(0, -120);
     await page.keyboard.up('Control');
     await expect(page.locator('#brush-bounds')).toHaveText('16 -72 48 to 64 -24 96');
-    await expect(page.locator('#status-message')).toContainText('Drilled selection farther');
+    await expect(page.locator('#status-message')).toContainText(
+      'Drilled object selection farther in the PERSPECTIVE view',
+    );
 
     await page.keyboard.down('Control');
     await page.mouse.wheel(0, 120);
     await page.keyboard.up('Control');
     await expect(page.locator('#brush-bounds')).toHaveText('72 -136 88 to 120 -88 136');
-    await expect(page.locator('#status-message')).toContainText('Drilled selection nearer');
+    await expect(page.locator('#status-message')).toContainText(
+      'Drilled object selection nearer in the PERSPECTIVE view',
+    );
+  });
+
+  test('wheel drilling reaches overlapping objects and faces in an orthographic view', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(orthographicDrillSelectionSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const center = await topWorldPoint(page, 0, 0);
+
+    await page.mouse.click(center.x, center.y);
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 128 to 32 32 192');
+
+    await page.keyboard.down('Control');
+    await page.mouse.move(center.x, center.y);
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -96 0 to 96 96 64');
+    await expect(page.locator('#status-message')).toContainText(
+      'Drilled object selection farther in the XY view',
+    );
+
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 128 to 32 32 192');
+
+    await page.keyboard.down('Shift');
+    await page.mouse.click(center.x, center.y);
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('Face');
+
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Shift');
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Shift');
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('-96 -96 0 to 96 96 64');
+    await expect(page.locator('#status-message')).toContainText(
+      'Drilled face selection farther in the XY view',
+    );
+
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Shift');
+    await page.mouse.wheel(0, 120);
+    await page.keyboard.up('Shift');
+    await page.keyboard.up('Control');
+    await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 128 to 32 32 192');
   });
 
   test('double-click selects every brush owned by one brush entity', async ({ page }) => {
@@ -1817,8 +1938,8 @@ test.describe('3D source authoring', () => {
   }) => {
     await openEditor(page);
     await page.getByRole('button', { name: 'Hull', exact: true }).click();
-    const start = await perspectivePoint(page, 0.5, 0.58);
-    const end = await perspectivePoint(page, 0.5, 0.4);
+    const start = await perspectiveWorldPoint(page, [0, 0, 48]);
+    const end = await perspectiveWorldPoint(page, [0, 0, 128]);
 
     await page.mouse.dblclick(start.x, start.y);
     await expect(page.locator('#hull-point-count')).toHaveText('4 points');
@@ -1941,6 +2062,50 @@ test.describe('3D source authoring', () => {
     await page.mouse.up();
     await expect(page.locator('#brush-count')).toHaveText('4');
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
+  });
+
+  test('Radiant grid keys drive snapped brush creation in orthographic views', async ({ page }) => {
+    await openEditor(page);
+    await page.locator('.source-canvas').nth(1).focus();
+    await page.keyboard.press('Digit6');
+    await expect(page.locator('#grid-size')).toHaveValue('32');
+    await page.keyboard.press('BracketRight');
+    await expect(page.locator('#grid-size')).toHaveValue('64');
+    await page.keyboard.press('BracketLeft');
+    await expect(page.locator('#grid-size')).toHaveValue('32');
+
+    const start = await topWorldPoint(page, 269, 275);
+    const end = await topWorldPoint(page, 371, 389);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 8 });
+    await page.mouse.up();
+
+    const created = brushesInDocument(await readEditorDocument(page)).at(-1)!;
+    const bounds = deriveBrush(created).bounds!;
+    expect([...bounds.min, ...bounds.max].every((value) => value % 32 === 0)).toBe(true);
+  });
+
+  test('snaps selected brush vertices to the active grid and undoes the edit', async ({ page }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(offGridBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await page.locator('.source-canvas').nth(1).focus();
+    await page.keyboard.press('Digit4');
+    await expect(page.locator('#grid-size')).toHaveValue('8');
+    const brushPoint = await topWorldPoint(page, 15, 17);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.getByRole('button', { name: 'Snap to grid', exact: true }).click();
+
+    let brush = brushesInDocument(await readEditorDocument(page))[0]!;
+    expect(brushVertices(brush).every((point) => point.every((value) => value % 8 === 0))).toBe(
+      true,
+    );
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    brush = brushesInDocument(await readEditorDocument(page))[0]!;
+    expect(deriveBrush(brush).bounds).toEqual({ min: [3, 5, 7], max: [27, 29, 31] });
   });
 
   test('Simple Shape 3D drawing supports square, cube, and height-only modifiers', async ({
@@ -2084,8 +2249,8 @@ test.describe('3D source authoring', () => {
     page,
   }) => {
     await openEditor(page);
-    const start = await perspectivePoint(page, 0.5, 0.58);
-    const end = await perspectivePoint(page, 0.5, 0.38);
+    const start = await perspectiveWorldPoint(page, [0, 0, 0]);
+    const end = await perspectiveWorldPoint(page, [0, 0, 96]);
     await page.mouse.click(start.x, start.y);
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
 
@@ -2400,8 +2565,8 @@ test.describe('3D source authoring', () => {
   }) => {
     await openEditor(page);
     await page.getByRole('button', { name: 'Face' }).click();
-    const start = await perspectivePoint(page, 0.5, 0.58);
-    const end = await perspectivePoint(page, 0.5, 0.38);
+    const start = await perspectiveWorldPoint(page, [0, 0, 0]);
+    const end = await perspectiveWorldPoint(page, [0, 0, 96]);
     await page.mouse.click(start.x, start.y);
     await expect(page.locator('#selection-kind')).toHaveText('Face');
 
@@ -2530,8 +2695,8 @@ test.describe('3D source authoring', () => {
     await page.mouse.dblclick(point.x, point.y);
     await expect(page.locator('#selection-kind')).toHaveText('6 Faces');
     await expect(page.locator('#face-extrude-section')).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Duplicate' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    await expect(page.locator('[data-action="duplicate"]')).toBeDisabled();
+    await expect(page.locator('[data-action="delete"]')).toBeDisabled();
 
     await page.getByRole('tab', { name: 'Textures' }).click();
     await page.locator('#material-name').fill('FACE_SET');
@@ -2562,7 +2727,7 @@ test.describe('3D source authoring', () => {
     await page.getByRole('button', { name: 'Apply source', exact: true }).click();
     await page.getByRole('tab', { name: 'Textures', exact: true }).click();
 
-    await expect(page.locator('#material-count')).toHaveText('2 loaded · 2 in use');
+    await expect(page.locator('#material-count')).toHaveText('4 loaded · 2 in use');
     await expect(page.locator('#material-coverage')).toBeHidden();
     await expect(page.locator('.material-tile.in-use')).toHaveCount(2);
     await page.locator('#material-sort').selectOption('usage');

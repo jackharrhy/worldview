@@ -11,6 +11,7 @@ import {
   scaleBrushVertices,
   shearBrush,
   shearBrushVertices,
+  snapBrushVerticesToGrid,
   translateBrush,
   type TransformAxis,
 } from './document.js';
@@ -25,7 +26,7 @@ import {
 } from './linked-groups.js';
 import { type BrushEdit } from './history.js';
 import { flipPointEntity, rotatePointEntity } from './point-entities.js';
-import { selectedBrushIds, selectedPointEntityIds } from './selection.js';
+import { selectedBrushIds, selectedFaceReferences, selectedPointEntityIds } from './selection.js';
 import type {
   BrushId,
   EditorSelection,
@@ -46,6 +47,56 @@ import {
 } from './session-common.js';
 import { EditorSessionSelection } from './session-selection.js';
 export abstract class EditorSessionTransforms extends EditorSessionSelection {
+  public snapSelectionToGrid(gridSize: number, ids: IdFactory, textureLock = true): boolean {
+    if (!Number.isFinite(gridSize) || gridSize <= 0) throw new Error('Grid size must be positive');
+    if (!this.currentSelection) return false;
+    const faces = selectedFaceReferences(this.currentSelection);
+    const brushIds =
+      faces.length > 0
+        ? [...new Set(faces.map((face) => face.brushId))]
+        : selectedBrushIds(this.currentSelection);
+    const vertices = faces.flatMap((selection) => {
+      const brush = findBrush(this.currentDocument, selection.brushId);
+      return (
+        (brush &&
+          deriveBrush(brush).faces.find((face) => face.faceId === selection.faceId)?.vertices) ??
+        []
+      );
+    });
+    const isOnGrid = (point: Vec3) =>
+      point.every((value) => Math.abs(value / gridSize - Math.round(value / gridSize)) <= 1e-6);
+    const targetsAlreadySnapped = brushIds.every((brushId) => {
+      const brush = findBrush(this.currentDocument, brushId);
+      if (!brush) return true;
+      const targetVertices =
+        faces.length === 0
+          ? brushVertices(brush)
+          : brushVertices(brush).filter((point) =>
+              vertices.some((target) =>
+                target.every((value, axis) => Math.abs(value - point[axis]!) <= 0.001),
+              ),
+            );
+      return targetVertices.every(isOnGrid);
+    });
+    if (targetsAlreadySnapped) return false;
+    const candidate = this.createBrushSetTransformCandidate(
+      brushIds,
+      faces.length === 0 ? 'Snap brush vertices to grid' : 'Snap face vertices to grid',
+      faces.length === 0 ? 'Snap brush vertices to grid' : 'Snap face vertices to grid',
+      (brush) =>
+        snapBrushVerticesToGrid(
+          brush,
+          faces.length === 0 ? brushVertices(brush) : vertices,
+          gridSize,
+          ids,
+          textureLock,
+        ),
+    );
+    if (!candidate) return false;
+    this.commitCandidate(candidate);
+    return true;
+  }
+
   public translateSelected(delta: Vec3, textureLock = true): boolean {
     if (!this.currentSelection || this.currentSelection.faceId) return false;
     const candidate = this.createObjectTranslationCandidate(

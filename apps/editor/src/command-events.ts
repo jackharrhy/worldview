@@ -76,6 +76,21 @@ export class CommandEvents {
     this.ui.invertSelectionButton.addEventListener('click', () =>
       this.app.document.invertEditableObjectSelection(),
     );
+    this.ui.snapSelectionToGridButton.addEventListener('click', () => {
+      try {
+        if (
+          !this.state.session.snapSelectionToGrid(
+            this.state.activeGridSize,
+            createSequentialIdFactory(`grid-snap-${this.state.session.document.revision + 1}`),
+            this.ui.textureLock.checked,
+          )
+        ) {
+          this.ui.statusMessage.textContent = 'Select a brush or face to snap to the grid.';
+        }
+      } catch (error) {
+        this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+      }
+    });
     this.ui.duplicateButton.addEventListener('click', () => this.app.document.duplicateSelection());
     this.ui.copyButton.addEventListener('click', () => void this.app.document.copySelection());
     this.ui.pasteButton.addEventListener(

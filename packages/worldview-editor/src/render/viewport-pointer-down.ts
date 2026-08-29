@@ -16,6 +16,7 @@ import {
 
 import {
   isBrushRayHit,
+  preferredResizeFace,
   selectionForHit,
   selectionContainsHit,
   type PointerDrag,
@@ -151,7 +152,7 @@ export abstract class ViewportPointerDown extends ViewportTools {
         !sweep
           ? needsBrushHit
             ? (this.interaction.hitTests(ray.origin, ray.direction).find(isBrushRayHit) ?? null)
-            : this.interaction.hitTest(ray.origin, ray.direction)
+            : this.selectionHitAt(event.clientX, event.clientY)
           : null;
       const creationReferenceBounds =
         creating && currentSelection ? this.interaction.brushBounds(currentSelection) : null;
@@ -186,13 +187,22 @@ export abstract class ViewportPointerDown extends ViewportTools {
         event.shiftKey && tool === 'select' && currentSelection && !currentSelection.faceId
           ? (this.proximateSelectedFaceAt(event.clientX, event.clientY)?.selection ?? null)
           : null;
+      const selectedVisibleFaceSelection =
+        visibleFaceSelection && hit && selectionContainsHit(currentSelection, hit)
+          ? visibleFaceSelection
+          : null;
       const togglingSelectedVisibleFace =
         event.shiftKey &&
         visibleFaceSelection &&
         isFaceSelected(currentSelection, visibleFaceSelection.brushId, visibleFaceSelection.faceId);
       const rawFaceSelection: EditorFaceDragEvent['selection'] | null = togglingSelectedVisibleFace
         ? visibleFaceSelection
-        : (hitFaceHandle?.selection ?? visibleFaceSelection ?? proximateFaceSelection);
+        : preferredResizeFace(
+            hitFaceHandle?.selection ?? null,
+            selectedVisibleFaceSelection,
+            proximateFaceSelection,
+            visibleFaceSelection,
+          );
       const faceTransferMode: FaceAttributeTransferMode | null =
         supportsFaceTransfer && this.faceTransferSequenceSource
           ? event.ctrlKey || event.metaKey

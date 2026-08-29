@@ -200,7 +200,7 @@ export class SessionPresenter {
                           ? 'Scale tool active. Drag a side, edge, or corner handle. The opposite handle stays fixed; hold Alt to anchor at center or Shift for proportional axes. Selected vertex or edge handles take priority over brushes.'
                           : tool === 'shear'
                             ? 'Shear tool active. Drag horizontally to offset the viewport plane by snapped grid units. Selected vertex or edge handles take priority over brushes.'
-                            : 'Default tool active. With nothing selected, drag in any viewport to draw the configured simple shape; click objects to select them. Drag selected objects on XY in 3D; Alt moves vertically and Shift locks an axis. Shift-drag a selected brush face to resize it; add Ctrl/Command to split, Alt to move the face freely, or both to stamp. Ctrl/Command-drag duplicates selected brushes or paint-selects unselected ones; Ctrl/Command-wheel drills through 3D hits. Shift-click selects a face.';
+                            : 'Default tool active. With nothing selected, drag in any viewport to draw the configured simple shape; click objects to select them. Drag selected objects on XY in 3D; Alt moves vertically and Shift locks an axis. Shift-drag a selected brush face to resize it; add Ctrl/Command to split, Alt to move the face freely, or both to stamp. Ctrl/Command-drag duplicates selected brushes or paint-selects unselected ones. Ctrl/Command-wheel drills through overlapping objects in any view; add Shift to drill through faces. Shift-click selects a face.';
     this.inspector.updateInspector(
       tool === 'sweep' && this.state.sweepCandidate
         ? this.state.sweepCandidate.document

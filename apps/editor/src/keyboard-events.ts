@@ -16,6 +16,30 @@ export class KeyboardEvents {
     window.addEventListener('keydown', (event) => {
       if (event.defaultPrevented) return;
       const editingText = this.app.document.isTextEditingTarget(event.target);
+      if (!editingText && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        const directGridIndex = /^Digit([1-9])$/.exec(event.code)?.[1];
+        const gridSizes = [1, 2, 4, 8, 16, 32, 64, 128, 256] as const;
+        const currentIndex = gridSizes.indexOf(
+          this.state.activeGridSize as (typeof gridSizes)[number],
+        );
+        const steppedIndex =
+          event.key === '['
+            ? Math.max(0, currentIndex - 1)
+            : event.key === ']'
+              ? Math.min(gridSizes.length - 1, currentIndex + 1)
+              : null;
+        const nextGridSize = directGridIndex
+          ? gridSizes[Number(directGridIndex) - 1]
+          : steppedIndex === null
+            ? undefined
+            : gridSizes[steppedIndex];
+        if (nextGridSize !== undefined && this.state.activeTool !== 'sweep') {
+          event.preventDefault();
+          this.ui.gridSizeSelect.value = String(nextGridSize);
+          this.ui.gridSizeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          return;
+        }
+      }
       if (event.key === 'Escape' && this.state.viewFilterPopoverOpen) {
         event.preventDefault();
         this.app.organization.setViewFilterPopoverOpen(false);

@@ -26,12 +26,13 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@jackharrhy/worldview": "*",
+    "typegpu": "0.12.1",
     "wgpu-matrix": "^3.4.0"
   },
   "engines": {

@@ -62,6 +62,16 @@ for (const file of files) {
   if (/\.primitives\s+as\s+(?:readonly\s+)?MapBrush\[\]/.test(source)) {
     violations.push(`${file}: narrow MapPrimitive by its kind instead of asserting a brush array`);
   }
+  if (
+    file.startsWith('packages/worldview-editor/src/render/') &&
+    /createShaderModule\s*\(|createPipelineLayout\s*\(|createBindGroupLayout\s*\(|(?:\bdevice|this\.device)\.createRenderPipeline(?:Async)?\s*\(|\/\*\s*wgsl\s*\*\//.test(
+      source,
+    )
+  ) {
+    violations.push(
+      `${file}: editor shaders, layouts, and pipelines must use the TypeGPU renderer boundary`,
+    );
+  }
 }
 
 const compositionRoot = 'apps/editor/src/main.tsx';

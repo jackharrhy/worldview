@@ -104,6 +104,7 @@ export {
   intersectBrushes,
   moveBrushFace,
   moveBrushVertices,
+  snapBrushVerticesToGrid,
   rotateBrush,
   rotateBrushVertices,
   removeBrush,

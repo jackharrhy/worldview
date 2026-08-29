@@ -1,106 +1,103 @@
-import { LINE_SHADER, SOLID_SHADER, type Pipelines } from './viewport-common.js';
+import tgpu, { type TgpuRenderPipeline, type TgpuRoot } from 'typegpu';
+import {
+  gridFragment,
+  gridVertex,
+  lineFragment,
+  lineVertex,
+  solidFragment,
+  solidVertex,
+} from './gpu-shaders.js';
+import { lineSegmentLayout, solidVertexLayout } from './gpu-schemas.js';
+
+export const EDITOR_SAMPLE_COUNT = 4;
+
+export interface EditorPipelines {
+  readonly solid: TgpuRenderPipeline;
+  readonly lines: TgpuRenderPipeline;
+  readonly grid: TgpuRenderPipeline;
+}
 
 export interface RendererGpuRuntime {
+  readonly root: TgpuRoot;
   readonly device: GPUDevice;
   readonly format: GPUTextureFormat;
-  readonly pipelines: Pipelines;
-  readonly bindGroupLayout: GPUBindGroupLayout;
-  readonly materialBindGroupLayout: GPUBindGroupLayout;
-  readonly materialSampler: GPUSampler;
+  readonly pipelines: EditorPipelines;
+  readonly materialSampler: ReturnType<TgpuRoot['createSampler']>;
 }
 
 export async function createRendererGpuRuntime(): Promise<RendererGpuRuntime> {
   if (!navigator.gpu) throw new Error('This browser does not expose WebGPU');
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-  if (!adapter) throw new Error('No WebGPU adapter is available');
-  const device = await adapter.requestDevice();
+  const root = await tgpu.init({
+    adapter: { powerPreference: 'high-performance' },
+  });
+  const device = root.device;
   const format = navigator.gpu.getPreferredCanvasFormat();
-  const bindGroupLayout = device.createBindGroupLayout({
-    entries: [
-      {
-        binding: 0,
-        visibility: GPUShaderStage.VERTEX,
-        buffer: { type: 'uniform' },
-      },
-    ],
-  });
-  const materialBindGroupLayout = device.createBindGroupLayout({
-    entries: [
-      { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
-      { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-      {
-        binding: 2,
-        visibility: GPUShaderStage.FRAGMENT,
-        buffer: { type: 'uniform' },
-      },
-    ],
-  });
-  const materialSampler = device.createSampler({
+  const materialSampler = root.createSampler({
     addressModeU: 'repeat',
     addressModeV: 'repeat',
     magFilter: 'nearest',
     minFilter: 'nearest',
     mipmapFilter: 'nearest',
   });
-  const solidPipelineLayout = device.createPipelineLayout({
-    bindGroupLayouts: [bindGroupLayout, materialBindGroupLayout],
-  });
-  const linePipelineLayout = device.createPipelineLayout({
-    bindGroupLayouts: [bindGroupLayout],
-  });
-  const solidModule = device.createShaderModule({ code: SOLID_SHADER });
-  const lineModule = device.createShaderModule({ code: LINE_SHADER });
-  const solidDescriptor: GPURenderPipelineDescriptor = {
-    label: 'Worldview editor solid pipeline',
-    layout: solidPipelineLayout,
-    vertex: {
-      module: solidModule,
-      entryPoint: 'vertexMain',
-      buffers: [
-        {
-          arrayStride: 32,
-          attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x3' },
-            { shaderLocation: 1, offset: 12, format: 'float32x3' },
-            { shaderLocation: 2, offset: 24, format: 'float32x2' },
-          ],
-        },
-      ],
+  const solid = root.createRenderPipeline({
+    vertex: solidVertex,
+    fragment: solidFragment,
+    attribs: {
+      position: solidVertexLayout.attrib.position,
+      color: solidVertexLayout.attrib.color,
+      uv: solidVertexLayout.attrib.uv,
     },
-    fragment: { module: solidModule, entryPoint: 'fragmentMain', targets: [{ format }] },
+    targets: { format },
     primitive: { topology: 'triangle-list', cullMode: 'none' },
-    depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' },
-  };
-  const lineDescriptor: GPURenderPipelineDescriptor = {
-    label: 'Worldview editor line pipeline',
-    layout: linePipelineLayout,
-    vertex: {
-      module: lineModule,
-      entryPoint: 'vertexMain',
-      buffers: [
-        {
-          arrayStride: 24,
-          attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x3' },
-            { shaderLocation: 1, offset: 12, format: 'float32x3' },
-          ],
-        },
-      ],
+    depthStencil: {
+      format: 'depth24plus',
+      depthWriteEnabled: true,
+      depthCompare: 'less',
     },
-    fragment: { module: lineModule, entryPoint: 'fragmentMain', targets: [{ format }] },
-    primitive: { topology: 'line-list' },
-    depthStencil: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less-equal' },
-  };
-  const [solid, lines] = await Promise.all([
-    device.createRenderPipelineAsync(solidDescriptor),
-    device.createRenderPipelineAsync(lineDescriptor),
-  ]);
+    multisample: { count: EDITOR_SAMPLE_COUNT },
+  });
+  const lines = root.createRenderPipeline({
+    vertex: lineVertex,
+    fragment: lineFragment,
+    attribs: {
+      start: lineSegmentLayout.attrib.start,
+      startColor: lineSegmentLayout.attrib.startColor,
+      end: lineSegmentLayout.attrib.end,
+      endColor: lineSegmentLayout.attrib.endColor,
+    },
+    targets: { format },
+    primitive: { topology: 'triangle-list' },
+    depthStencil: {
+      format: 'depth24plus',
+      depthWriteEnabled: false,
+      depthCompare: 'less-equal',
+    },
+    multisample: { count: EDITOR_SAMPLE_COUNT },
+  });
+  const grid = root.createRenderPipeline({
+    vertex: gridVertex,
+    fragment: gridFragment,
+    targets: {
+      format,
+      blend: {
+        color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+        alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+      },
+    },
+    primitive: { topology: 'triangle-list' },
+    depthStencil: {
+      format: 'depth24plus',
+      depthWriteEnabled: false,
+      depthCompare: 'always',
+    },
+    multisample: { count: EDITOR_SAMPLE_COUNT },
+  });
+  await Promise.all([solid.initAsync(), lines.initAsync(), grid.initAsync()]);
   return {
+    root,
     device,
     format,
-    pipelines: { solid, lines },
-    bindGroupLayout,
-    materialBindGroupLayout,
+    pipelines: { solid, lines, grid },
     materialSampler,
   };
 }

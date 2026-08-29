@@ -228,8 +228,9 @@ export class RendererPresenter {
             ui.statusMessage.textContent = `Paint selected ${count} ${subject}.`;
             ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / ${faces.length > 0 ? 'face' : 'object'} paint ${count}`;
           } else if (intent.drill) {
-            ui.statusMessage.textContent = `Drilled selection ${intent.drill} in the 3D view.`;
-            ui.cameraPointerContext.textContent = `PERSPECTIVE / drill ${intent.drill}`;
+            const target = intent.drillTarget === 'face' ? 'face' : 'object';
+            ui.statusMessage.textContent = `Drilled ${target} selection ${intent.drill} in the ${viewport.toUpperCase()} view.`;
+            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / ${target} drill ${intent.drill}`;
           } else if (
             selection &&
             !selection.faceId &&

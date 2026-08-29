@@ -69,6 +69,12 @@ const historyActions: readonly ActionSpec[] = [
 
 const primaryHistoryActions = historyActions.filter(({ action }) => action === 'show-source');
 const documentMenuActions = historyActions.filter(({ action }) => action !== 'show-source');
+const primaryFileActions = fileActions.filter(({ action }) =>
+  ['home', 'new', 'download'].includes(action),
+);
+const fileMenuActions = fileActions.filter(
+  ({ action }) => !['home', 'new', 'download'].includes(action),
+);
 
 const buildActions: readonly ActionSpec[] = [
   { action: 'compile', icon: 'hammer', label: 'Compile', title: 'Compile map' },
@@ -179,6 +185,13 @@ const selectionActions: readonly ActionSpec[] = [
     title: 'Invert selection (Ctrl/Command+Shift+A)',
   },
   {
+    action: 'snap-selection-to-grid',
+    icon: 'grid-four',
+    label: 'Snap to grid',
+    title: 'Snap selected brush or face vertices to the current grid',
+    disabled: true,
+  },
+  {
     action: 'undo',
     icon: 'arrow-counter-clockwise',
     label: 'Undo',
@@ -280,12 +293,17 @@ const visibilityActions: readonly ActionSpec[] = [
   },
 ];
 
-const primarySelectionActions = selectionActions.filter(
-  ({ action }) => !['select-all', 'invert-selection', 'clear-repeat-commands'].includes(action),
+const primaryEditActions = selectionActions.filter(({ action }) =>
+  ['undo', 'redo'].includes(action),
 );
-const selectionMenuActions = selectionActions.filter(({ action }) =>
-  ['select-all', 'invert-selection', 'clear-repeat-commands'].includes(action),
+const contextualEditActions = selectionActions.filter(
+  ({ action }) => !['undo', 'redo', 'invert-selection', 'clear-repeat-commands'].includes(action),
 );
+const editMenuActions = selectionActions.filter(({ action }) =>
+  ['invert-selection', 'clear-repeat-commands'].includes(action),
+);
+const primaryBuildActions = buildActions.filter(({ action }) => action === 'compile');
+const buildMenuActions = buildActions.filter(({ action }) => action !== 'compile');
 
 function DocumentName({ shellState }: EditorChromeProps) {
   const documentName = useSyncExternalStore(
@@ -407,19 +425,26 @@ function TopBar({ shellState }: EditorChromeProps) {
       <nav className="top-actions" aria-label="Document actions">
         <ActionGroup
           label="Files"
-          actions={fileActions}
+          actions={primaryFileActions}
           onAction={(action) => {
             if (action === 'home') shellState.workspaceHome.invoke('showHome');
           }}
         />
+        <ActionMenu label="Open and create" icon="folder-open" actions={fileMenuActions} />
         <select id="project-map" aria-label="Project map" hidden />
+        <ActionGroup label="History" actions={primaryEditActions} />
         <ActionGroup label="Source" actions={primaryHistoryActions} />
-        <ActionMenu label="More document actions" icon="dots-three" actions={documentMenuActions} />
+        <ActionMenu
+          label="More document actions"
+          icon="clock-counter-clockwise"
+          actions={documentMenuActions}
+        />
         <div className="toolbar-group build-actions" aria-label="Build">
           <select id="build-profile" aria-label="Build profile" hidden />
-          {buildActions.map((action) => (
+          {primaryBuildActions.map((action) => (
             <ActionButton key={action.action} {...action} />
           ))}
+          <ActionMenu label="Build results" icon="caret-down" actions={buildMenuActions} />
         </div>
       </nav>
       <CollaborationPresence port={shellState.collaborationUi} />
@@ -472,28 +497,26 @@ function ToolRail() {
           </button>
         ))}
       </div>
-      <span className="toolrail-rule" aria-hidden="true" />
       <ActionGroup
-        label="Selection and history"
-        actions={primarySelectionActions}
+        label="Selection commands"
+        actions={contextualEditActions}
         className="selection-actions"
       />
-      <ActionMenu label="More edit actions" icon="dots-three" actions={selectionMenuActions} />
-      <span className="toolrail-rule" aria-hidden="true" />
+      <ActionMenu label="More edit actions" icon="dots-three" actions={editMenuActions} />
+      <span className="toolrail-spacer" />
       <ActionMenu label="Visibility and locking" icon="eye" actions={visibilityActions} />
-      <span className="toolrail-rule" aria-hidden="true" />
-      <label className="tool-select">
-        Grid
+      <label className="tool-select" title="Grid size">
         <select id="grid-size" aria-label="Grid size" defaultValue={16}>
-          {[1, 2, 4, 8, 16, 32, 64].map((size) => (
+          {[1, 2, 4, 8, 16, 32, 64, 128, 256].map((size) => (
             <option key={size} value={size}>
               {size}
             </option>
           ))}
         </select>
       </label>
-      <label className="tool-toggle">
-        <input id="texture-lock" type="checkbox" defaultChecked /> Texture lock
+      <label className="tool-toggle" title="Texture lock">
+        <input id="texture-lock" type="checkbox" defaultChecked />
+        <i className="ph ph-lock-key" aria-hidden="true" />
       </label>
       <button
         className="view-filter-toggle icon-button"
@@ -506,10 +529,6 @@ function ToolRail() {
         <span className="toolbar-label">View</span>
         <span id="view-filter-count">0</span>
       </button>
-      <span className="toolrail-spacer" />
-      <span className="tool-help">
-        RMB look · Alt+RMB orbit · MMB pan · WASD/QX fly · Home focus
-      </span>
     </section>
   );
 }

@@ -72,7 +72,7 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
           const ray = this.rayAt(event.clientX, event.clientY);
           const hit = event.shiftKey
             ? (this.interaction.hitTests(ray.origin, ray.direction).find(isBrushRayHit) ?? null)
-            : this.interaction.hitTest(ray.origin, ray.direction);
+            : this.selectionHitAt(event.clientX, event.clientY);
           const selection = this.interaction.currentSelection();
           const proximateFace =
             event.shiftKey && selection && !selection.faceId
@@ -164,8 +164,7 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
         this.canvas.closest('.viewport-pane')?.classList.add('camera-panning');
         this.notifyCamera('pan');
       } else if (drag.button === 0 && drag.moved >= 5 && drag.objectPainting) {
-        const ray = this.rayAt(event.clientX, event.clientY);
-        const hit = this.interaction.hitTest(ray.origin, ray.direction);
+        const hit = this.selectionHitAt(event.clientX, event.clientY);
         const candidates = [drag.hit, hit ? selectionForHit(hit) : null];
         for (const candidate of candidates) {
           if (candidate?.brushId) {

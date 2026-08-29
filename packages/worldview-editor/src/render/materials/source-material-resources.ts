@@ -5,6 +5,7 @@ import {
   type MaterialResource,
 } from '../material-resources.js';
 import type { EditorSpriteMaterial } from '../types.js';
+import type { TgpuBindGroup, TgpuRoot, TgpuSampler } from 'typegpu';
 
 /** Owns the source view's fallback, map-material, and sprite-material GPU resources. */
 export class SourceMaterialResources {
@@ -15,15 +16,14 @@ export class SourceMaterialResources {
   private sprites: readonly EditorSpriteMaterial[];
 
   public constructor(
-    private readonly device: GPUDevice,
-    private readonly bindGroupLayout: GPUBindGroupLayout,
-    private readonly sampler: GPUSampler,
+    private readonly root: TgpuRoot,
+    private readonly sampler: TgpuSampler,
     materials: readonly EditorMaterial[],
     sprites: readonly EditorSpriteMaterial[],
   ) {
     this.materials = materials;
     this.sprites = sprites;
-    this.fallback = createMaterialResource(device, bindGroupLayout, sampler);
+    this.fallback = createMaterialResource(root, sampler);
     this.rebuild();
   }
 
@@ -37,7 +37,7 @@ export class SourceMaterialResources {
     this.rebuild();
   }
 
-  public bindGroup(materialName: string): GPUBindGroup {
+  public bindGroup(materialName: string): TgpuBindGroup {
     return (
       this.resources.get(materialName.trim().toLowerCase())?.bindGroup ?? this.fallback.bindGroup
     );
@@ -62,10 +62,7 @@ export class SourceMaterialResources {
     }
     for (const [key, material] of desired) {
       if (this.materialByKey.get(key) === material) continue;
-      this.resources.set(
-        key,
-        createMaterialResource(this.device, this.bindGroupLayout, this.sampler, material),
-      );
+      this.resources.set(key, createMaterialResource(this.root, this.sampler, material));
       this.materialByKey.set(key, material);
     }
   }
