@@ -216,6 +216,12 @@ therefore follow the same theme without importing DOM or CSS APIs into the packa
 persistent System, Dark, and Light choices; runtime changes rebuild color-dependent GPU buffers but
 preserve the document, selection, camera state, and undo history.
 
+Pre-editor routes and editor chrome share the same compact, geometric interface language through
+semantic CSS variables and focused React primitives. The development-only `/design` specimen shows
+both palettes, controls, forms, project states, and representative editor chrome. Native CSS remains
+the styling foundation so presenter-owned DOM and the WebGPU theme bridge use one inspectable token
+model rather than parallel utility or CSS-in-JS systems.
+
 Renderer solids are partitioned by material and spatial cell. Structural-sharing signatures reuse
 unchanged GPU buffers across revisions, conservative frustum tests skip invisible batches, and an
 immutable median-split AABB index supplies broad-phase picking and region queries. Dense documents

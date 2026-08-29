@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Form, Link, useActionData, useNavigate, useNavigation } from 'react-router';
+import { Form, useActionData, useNavigate, useNavigation } from 'react-router';
+import { ActionButton, Field, ProductHeader, ProductPage } from '../components/ui.js';
 import type { action } from './new-map-action.js';
 import { NEW_MAP_PROFILES } from './new-map-options.js';
 import { preloadEditorRoute } from './preload-editor.js';
@@ -28,22 +29,19 @@ export function Component() {
     return () => globalThis.clearTimeout(id);
   }, []);
   return (
-    <main className="new-map-route">
+    <ProductPage>
       <section className="new-map-route-content">
-        <header>
-          <Link to="/" className="route-back">
-            ← Back
-          </Link>
-          <h1>New map</h1>
-        </header>
+        <ProductHeader
+          title="New map"
+          description="Choose a source format and start with an empty world."
+          backTo="/"
+        />
         <Form method="post" className="route-form">
           <div className="route-fields">
-            <label>
-              Map name
+            <Field label="Map name">
               <input ref={nameInput} name="name" defaultValue="untitled.map" autoComplete="off" />
-            </label>
-            <label>
-              Game
+            </Field>
+            <Field label="Game">
               <select
                 name="profile"
                 value={profile}
@@ -55,9 +53,8 @@ export function Component() {
                   </option>
                 ))}
               </select>
-            </label>
-            <label>
-              Map format
+            </Field>
+            <Field label="Map format">
               <select name="format" defaultValue="valve-220">
                 {selected.formats.map((format) => (
                   <option key={format} value={format}>
@@ -65,7 +62,7 @@ export function Component() {
                   </option>
                 ))}
               </select>
-            </label>
+            </Field>
             <p>{selected.description}</p>
             {actionData && 'error' in actionData ? (
               <p className="landing-error" role="alert">
@@ -74,19 +71,19 @@ export function Component() {
             ) : null}
           </div>
           <footer>
-            <button
+            <ActionButton
               type="submit"
-              className="primary"
+              tone="primary"
               disabled={creating}
               aria-busy={creating}
               onPointerEnter={() => void preloadEditorRoute()}
               onFocus={() => void preloadEditorRoute()}
             >
               {creating ? 'Opening editor…' : 'Create map'}
-            </button>
+            </ActionButton>
           </footer>
         </Form>
       </section>
-    </main>
+    </ProductPage>
   );
 }

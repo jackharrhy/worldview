@@ -612,6 +612,15 @@ test.describe('WebMCP site authoring', () => {
     expect(loadedScripts.some((url) => url.includes('/routes/editor-route.'))).toBe(true);
   });
 
+  test('exposes the shared interface specimens in both themes @ci-smoke', async ({ page }) => {
+    await page.goto('http://127.0.0.1:5174/design');
+    await expect(page.getByRole('heading', { name: 'Interface system' })).toBeVisible();
+    await expect(page.locator('.design-theme[data-preview-theme="dark"]')).toBeVisible();
+    await expect(page.locator('.design-theme[data-preview-theme="light"]')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Editor chrome' })).toBeVisible();
+    await expect(page.locator('main [style]')).toHaveCount(0);
+  });
+
   test('keeps anonymous local maps offline when collaboration is opened @ci-smoke', async ({
     page,
   }) => {
