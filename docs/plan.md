@@ -28,10 +28,12 @@ delivered interactions lives in [`editor-capabilities.md`](./editor-capabilities
 - `worldview.project.json` is optional, portable project configuration, not a geometry container.
 - Chromium provides the full directory-handle workflow. Other WebGPU browsers keep safe
   import/download and IndexedDB recovery fallbacks.
-- Quake and GoldSrc are the only current game profiles.
+- Quake and GoldSrc are the only delivered game profiles. Quake II is the next profile expansion;
+  Quake III and Source follow through the staged format roadmap below.
 - Browser-only/WASM compilation, Quake/GoldSrc model previews, three-way external source merge,
-  Q2/Q3 formats, and native editor-owned geometry containers are deferred. Optional local-first
-  collaboration is now in architecture/prototype work; it does not alter the solo editor boundary.
+  native editor-owned geometry containers, and format support beyond the staged Quake II, Quake III,
+  and VMF work are deferred. Optional local-first collaboration does not alter the solo editor
+  boundary.
 - The existing viewer remains a bounded static-world exhibit. Conveyor pushing, trigger state, and
   full game simulation are out of scope.
 - Site-tool availability is browser- and account-dependent. Its absence never disables or changes
@@ -56,6 +58,7 @@ Pinned editor references:
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | [TrenchBroom `a4ec188`](https://github.com/TrenchBroom/TrenchBroom/tree/a4ec1886bf997ff73a18b2bf3d54e32c2020ce2a) and its [manual](https://trenchbroom.github.io/manual/latest/index.html) | Singular transaction ownership, focused tool controllers, game/entity configuration, compilation profiles, map-compatible groups and layers | GPL implementation or a desktop-only architecture                                                  |
 | [Q3Edit `02f8764`](https://github.com/drdator/q3edit/tree/02f87647162e5bf5e39fe61968f904efe8e19675)                                                                                        | IndexedDB recovery, worker-ready boundaries, source-loss diagnostics, browser-local resources, version history                              | Normalize-after-first-edit behavior; Worldview preserves source structure                          |
+| [WifeRadiant `7cc620a`](https://github.com/erysdren/WifeRadiant/tree/7cc620a891888257cd93ef076a07d54d53e807ae)                                                                             | Format/gamepack separation, idTech brush and patch coverage, VMF boundary cases, and compatibility-corpus ideas                             | GPL-family implementation code, global format switches, or claims of support based only on parsing |
 | [WAD Together `e015027`](https://github.com/Donitzo/wad-together/tree/e0150270a33f25ea9428cd0b5e7f628822bdcf95)                                                                            | Later operation/inverse-operation collaboration with assets local to each participant                                                       | Collaboration before the solo workflow is dependable                                               |
 | [celld](https://celld.dev/docs/)                                                                                                                                                           | Self-hosted Workers/Durable Objects runtime, one SQLite-backed cell per map room, hibernating WebSockets, operator-owned bucket durability  | Treating an alpha runtime as the collaboration algorithm, auth boundary, or only deployment target |
 | [J.A.C.K. JMF](https://jack.hlfx.ru/en/articles/1/faq.html) and [Hammer VMF](https://developer.valvesoftware.com/wiki/VMF_%28Valve_Map_Format%29)                                          | Evidence for keeping editor/project metadata outside compiler-facing map geometry                                                           | A native geometry container that weakens `.map` interoperability                                   |
@@ -408,6 +411,66 @@ personalized undo commits conditional inverse operations instead of rewinding gl
 The complete architecture, alpha-runtime caveats, security boundary, research references, and
 delivery gates are recorded in [`collaboration.md`](./collaboration.md).
 
+## Format expansion direction
+
+Format expansion is an end-to-end product capability, not a parser checkbox. A format or game is
+delivered only when its licensed corpus coverage, semantic document model, source-safe lifecycle,
+rendering, project resources, definitions, editing boundaries, and build/preview workflow agree.
+Source `.map` authoring and compiled BSP viewing are separate milestones: supporting one never
+implies the other.
+
+### Current baseline
+
+- Quake source authoring is delivered in classic axial and Valve 220 face syntax. GoldSrc authoring
+  and Quake BSP29/GoldSrc BSP30 static preview are delivered.
+- `MapDocumentFormat`, `MapFaceSyntax`, game profiles, the document-codec registry, and the closed
+  `MapPrimitive` union are the extension boundaries. Format branches must not leak into generic
+  geometry, history, project, or application-shell code.
+- idTech 3 `patchDef2` and `brushDef` are semantic, stable-ID primitives. They parse, preserve,
+  normalize, clone, derive render geometry, and render. They are not yet selectable or editable,
+  and Quake III is therefore not a delivered game profile.
+- Unknown nested primitive families remain opaque and byte-preserved. Unchanged patch and brush
+  definition blocks survive surrounding source edits; unsafe primitive mutation remains blocked
+  until retained subspans make it structure-preserving.
+
+### Ordered delivery
+
+1. **Quake II profile and source compatibility.** Add Quake II surface/content/value semantics,
+   entity definitions, texture/resource conventions, project defaults, compiler profiles, and
+   licensed corpus fixtures. Reuse the Quake-map codec unless evidence requires a distinct syntax;
+   do not create a nominal codec for a game-profile difference. Acceptance requires exact no-op
+   saves, normalized reparse, representative editable brushes, resource resolution, and a configured
+   compile/preview loop.
+2. **Quake III source authoring.** Add the Quake III profile, shader/material discovery, definitions,
+   project/build conventions, and corpus coverage. Promote patches and brush definitions into honest
+   editor objects: picking, selection, transforms, duplication, deletion, visibility/locking,
+   layers/groups, clipboard, undo/redo, source-safe mutation, and collaboration must either support
+   each primitive or reject it through an explicit typed boundary. Patch control-point editing is a
+   focused tool, not a special case inside brush topology code.
+3. **Quake III compiled preview.** Add BSP46 parsing, materials, visibility, lightmaps, and collision
+   to the viewer as a separate capability. Editor source state must never depend on compiled BSP
+   structures. Openly licensed BSP fixtures and visual/test-oracle comparisons are required.
+4. **VMF and Source profile.** Add a distinct VMF document codec rather than translating VMF text
+   through Quake-map syntax. First deliver solids, sides, entities, stable IDs, connections, and
+   source-safe round trips; then add Source-specific variants such as displacements and visgroups.
+   Unsupported VMF blocks remain retained and saving stays blocked when safe reanchoring is
+   impossible. Source BSP support is a later, independent viewer milestone.
+5. **Cross-format surface tools.** Only after Quake III patches and VMF displacements have separate,
+   correct semantics should shared control-surface UI or geometry abstractions be extracted. Similar
+   rendering does not justify erasing their different topology, material, and serialization rules.
+
+### Format acceptance gates
+
+- Every corpus fixture has confirmed redistribution terms; ignored local corpora may broaden smoke
+  coverage but cannot become package contents accidentally.
+- Exact-source no-op, normalized serialize/reparse, stable-ID rebase, malformed-input diagnostics,
+  and unsupported-construct preservation have focused tests.
+- All generic traversals use the primitive union; brush-only commands narrow by `kind` without casts.
+- New adapted implementation sources are license-compatible and recorded before merge. GPL editor
+  and engine repositories—including WifeRadiant—remain behavior, architecture, and test oracles only.
+- The full `npm run check` gate passes, along with real-browser loading/rendering evidence for every
+  newly claimed authored or compiled format.
+
 ## Delivery milestones
 
 | Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -419,7 +482,8 @@ delivery gates are recorded in [`collaboration.md`](./collaboration.md).
 | 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | 6. Collaboration foundation       | Complete    | Typed domain operations, seeded three-replica convergence, IndexedDB outbox, multi-tab and reconnect transport, conditional personalized undo, accountless live-link create/join/leave UI, browser-local guest identity and participant presence, Yjs/Automerge/custom bake-off, and a chunked SQLite-backed hibernating `MapRoom` pass local Workers-runtime gates plus a live celld/Azurite deploy, WebSocket operation, `SIGKILL`, empty-local-state recovery drill; authenticated identity/permissions and multi-node/outage/backup fleet hardening remain multiplayer hardening; solo mode has no service dependency |
 | 7. Hosted project foundation      | In progress | Newport deployment, 4orm identity, projects/maps, source autosave/checkpoints, signed hosted-room access, scoped guest shares, Artbin pinned mounts and cached WAD loading, and server-owned queued build records are delivered; membership/folder/history/build UI and production room-fleet hardening remain                                                                                                                                                                                                                                                                                                            |
-| 8. After dependable solo          | Deferred    | Collision-aware editor walk mode and the remaining explicitly deferred features listed under Product boundaries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 8. Format expansion               | Planned     | Quake II is the next end-to-end profile/source slice; Quake III authoring, BSP46 preview, and VMF follow in the ordered stages and acceptance gates above                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 9. After dependable solo          | Deferred    | Collision-aware editor walk mode and the remaining explicitly deferred features listed under Product boundaries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Worker parsing/catalog work and list virtualization remain available optimizations rather than
 mandatory architecture: the fixed scale gate passes without them, so the roadmap's “as required”

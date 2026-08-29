@@ -235,6 +235,21 @@ and the pinned Azurite image and intentionally remains outside the ordinary herm
 The supported self-hosted baseline is celld 0.4.0. Upgrades from a 0.3.x fleet require a complete
 fleet stop before starting 0.4.0 because their peer tunnel and large-value protocols cannot mix.
 
+Newport's initial public deployment deliberately uses a single celld 0.4.0 node and persistent
+Azurite on the same host. This is an availability tradeoff for a small, non-critical service, not a
+qualified production fleet: losing the host or its data volume can lose collaboration rooms.
+Traefik sends only `https://worldview.harrhy.xyz/rooms/*` to celld; its operator listener remains on
+loopback. The Worldview service and celld read the same realtime-ticket secret, while accountless
+rooms remain possession-capability links.
+
+After starting Newport's `worldview-azurite` service, deploy the Worker explicitly from a clean
+Worldview checkout with `npm run deploy:collaboration:celld-azurite`. The command creates the fixed
+`worldview-celld` blob container when absent, runs celld's storage diagnostic, and commits the
+real collaboration Worker deployment. The `worldview-celld` service then loads that deployment from
+Azurite. Back up both `worldview_azurite` and `worldview_celld`; moving to a qualified object store
+replaces this operator command and the celld storage environment without changing the Worker or
+browser protocol.
+
 ## Delivery experiments and gates
 
 1. **Done:** Define typed, deterministic, idempotent collaboration operations and domain conflict rules.
