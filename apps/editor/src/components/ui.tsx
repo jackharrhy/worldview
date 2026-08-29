@@ -4,8 +4,13 @@ import { Link } from 'react-router';
 export function ProductPage({
   children,
   wide = false,
-}: PropsWithChildren<{ readonly wide?: boolean }>) {
-  return <main className={`product-page${wide ? ' product-page-wide' : ''}`}>{children}</main>;
+  className = '',
+}: PropsWithChildren<{ readonly wide?: boolean; readonly className?: string }>) {
+  return (
+    <main className={`product-page${wide ? ' product-page-wide' : ''} ${className}`.trim()}>
+      {children}
+    </main>
+  );
 }
 
 export function ProductHeader({
@@ -14,24 +19,28 @@ export function ProductHeader({
   backTo,
   backLabel = 'Back',
   aside,
+  centered = false,
+  showWordmark = true,
 }: {
   readonly title: string;
   readonly description?: string;
   readonly backTo?: string;
   readonly backLabel?: string;
   readonly aside?: ReactNode;
+  readonly centered?: boolean;
+  readonly showWordmark?: boolean;
 }) {
   return (
-    <header className="product-header">
+    <header className={`product-header${centered ? ' product-header-centered' : ''}`}>
       <div className="product-header-primary">
         {backTo ? (
           <Link to={backTo} className="text-action product-back">
             <i className="ph ph-arrow-left" aria-hidden="true" />
             {backLabel}
           </Link>
-        ) : (
+        ) : showWordmark ? (
           <span className="product-wordmark">WORLDVIEW</span>
-        )}
+        ) : null}
         <h1>{title}</h1>
         {description ? <p>{description}</p> : null}
       </div>

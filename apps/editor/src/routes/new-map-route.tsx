@@ -29,12 +29,14 @@ export function Component() {
     return () => globalThis.clearTimeout(id);
   }, []);
   return (
-    <ProductPage>
-      <section className="new-map-route-content">
+    <ProductPage className="new-map-page">
+      <section className="new-map-route-content setup-panel">
         <ProductHeader
           title="New map"
-          description="Choose a source format and start with an empty world."
+          description="Choose a game and map format."
           backTo="/"
+          backLabel="Maps"
+          centered
         />
         <Form method="post" className="route-form">
           <div className="route-fields">

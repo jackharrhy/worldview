@@ -253,6 +253,17 @@ function materialUsageSource(): string {
   });
 }
 
+function orthographicPickPrioritySource(): string {
+  const ids = createSequentialIdFactory('browser-orthographic-pick');
+  const starter = createStarterDocument();
+  const wall = createBoxBrush([-192, -192, 0], [192, 192, 16], 'PICK_WALL', ids);
+  const detail = createBoxBrush([-32, -32, 0], [32, 32, 16], 'PICK_DETAIL', ids);
+  return serializeMap({
+    ...starter,
+    entities: [{ ...starter.entities[0]!, primitives: [wall, detail] }],
+  });
+}
+
 function normalizeTestVector(value: readonly number[]): number[] {
   const magnitude = Math.hypot(...value);
   return value.map((component) => component / magnitude);
@@ -845,6 +856,28 @@ test.describe('WebMCP site authoring', () => {
 });
 
 test.describe('3D source authoring', () => {
+  test('orthographic views prefer the smallest visible face over the frontmost brush', async ({
+    page,
+  }) => {
+    await openEditor(page, { empty: true });
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(orthographicPickPrioritySource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('2');
+
+    const overlaps = [
+      await viewportPoint(page, 1, 0.5, 0.5),
+      await viewportPoint(page, 2, 0.5, 0.5625),
+      await viewportPoint(page, 3, 0.5, 0.5625),
+    ];
+    for (const overlap of overlaps) {
+      await page.mouse.click(overlap.x, overlap.y);
+      await expect(page.locator('#selection-kind')).toHaveText('Brush');
+      await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 0 to 32 32 16');
+      await page.keyboard.press('Escape');
+    }
+  });
+
   test('browses live issues, locates objects, filters findings, and quick-fixes with undo', async ({
     page,
   }) => {

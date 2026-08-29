@@ -54,6 +54,15 @@ export function selectionContainsHit(
     : isPointEntitySelected(selection, hit.entityId);
 }
 
+export function preferredResizeFace(
+  explicitHandle: FaceSelection | null,
+  selectedVisibleFace: FaceSelection | null,
+  proximateSelectedFace: FaceSelection | null,
+  visibleFace: FaceSelection | null,
+): FaceSelection | null {
+  return explicitHandle ?? selectedVisibleFace ?? proximateSelectedFace ?? visibleFace;
+}
+
 export const FACE_HANDLE_HIT_RADIUS = 8;
 
 export const SOLID_SHADER = /* wgsl */ `
@@ -154,7 +163,7 @@ export interface ViewportInteraction {
   brushCenter(selection: EditorSelection): Vec3 | null;
   brushBounds(selection: EditorSelection): Bounds | null;
   transformPivot(): Vec3 | null;
-  faceHandle(selection: BrushSelection): { readonly center: Vec3; readonly normal: Vec3 } | null;
+  faceHandle(selection: BrushSelection): FaceHandle | null;
   faceHandles(): readonly FaceHandle[];
   snapClipHit(hit: BrushRayHit, gridSize: number): Vec3 | null;
   clipPoints(): readonly Vec3[];

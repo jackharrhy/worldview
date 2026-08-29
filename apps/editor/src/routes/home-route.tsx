@@ -56,10 +56,12 @@ export function Component() {
   };
 
   return (
-    <ProductPage>
+    <ProductPage className="home-page">
       <ProductHeader
         title="Worldview Editor"
-        description="Build Quake and GoldSrc maps locally, or sign in to work across browsers."
+        description="Make Quake and GoldSrc maps in your browser. Work locally, or sign in to continue on another computer."
+        centered
+        showWordmark={false}
       />
       <div className="landing-actions">
         <ActionButton type="button" tone="primary" onClick={() => void navigate('/new-map')}>
@@ -85,18 +87,18 @@ export function Component() {
         />
       </div>
       <section className="landing-recents" aria-labelledby="hosted-title">
-        <SectionHeading title="Hosted projects" detail="Stored on the server" />
+        <SectionHeading title="Hosted projects" detail="Saved to your account" />
         {hosted.status === 'signed-out' ? (
           <EmptyState>
             <a className="landing-auth" href="/auth/login">
               Sign in with 4orm
             </a>{' '}
-            to open projects from any browser.
+            to access the same projects from another browser.
           </EmptyState>
         ) : null}
         {hosted.status === 'offline' ? (
           <p className="landing-empty">
-            The hosted project service is unavailable. Local editing still works.
+            Hosted projects are unavailable right now. You can still edit local maps and projects.
           </p>
         ) : null}
         {hosted.status === 'ready' ? (
@@ -109,7 +111,7 @@ export function Component() {
               New hosted project
             </ActionButton>
             {hosted.projects.length === 0 ? (
-              <p className="landing-empty">No hosted projects yet.</p>
+              <p className="landing-empty">You have no hosted projects yet.</p>
             ) : (
               hosted.projects.map((project) => (
                 <button
@@ -130,10 +132,10 @@ export function Component() {
         ) : null}
       </section>
       <section className="landing-recents" aria-labelledby="recents-title">
-        <SectionHeading title="Local projects" detail="Stored on this browser" />
+        <SectionHeading title="Local projects" detail="Saved in this browser" />
         <div className="landing-recent-list">
           {localProjects.length === 0 ? (
-            <p className="landing-empty">No project folders have been opened here yet.</p>
+            <p className="landing-empty">No local project folders yet.</p>
           ) : (
             localProjects.map((recent) => (
               <button

@@ -15,8 +15,7 @@ export class Viewport extends ViewportPointerMove {
       if (drag.button === 2 && drag.moved < 5 && drag.cameraMode !== 'orbit') {
         const pointer = this.pointerPositionAt(event.clientX, event.clientY);
         if (pointer) {
-          const ray = this.rayAt(event.clientX, event.clientY);
-          const hit = this.interaction.hitTest(ray.origin, ray.direction);
+          const hit = this.selectionHitAt(event.clientX, event.clientY);
           this.interaction.contextMenu({
             viewport: this.kind,
             clientX: event.clientX,
@@ -271,7 +270,7 @@ export class Viewport extends ViewportPointerMove {
       const tool = this.interaction.currentTool();
       const hit =
         tool === 'select' && !event.shiftKey && !event.altKey
-          ? this.interaction.hitTest(ray.origin, ray.direction)
+          ? this.selectionHitAt(event.clientX, event.clientY)
           : (this.interaction.hitTests(ray.origin, ray.direction).find(isBrushRayHit) ?? null);
       if (!hit) {
         if (tool === 'select' && !event.shiftKey && !event.altKey) {

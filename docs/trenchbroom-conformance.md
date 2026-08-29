@@ -97,6 +97,7 @@ support, and minimum-size constraints.
 | Interaction                                    | Worldview status |
 | ---------------------------------------------- | ---------------- |
 | Click object; click void to clear              | Matched          |
+| 2D smallest-visible-face object picking        | Matched          |
 | Drag with an empty selection to create a shape | Matched          |
 | Modifier-click adds or removes objects         | Matched          |
 | Modifier-click selects a face in perspective   | Matched          |
@@ -106,11 +107,26 @@ support, and minimum-size constraints.
 | Drag selected objects on the viewport plane    | Matched          |
 | Vertical modifier-drag in perspective          | Matched          |
 | Near-silhouette selected-face acquisition      | Matched          |
+| Selected-brush face priority during resize     | Matched          |
 | Duplicate-and-move feedback flash              | Partial          |
 | Configurable keyboard shortcut preferences     | Deferred         |
 
 Worldview keeps browser-safe fixed shortcuts for now. A future shortcut preference surface must
 resolve conflicts by viewport/tool context rather than adding global window handlers.
+
+The permanent resize gesture resolves faces only from the current brush selection before it
+considers unrelated geometry under the pointer. A directly hit face on a selected brush wins first;
+near a selected silhouette, the inferred front/back face wins next. A neighboring unselected brush
+cannot steal that resize merely because its surface is closer to the camera. This follows
+TrenchBroom's resize contract and Radiant's older wording: the face nearest the cursor belongs to
+the currently selected brush.
+
+Ordinary object picking intentionally differs by viewport. Perspective keeps ray-depth ordering,
+so the frontmost object wins and selection drilling reaches objects behind it. XY, XZ, and YZ first
+collect every editable object under the pointer, then choose the object whose hit face has the
+smallest projected area; point entities fall back to projected bounds. Equal areas retain depth as
+the tie-breaker. This makes a small brush behind a wall selectable from an orthographic view without
+changing geometric hit rules for clip, hull, face, or topology tools.
 
 ## Controller ownership
 

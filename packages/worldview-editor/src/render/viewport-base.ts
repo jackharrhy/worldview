@@ -31,7 +31,9 @@ import {
 
 import {
   isBrushRayHit,
+  selectionForHit,
   FACE_HANDLE_HIT_RADIUS,
+  type EditorObjectRayHit,
   type ViewportState,
   type Pipelines,
   type ViewportInteraction,
@@ -80,6 +82,41 @@ export abstract class ViewportBase {
 
   protected get dragState(): PointerDrag | null {
     return this.gestures.activeTracker?.drag ?? null;
+  }
+
+  protected selectionHitAt(clientX: number, clientY: number): EditorObjectRayHit | null {
+    const ray = this.rayAt(clientX, clientY);
+    const hits = this.interaction.hitTests(ray.origin, ray.direction);
+    if (this.kind === 'perspective' || hits.length < 2) return hits[0] ?? null;
+
+    const axes: readonly [number, number] =
+      this.kind === 'xy' ? [0, 1] : this.kind === 'xz' ? [0, 2] : [1, 2];
+    const projectedFaceArea = (hit: EditorObjectRayHit): number => {
+      if (isBrushRayHit(hit)) {
+        const face = this.interaction.faceHandle({ brushId: hit.brushId, faceId: hit.faceId });
+        if (face && face.vertices.length >= 3) {
+          let twiceArea = 0;
+          for (let index = 0; index < face.vertices.length; index += 1) {
+            const current = face.vertices[index]!;
+            const next = face.vertices[(index + 1) % face.vertices.length]!;
+            twiceArea += current[axes[0]]! * next[axes[1]]! - next[axes[0]]! * current[axes[1]]!;
+          }
+          const area = Math.abs(twiceArea) / 2;
+          if (area > Number.EPSILON) return area;
+        }
+      }
+      const bounds = this.interaction.brushBounds(selectionForHit(hit));
+      return bounds
+        ? Math.max(Number.EPSILON, bounds.max[axes[0]]! - bounds.min[axes[0]]!) *
+            Math.max(Number.EPSILON, bounds.max[axes[1]]! - bounds.min[axes[1]]!)
+        : Number.POSITIVE_INFINITY;
+    };
+
+    return hits.reduce((best, hit) => {
+      const area = projectedFaceArea(hit);
+      const bestArea = projectedFaceArea(best);
+      return area < bestArea || (area === bestArea && hit.distance < best.distance) ? hit : best;
+    });
   }
   protected readonly cancelOnEscape = (event: KeyboardEvent) => {
     if (

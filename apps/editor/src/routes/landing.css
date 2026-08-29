@@ -179,6 +179,19 @@ a:focus-visible {
   color: var(--quiet);
   font: 11px/1.4 var(--font-mono);
 }
+.product-header-centered {
+  display: block;
+  padding-bottom: 0;
+  border-bottom: 0;
+  text-align: center;
+}
+.product-header-centered .product-header-primary {
+  max-width: 680px;
+  margin-inline: auto;
+}
+.product-header-centered p {
+  margin: 14px auto 0;
+}
 .text-action,
 .route-back,
 .landing-auth {
@@ -228,6 +241,29 @@ a:focus-visible {
 }
 .landing-actions .primary {
   min-width: 150px;
+}
+.home-page {
+  padding-top: clamp(72px, 12vh, 128px);
+}
+.home-page .landing-actions {
+  justify-content: center;
+  margin-top: 32px;
+}
+.home-page .landing-actions + .landing-recents {
+  margin-top: 72px;
+}
+.home-page .landing-recents + .landing-recents {
+  margin-top: 48px;
+}
+.home-page .section-heading-row {
+  padding-bottom: 12px;
+  border-bottom: 0;
+}
+.home-page .landing-empty,
+.home-page .empty-state {
+  padding: 16px 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
 }
 .landing-recents {
   display: grid;
@@ -372,6 +408,85 @@ a:focus-visible {
   place-items: center;
   background: var(--bg);
   color: var(--muted);
+}
+
+.new-map-page {
+  display: grid;
+  place-items: start center;
+  padding-top: clamp(56px, 10vh, 104px);
+}
+.new-map-page .new-map-route-content {
+  max-width: 640px;
+}
+.new-map-page .setup-panel {
+  border: 2px solid var(--line-strong);
+  background: var(--surface);
+}
+.new-map-page .product-header {
+  position: relative;
+  margin-bottom: 0;
+  padding: 28px 32px 26px;
+  border-bottom: 2px solid var(--line-strong);
+  background: var(--surface-raised);
+  text-align: center;
+}
+.new-map-page .product-header h1 {
+  font: 700 26px/1.1 var(--font-mono);
+  letter-spacing: -0.04em;
+}
+.new-map-page .product-header p {
+  max-width: 48ch;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.new-map-page .product-back {
+  justify-content: center;
+  margin-bottom: 22px;
+  font: 700 11px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.new-map-page .route-form {
+  border: 0;
+  background: transparent;
+}
+.new-map-page .route-fields {
+  gap: 0;
+  padding: 0;
+}
+.new-map-page .route-fields .field {
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: center;
+  gap: 20px;
+  min-height: 68px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.new-map-page .field-label {
+  font: 700 11px/1.2 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.new-map-page .route-fields > p {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-input);
+  color: var(--muted);
+}
+.new-map-page .route-fields > .landing-error {
+  color: var(--danger);
+}
+.new-map-page .route-form footer {
+  justify-content: stretch;
+  padding: 16px 24px;
+  border-top: 0;
+}
+.new-map-page .route-form footer .button {
+  width: 100%;
+  min-height: 42px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .design-branch {
@@ -626,6 +741,21 @@ a:focus-visible {
   .landing-actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+  .new-map-page {
+    padding-top: 24px;
+  }
+  .new-map-page .product-header {
+    padding: 24px 20px 22px;
+  }
+  .new-map-page .route-fields .field {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 16px 18px;
+  }
+  .new-map-page .route-fields > p,
+  .new-map-page .route-form footer {
+    padding-inline: 18px;
   }
   .theme-specimens,
   .pre-editor-specimen,
