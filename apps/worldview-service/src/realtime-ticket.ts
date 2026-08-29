@@ -1,13 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { ProjectRole, ShareRole } from './database.js';
+import type { ProjectRole } from './database.js';
 
 export interface RealtimeTicketPayload {
-  readonly version: 1;
+  readonly version: 2;
   readonly mapId: string;
-  readonly roomId: string;
   readonly principalId: string;
   readonly actorId: string;
-  readonly role: ProjectRole | ShareRole;
+  readonly role: ProjectRole;
   readonly expiresAt: number;
 }
 
@@ -40,9 +39,8 @@ export function verifyRealtimeTicket(ticket: string, secret: string): RealtimeTi
       Buffer.from(content, 'base64url').toString('utf8'),
     ) as Partial<RealtimeTicketPayload>;
     if (
-      payload.version !== 1 ||
+      payload.version !== 2 ||
       typeof payload.mapId !== 'string' ||
-      typeof payload.roomId !== 'string' ||
       typeof payload.principalId !== 'string' ||
       typeof payload.actorId !== 'string' ||
       !['owner', 'editor', 'viewer'].includes(String(payload.role)) ||

@@ -1,4 +1,5 @@
 import { deriveBrush } from './geometry.js';
+import type { MapSourceDiagnostic } from './map-source-types.js';
 import type { BrushId, EntityId, MapBrush, MapDocument } from './types.js';
 
 export const COLLABORATION_SCHEMA_VERSION = 1 as const;
@@ -8,7 +9,7 @@ export interface CollaborationOperation {
   readonly operationId: string;
   readonly transactionId: string;
   readonly actorId: string;
-  readonly baseRoomVersion: number;
+  readonly baseMapVersion: number;
   readonly label: string;
   readonly edits: readonly CollaborationEdit[];
   /** Conditional inverse captured at commit time for this actor's personalized undo. */
@@ -47,8 +48,10 @@ export interface CollaborationConflict {
   readonly message: string;
 }
 
+export type CollaborationFailure = CollaborationConflict | MapSourceDiagnostic;
+
 export interface SequencedCollaborationOperation {
-  readonly roomVersion: number;
+  readonly mapVersion: number;
   readonly operation: CollaborationOperation;
 }
 
@@ -284,13 +287,13 @@ export class OrderedCollaborationReplica {
     return this.currentDocument;
   }
 
-  public get roomVersion(): number {
+  public get mapVersion(): number {
     return this.currentRoomVersion;
   }
 
   public receive(frame: SequencedCollaborationOperation): readonly CollaborationConflict[] {
-    if (frame.roomVersion <= this.currentRoomVersion) return [];
-    this.pending.set(frame.roomVersion, frame.operation);
+    if (frame.mapVersion <= this.currentRoomVersion) return [];
+    this.pending.set(frame.mapVersion, frame.operation);
     const conflicts: CollaborationConflict[] = [];
     while (this.pending.has(this.currentRoomVersion + 1)) {
       const operation = this.pending.get(this.currentRoomVersion + 1)!;

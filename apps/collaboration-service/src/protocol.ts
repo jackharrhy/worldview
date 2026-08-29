@@ -1,5 +1,6 @@
 import type {
   CollaborationEdit,
+  CollaborationFailure,
   CollaborationOperation,
   MapDocument,
 } from '@jackharrhy/worldview-editor/core';
@@ -11,23 +12,28 @@ export type ClientFrame =
 export type ServerFrame =
   | {
       readonly type: 'ready';
-      readonly roomVersion: number;
-      readonly document: MapDocument | null;
+      readonly mapId: string;
+      readonly mapVersion: number;
+      readonly document: MapDocument;
+      readonly source: string;
+      readonly sourceSha256: string;
     }
   | {
       readonly type: 'operation';
-      readonly roomVersion: number;
+      readonly mapVersion: number;
+      readonly sourceSha256: string;
       readonly operation: CollaborationOperation;
     }
   | {
       readonly type: 'ack';
       readonly operationId: string;
-      readonly roomVersion: number;
+      readonly mapVersion: number;
+      readonly sourceSha256: string;
     }
   | {
       readonly type: 'conflict';
       readonly operationId: string;
-      readonly conflicts: readonly unknown[];
+      readonly conflicts: readonly CollaborationFailure[];
     }
   | { readonly type: 'presence'; readonly presence: PresenceState }
   | { readonly type: 'error'; readonly message: string };
@@ -43,7 +49,7 @@ export interface PresenceState {
   readonly preview?: {
     readonly interactionId: string;
     readonly sequence: number;
-    readonly baseRoomVersion: number;
+    readonly baseMapVersion: number;
     readonly edits: readonly CollaborationEdit[];
   };
   readonly sentAt: number;
@@ -127,7 +133,7 @@ export function parseClientFrame(value: string | ArrayBuffer): ClientFrame {
         (!isRecord(presence.preview) ||
           typeof presence.preview.interactionId !== 'string' ||
           !Number.isInteger(presence.preview.sequence) ||
-          !Number.isInteger(presence.preview.baseRoomVersion) ||
+          !Number.isInteger(presence.preview.baseMapVersion) ||
           !Array.isArray(presence.preview.edits) ||
           presence.preview.edits.length > 256 ||
           !presence.preview.edits.every(isEdit)))
@@ -145,7 +151,7 @@ export function parseClientFrame(value: string | ArrayBuffer): ClientFrame {
     operation.operationId.length > 128 ||
     typeof operation.transactionId !== 'string' ||
     typeof operation.actorId !== 'string' ||
-    typeof operation.baseRoomVersion !== 'number' ||
+    typeof operation.baseMapVersion !== 'number' ||
     typeof operation.label !== 'string' ||
     !Array.isArray(operation.edits) ||
     operation.edits.length > 1_000 ||

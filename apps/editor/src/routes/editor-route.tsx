@@ -60,12 +60,10 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
           application.project.loadHostedResources(hostedMap.resources ?? []);
           await application.collaborationUi.joinHostedMap(
             hostedMap.id,
-            hostedMap.roomId,
             hostedMap.actorId,
             hostedMap.displayName,
           );
-          application.startHostedAutosave(hostedMap.id, hostedMap.sourceVersion);
-          shellState.statusMessage.textContent = `Opened hosted map ${hostedMap.projectName} / ${hostedMap.name} · live at r${hostedMap.roomVersion}`;
+          shellState.statusMessage.textContent = `Opened hosted map ${hostedMap.projectName} / ${hostedMap.name} · live at v${hostedMap.mapVersion}`;
         } else if (!initialMap) {
           const launch = takePendingEditorLaunch();
           if (launch?.kind === 'project')

@@ -2,9 +2,48 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { createStarterDocument } from '@jackharrhy/worldview-editor/core';
 import { FileBlobStore } from '../src/blob-store.js';
 import { WorldviewDatabase } from '../src/database.js';
 import { createWorldviewService } from '../src/server.js';
+import type { HostedMapCheckpoint, HostedMapSnapshot } from '../src/map-cell-client.js';
+
+class FakeMapCells {
+  readonly snapshots = new Map<string, HostedMapSnapshot>();
+  readonly checkpoints: { mapId: string; name: string }[] = [];
+
+  async initialize(mapId: string, source: string): Promise<HostedMapSnapshot> {
+    const snapshot = {
+      mapId,
+      mapVersion: 0,
+      document: createStarterDocument(),
+      source,
+      sourceSha256: 'a'.repeat(64),
+    };
+    this.snapshots.set(mapId, snapshot);
+    return snapshot;
+  }
+
+  async snapshot(mapId: string): Promise<HostedMapSnapshot> {
+    const snapshot = this.snapshots.get(mapId);
+    if (!snapshot) throw new Error('MapCell is not initialized');
+    return snapshot;
+  }
+
+  async createCheckpoint(
+    mapId: string,
+    name: string,
+    _actorId: string,
+  ): Promise<HostedMapCheckpoint> {
+    this.checkpoints.push({ mapId, name });
+    return {
+      id: 'checkpoint-1',
+      name,
+      mapVersion: (await this.snapshot(mapId)).mapVersion,
+      createdAt: Date.now(),
+    };
+  }
+}
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -14,6 +53,7 @@ afterEach(async () => {
 async function fixture(fetchImpl?: typeof fetch) {
   const root = await mkdtemp(join(tmpdir(), 'worldview-service-test-'));
   const database = new WorldviewDatabase(join(root, 'worldview.db'));
+  const maps = new FakeMapCells();
   const server = createWorldviewService({
     database,
     blobs: new FileBlobStore(join(root, 'blobs')),
@@ -23,6 +63,7 @@ async function fixture(fetchImpl?: typeof fetch) {
       publicUrl: 'http://127.0.0.1',
     },
     realtimeTicketSecret: 'test-worldview-realtime-ticket-secret-0001',
+    maps,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -36,7 +77,7 @@ async function fixture(fetchImpl?: typeof fetch) {
     database.close();
     await rm(root, { recursive: true, force: true });
   });
-  return { origin, root, database };
+  return { origin, root, database, maps };
 }
 
 function session(database: WorldviewDatabase) {
@@ -83,8 +124,8 @@ describe('Worldview hosted project service', () => {
       }),
     });
     expect(mapResponse.status).toBe(201);
-    const map = ((await mapResponse.json()) as { map: { id: string; roomId: string } }).map;
-    expect(map.roomId).toMatch(/^hosted_[0-9a-f-]{36}$/);
+    const map = ((await mapResponse.json()) as { map: { id: string; mapVersion: number } }).map;
+    expect(map.mapVersion).toBe(0);
     const projectState = await fetch(`${app.origin}/api/projects/${project.id}`, {
       headers: { Cookie: cookie },
     });
@@ -107,7 +148,7 @@ describe('Worldview hosted project service', () => {
     expect(hashes.byteLength).toBeGreaterThan(0);
   });
 
-  test('autosaves source with optimistic versions and retains named checkpoints', async () => {
+  test('loads source and creates checkpoints through the authoritative MapCell', async () => {
     const app = await fixture();
     const { cookie } = session(app.database);
     const project = (
@@ -128,35 +169,55 @@ describe('Worldview hosted project service', () => {
         })
       ).json()) as { map: { id: string } }
     ).map;
-    const source = '{\n"classname" "worldspawn"\n"message" "saved"\n}\n';
-    const saved = await fetch(`${app.origin}/api/maps/${map.id}`, {
-      method: 'PUT',
-      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source, expectedVersion: 0 }),
+    const initial = await app.maps.snapshot(map.id);
+    const source = '{\n"classname" "worldspawn"\n"message" "canonical"\n}\n';
+    app.maps.snapshots.set(map.id, {
+      ...initial,
+      source,
+      mapVersion: 7,
+      sourceSha256: 'b'.repeat(64),
     });
-    expect(await saved.json()).toMatchObject({
-      sourceVersion: 1,
-      sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
-    });
-    const stale = await fetch(`${app.origin}/api/maps/${map.id}`, {
-      method: 'PUT',
-      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: 'stale', expectedVersion: 0 }),
-    });
-    expect(stale.status).toBe(409);
     const checkpoint = await fetch(`${app.origin}/api/maps/${map.id}/checkpoints`, {
       method: 'POST',
       headers: { Cookie: cookie, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'First room' }),
     });
     expect(await checkpoint.json()).toMatchObject({
-      checkpoint: { name: 'First room', sourceVersion: 1 },
+      checkpoint: { name: 'First room', mapVersion: 7 },
     });
     expect(
       await (
         await fetch(`${app.origin}/api/maps/${map.id}`, { headers: { Cookie: cookie } })
       ).json(),
-    ).toMatchObject({ map: { source, sourceVersion: 1 } });
+    ).toMatchObject({ map: { source, mapVersion: 7, sourceSha256: 'b'.repeat(64) } });
+  });
+
+  test('does not expose map metadata when MapCell initialization fails', async () => {
+    const app = await fixture();
+    const { cookie } = session(app.database);
+    const project = (
+      (await (
+        await fetch(`${app.origin}/api/projects`, {
+          method: 'POST',
+          headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Atomic creation', game: 'quake' }),
+        })
+      ).json()) as { project: { id: string } }
+    ).project;
+    app.maps.initialize = async () => {
+      throw new Error('MapCell unavailable');
+    };
+    const response = await fetch(`${app.origin}/api/projects/${project.id}/maps`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'missing.map', format: 'quake' }),
+    });
+    expect(response.status).toBe(500);
+    expect(
+      await (
+        await fetch(`${app.origin}/api/projects/${project.id}`, { headers: { Cookie: cookie } })
+      ).json(),
+    ).toMatchObject({ project: { maps: [] } });
   });
 
   test('isolates project listings by membership and rejects cross-origin mutations', async () => {
@@ -194,22 +255,19 @@ describe('Worldview hosted project service', () => {
     const app = await fixture();
     const { user } = session(app.database);
     const project = app.database.createProject(user.id, 'Build quota', 'quake');
-    const bytes = new TextEncoder().encode('{\n"classname" "worldspawn"\n}\n');
-    const blob = await new FileBlobStore(join(app.root, 'blobs')).put(bytes);
     const map = app.database.createMap({
+      id: crypto.randomUUID(),
       projectId: project.id,
       userId: user.id,
       name: 'quota.map',
       format: 'quake',
-      sourceHash: blob.sha256,
-      sourceFingerprint: blob.sha256,
     });
     const mapId = String(map.id);
     expect(app.database.buildAdmission(user.id)).toBe('allowed');
     const active = app.database.createBuild({
       mapId,
       userId: user.id,
-      sourceVersion: 0,
+      mapVersion: 0,
       profileId: 'default',
       quality: 'preview',
     });
@@ -219,7 +277,7 @@ describe('Worldview hosted project service', () => {
       const build = app.database.createBuild({
         mapId,
         userId: user.id,
-        sourceVersion: 0,
+        mapVersion: 0,
         profileId: 'default',
         quality: 'preview',
       });

@@ -719,7 +719,8 @@ test.describe('WebMCP site authoring', () => {
   }) => {
     const roomRequests: string[] = [];
     page.on('request', (request) => {
-      if (new URL(request.url()).pathname.startsWith('/rooms/')) roomRequests.push(request.url());
+      if (new URL(request.url()).pathname.startsWith('/sync/maps/'))
+        roomRequests.push(request.url());
     });
     await openEditor(page, { empty: true });
     await page.locator('#collaboration-toggle').click();

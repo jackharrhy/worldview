@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +11,7 @@ import {
   createSequentialIdFactory,
   createStarterDocument,
   insertBrush,
+  serializeMap,
 } from '@jackharrhy/worldview-editor/core';
 
 const azuriteImage = process.env.AZURITE_IMAGE ?? 'mcr.microsoft.com/azure-storage/azurite:3.37.0';
@@ -19,18 +21,23 @@ const account = 'devstoreaccount1';
 const accountKey =
   'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==';
 const celld = process.env.CELLD_BIN ?? join(homedir(), '.local', 'bin', 'celld');
+const azuritePort = Number(process.env.AZURITE_TEST_PORT ?? 12_000);
 const expectedCelldVersion = 'celld 0.4.0';
 const publicPort = Number(process.env.CELLD_TEST_PORT ?? 18080);
 const internalPortA = Number(process.env.CELLD_TEST_INTERNAL_PORT_A ?? 19080);
 const internalPortB = Number(process.env.CELLD_TEST_INTERNAL_PORT_B ?? 19081);
 const runId = `${Date.now().toString(36)}-${process.pid}`;
 const bucket = `worldview-celld-test-${runId}`;
-const roomId = `fault-room-${runId}`;
+const mapId = `fault-map-${runId}`;
+const ticketSecret = 'replace-with-at-least-32-random-characters';
 const commonEnv = {
   ...process.env,
   AZURE_STORAGE_USE_EMULATOR: 'true',
   AZURE_STORAGE_ACCOUNT_NAME: account,
+  AZURE_STORAGE_BLOB_ENDPOINT: `http://127.0.0.1:${azuritePort}/${account}`,
   CELLD_ESBUILD: join(process.cwd(), 'node_modules', '.bin', 'esbuild'),
+  CELLD_VARS_FILE: join(process.cwd(), 'apps/collaboration-service/.dev.vars.example'),
+  WORLDVIEW_REALTIME_TICKET_SECRET: ticketSecret,
 };
 const children = new Set();
 
@@ -68,7 +75,7 @@ async function ensureAzurite() {
       '--restart',
       'unless-stopped',
       '--publish',
-      '127.0.0.1:10000:10000',
+      `127.0.0.1:${azuritePort}:10000`,
       '--volume',
       `${azuriteVolume}:/data`,
       azuriteImage,
@@ -80,7 +87,7 @@ async function ensureAzurite() {
   }
 
   const credential = new StorageSharedKeyCredential(account, accountKey);
-  const service = new BlobServiceClient(`http://127.0.0.1:10000/${account}`, credential);
+  const service = new BlobServiceClient(`http://127.0.0.1:${azuritePort}/${account}`, credential);
   let lastError;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
@@ -128,17 +135,39 @@ async function waitForNode(child) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (child.exitCode !== null) throw new Error(`celld exited early:\n${child.logs}`);
     try {
-      const response = await fetch(`http://127.0.0.1:${publicPort}/rooms/readiness-${runId}`);
-      if (response.ok) return;
+      const response = await fetch(
+        `http://127.0.0.1:${publicPort}/sync/maps/readiness-${runId}/snapshot`,
+      );
+      if (response.status > 0) return;
     } catch {}
     await delay(100);
   }
   throw new Error(`celld did not become ready:\n${child.logs}`);
 }
 
+function encoded(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function ticket(targetMapId) {
+  const header = encoded({ algorithm: 'HS256', type: 'WVT' });
+  const content = encoded({
+    version: 2,
+    mapId: targetMapId,
+    principalId: 'fault-test',
+    actorId: 'fault-test',
+    role: 'owner',
+    expiresAt: Date.now() + 60_000,
+  });
+  const signature = createHmac('sha256', ticketSecret)
+    .update(`${header}.${content}`)
+    .digest('base64url');
+  return `${header}.${content}.${signature}`;
+}
+
 async function submitOperation(operation) {
   const socket = new WebSocket(
-    `ws://127.0.0.1:${publicPort}/rooms/${roomId}?actor=${operation.actorId}`,
+    `ws://127.0.0.1:${publicPort}/sync/maps/${mapId}/live?access_token=${encodeURIComponent(ticket(mapId))}`,
   );
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(
@@ -160,9 +189,16 @@ async function submitOperation(operation) {
 }
 
 async function snapshot() {
-  const response = await fetch(`http://127.0.0.1:${publicPort}/rooms/${roomId}`);
-  if (!response.ok) throw new Error(`Snapshot failed with HTTP ${response.status}`);
-  return response.json();
+  let detail = '';
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await fetch(`http://127.0.0.1:${publicPort}/sync/maps/${mapId}/snapshot`, {
+      headers: { Authorization: `Bearer ${ticket(mapId)}` },
+    });
+    if (response.ok) return response.json();
+    detail = `${response.status}: ${await response.text()}`;
+    await delay(100);
+  }
+  throw new Error(`Snapshot failed: ${detail}`);
 }
 
 async function stop(child, signal = 'SIGTERM') {
@@ -192,13 +228,15 @@ try {
   const nodeA = startNode(`worldview-a-${runId}`, stateA, internalPortA);
   await waitForNode(nodeA);
 
-  const baseline = createStarterDocument();
-  const initialize = await fetch(`http://127.0.0.1:${publicPort}/rooms/${roomId}`, {
+  const starter = createStarterDocument();
+  const initialize = await fetch(`http://127.0.0.1:${publicPort}/sync/maps/${mapId}/initialize`, {
     method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(baseline),
+    headers: { Authorization: `Bearer ${ticket(mapId)}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ source: serializeMap(starter) }),
   });
-  if (!initialize.ok) throw new Error(`Baseline initialization failed: ${await initialize.text()}`);
+  if (!initialize.ok)
+    throw new Error(`Baseline initialization failed: ${await initialize.text()}\n${nodeA.logs}`);
+  const baseline = (await snapshot()).document;
 
   const ids = createSequentialIdFactory(`fault-${runId}`);
   const brush = createBoxBrush([160, -32, 0], [224, 32, 64], 'FAULT_TEST', ids);
@@ -208,15 +246,15 @@ try {
     operationId: `fault-test:${runId}`,
     transactionId: `fault-test:${runId}`,
     actorId: 'fault-test',
-    baseRoomVersion: 0,
+    baseMapVersion: 0,
     label: 'Azurite fault-test insertion',
     edits: collaborationEditsBetween(baseline, after),
   };
   const acknowledgement = await submitOperation(operation);
-  if (acknowledgement.type !== 'ack' || acknowledgement.roomVersion !== 1) {
+  if (acknowledgement.type !== 'ack' || acknowledgement.mapVersion !== 1) {
     throw new Error(`Unexpected operation result: ${JSON.stringify(acknowledgement)}`);
   }
-  console.log('Node A acknowledged room version 1 after durable operation persistence');
+  console.log('Node A acknowledged map version 1 after durable operation persistence');
 
   await stop(nodeA, 'SIGKILL');
   await rm(stateA, { recursive: true });
@@ -235,12 +273,12 @@ try {
     .flatMap((entity) => entity.primitives)
     .filter((primitive) => primitive.kind === 'brush').length;
   if (
-    recovered.roomVersion !== 1 ||
+    recovered.mapVersion !== 1 ||
     brushes.length !== expectedBrushCount ||
     !brushes.some(({ id }) => id === brush.id)
   ) {
     throw new Error(
-      `Bucket recovery mismatch: ${JSON.stringify({ roomVersion: recovered.roomVersion, brushCount: brushes.length })}`,
+      `Bucket recovery mismatch: ${JSON.stringify({ mapVersion: recovered.mapVersion, brushCount: brushes.length })}`,
     );
   }
   console.log(
@@ -248,8 +286,8 @@ try {
       {
         result: 'passed',
         recovery: 'fresh celld node and empty local state restored from Azurite',
-        roomId,
-        roomVersion: recovered.roomVersion,
+        mapId,
+        mapVersion: recovered.mapVersion,
         brushCount: brushes.length,
         recoveredOperation: operation.operationId,
       },

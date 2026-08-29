@@ -89,7 +89,7 @@ function collaborationEndpoint(): string {
 export class CollaborationPresenter {
   private readonly actorId = stored(ACTOR_KEY) ?? crypto.randomUUID();
   private readonly participants = new Map<string, CollaborationPresence>();
-  private roomId: string | null = null;
+  private mapId: string | null = null;
 
   public constructor(
     private readonly ui: EditorElements,
@@ -119,12 +119,7 @@ export class CollaborationPresenter {
     });
   }
 
-  public async joinHostedMap(
-    mapId: string,
-    roomId: string,
-    actorId: string,
-    displayName: string,
-  ): Promise<void> {
+  public async joinHostedMap(mapId: string, actorId: string, displayName: string): Promise<void> {
     const authorize = async () => {
       const response = await fetch(`/api/maps/${encodeURIComponent(mapId)}/realtime-ticket`, {
         method: 'POST',
@@ -143,7 +138,7 @@ export class CollaborationPresenter {
       }
       return payload.ticket;
     };
-    await this.join(roomId, false, { actorId, displayName, authorize, hosted: true });
+    await this.join(mapId, false, { actorId, displayName, authorize, hosted: true });
   }
 
   private displayName(): string {
@@ -151,7 +146,7 @@ export class CollaborationPresenter {
   }
 
   private async join(
-    roomId: string,
+    mapId: string,
     fromLink: boolean,
     identity?: {
       readonly actorId: string;
@@ -162,7 +157,7 @@ export class CollaborationPresenter {
   ): Promise<void> {
     const actorId = identity?.actorId ?? this.actorId;
     const displayName = identity?.displayName ?? this.displayName();
-    this.roomId = roomId;
+    this.mapId = mapId;
     persist(NAME_KEY, this.displayName());
     this.setState('Joining…');
     this.ui.collaborationUi.update({
@@ -173,7 +168,7 @@ export class CollaborationPresenter {
     try {
       await this.joinCollaboration({
         endpoint: collaborationEndpoint(),
-        roomId,
+        mapId,
         actorId,
         displayName,
         color: collaboratorColor(actorId),
@@ -195,7 +190,7 @@ export class CollaborationPresenter {
       this.renderLiveState();
     } catch (error) {
       this.leaveCollaboration();
-      this.roomId = null;
+      this.mapId = null;
       this.setError(error instanceof Error ? error.message : String(error));
       this.ui.collaborationUi.update({ joining: false });
     }
@@ -255,7 +250,7 @@ export class CollaborationPresenter {
 
   private stopSession(): void {
     this.leaveCollaboration();
-    this.roomId = null;
+    this.mapId = null;
     this.participants.clear();
     this.ui.collaborationUi.update({
       live: false,

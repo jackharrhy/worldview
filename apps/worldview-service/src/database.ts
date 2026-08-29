@@ -2,7 +2,6 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
 export type ProjectRole = 'owner' | 'editor' | 'viewer';
-export type ShareRole = 'editor' | 'viewer';
 
 export interface WorldviewUser {
   readonly id: string;
@@ -11,13 +10,6 @@ export interface WorldviewUser {
   readonly displayName: string;
   readonly isAdmin: boolean;
 }
-export interface GuestAccess {
-  readonly actorId: string;
-  readonly displayName: string;
-  readonly role: ShareRole;
-  readonly shareId: string;
-}
-
 export interface ProjectSummary {
   readonly id: string;
   readonly name: string;
@@ -94,19 +86,8 @@ export class WorldviewDatabase {
       CREATE TABLE IF NOT EXISTS maps (
         id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         name TEXT NOT NULL, format TEXT NOT NULL CHECK(format IN ('valve-220','quake')),
-        room_id TEXT NOT NULL UNIQUE, source_blob_hash TEXT NOT NULL, source_fingerprint TEXT NOT NULL,
-        room_version INTEGER NOT NULL DEFAULT 0, source_version INTEGER NOT NULL DEFAULT 0,
         created_by TEXT NOT NULL REFERENCES users(id),
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(project_id, name)
-      );
-      CREATE TABLE IF NOT EXISTS share_links (
-        id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        map_id TEXT REFERENCES maps(id) ON DELETE CASCADE, role TEXT NOT NULL CHECK(role IN ('editor','viewer')),
-        created_by TEXT NOT NULL REFERENCES users(id), expires_at INTEGER, revoked_at INTEGER, created_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS guest_sessions (
-        token_hash TEXT PRIMARY KEY, share_id TEXT NOT NULL REFERENCES share_links(id) ON DELETE CASCADE,
-        actor_id TEXT NOT NULL, display_name TEXT NOT NULL, expires_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS resource_mounts (
         id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -117,21 +98,12 @@ export class WorldviewDatabase {
       );
       CREATE TABLE IF NOT EXISTS builds (
         id TEXT PRIMARY KEY, map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-        requested_by TEXT NOT NULL REFERENCES users(id), room_version INTEGER NOT NULL,
+        requested_by TEXT NOT NULL REFERENCES users(id), map_version INTEGER NOT NULL,
         profile_id TEXT NOT NULL, quality TEXT NOT NULL CHECK(quality IN ('preview','final')),
         status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled')),
         source_sha256 TEXT, result_json TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       );
-      CREATE TABLE IF NOT EXISTS map_checkpoints (
-        id TEXT PRIMARY KEY, map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-        name TEXT NOT NULL, source_version INTEGER NOT NULL, source_blob_hash TEXT NOT NULL,
-        created_by TEXT NOT NULL REFERENCES users(id), created_at INTEGER NOT NULL
-      );
     `);
-    const mapColumns = this.sql.prepare('PRAGMA table_info(maps)').all() as { name: string }[];
-    if (!mapColumns.some(({ name }) => name === 'source_version')) {
-      this.sql.exec('ALTER TABLE maps ADD COLUMN source_version INTEGER NOT NULL DEFAULT 0');
-    }
     this.sql
       .prepare(
         "UPDATE builds SET status='failed',result_json=?,updated_at=? WHERE status IN ('queued','running')",
@@ -277,41 +249,25 @@ export class WorldviewDatabase {
       | undefined;
     if (!row) return null;
     const maps = this.sql
-      .prepare(
-        'SELECT id,name,format,room_id,room_version,source_version,updated_at FROM maps WHERE project_id=? ORDER BY name',
-      )
+      .prepare('SELECT id,name,format,updated_at FROM maps WHERE project_id=? ORDER BY name')
       .all(projectId) as Record<string, unknown>[];
     return { id: row.id, name: row.name, game: row.game, role, updatedAt: row.updated_at, maps };
   }
 
   public createMap(input: {
+    id: string;
     projectId: string;
     userId: string;
     name: string;
     format: 'valve-220' | 'quake';
-    sourceHash: string;
-    sourceFingerprint: string;
   }): Record<string, unknown> {
-    const id = randomUUID();
-    const roomId = `hosted_${randomUUID()}`;
     const now = Date.now();
     this.sql
-      .prepare(`INSERT INTO maps(id,project_id,name,format,room_id,source_blob_hash,source_fingerprint,created_by,created_at,updated_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?)`)
-      .run(
-        id,
-        input.projectId,
-        input.name,
-        input.format,
-        roomId,
-        input.sourceHash,
-        input.sourceFingerprint,
-        input.userId,
-        now,
-        now,
-      );
+      .prepare(`INSERT INTO maps(id,project_id,name,format,created_by,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?)`)
+      .run(input.id, input.projectId, input.name, input.format, input.userId, now, now);
     this.sql.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(now, input.projectId);
-    return { id, name: input.name, format: input.format, roomId, roomVersion: 0, updatedAt: now };
+    return { id: input.id, name: input.name, format: input.format, updatedAt: now };
   }
 
   public map(
@@ -324,15 +280,11 @@ export class WorldviewDatabase {
     readonly game: 'quake' | 'goldsrc';
     readonly name: string;
     readonly format: 'valve-220' | 'quake';
-    readonly roomId: string;
-    readonly roomVersion: number;
-    readonly sourceHash: string;
     readonly role: ProjectRole;
-    readonly sourceVersion: number;
   } | null {
     const row = this.sql
       .prepare(`
-      SELECT m.id,m.project_id,m.name,m.format,m.room_id,m.room_version,m.source_version,m.source_blob_hash,
+      SELECT m.id,m.project_id,m.name,m.format,
         p.name AS project_name,p.game,pm.role
       FROM maps m JOIN projects p ON p.id=m.project_id
       JOIN project_members pm ON pm.project_id=p.id
@@ -344,10 +296,6 @@ export class WorldviewDatabase {
           project_id: string;
           name: string;
           format: 'valve-220' | 'quake';
-          room_id: string;
-          room_version: number;
-          source_version: number;
-          source_blob_hash: string;
           project_name: string;
           game: 'quake' | 'goldsrc';
           role: ProjectRole;
@@ -361,56 +309,9 @@ export class WorldviewDatabase {
           game: row.game,
           name: row.name,
           format: row.format,
-          roomId: row.room_id,
-          roomVersion: row.room_version,
-          sourceVersion: row.source_version,
-          sourceHash: row.source_blob_hash,
           role: row.role,
         }
       : null;
-  }
-
-  public saveMapSource(input: {
-    mapId: string;
-    userId: string;
-    expectedVersion: number;
-    sourceHash: string;
-    sourceFingerprint: string;
-  }): number | null {
-    const now = Date.now();
-    const result = this.sql
-      .prepare(`UPDATE maps SET source_blob_hash=?, source_fingerprint=?,
-      source_version=source_version+1, updated_at=? WHERE id=? AND source_version=? AND EXISTS (
-        SELECT 1 FROM project_members pm WHERE pm.project_id=maps.project_id AND pm.user_id=? AND pm.role IN ('owner','editor')
-      )`)
-      .run(
-        input.sourceHash,
-        input.sourceFingerprint,
-        now,
-        input.mapId,
-        input.expectedVersion,
-        input.userId,
-      );
-    if (result.changes !== 1) return null;
-    this.sql
-      .prepare('UPDATE projects SET updated_at=? WHERE id=(SELECT project_id FROM maps WHERE id=?)')
-      .run(now, input.mapId);
-    return input.expectedVersion + 1;
-  }
-
-  public createCheckpoint(input: {
-    mapId: string;
-    userId: string;
-    name: string;
-  }): Record<string, unknown> | null {
-    const map = this.map(input.mapId, input.userId);
-    if (!map || map.role === 'viewer') return null;
-    const id = randomUUID();
-    const createdAt = Date.now();
-    this.sql
-      .prepare('INSERT INTO map_checkpoints VALUES(?,?,?,?,?,?,?)')
-      .run(id, map.id, input.name, map.sourceVersion, map.sourceHash, input.userId, createdAt);
-    return { id, name: input.name, sourceVersion: map.sourceVersion, createdAt };
   }
 
   public listResourceMounts(
@@ -545,20 +446,20 @@ export class WorldviewDatabase {
   public createBuild(input: {
     mapId: string;
     userId: string;
-    sourceVersion: number;
+    mapVersion: number;
     profileId: string;
     quality: 'preview' | 'final';
   }): { id: string; createdAt: number } {
     const id = randomUUID();
     const createdAt = Date.now();
     this.sql
-      .prepare(`INSERT INTO builds(id,map_id,requested_by,room_version,profile_id,quality,status,created_at,updated_at)
+      .prepare(`INSERT INTO builds(id,map_id,requested_by,map_version,profile_id,quality,status,created_at,updated_at)
       VALUES(?,?,?,?,?,?,'queued',?,?)`)
       .run(
         id,
         input.mapId,
         input.userId,
-        input.sourceVersion,
+        input.mapVersion,
         input.profileId,
         input.quality,
         createdAt,
@@ -602,7 +503,7 @@ export class WorldviewDatabase {
     const map = this.map(mapId, userId);
     if (!map) return null;
     const rows = this.sql
-      .prepare(`SELECT id,room_version AS source_version,profile_id,quality,status,source_sha256,result_json,created_at,updated_at
+      .prepare(`SELECT id,map_version,profile_id,quality,status,source_sha256,result_json,created_at,updated_at
       FROM builds WHERE map_id=? ORDER BY created_at DESC LIMIT 20`)
       .all(mapId) as Record<string, unknown>[];
     // oxlint-disable-next-line no-map-spread -- database rows are immutable response values.
@@ -611,143 +512,5 @@ export class WorldviewDatabase {
       result: typeof row.result_json === 'string' ? JSON.parse(row.result_json) : null,
       result_json: undefined,
     }));
-  }
-
-  public createShare(input: {
-    projectId: string;
-    mapId?: string;
-    role: ShareRole;
-    userId: string;
-    expiresAt?: number;
-  }): { id: string; token: string } {
-    const id = randomUUID();
-    const value = token();
-    this.sql
-      .prepare('INSERT INTO share_links VALUES(?,?,?,?,?,?,?,NULL,?)')
-      .run(
-        id,
-        digest(value),
-        input.projectId,
-        input.mapId ?? null,
-        input.role,
-        input.userId,
-        input.expiresAt ?? null,
-        Date.now(),
-      );
-    return { id, token: value };
-  }
-
-  public exchangeShare(
-    value: string,
-    displayName: string,
-  ): { token: string; expiresAt: number } | null {
-    const share = this.sql
-      .prepare(
-        `SELECT id,expires_at FROM share_links WHERE token_hash=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)`,
-      )
-      .get(digest(value), Date.now()) as { id: string; expires_at: number | null } | undefined;
-    if (!share) return null;
-    const guestToken = token();
-    const expiresAt = Math.min(
-      share.expires_at ?? Number.MAX_SAFE_INTEGER,
-      Date.now() + 7 * 24 * 60 * 60_000,
-    );
-    this.sql
-      .prepare('INSERT INTO guest_sessions VALUES(?,?,?,?,?)')
-      .run(digest(guestToken), share.id, randomUUID(), displayName, expiresAt);
-    return { token: guestToken, expiresAt };
-  }
-
-  public guestAccess(value: string | undefined, mapId: string): GuestAccess | null {
-    if (!value) return null;
-    const row = this.sql
-      .prepare(`SELECT gs.actor_id,gs.display_name,sl.role,sl.id AS share_id
-      FROM guest_sessions gs JOIN share_links sl ON sl.id=gs.share_id JOIN maps m ON m.project_id=sl.project_id
-      WHERE gs.token_hash=? AND gs.expires_at>? AND sl.revoked_at IS NULL
-      AND (sl.expires_at IS NULL OR sl.expires_at>?) AND m.id=? AND (sl.map_id IS NULL OR sl.map_id=m.id)`)
-      .get(digest(value), Date.now(), Date.now(), mapId) as
-      | { actor_id: string; display_name: string; role: ShareRole; share_id: string }
-      | undefined;
-    return row
-      ? {
-          actorId: row.actor_id,
-          displayName: row.display_name,
-          role: row.role,
-          shareId: row.share_id,
-        }
-      : null;
-  }
-
-  public mapForGuest(
-    mapId: string,
-    access: GuestAccess,
-  ): {
-    readonly id: string;
-    readonly projectId: string;
-    readonly projectName: string;
-    readonly game: 'quake' | 'goldsrc';
-    readonly name: string;
-    readonly format: 'valve-220' | 'quake';
-    readonly roomId: string;
-    readonly roomVersion: number;
-    readonly sourceVersion: number;
-    readonly sourceHash: string;
-    readonly role: ShareRole;
-  } | null {
-    const row = this.sql
-      .prepare(`SELECT m.id,m.project_id,m.name,m.format,m.room_id,m.room_version,m.source_version,m.source_blob_hash,p.name AS project_name,p.game
-      FROM maps m JOIN projects p ON p.id=m.project_id JOIN share_links sl ON sl.project_id=p.id
-      WHERE m.id=? AND sl.id=? AND p.archived_at IS NULL AND (sl.map_id IS NULL OR sl.map_id=m.id)`)
-      .get(mapId, access.shareId) as
-      | {
-          id: string;
-          project_id: string;
-          name: string;
-          format: 'valve-220' | 'quake';
-          room_id: string;
-          room_version: number;
-          source_version: number;
-          source_blob_hash: string;
-          project_name: string;
-          game: 'quake' | 'goldsrc';
-        }
-      | undefined;
-    return row
-      ? {
-          id: row.id,
-          projectId: row.project_id,
-          projectName: row.project_name,
-          game: row.game,
-          name: row.name,
-          format: row.format,
-          roomId: row.room_id,
-          roomVersion: row.room_version,
-          sourceVersion: row.source_version,
-          sourceHash: row.source_blob_hash,
-          role: access.role,
-        }
-      : null;
-  }
-
-  public saveGuestMapSource(input: {
-    mapId: string;
-    access: GuestAccess;
-    expectedVersion: number;
-    sourceHash: string;
-    sourceFingerprint: string;
-  }): number | null {
-    if (input.access.role !== 'editor' || !this.mapForGuest(input.mapId, input.access)) return null;
-    const result = this.sql
-      .prepare(
-        'UPDATE maps SET source_blob_hash=?,source_fingerprint=?,source_version=source_version+1,updated_at=? WHERE id=? AND source_version=?',
-      )
-      .run(
-        input.sourceHash,
-        input.sourceFingerprint,
-        Date.now(),
-        input.mapId,
-        input.expectedVersion,
-      );
-    return result.changes === 1 ? input.expectedVersion + 1 : null;
   }
 }

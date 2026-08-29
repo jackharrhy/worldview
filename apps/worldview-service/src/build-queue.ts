@@ -26,7 +26,7 @@ export class RemoteBuildQueue {
     game: 'quake' | 'goldsrc';
     mapName: string;
     source: string;
-    sourceVersion: number;
+    mapVersion: number;
     sourceSha256: string;
     profileId: string;
     quality: 'preview' | 'final';
@@ -46,7 +46,7 @@ export class RemoteBuildQueue {
             mapText: input.source,
             quality: input.quality,
             profileId: input.profileId,
-            expectedDocumentRevision: input.sourceVersion,
+            expectedDocumentRevision: input.mapVersion,
             assets: input.assets.map((asset) => ({
               name: asset.name,
               mediaType: asset.mediaType,

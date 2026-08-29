@@ -45,6 +45,7 @@ import {
   CollaborationController,
   CollaborationSocketClient,
   EditorCollaborationBridge,
+  reconcilePendingOperations,
   type CollaborationPresence,
   type JoinCollaborationOptions,
 } from './collaboration.js';
@@ -71,7 +72,7 @@ export class EditorApplication implements EditorStateHost {
   private readonly toolEvents = new ToolEvents(this);
   private readonly keyboardEvents = new KeyboardEvents(this);
   private collaboration: {
-    readonly roomId: string;
+    readonly mapId: string;
     readonly bridge: EditorCollaborationBridge;
     readonly socket: CollaborationSocketClient;
     readonly presenceTimer: number;
@@ -80,7 +81,6 @@ export class EditorApplication implements EditorStateHost {
     readonly schedulePresence: () => void;
     readonly clearRemotePresence: () => void;
   } | null = null;
-  private hostedAutosaveCleanup: (() => void) | null = null;
 
   public constructor(public readonly ui: EditorElements) {
     this.state = new EditorState(ui, () => this);
@@ -211,8 +211,8 @@ export class EditorApplication implements EditorStateHost {
     await this.collaborationUi.connect();
   }
 
-  public get collaborationRoomId(): string | null {
-    return this.collaboration?.roomId ?? null;
+  public get collaborationMapId(): string | null {
+    return this.collaboration?.mapId ?? null;
   }
 
   private publishCollaborationPreview(document: MapDocument): void {
@@ -226,27 +226,23 @@ export class EditorApplication implements EditorStateHost {
   /** Explicitly enters multiplayer; ordinary construction and `start()` remain solo-only. */
   public async joinCollaboration(options: JoinCollaborationOptions): Promise<void> {
     this.leaveCollaboration();
-    const roomUrl = new URL(`/rooms/${encodeURIComponent(options.roomId)}`, options.endpoint);
+    const roomUrl = new URL(
+      `/sync/maps/${encodeURIComponent(options.mapId)}/snapshot`,
+      options.endpoint,
+    );
     const accessToken = await options.authorize?.();
     const authorizationHeaders = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
     const snapshotResponse = await fetch(roomUrl, { headers: authorizationHeaders });
     if (!snapshotResponse.ok) throw new Error(`Cannot inspect room (${snapshotResponse.status})`);
     const snapshot = (await snapshotResponse.json()) as {
-      readonly roomVersion: number;
-      readonly document: MapDocument | null;
+      readonly mapVersion: number;
+      readonly document: MapDocument;
+      readonly source: string;
+      readonly sourceSha256: string;
     };
-    if (snapshot.document) {
-      this.state.session.replaceDocument(snapshot.document, `Join room ${options.roomId}`);
-    } else {
-      const initializeResponse = await fetch(roomUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...authorizationHeaders },
-        body: JSON.stringify(this.state.session.document),
-      });
-      if (!initializeResponse.ok) {
-        throw new Error(`Cannot initialize room (${initializeResponse.status})`);
-      }
-    }
+    this.state.session.replaceDocument(snapshot.document, `Open hosted map ${options.mapId}`);
+    this.state.currentMapSource = rebaseMapSource(snapshot.document, snapshot.source);
+    this.state.savedDocumentRevision = snapshot.document.revision;
 
     let bridge: EditorCollaborationBridge;
     const remotePresences = new Map<string, CollaborationPresence>();
@@ -269,7 +265,7 @@ export class EditorApplication implements EditorStateHost {
               operationId: `preview:${presence.actorId}:${preview.interactionId}:${preview.sequence}`,
               transactionId: preview.interactionId,
               actorId: presence.actorId,
-              baseRoomVersion: preview.baseRoomVersion,
+              baseMapVersion: preview.baseMapVersion,
               label: 'Remote preview',
               edits: preview.edits,
             };
@@ -313,12 +309,27 @@ export class EditorApplication implements EditorStateHost {
       renderRemotePresence();
       options.onPresence?.(presence);
     };
-    const controller = new CollaborationController({
-      roomId: options.roomId,
+    let controller: CollaborationController;
+    let canonicalMapVersion = snapshot.mapVersion;
+    const refreshSourceState = (status?: string) => {
+      const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
+      if (plan.status === 'blocked') return;
+      this.state.currentMapSource = rebaseMapSource(this.state.session.document, plan.text);
+      void controller.pending().then((pending) => {
+        if (pending.length > 0) return;
+        this.state.savedDocumentRevision = this.state.session.document.revision;
+        this.document.setDocumentDirty(false);
+        if (status) this.ui.statusMessage.textContent = status;
+      });
+    };
+    controller = new CollaborationController({
+      mapId: options.mapId,
       actorId: options.actorId,
       ...(options.authorize ? { authorize: options.authorize } : {}),
       onPeerOperation: (operation) => {
         bridge.receive(operation);
+        canonicalMapVersion = controller.getMapVersion();
+        refreshSourceState();
         const presence = remotePresences.get(operation.actorId);
         if (presence?.preview) {
           const { preview: _preview, ...withoutPreview } = presence;
@@ -326,8 +337,12 @@ export class EditorApplication implements EditorStateHost {
           renderRemotePresence();
         }
       },
+      onAcknowledged: (_operationId, mapVersion) => {
+        canonicalMapVersion = mapVersion;
+        refreshSourceState(`Hosted map saved · v${mapVersion}`);
+      },
     });
-    controller.setRoomVersion(snapshot.roomVersion);
+    controller.setMapVersion(snapshot.mapVersion);
     bridge = new EditorCollaborationBridge(this.state.session, controller, (error) => {
       this.ui.statusMessage.textContent =
         error instanceof Error ? error.message : 'Collaboration operation failed';
@@ -361,7 +376,7 @@ export class EditorApplication implements EditorStateHost {
               preview: {
                 interactionId,
                 sequence: previewSequence,
-                baseRoomVersion: controller.getRoomVersion(),
+                baseMapVersion: controller.getMapVersion(),
                 edits,
               },
             }
@@ -395,13 +410,28 @@ export class EditorApplication implements EditorStateHost {
     };
     socket = new CollaborationSocketClient({
       endpoint: socketEndpoint.toString(),
-      roomId: options.roomId,
+      mapId: options.mapId,
       actorId: options.actorId,
       controller,
       onPresence: receivePresence,
       ...(options.onConflict ? { onConflict: options.onConflict } : {}),
       ...(options.onConnectionChange ? { onConnectionChange: options.onConnectionChange } : {}),
-      onReady: () => sendPresence(),
+      onReady: async (ready) => {
+        if (ready.mapVersion > canonicalMapVersion) {
+          const reconciliation = reconcilePendingOperations(
+            ready.document,
+            await controller.pending(),
+          );
+          for (const conflict of reconciliation.conflicts) {
+            options.onConflict?.(conflict.operationId, conflict.details);
+          }
+          bridge.synchronize(reconciliation.document, `Synchronize map ${options.mapId}`);
+          this.state.currentMapSource = rebaseMapSource(ready.document, ready.source);
+          refreshSourceState();
+          canonicalMapVersion = ready.mapVersion;
+        }
+        sendPresence();
+      },
       onError: (error) => {
         this.ui.statusMessage.textContent =
           error instanceof Error ? error.message : 'Collaboration connection failed';
@@ -414,7 +444,7 @@ export class EditorApplication implements EditorStateHost {
       }
     });
     this.collaboration = {
-      roomId: options.roomId,
+      mapId: options.mapId,
       bridge,
       socket,
       presenceTimer,
@@ -427,7 +457,7 @@ export class EditorApplication implements EditorStateHost {
       },
     };
     socket.connect();
-    this.ui.statusMessage.textContent = `Joined collaboration room ${options.roomId}.`;
+    this.ui.statusMessage.textContent = `Joined collaboration room ${options.mapId}.`;
   }
 
   public leaveCollaboration(): void {
@@ -439,67 +469,6 @@ export class EditorApplication implements EditorStateHost {
     collaboration.clearRemotePresence();
     collaboration.socket.close();
     collaboration.bridge.close();
-    this.ui.statusMessage.textContent = `Left collaboration room ${collaboration.roomId}; editing remains local.`;
-  }
-
-  public startHostedAutosave(mapId: string, initialSourceVersion: number): void {
-    this.hostedAutosaveCleanup?.();
-    let sourceVersion = initialSourceVersion;
-    let timer: number | null = null;
-    let saving = false;
-    let queued = false;
-    const save = async () => {
-      if (saving) {
-        queued = true;
-        return;
-      }
-      saving = true;
-      this.ui.statusMessage.textContent = 'Saving hosted map…';
-      try {
-        const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
-        if (plan.status === 'blocked')
-          throw new Error(plan.diagnostics.map(({ message }) => message).join(' '));
-        const response = await fetch(`/api/maps/${encodeURIComponent(mapId)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source: plan.text, expectedVersion: sourceVersion }),
-        });
-        const payload = (await response.json().catch(() => null)) as {
-          sourceVersion?: unknown;
-          error?: unknown;
-        } | null;
-        if (!response.ok || typeof payload?.sourceVersion !== 'number')
-          throw new Error(
-            typeof payload?.error === 'string'
-              ? payload.error
-              : `Hosted save failed (${response.status})`,
-          );
-        sourceVersion = payload.sourceVersion;
-        this.state.currentMapSource = rebaseMapSource(this.state.session.document, plan.text);
-        this.state.savedDocumentRevision = this.state.session.document.revision;
-        this.document.setDocumentDirty(false);
-        this.ui.statusMessage.textContent = `Hosted map saved · v${sourceVersion}`;
-      } catch (error) {
-        this.ui.statusMessage.textContent = `Hosted map offline: ${error instanceof Error ? error.message : String(error)}`;
-      } finally {
-        saving = false;
-        if (queued) {
-          queued = false;
-          void save();
-        }
-      }
-    };
-    const unsubscribe = this.state.session.subscribe((change) => {
-      if (change.kind !== 'document' && change.kind !== 'history') return;
-      if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        timer = null;
-        void save();
-      }, 750);
-    });
-    this.hostedAutosaveCleanup = () => {
-      unsubscribe();
-      if (timer !== null) window.clearTimeout(timer);
-    };
+    this.ui.statusMessage.textContent = `Left collaboration room ${collaboration.mapId}; editing remains local.`;
   }
 }

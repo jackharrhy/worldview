@@ -22,7 +22,7 @@ const operations = Array.from({ length: operationCount }, (_, index) => ({
   operationId: `benchmark:${index}`,
   transactionId: `benchmark:${index}`,
   actorId: 'benchmark',
-  baseRoomVersion: index,
+  baseMapVersion: index,
   label: 'Translate brush',
   edits: [
     {

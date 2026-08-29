@@ -8,6 +8,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@jackharrhy/worldview-editor": "*"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0"
   },

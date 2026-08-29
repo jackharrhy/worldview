@@ -11,12 +11,12 @@ owns 4orm callbacks and Worldview sessions, exposes project/build/resource APIs,
 realtime entry. Newport is the first deployment target.
 
 SQLite in WAL mode stores relational metadata: users, sessions, projects, memberships, personal
-folders, maps, resource mounts, checkpoints, builds, and artifact references. Large
+folders, map identities, resource mounts, builds, and artifact references. Large
 immutable values use a content-addressed `BlobStore`; the first implementation is an atomic-write
 filesystem directory on a backed-up server volume. The interface does not expose filesystem paths
 and can later target S3 or Azure Blob without changing editor contracts.
 
-Each hosted map keeps one named `MapRoom` Durable Object/cell as its coordination atom. The room
+Each hosted map keeps one named `MapCell` Durable Object/cell as its coordination atom. The room
 persists original `MapSourceState`, the validated `MapDocument`, ordered semantic operations,
 versions, checkpoints, acknowledgements, and conflicts before acknowledging edits. Presence and
 gesture previews remain ephemeral. Project metadata does not move into the map room.
@@ -41,14 +41,18 @@ The home screen presents Local and Hosted sections with equal weight. Hosted rou
 workspace port with local-filesystem and remote implementations; core map/session code remains
 free of DOM, HTTP, and filesystem concepts.
 
-Hosted edits use immediate autosave. UI state is `Saving`, `Saved`, or `Offline`; acknowledged
-operations are durable, named checkpoints are explicit, and `.map` export remains available.
+Every hosted edit is a semantic MapCell operation. UI state is `Saving`, `Saved`, or `Offline`;
+acknowledged operations are durable, named checkpoints are explicit, and `.map` export remains available.
 Source snapshots are produced through the source-preserving save planner, so untouched source
 round-trips exactly and unsafe opaque edits remain blocked.
 
-Remote maps cache their checkpoint, room version, resource manifest, and pending operations in
+Remote maps cache their last snapshot, map version, resource manifest, and pending operations in
 IndexedDB. Reconnection uses the existing deterministic operation/rebase rules. Resources use a
 SHA-256 browser cache and never silently update when a remote provider changes.
+
+The application database never stores hosted source text, a source blob pointer, a second source
+version, or map checkpoints. Initial HTTP loads, live joins, reloads, checkpoints, and builds all
+resolve the same named MapCell and its single monotonically increasing `mapVersion`.
 
 ## Remote builds
 

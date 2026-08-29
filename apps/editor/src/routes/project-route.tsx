@@ -42,7 +42,6 @@ export function Component() {
                   >
                     <strong>{map.name}</strong>
                     <span>{map.format === 'valve-220' ? 'Valve 220' : 'Classic Quake'}</span>
-                    <small>r{map.room_version}</small>
                   </button>
                 </div>
               ))

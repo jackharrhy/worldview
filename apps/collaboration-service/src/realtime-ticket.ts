@@ -1,7 +1,6 @@
 export interface HostedRealtimeTicket {
-  readonly version: 1;
+  readonly version: 2;
   readonly mapId: string;
-  readonly roomId: string;
   readonly principalId: string;
   readonly actorId: string;
   readonly role: 'owner' | 'editor' | 'viewer';
@@ -39,9 +38,8 @@ export async function verifyHostedRealtimeTicket(
       new TextDecoder().decode(decode(content)),
     ) as Partial<HostedRealtimeTicket>;
     if (
-      payload.version !== 1 ||
+      payload.version !== 2 ||
       typeof payload.mapId !== 'string' ||
-      typeof payload.roomId !== 'string' ||
       typeof payload.principalId !== 'string' ||
       typeof payload.actorId !== 'string' ||
       (payload.role !== 'owner' && payload.role !== 'editor' && payload.role !== 'viewer') ||

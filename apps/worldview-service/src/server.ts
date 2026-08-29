@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -15,6 +15,17 @@ import {
 import { signRealtimeTicket } from './realtime-ticket.js';
 import { ArtbinClient } from './artbin.js';
 import { RemoteBuildQueue } from './build-queue.js';
+import {
+  MapCellClient,
+  type HostedMapCheckpoint,
+  type HostedMapSnapshot,
+} from './map-cell-client.js';
+
+export interface HostedMapStore {
+  initialize(mapId: string, source: string): Promise<HostedMapSnapshot>;
+  snapshot(mapId: string): Promise<HostedMapSnapshot>;
+  createCheckpoint(mapId: string, name: string, actorId: string): Promise<HostedMapCheckpoint>;
+}
 
 const SESSION_COOKIE = 'worldview_session';
 const OAUTH_COOKIE = 'worldview_oauth';
@@ -27,6 +38,7 @@ export interface WorldviewServiceOptions {
   readonly staticRoot?: string;
   readonly fetch?: typeof globalThis.fetch;
   readonly realtimeTicketSecret: string;
+  readonly maps: HostedMapStore;
   readonly artbin?: ArtbinClient;
   readonly builds?: RemoteBuildQueue;
 }
@@ -287,18 +299,16 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         if (format !== 'valve-220' && format !== 'quake')
           return json(response, 400, { error: 'Unsupported map format' });
         const source = typeof input.source === 'string' ? input.source : emptyMap(format);
-        const bytes = new TextEncoder().encode(source);
-        const blob = await options.blobs.put(bytes);
-        const fingerprint = createHash('sha256').update(bytes).digest('hex');
+        const mapId = randomUUID();
+        const snapshot = await options.maps.initialize(mapId, source);
         const map = options.database.createMap({
+          id: mapId,
           projectId,
           userId: user.id,
           name: text(input.name, 'name'),
           format,
-          sourceHash: blob.sha256,
-          sourceFingerprint: fingerprint,
         });
-        return json(response, 201, { map });
+        return json(response, 201, { map: { ...map, ...snapshot } });
       }
       const resourcesMatch = /^\/api\/projects\/([^/]+)\/resources$/.exec(url.pathname);
       if (request.method === 'GET' && resourcesMatch) {
@@ -368,49 +378,15 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const principal = mapPrincipal(request, options.database, decodeURIComponent(mapMatch[1]!));
         if (!principal)
           return json(response, 404, { error: 'Map not found or authentication required' });
-        const source = await options.blobs.get(principal.map.sourceHash);
-        if (!source) return json(response, 500, { error: 'Map source blob is missing' });
+        const snapshot = await options.maps.snapshot(principal.map.id);
         return json(response, 200, {
           map: {
             ...principal.map,
-            source: new TextDecoder().decode(source),
+            ...snapshot,
             actorId: principal.actorId,
             displayName: principal.displayName,
           },
         });
-      }
-      if (request.method === 'PUT' && mapMatch) {
-        if (!mutationAllowed(request, options.oauth.publicUrl))
-          return json(response, 403, { error: 'Cross-origin mutation rejected' });
-        const mapId = decodeURIComponent(mapMatch[1]!);
-        const principal = mapPrincipal(request, options.database, mapId);
-        if (!principal)
-          return json(response, 404, { error: 'Map not found or authentication required' });
-        const input = await body(request, MAX_HOSTED_MAP_BYTES + 64 * 1024);
-        if (
-          typeof input.source !== 'string' ||
-          !Number.isSafeInteger(input.expectedVersion) ||
-          (input.expectedVersion as number) < 0
-        ) {
-          return json(response, 400, { error: 'source and expectedVersion are required' });
-        }
-        const bytes = new TextEncoder().encode(input.source);
-        if (bytes.byteLength > MAX_HOSTED_MAP_BYTES)
-          return json(response, 413, { error: 'Hosted maps are limited to 2 MiB of source' });
-        const blob = await options.blobs.put(bytes);
-        const saveInput = {
-          mapId,
-          expectedVersion: input.expectedVersion as number,
-          sourceHash: blob.sha256,
-          sourceFingerprint: createHash('sha256').update(bytes).digest('hex'),
-        };
-        const version = options.database.saveMapSource({
-          ...saveInput,
-          userId: principal.user.id,
-        });
-        return version === null
-          ? json(response, 409, { error: 'The hosted map changed; reload before overwriting it' })
-          : json(response, 200, { sourceVersion: version, sha256: blob.sha256 });
       }
       const checkpointMatch = /^\/api\/maps\/([^/]+)\/checkpoints$/.exec(url.pathname);
       if (request.method === 'POST' && checkpointMatch) {
@@ -419,14 +395,16 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const user = requireUser(request, response, options.database);
         if (!user) return;
         const input = await body(request);
-        const checkpoint = options.database.createCheckpoint({
-          mapId: decodeURIComponent(checkpointMatch[1]!),
-          userId: user.id,
-          name: text(input.name, 'name'),
-        });
-        return checkpoint
-          ? json(response, 201, { checkpoint })
-          : json(response, 403, { error: 'Editor access required' });
+        const mapId = decodeURIComponent(checkpointMatch[1]!);
+        const map = options.database.map(mapId, user.id);
+        if (!map || map.role === 'viewer')
+          return json(response, 403, { error: 'Editor access required' });
+        const checkpoint = await options.maps.createCheckpoint(
+          mapId,
+          text(input.name, 'name'),
+          user.id,
+        );
+        return json(response, 201, { checkpoint });
       }
       const ticketMatch = /^\/api\/maps\/([^/]+)\/realtime-ticket$/.exec(url.pathname);
       if (request.method === 'POST' && ticketMatch) {
@@ -443,9 +421,8 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         return json(response, 201, {
           ticket: signRealtimeTicket(
             {
-              version: 1,
+              version: 2,
               mapId: principal.map.id,
-              roomId: principal.map.roomId,
               principalId: principal.principalId,
               actorId: principal.actorId,
               role: principal.map.role,
@@ -479,8 +456,8 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           return json(response, 403, { error: 'Editor access required' });
         const input = await body(request);
         const quality = input.quality === 'final' ? 'final' : 'preview';
-        const source = await options.blobs.get(map.sourceHash);
-        if (!source) return json(response, 500, { error: 'Map source blob is missing' });
+        const snapshot = await options.maps.snapshot(map.id);
+        const source = new TextEncoder().encode(snapshot.source);
         if (source.byteLength > MAX_HOSTED_MAP_BYTES)
           return json(response, 413, { error: 'Hosted builds are limited to 2 MiB map sources' });
         const admission = options.database.buildAdmission(user.id);
@@ -498,7 +475,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const build = options.database.createBuild({
           mapId: map.id,
           userId: user.id,
-          sourceVersion: map.sourceVersion,
+          mapVersion: snapshot.mapVersion,
           profileId: 'default',
           quality,
         });
@@ -506,9 +483,9 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           id: build.id,
           game: map.game,
           mapName: map.name,
-          source: new TextDecoder().decode(source),
-          sourceVersion: map.sourceVersion,
-          sourceSha256: map.sourceHash,
+          source: snapshot.source,
+          mapVersion: snapshot.mapVersion,
+          sourceSha256: snapshot.sourceSha256,
           profileId: 'default',
           quality,
           assets: [],
@@ -519,7 +496,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           return json(response, 429, { error: 'The build queue is full' });
         }
         return json(response, 202, {
-          build: { ...build, status: 'queued', sourceVersion: map.sourceVersion, quality },
+          build: { ...build, status: 'queued', mapVersion: snapshot.mapVersion, quality },
         });
       }
       if (
@@ -591,6 +568,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     realtimeTicketSecret: environment(
       'WORLDVIEW_REALTIME_TICKET_SECRET',
       'development-only-worldview-ticket-secret',
+    ),
+    maps: new MapCellClient(
+      environment('WORLDVIEW_MAP_SERVICE_URL', 'http://127.0.0.1:8788'),
+      environment('WORLDVIEW_REALTIME_TICKET_SECRET', 'development-only-worldview-ticket-secret'),
     ),
     ...(process.env.ARTBIN_URL &&
     process.env.FOURM_SERVICE_CLIENT_ID &&

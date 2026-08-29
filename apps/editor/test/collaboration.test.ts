@@ -11,6 +11,7 @@ import {
   EditorCollaborationBridge,
   CollaborationSocketClient,
   MemoryCollaborationOutbox,
+  reconcilePendingOperations,
   type CollaborationChannel,
   type CollaborationSocket,
 } from '../src/collaboration.js';
@@ -24,11 +25,44 @@ function channel(publish: (message: unknown) => void): CollaborationChannel {
 }
 
 describe('CollaborationController', () => {
+  it('reapplies offline operations over a canonical snapshot and reports stale edits', () => {
+    const before = createStarterDocument();
+    const after = insertBrush(
+      before,
+      before.entities[0]!.id,
+      createBoxBrush([0, 0, 0], [64, 64, 64], 'STONE', createSequentialIdFactory('reconcile')),
+    );
+    const operation = {
+      schemaVersion: 1,
+      operationId: 'alice:offline',
+      transactionId: 'alice:offline',
+      actorId: 'alice',
+      baseMapVersion: 0,
+      label: 'Offline edit',
+      edits: [
+        {
+          kind: 'insert-brush',
+          entityId: before.entities[0]!.id,
+          insertionIndex: before.entities[0]!.primitives.length,
+          brush: after.entities[0]!.primitives.at(-1)!,
+        },
+      ],
+    } as const;
+    expect(reconcilePendingOperations(before, [operation])).toMatchObject({
+      document: after,
+      conflicts: [],
+    });
+    expect(reconcilePendingOperations(after, [operation])).toMatchObject({
+      document: after,
+      conflicts: [{ operationId: operation.operationId }],
+    });
+  });
+
   it('persists before broadcasting and clears only acknowledged operations', async () => {
     const outbox = new MemoryCollaborationOutbox();
     const broadcast = vi.fn();
     const controller = new CollaborationController({
-      roomId: 'room',
+      mapId: 'room',
       actorId: 'alice',
       outbox,
       channel: channel(broadcast),
@@ -65,7 +99,7 @@ describe('CollaborationController', () => {
     const outbox = new MemoryCollaborationOutbox();
     const peers = vi.fn();
     const controller = new CollaborationController({
-      roomId: 'room',
+      mapId: 'room',
       actorId: 'alice',
       outbox,
       channel: channel(() => {}),
@@ -81,9 +115,10 @@ describe('CollaborationController', () => {
     );
     const queued = await controller.recordCommit('Offline edit', before, after);
     let reconnect: (() => void) | null = null;
+    let finishReconciliation: (() => void) | null = null;
     const client = new CollaborationSocketClient({
       endpoint: 'ws://localhost:8787',
-      roomId: 'room',
+      mapId: 'room',
       actorId: 'alice',
       controller,
       createSocket: () => socket,
@@ -92,29 +127,42 @@ describe('CollaborationController', () => {
         return 1;
       },
       cancelReconnect: () => {},
+      onReady: () =>
+        new Promise<void>((resolve) => {
+          finishReconciliation = resolve;
+        }),
     });
     client.connect();
     listeners.get('message')?.({
-      data: JSON.stringify({ type: 'ready', roomVersion: 0, document: before }),
+      data: JSON.stringify({ type: 'ready', mapVersion: 0, document: before }),
     } as MessageEvent<string>);
+    await vi.waitFor(() => expect(finishReconciliation).not.toBeNull());
+    expect(sent).toHaveLength(0);
+    listeners.get('message')?.({
+      data: JSON.stringify({ type: 'operation', mapVersion: 1, operation: queued }),
+    } as MessageEvent<string>);
+    expect(peers).not.toHaveBeenCalled();
+    finishReconciliation!();
     await vi.waitFor(() => expect(sent).toHaveLength(1));
+    await vi.waitFor(() => expect(peers).toHaveBeenCalledWith(queued));
     expect(JSON.parse(sent[0]!).operation.operationId).toBe(queued?.operationId);
     listeners.get('message')?.({
       data: JSON.stringify({
         type: 'ack',
-        roomVersion: 1,
+        mapVersion: 1,
         operationId: queued!.operationId,
       }),
     } as MessageEvent<string>);
     await vi.waitFor(async () => expect(await controller.pending()).toEqual([]));
+    const rejected = await controller.recordCommit('Rejected edit', before, after);
     listeners.get('message')?.({
       data: JSON.stringify({
-        type: 'operation',
-        roomVersion: 2,
-        operation: queued,
+        type: 'conflict',
+        operationId: rejected!.operationId,
+        conflicts: [],
       }),
     } as MessageEvent<string>);
-    expect(peers).toHaveBeenCalledWith(queued);
+    await vi.waitFor(async () => expect(await controller.pending()).toEqual([]));
     listeners.get('close')?.();
     expect(reconnect).not.toBeNull();
     client.close();
@@ -131,7 +179,7 @@ describe('CollaborationController', () => {
       close: vi.fn(),
     } as CollaborationSocket;
     const controller = new CollaborationController({
-      roomId: 'room',
+      mapId: 'room',
       actorId: 'alice',
       outbox: new MemoryCollaborationOutbox(),
       channel: channel(() => {}),
@@ -139,14 +187,14 @@ describe('CollaborationController', () => {
     });
     const client = new CollaborationSocketClient({
       endpoint: 'ws://localhost:8787',
-      roomId: 'room',
+      mapId: 'room',
       actorId: 'alice',
       controller,
       createSocket: () => socket,
     });
     client.connect();
     listeners.get('message')?.({
-      data: JSON.stringify({ type: 'ready', roomVersion: 0, document: null }),
+      data: JSON.stringify({ type: 'ready', mapVersion: 0, document: null }),
     } as MessageEvent<string>);
     await vi.waitFor(() => expect(sent).toHaveLength(0));
 
@@ -167,7 +215,7 @@ describe('CollaborationController', () => {
   it('bridges real EditorSession commits while keeping remote commits out of the local outbox', async () => {
     const outbox = new MemoryCollaborationOutbox();
     const controller = new CollaborationController({
-      roomId: 'room',
+      mapId: 'room',
       actorId: 'alice',
       outbox,
       channel: channel(() => {}),

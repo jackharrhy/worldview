@@ -33,6 +33,7 @@ export {
   simulateCollaborationDelivery,
   type CollaborationApplyResult,
   type CollaborationConflict,
+  type CollaborationFailure,
   type CollaborationEdit,
   type CollaborationOperation,
   type SequencedCollaborationOperation,

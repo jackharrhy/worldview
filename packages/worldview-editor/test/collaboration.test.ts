@@ -22,7 +22,7 @@ function operation(
     operationId,
     transactionId: operationId,
     actorId,
-    baseRoomVersion: 0,
+    baseMapVersion: 0,
     label: operationId,
     edits,
   };
@@ -121,7 +121,7 @@ describe('collaboration operations', () => {
     let baseline = starter;
     for (const brush of brushes) baseline = insertBrush(baseline, starter.entities[0]!.id, brush);
     const frames = brushes.map((brush, index) => ({
-      roomVersion: index + 1,
+      mapVersion: index + 1,
       operation: operation(`actor:${index}`, `actor-${index}`, [
         {
           kind: 'replace-brush' as const,
@@ -141,7 +141,7 @@ describe('collaboration operations', () => {
     ];
     for (const { replica, delivery } of replicas) {
       for (const frame of delivery) expect(replica.receive(frame)).toEqual([]);
-      expect(replica.roomVersion).toBe(3);
+      expect(replica.mapVersion).toBe(3);
     }
     expect(replicas[1]!.replica.document).toEqual(replicas[0]!.replica.document);
     expect(replicas[2]!.replica.document).toEqual(replicas[0]!.replica.document);
@@ -149,9 +149,7 @@ describe('collaboration operations', () => {
     const simulation = simulateCollaborationDelivery(baseline, frames, 0x5eed, 3);
     expect(simulation.deliveredFrames).toBeGreaterThan(frames.length * 3);
     expect(simulation.conflicts).toEqual([]);
-    expect(simulation.replicas.every((replica) => replica.roomVersion === frames.length)).toBe(
-      true,
-    );
+    expect(simulation.replicas.every((replica) => replica.mapVersion === frames.length)).toBe(true);
     expect(simulation.replicas[1]!.document).toEqual(simulation.replicas[0]!.document);
     expect(simulation.replicas[2]!.document).toEqual(simulation.replicas[0]!.document);
   });

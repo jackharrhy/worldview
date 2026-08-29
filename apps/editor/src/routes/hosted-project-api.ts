@@ -17,8 +17,6 @@ export interface HostedProjectMap {
   readonly id: string;
   readonly name: string;
   readonly format: 'valve-220' | 'quake';
-  readonly room_id: string;
-  readonly room_version: number;
   readonly updated_at: number;
 }
 
@@ -33,9 +31,7 @@ export interface HostedMapLaunch {
   readonly game: 'quake' | 'goldsrc';
   readonly name: string;
   readonly format: 'valve-220' | 'quake';
-  readonly roomId: string;
-  readonly roomVersion: number;
-  readonly sourceVersion: number;
+  readonly mapVersion: number;
   readonly role: 'owner' | 'editor' | 'viewer';
   readonly actorId: string;
   readonly displayName: string;
