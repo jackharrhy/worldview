@@ -242,13 +242,13 @@ Traefik sends only `https://worldview.harrhy.xyz/rooms/*` to celld; its operator
 loopback. The Worldview service and celld read the same realtime-ticket secret, while accountless
 rooms remain possession-capability links.
 
-After starting Newport's `worldview-azurite` service, deploy the Worker explicitly from a clean
-Worldview checkout with `npm run deploy:collaboration:celld-azurite`. The command creates the fixed
-`worldview-celld` blob container when absent, runs celld's storage diagnostic, and commits the
-real collaboration Worker deployment. The `worldview-celld` service then loads that deployment from
-Azurite. Back up both `worldview_azurite` and `worldview_celld`; moving to a qualified object store
-replaces this operator command and the celld storage environment without changing the Worker or
-browser protocol.
+Newport's Compose stack runs the published `worldview-celld-deployer:main` target as a one-shot
+bootstrap after Azurite becomes healthy. It creates the fixed `worldview-celld` blob container when
+absent, runs celld's storage diagnostic, and commits the real collaboration Worker deployment before
+the long-running node starts. The same operation remains available from a clean Worldview checkout
+as `npm run deploy:collaboration:celld-azurite`. Back up both `worldview_azurite` and
+`worldview_celld`; moving to a qualified object store replaces the bootstrap storage environment
+without changing the Worker or browser protocol.
 
 ## Delivery experiments and gates
 

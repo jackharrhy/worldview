@@ -46,3 +46,9 @@ users, place each compile in a locked-down container or comparable sandbox, requ
 bound CPU/memory/disk independently of this process, restrict asset mounts, and keep the compiler
 service off the application origin. Map compilers process untrusted input and must not inherit broad
 host filesystem access.
+
+The production Worldview image includes this adapter but not ericw-tools. Newport runs the same
+image with this service's command, a read-only filesystem, bounded temporary storage, CPU/memory/PID
+limits, no Linux capabilities, and the host's pinned ericw-tools directory mounted read-only. The
+service is reachable only on the private Compose network; the public Worldview service proxies no
+compiler route and submits its server-owned build jobs directly.

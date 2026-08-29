@@ -1,13 +1,19 @@
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 
 const account = 'devstoreaccount1';
 const accountKey =
   'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==';
-const bucket = process.env.CELLD_BUCKET ?? 'worldview-celld';
+const configuredBucket = process.env.CELLD_BUCKET ?? 'az://worldview-celld';
+const bucketUrl = configuredBucket.startsWith('az://')
+  ? configuredBucket
+  : `az://${configuredBucket}`;
+const bucket = bucketUrl.slice('az://'.length).split('/', 1)[0];
+if (!bucket) throw new Error(`Invalid CELLD_BUCKET: ${configuredBucket}`);
 const endpoint = process.env.AZURITE_BLOB_ENDPOINT ?? `http://127.0.0.1:10000/${account}`;
 const celld = process.env.CELLD_BIN ?? join(homedir(), '.local', 'bin', 'celld');
 const expectedVersion = 'celld 0.4.0';
@@ -40,9 +46,20 @@ if (version !== expectedVersion) {
 
 const credential = new StorageSharedKeyCredential(account, accountKey);
 const storage = new BlobServiceClient(endpoint, credential);
-await storage.getContainerClient(bucket).createIfNotExists();
+const container = storage.getContainerClient(bucket);
+let storageError;
+for (let attempt = 0; attempt < 30; attempt += 1) {
+  try {
+    await container.createIfNotExists();
+    storageError = undefined;
+    break;
+  } catch (error) {
+    storageError = error;
+    await delay(500);
+  }
+}
+if (storageError) throw storageError;
 
-const bucketUrl = `az://${bucket}`;
 run(['diagnose', '--bucket', bucketUrl, '--listen', '127.0.0.1:0']);
 run(['deploy', 'apps/collaboration-service', '--bucket', bucketUrl]);
 console.log(`Deployed Worldview collaboration to ${bucketUrl} through ${endpoint}`);
