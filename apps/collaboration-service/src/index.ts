@@ -97,7 +97,7 @@ export default {
           ? authorization.slice(7)
           : url.searchParams.get('access_token');
         const ticket = ticketValue
-          ? await verifyHostedRealtimeTicket(ticketValue, env.WORLDVIEW_TICKET_SECRET)
+          ? await verifyHostedRealtimeTicket(ticketValue, env.WORLDVIEW_REALTIME_TICKET_SECRET)
           : null;
         if (!ticket || ticket.roomId !== roomId) {
           return json({ error: 'A valid hosted-map ticket is required' }, { status: 401 });

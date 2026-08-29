@@ -208,6 +208,12 @@ the editor's 8,000-brush target.
 - Workers-runtime tests verify SQLite recovery after Durable Object eviction. `wrangler deploy
 --dry-run` verifies the executable bundle without making a remote deployment.
 
+Local development is pinned to celld 0.4.0. Run `npm run dev:collaboration:celld`; celld's local
+development mode rebuilds the Worker and persists its object store beneath
+`apps/collaboration-service/.celld/dev`, without Cloudflare credentials, Docker, or a remote bucket.
+The editor's unconfigured localhost endpoint is `http://127.0.0.1:8787`, matching this command.
+`npm run dev:collaboration` remains the workerd compatibility path through Wrangler.
+
 The accountless room token is a possession capability, not an account or authorization system.
 Rooms are not end-to-end encrypted, revocable, permissioned, or suitable for public hostile ingress;
 the current service remains Tailnet/private-ingress only. Authentication, permissions, room
@@ -226,6 +232,8 @@ container, runs celld's conditional-write diagnostics, deploys the real Worker, 
 WebSocket operation, kills celld with `SIGKILL`, deletes its local replica, and requires a clean
 node to recover the exact room version and brush from Azure Blob state. It requires Docker, celld,
 and the pinned Azurite image and intentionally remains outside the ordinary hermetic `check` gate.
+The supported self-hosted baseline is celld 0.4.0. Upgrades from a 0.3.x fleet require a complete
+fleet stop before starting 0.4.0 because their peer tunnel and large-value protocols cannot mix.
 
 ## Delivery experiments and gates
 

@@ -19,6 +19,7 @@ const account = 'devstoreaccount1';
 const accountKey =
   'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==';
 const celld = process.env.CELLD_BIN ?? join(homedir(), '.local', 'bin', 'celld');
+const expectedCelldVersion = 'celld 0.4.0';
 const publicPort = Number(process.env.CELLD_TEST_PORT ?? 18080);
 const internalPortA = Number(process.env.CELLD_TEST_INTERNAL_PORT_A ?? 19080);
 const internalPortB = Number(process.env.CELLD_TEST_INTERNAL_PORT_B ?? 19081);
@@ -177,11 +178,14 @@ let stateA;
 let stateB;
 try {
   await access(celld);
+  const celldVersion = run(celld, ['--version'], { quiet: true }).trim();
+  if (celldVersion !== expectedCelldVersion)
+    throw new Error(`Expected ${expectedCelldVersion}, received ${celldVersion}`);
   run('docker', ['version'], { quiet: true });
   await ensureAzurite();
   console.log(`Azurite ready; isolated test bucket is az://${bucket}`);
 
-  run(celld, ['diagnose', '--bucket', `az://${bucket}`]);
+  run(celld, ['diagnose', '--bucket', `az://${bucket}`, '--listen', '127.0.0.1:0']);
   run(celld, ['deploy', 'apps/collaboration-service', '--bucket', `az://${bucket}`]);
 
   stateA = await mkdtemp(join(tmpdir(), 'worldview-celld-a-'));
@@ -223,10 +227,16 @@ try {
   const nodeB = startNode(`worldview-b-${runId}`, stateB, internalPortB);
   await waitForNode(nodeB);
   const recovered = await snapshot();
-  const brushes = recovered.document?.entities.flatMap((entity) => entity.brushes) ?? [];
+  const brushes =
+    recovered.document?.entities
+      .flatMap((entity) => entity.primitives)
+      .filter((primitive) => primitive.kind === 'brush') ?? [];
+  const expectedBrushCount = after.entities
+    .flatMap((entity) => entity.primitives)
+    .filter((primitive) => primitive.kind === 'brush').length;
   if (
     recovered.roomVersion !== 1 ||
-    brushes.length !== 4 ||
+    brushes.length !== expectedBrushCount ||
     !brushes.some(({ id }) => id === brush.id)
   ) {
     throw new Error(

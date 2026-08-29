@@ -11,6 +11,7 @@
     "dev:editor": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run dev --workspace @worldview/editor",
     "dev:compiler": "npm run dev --workspace @worldview/compiler-service",
     "dev:collaboration": "npm run build --workspace @jackharrhy/worldview-editor && npm run dev --workspace @worldview/collaboration-service",
+    "dev:collaboration:celld": "npm run build --workspace @jackharrhy/worldview-editor && celld dev apps/collaboration-service --port 8787 --logs",
     "build": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/compiler-service && npm run build --workspace @worldview/collaboration-service && npm run build --workspace @worldview/viewer && npm run build --workspace @worldview/editor",
     "test": "npm run test --workspaces --if-present",
     "test:browser": "npm run build --workspace @jackharrhy/worldview && npm run test:consumer && playwright test",

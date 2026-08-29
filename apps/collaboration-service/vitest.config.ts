@@ -6,7 +6,9 @@ export default defineConfig({
     cloudflareTest({
       wrangler: { configPath: './wrangler.jsonc' },
       miniflare: {
-        bindings: { WORLDVIEW_TICKET_SECRET: 'test-worldview-realtime-ticket-secret-0001' },
+        bindings: {
+          WORLDVIEW_REALTIME_TICKET_SECRET: 'test-worldview-realtime-ticket-secret-0001',
+        },
       },
     }),
   ],

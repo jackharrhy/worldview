@@ -1,41 +1,53 @@
 # Artbin integration
 
-Artbin is Worldview's first remote asset provider. It remains the catalog and file owner;
-Worldview stores project mounts and derived build resources. Browsers never receive Artbin session
-cookies or integration credentials.
+Artbin is Worldview's first remote asset provider. Artbin owns the approved-asset catalog, canonical
+metadata, original bytes, and WAD inspection. Worldview owns project mounts, its verified
+content-addressed cache, and project-specific derived resources. Browsers never receive Artbin or
+machine OAuth credentials.
 
-## Integration API
+## Authentication and API
 
-Artbin exposes a small service-authenticated API over approved assets:
+The Worldview backend uses a separate confidential “worldview-service” identity. It obtains a
+short-lived 4orm token with the OAuth client-credentials grant and requests the
+“artbin:assets:read” and “artbin:assets:content” scopes. This is distinct from the public
+“worldview” client used for interactive human login.
 
-- paginated search and filtering with stable file IDs, type, dimensions, size, and SHA-256;
-- asset and WAD directory metadata;
-- streamed original content by stable file ID; and
-- deterministic WAD3 generation from an ordered selection of approved image IDs and target names.
+Artbin's supported general API is:
 
-Worldview calls this API through its same-origin backend using an environment-provided service
-token. Artbin compares token digests in constant time. Ordinary Artbin browser and CLI sessions are
-unchanged.
+- “GET /api/assets” for bounded search, filters, and opaque pagination;
+- “GET /api/assets/:assetId” for canonical approved-asset metadata;
+- “GET /api/assets/:assetId/content?sha256=<expected>” for streamed, ranged original bytes pinned
+  to an expected digest; and
+- “GET /api/assets/:assetId/wad” for a stable public WAD2/WAD3 directory schema.
+
+The service caches tokens until shortly before expiry, deduplicates concurrent token requests, and
+renews once after an “invalid_token” response. Deployment uses “ARTBIN_URL”,
+“FOURM_SERVICE_CLIENT_ID”, “FOURM_SERVICE_CLIENT_SECRET”, and “FOURM_URL”.
 
 ## Mounts and reproducibility
 
-A project mount records provider (`artbin`), stable file ID, expected SHA-256, resource kind,
+A project mount records provider (“artbin”), stable asset ID, expected SHA-256, resource kind,
 display name, and precedence. A move or rename does not break a mount. Missing content or a hash
-mismatch produces a visible broken-resource diagnostic and never substitutes the provider's latest
-bytes.
+conflict produces a visible broken-resource diagnostic and never substitutes the provider's latest
+bytes. Worldview passes the expected hash to Artbin and independently verifies downloaded bytes
+before committing them to its blob store.
 
-Existing WADs, palettes, entity definitions, and sprites mount directly. For loose textures,
-Artbin performs bounded image validation and deterministic GoldSrc WAD3 encoding; Worldview stores
-the returned WAD in its content-addressed blob store together with ordered source IDs, source
-hashes, texture names, encoder version, and output hash. Rebuilding identical inputs produces the
-same bytes.
+Existing WADs and other supported resources mount directly. Deterministic GoldSrc WAD3 generation
+from pinned loose images is Worldview project-output behavior: Worldview records ordered source
+Artbin IDs and hashes, texture names, encoder version, and output hash in project provenance. A
+focused encoder package should only be extracted if Artbin later has the same concrete need.
 
 Commercial or shareware assets are never added to either repository. An operator may expose assets
 they are permitted to host through Artbin, including a locally provided Half-Life WAD.
 
 ## Failure and test contract
 
-The proxy distinguishes provider unavailable, unauthorized, missing, changed, and invalid-resource
-states. Existing cached resources remain usable offline by hash. Integration tests cover service
-authentication, approved-only visibility, pagination, streaming limits, hash drift, WAD inspection,
-deterministic pack output, and Worldview compile resolution.
+Worldview distinguishes invalid machine authentication, insufficient scope, unavailable or
+unapproved assets, changed hashes, invalid resources, and transient provider/authentication
+failures. Opaque cursors are passed through unchanged. Cached resources remain usable offline by
+hash.
+
+Focused service tests cover token request containment, concurrent token deduplication, reuse and
+renewal, one-time invalid-token retry, opaque query pass-through, pinned content requests, local
+byte verification, hash conflicts, and WAD inspection routing. Artbin owns authorization,
+visibility, streaming/range, parser mapping, and catalog contract tests at its boundary.

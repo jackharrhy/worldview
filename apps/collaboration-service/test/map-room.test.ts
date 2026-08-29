@@ -29,7 +29,7 @@ function hostedTicket(roomId: string, role: 'owner' | 'editor' | 'viewer' = 'edi
       expiresAt: Date.now() + 60_000,
     }),
   ).toString('base64url');
-  const signature = createHmac('sha256', env.WORLDVIEW_TICKET_SECRET)
+  const signature = createHmac('sha256', env.WORLDVIEW_REALTIME_TICKET_SECRET)
     .update(`${header}.${content}`)
     .digest('base64url');
   return `${header}.${content}.${signature}`;

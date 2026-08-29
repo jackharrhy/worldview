@@ -77,7 +77,8 @@ not third-party distributions listed in `THIRD_PARTY_NOTICES.md`.
 - `apps/compiler-service`: loopback adapter around explicitly configured compile and launch
   profiles.
 - `apps/collaboration-service`: portable Workers/Durable Objects room service, verified through
-  local Workers tooling and intended for celld conformance; it does not enter the published editor
+  local Workers tooling and celld 0.4.0's persistent, bucket-free local development mode, with
+  celld as the preferred self-hosted runtime; it does not enter the published editor
   core.
 
 `packages/worldview/src/core` remains free of DOM, WebGPU, and TypeGPU imports. The viewer consumes
@@ -117,7 +118,10 @@ The first hosted-project slice is delivered on Newport: 4orm PKCE login, private
 routes, optimistic source-preserving autosave, named checkpoint storage, scoped fragment shares,
 signed short-lived room tickets, guest/editor/viewer enforcement, Artbin search and pinned mounts,
 cached WAD delivery into the editor, and queued server-owned compiler jobs all cross explicit
-service boundaries. The filesystem `BlobStore`, SQLite metadata store, and local compiler worker
+service boundaries. Artbin access uses a distinct confidential `worldview-service` principal,
+short-lived 4orm client-credentials tokens, general `/api/assets` resources, and asset ID plus
+SHA-256 pins; the public `worldview` PKCE client remains human-only. The filesystem `BlobStore`,
+SQLite metadata store, and local compiler worker
 are deployment adapters rather than browser authority. Membership management, personal folders,
 checkpoint/history UI, deterministic loose-image WAD3 packing, build controls/history UI, and a
 production multi-node room fleet remain follow-up hosted-product work; their tables and service

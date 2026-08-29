@@ -253,7 +253,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         if (!options.artbin)
           return json(response, 503, { error: 'Artbin integration is not configured' });
         const parameters = new URLSearchParams();
-        for (const key of ['q', 'kind', 'cursor', 'limit']) {
+        for (const key of ['q', 'kind', 'folderId', 'tag', 'cursor', 'limit']) {
           const value = url.searchParams.get(key);
           if (value) parameters.set(key, value);
         }
@@ -608,14 +608,18 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     },
     staticRoot: environment('WORLDVIEW_STATIC_ROOT', '../editor/dist'),
     realtimeTicketSecret: environment(
-      'WORLDVIEW_TICKET_SECRET',
+      'WORLDVIEW_REALTIME_TICKET_SECRET',
       'development-only-worldview-ticket-secret',
     ),
-    ...(process.env.ARTBIN_URL && process.env.ARTBIN_WORLDVIEW_TOKEN
+    ...(process.env.ARTBIN_URL &&
+    process.env.FOURM_SERVICE_CLIENT_ID &&
+    process.env.FOURM_SERVICE_CLIENT_SECRET
       ? {
           artbin: new ArtbinClient({
             url: process.env.ARTBIN_URL,
-            token: process.env.ARTBIN_WORLDVIEW_TOKEN,
+            fourmUrl: environment('FOURM_URL', 'http://127.0.0.1:8000'),
+            clientId: process.env.FOURM_SERVICE_CLIENT_ID,
+            clientSecret: process.env.FOURM_SERVICE_CLIENT_SECRET,
           }),
         }
       : {}),

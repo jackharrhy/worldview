@@ -58,6 +58,6 @@ jobs:
           context: .
           push: true
           build-args: |
-            WORLDVIEW_COLLABORATION_ENDPOINT=https://newport.hedgehog-python.ts.net:8443
+            WORLDVIEW_COLLABORATION_ENDPOINT=${{ vars.WORLDVIEW_COLLABORATION_ENDPOINT }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
