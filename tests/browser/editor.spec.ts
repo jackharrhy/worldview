@@ -1711,7 +1711,7 @@ test.describe('3D source authoring', () => {
     expect(Math.abs(afterLook.yaw - beforeLook.yaw)).toBeGreaterThan(0.1);
   });
 
-  test('copies map-text objects and pastes them at original or 3D surface positions', async ({
+  test('ordinary Paste uses the viewport cursor while Paste at original position preserves coordinates', async ({
     page,
   }) => {
     await openEditor(page);
@@ -1723,34 +1723,64 @@ test.describe('3D source authoring', () => {
 
     await page.getByRole('button', { name: 'Copy', exact: true }).click();
     await expect(page.locator('#status-message')).toContainText('Copied selected objects');
-    await page.getByRole('button', { name: 'Paste', exact: true }).click();
-    await expect(page.locator('#brush-count')).toHaveText('4');
-    await expect(page.locator('#brush-bounds')).toHaveText('-160 -32 0 to -96 32 64');
-    await expect(page.locator('#status-message')).toContainText('copied position');
-    await page.getByRole('button', { name: 'Undo', exact: true }).click();
-    await expect(page.locator('#brush-count')).toHaveText('3');
 
     const destination = await perspectiveWorldPoint(page, [0, 0, 64]);
     await page.mouse.move(destination.x, destination.y);
-    await expect(page.getByRole('button', { name: 'Paste here', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Paste here', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Paste', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Paste', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('4');
     await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 64 to 32 32 128');
     await expect(page.locator('#status-message')).toContainText('PERSPECTIVE pointer');
-    await expect(page.locator('#document-revision')).toHaveText('3');
     expect(brushesInDocument(await readEditorDocument(page))).toHaveLength(4);
 
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('3');
-    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await page.getByRole('button', { name: 'Paste at original position', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('4');
-    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await expect(page.locator('#brush-bounds')).toHaveText('-160 -32 0 to -96 32 64');
+    await expect(page.locator('#status-message')).toContainText('original position');
 
-    await page.keyboard.press('Control+c');
-    await expect(page.locator('#status-message')).toContainText('Copied selected objects');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    const topDestination = await topWorldPoint(page, 128, 128);
+    await page.mouse.move(topDestination.x, topDestination.y);
     await page.keyboard.press('Control+v');
-    await expect(page.locator('#brush-count')).toHaveText('5');
-    await expect(page.locator('#status-message')).toContainText('copied position');
+    await expect(page.locator('#brush-bounds')).toHaveText('96 96 -64 to 160 160 0');
+    await expect(page.locator('#status-message')).toContainText('XY pointer');
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.keyboard.press('Control+Alt+v');
+    await expect(page.locator('#brush-bounds')).toHaveText('-160 -32 0 to -96 32 64');
+    await expect(page.locator('#status-message')).toContainText('original position');
+  });
+
+  test('ordinary 3D Paste uses the camera default distance when the cursor points into empty space', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(selectionPaintSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const source = await topWorldPoint(page, -128, 0);
+    await page.mouse.click(source.x, source.y);
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+
+    const empty = await viewportPoint(page, 0, 0.08, 0.08);
+    await page.mouse.move(empty.x, empty.y);
+    const camera = await perspectiveCamera(page);
+    await page.getByRole('button', { name: 'Paste', exact: true }).click();
+
+    const document = await readEditorDocument(page);
+    const pasted = brushesInDocument(document).at(-1)!;
+    const bounds = deriveBrush(pasted).bounds!;
+    const center = bounds.min.map((minimum, axis) => (minimum + bounds.max[axis]!) / 2);
+    const distanceFromEye = Math.hypot(
+      center[0]! - camera.position[0]!,
+      center[1]! - camera.position[1]!,
+      center[2]! - camera.position[2]!,
+    );
+    expect(distanceFromEye).toBeGreaterThan(180);
+    expect(distanceFromEye).toBeLessThan(340);
+    await expect(page.locator('#status-message')).toContainText('PERSPECTIVE pointer');
   });
 
   test('Ctrl-wheel drills the 3D selection through occluding brushes in both directions', async ({

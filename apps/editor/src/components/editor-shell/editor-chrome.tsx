@@ -240,11 +240,10 @@ const selectionActions: readonly ActionSpec[] = [
     title: 'Paste (Ctrl/Command+V)',
   },
   {
-    action: 'paste-here',
+    action: 'paste-original',
     icon: 'push-pin',
-    label: 'Paste here',
-    title: 'Paste at pointer (Ctrl/Command+Shift+V)',
-    disabled: true,
+    label: 'Paste at original position',
+    title: 'Paste at original position (Ctrl/Command+Alt+V)',
   },
   {
     action: 'delete',

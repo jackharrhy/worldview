@@ -91,20 +91,22 @@ export class KeyboardEvents {
         !editingText &&
         (event.metaKey || event.ctrlKey) &&
         !event.shiftKey &&
+        !event.altKey &&
         event.key.toLowerCase() === 'v'
       ) {
         event.preventDefault();
-        void this.app.document.pasteFromClipboard(false);
+        void this.app.document.pasteFromClipboard('cursor');
         return;
       }
       if (
         !editingText &&
         (event.metaKey || event.ctrlKey) &&
-        event.shiftKey &&
+        !event.shiftKey &&
+        event.altKey &&
         event.key.toLowerCase() === 'v'
       ) {
         event.preventDefault();
-        void this.app.document.pasteFromClipboard(true);
+        void this.app.document.pasteFromClipboard('original');
         return;
       }
       if (!editingText && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'g') {

@@ -269,6 +269,7 @@ export class EditorState {
         textureLock: ui.textureLock.checked,
         targetGroupId: this.openGroupId,
         selectToolActive: this.activeTool === 'select',
+        gridSize: this.activeGridSize,
       }),
       activateSelectTool: () => host().setEditorTool('select'),
       setStatus: (message) => {

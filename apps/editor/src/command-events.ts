@@ -95,11 +95,11 @@ export class CommandEvents {
     this.ui.copyButton.addEventListener('click', () => void this.app.document.copySelection());
     this.ui.pasteButton.addEventListener(
       'click',
-      () => void this.app.document.pasteFromClipboard(false),
+      () => void this.app.document.pasteFromClipboard('cursor'),
     );
-    this.ui.pasteHereButton.addEventListener(
+    this.ui.pasteOriginalButton.addEventListener(
       'click',
-      () => void this.app.document.pasteFromClipboard(true),
+      () => void this.app.document.pasteFromClipboard('original'),
     );
     this.ui.deleteButton.addEventListener('click', () => this.app.document.deleteSelection());
     this.ui.focusSelectionButton.addEventListener('click', () =>

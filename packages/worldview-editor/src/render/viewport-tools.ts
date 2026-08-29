@@ -235,9 +235,11 @@ export abstract class ViewportTools extends ViewportBase {
           surfaceNormal: this.interaction.brushFaceNormal(hit),
         };
       }
-      const height = selectionBounds?.max[2] ?? 0;
-      const point = rayPlaneIntersection(ray.origin, ray.direction, [0, 0, height], [0, 0, 1]);
-      if (!point) return null;
+      const point = [
+        ray.origin[0] + ray.direction[0] * 256,
+        ray.origin[1] + ray.direction[1] * 256,
+        ray.origin[2] + ray.direction[2] * 256,
+      ] as Vec3;
       return {
         viewport: this.kind,
         point: point.map((component) => Math.round(component / this.gridSize) * this.gridSize) as [
@@ -245,7 +247,10 @@ export abstract class ViewportTools extends ViewportBase {
           number,
           number,
         ],
-        surfaceNormal: [0, 0, 1],
+        surfaceNormal: (() => {
+          const forward = this.perspectiveForward();
+          return [-forward[0], -forward[1], -forward[2]];
+        })(),
       };
     }
     const center = selectionBounds

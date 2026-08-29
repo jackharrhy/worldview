@@ -113,7 +113,7 @@ export class SessionPresenter {
     this.state.hullCandidate = null;
     this.state.hullBuildPoints = [];
     this.state.lastPointerPosition = null;
-    this.ui.pasteHereButton.disabled = true;
+    this.ui.pasteButton.disabled = true;
     this.state.renderer?.clearClipPlane();
     this.state.renderer?.clearHullPoints();
     this.state.renderer?.setSweepCaps([]);

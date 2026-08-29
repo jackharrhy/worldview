@@ -265,7 +265,7 @@ export class InspectorPresenter {
       selectedFaces.length > 0
         ? 'Copy the primary face material and attributes (Ctrl/Command+C)'
         : 'Copy selected objects as map text (Ctrl/Command+C)';
-    this.ui.pasteHereButton.disabled = !this.state.lastPointerPosition;
+    this.ui.pasteButton.disabled = !this.state.lastPointerPosition;
     this.ui.deleteButton.disabled = !objectSelected;
     this.ui.focusSelectionButton.disabled = !selection;
     this.ui.snapSelectionToGridButton.disabled = !brush;

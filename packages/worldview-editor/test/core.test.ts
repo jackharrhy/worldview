@@ -4580,4 +4580,23 @@ describe('object clipboard transactions', () => {
     const pasted = findBrush(candidate.document, selectedBrushIds(candidate.selectionAfter)[0]!)!;
     expect(deriveBrush(pasted).bounds).toEqual({ min: [112, 56, 48], max: [144, 72, 80] });
   });
+
+  it('snaps pasted bounds on axes tangent to the target surface', () => {
+    const ids = createSequentialIdFactory('clipboard-grid-offset');
+    const starter = createStarterDocument();
+    const brush = createBoxBrush([-15, -7, 0], [16, 8, 32], 'ODD_BOUNDS', ids);
+    const clipboard: MapDocument = {
+      ...starter,
+      entities: [{ ...starter.entities[0]!, primitives: [brush] }],
+    };
+
+    const offset = objectClipboardPasteOffset(clipboard, [128, 64, 48], [0, 0, 1], 16)!;
+    const candidate = new EditorSession(starter).createPasteCandidate(
+      clipboard,
+      createSequentialIdFactory('clipboard-grid-result'),
+      offset,
+    )!;
+    const pasted = findBrush(candidate.document, selectedBrushIds(candidate.selectionAfter)[0]!)!;
+    expect(deriveBrush(pasted).bounds).toEqual({ min: [112, 64, 48], max: [143, 79, 80] });
+  });
 });

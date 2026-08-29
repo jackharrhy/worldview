@@ -300,6 +300,7 @@ export function objectClipboardPasteOffset(
   document: MapDocument,
   point: Vec3,
   surfaceNormal: Vec3 | null = null,
+  gridSize = 1,
 ): Vec3 | null {
   const bounds = objectClipboardBounds(document);
   if (!bounds) return null;
@@ -338,6 +339,12 @@ export function objectClipboardPasteOffset(
       delta[1] += surfaceNormal[1] * correction;
       delta[2] += surfaceNormal[2] * correction;
     }
+  }
+  const snapSize = Math.max(Number.EPSILON, gridSize);
+  for (let axis = 0; axis < 3; axis += 1) {
+    if (surfaceNormal && Math.abs(surfaceNormal[axis]!) > 1e-5) continue;
+    const translatedMin = bounds.min[axis]! + delta[axis]!;
+    delta[axis] = delta[axis]! + Math.round(translatedMin / snapSize) * snapSize - translatedMin;
   }
   return delta;
 }

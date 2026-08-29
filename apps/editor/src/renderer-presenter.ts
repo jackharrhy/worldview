@@ -281,7 +281,7 @@ export class RendererPresenter {
         onPointerPosition(event) {
           state.lastPointerPosition = event;
           app.publishCollaborationPointer();
-          ui.pasteHereButton.disabled = false;
+          ui.pasteButton.disabled = false;
         },
         onContextMenu(event) {
           app.contextMenu.showViewportContextMenu(event);

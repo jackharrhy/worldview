@@ -620,7 +620,7 @@ export class ToolEvents {
       const text = event.clipboardData?.getData('text/plain');
       if (!text?.trim()) return;
       event.preventDefault();
-      this.app.document.pasteClipboardText(text, false);
+      this.app.document.pasteClipboardText(text, 'cursor');
     });
   }
 }

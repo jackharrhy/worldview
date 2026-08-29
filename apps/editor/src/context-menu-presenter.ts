@@ -13,6 +13,7 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import { required, type EditorElements } from './editor-elements.js';
+import type { ObjectPastePlacement } from './editor-clipboard.js';
 import type { EditorState } from './editor-state.js';
 
 export class ContextMenuPresenter {
@@ -23,7 +24,7 @@ export class ContextMenuPresenter {
     private readonly renderMaterialCatalog: () => void,
     private readonly copySelection: (selection: EditorSelection) => Promise<void>,
     private readonly pasteFromClipboard: (
-      atPointer: boolean,
+      placement: ObjectPastePlacement,
       targetFace?: EditorSelection | null,
     ) => Promise<void>,
     private readonly selectedLayerForPanel: () => ReturnType<
@@ -219,7 +220,7 @@ export class ContextMenuPresenter {
   public showViewportContextMenu(context: EditorViewportContextMenuEvent): void {
     this.state.viewportContext = context;
     this.state.lastPointerPosition = context.pointer;
-    this.ui.pasteHereButton.disabled = false;
+    this.ui.pasteButton.disabled = false;
     this.ui.viewportContextMenu.replaceChildren();
     this.ui.viewportContextMenu.append(
       this.contextMenuHeading(
@@ -254,7 +255,7 @@ export class ContextMenuPresenter {
       this.contextMenuAction(
         hitSection,
         'Paste face attributes here',
-        () => void this.pasteFromClipboard(false, hit),
+        () => void this.pasteFromClipboard('original', hit),
       );
       if (face) {
         this.contextMenuAction(hitSection, `Reveal ${face.material}`, () =>
@@ -363,8 +364,8 @@ export class ContextMenuPresenter {
     this.contextMenuAction(
       createSection,
       'Paste here',
-      () => void this.pasteFromClipboard(true),
-      this.ui.pasteHereButton.disabled,
+      () => void this.pasteFromClipboard('cursor'),
+      this.ui.pasteButton.disabled,
     );
     this.ui.viewportContextMenu.append(createSection);
 

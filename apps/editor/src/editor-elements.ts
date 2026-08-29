@@ -53,7 +53,7 @@ export function bindEditorElements(shellState: EditorShellState) {
   const duplicateButton = required<HTMLButtonElement>('[data-action="duplicate"]');
   const copyButton = required<HTMLButtonElement>('[data-action="copy"]');
   const pasteButton = required<HTMLButtonElement>('[data-action="paste"]');
-  const pasteHereButton = required<HTMLButtonElement>('[data-action="paste-here"]');
+  const pasteOriginalButton = required<HTMLButtonElement>('[data-action="paste-original"]');
   const deleteButton = required<HTMLButtonElement>('[data-action="delete"]');
   const hideSelectionButton = required<HTMLButtonElement>('[data-action="hide-selection"]');
   const isolateSelectionButton = required<HTMLButtonElement>('[data-action="isolate-selection"]');
@@ -316,7 +316,7 @@ export function bindEditorElements(shellState: EditorShellState) {
     duplicateButton,
     copyButton,
     pasteButton,
-    pasteHereButton,
+    pasteOriginalButton,
     deleteButton,
     hideSelectionButton,
     isolateSelectionButton,

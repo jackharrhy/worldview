@@ -14,6 +14,7 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorElements } from './editor-elements.js';
+import type { ObjectPastePlacement } from './editor-clipboard.js';
 import type { EditorState } from './editor-state.js';
 
 interface CompileAssetEntry {
@@ -237,17 +238,17 @@ export class DocumentPresenter {
 
   public pasteClipboardText(
     text: string,
-    atPointer: boolean,
+    placement: ObjectPastePlacement,
     targetFace: EditorSelection | null = null,
   ): boolean {
-    return this.state.editorClipboard.pasteText(text, atPointer, targetFace);
+    return this.state.editorClipboard.pasteText(text, placement, targetFace);
   }
 
   public pasteFromClipboard(
-    atPointer: boolean,
+    placement: ObjectPastePlacement,
     targetFace: EditorSelection | null = null,
   ): Promise<void> {
-    return this.state.editorClipboard.paste(atPointer, targetFace);
+    return this.state.editorClipboard.paste(placement, targetFace);
   }
 
   public deleteSelection(): void {

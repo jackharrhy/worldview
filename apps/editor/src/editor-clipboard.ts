@@ -16,6 +16,7 @@ export interface EditorClipboardContext {
   readonly textureLock: boolean;
   readonly targetGroupId: string | null;
   readonly selectToolActive: boolean;
+  readonly gridSize: number;
 }
 
 export interface EditorClipboardOptions {
@@ -24,6 +25,8 @@ export interface EditorClipboardOptions {
   readonly activateSelectTool: () => void;
   readonly setStatus: (message: string) => void;
 }
+
+export type ObjectPastePlacement = 'cursor' | 'original';
 
 /** Owns clipboard parsing, fallback storage, paste IDs, and user-facing outcomes. */
 export class EditorClipboard {
@@ -73,24 +76,27 @@ export class EditorClipboard {
     }
   }
 
-  public async paste(atPointer: boolean, targetFace: EditorSelection | null = null): Promise<void> {
+  public async paste(
+    placement: ObjectPastePlacement,
+    targetFace: EditorSelection | null = null,
+  ): Promise<void> {
     const text = await this.readText();
     if (!text) {
       this.options.setStatus('The clipboard does not contain map text or face attributes.');
       return;
     }
-    this.pasteText(text, atPointer, targetFace);
+    this.pasteText(text, placement, targetFace);
   }
 
   public pasteText(
     text: string,
-    atPointer: boolean,
+    placement: ObjectPastePlacement,
     targetFace: EditorSelection | null = null,
   ): boolean {
     try {
       const faceAttributes = parseFaceAttributeClipboard(text);
       if (faceAttributes) return this.pasteFaceAttributes(text, faceAttributes, targetFace);
-      return this.pasteObjects(text, atPointer);
+      return this.pasteObjects(text, placement);
     } catch (error) {
       this.options.setStatus(
         `Clipboard: ${error instanceof Error ? error.message : String(error)}`,
@@ -130,7 +136,7 @@ export class EditorClipboard {
     return true;
   }
 
-  private pasteObjects(text: string, atPointer: boolean): boolean {
+  private pasteObjects(text: string, placement: ObjectPastePlacement): boolean {
     const session = this.options.session();
     const context = this.options.context();
     this.sequence += 1;
@@ -138,13 +144,18 @@ export class EditorClipboard {
       text,
       createSequentialIdFactory(`clipboard-source-${this.sequence}`),
     );
-    const pointer = atPointer ? context.pointer : null;
-    if (atPointer && !pointer) {
-      this.options.setStatus('Move the pointer over a source viewport before using Paste here.');
+    const pointer = placement === 'cursor' ? context.pointer : null;
+    if (placement === 'cursor' && !pointer) {
+      this.options.setStatus('Move the pointer over a viewport before pasting.');
       return false;
     }
     const offset = pointer
-      ? objectClipboardPasteOffset(clipboard, pointer.point, pointer.surfaceNormal)
+      ? objectClipboardPasteOffset(
+          clipboard,
+          pointer.point,
+          pointer.surfaceNormal,
+          context.gridSize,
+        )
       : ([0, 0, 0] as const);
     if (!offset) {
       this.options.setStatus('The clipboard map contains no pasteable objects.');
@@ -166,7 +177,7 @@ export class EditorClipboard {
     this.options.setStatus(
       pointer
         ? `Pasted objects at the ${pointer.viewport.toUpperCase()} pointer as one undo step.`
-        : 'Pasted objects at their copied position as one undo step.',
+        : 'Pasted objects at their original position as one undo step.',
     );
     return true;
   }

@@ -19,6 +19,11 @@ The default Select tool owns TrenchBroom's permanent interaction stack: click to
 selection to move it, and drag with no selection to create the configured simple shape. Brush
 creation is not a separate modal toolbar tool.
 
+Ordinary Paste (`Ctrl/Command+V`) places copied object bounds at the active viewport cursor. In 3D
+they rest on the pointed surface or appear 256 units along the empty-space cursor ray; in 2D their
+hidden side aligns with the far side of the current selection. `Ctrl/Command+Alt+V` is the explicit
+Paste at Original Position command.
+
 Shift-dragging a face of a multi-brush object selection resizes every compatible selected face as
 one undoable operation. Same-facing faces need only share the plane; opposing faces must overlap the
 grabbed polygon so only a genuine shared seam participates.
