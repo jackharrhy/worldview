@@ -473,6 +473,12 @@ export abstract class ViewportBase {
       pass.setVertexBuffer(0, scene.remoteLines);
       pass.draw(6, scene.remoteLineCount / 2);
     }
+    const selectionGuideVisible = this.kind === 'perspective' && scene.selectionGuideLineCount > 0;
+    if (selectionGuideVisible) {
+      pass.setBindGroup(0, this.root.unwrap(this.overlayBindGroup));
+      pass.setVertexBuffer(0, scene.selectionGuideLines);
+      pass.draw(6, scene.selectionGuideLineCount / 2);
+    }
     if (scene.overlayLineCount > 0) {
       pass.setBindGroup(0, this.root.unwrap(this.overlayBindGroup));
       pass.setVertexBuffer(0, scene.overlayLines);
@@ -484,6 +490,7 @@ export abstract class ViewportBase {
       pass.draw(6, this.scaleOverlayCount / 2);
     }
     pass.end();
+    this.canvas.dataset.selectionGuide = String(selectionGuideVisible);
     this.renderRequested = false;
     this.lastRenderedVersion = renderVersion;
     return true;

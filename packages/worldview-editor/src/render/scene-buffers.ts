@@ -62,6 +62,11 @@ import { buildSelectionOverlayBuffers } from './selection-overlay-buffers.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
 import type { SceneBuffers } from './scene-types.js';
 import { appendNonBrushPrimitives } from './scene-nonbrush-primitives.js';
+import {
+  appendBoundsWireframe,
+  appendSelectionBoundsGuide,
+  selectionContainsHoveredObject,
+} from './bounds-overlays.js';
 export type { SceneBuffers } from './scene-types.js';
 
 export function objectSelectionBounds(
@@ -95,51 +100,6 @@ export function objectSelectionBounds(
       Math.max(...bounds.map((entry) => entry.max[2])),
     ],
   };
-}
-
-function appendBoundsWireframe(
-  lines: number[],
-  bounds: Bounds,
-  color: readonly [number, number, number],
-  offset: Vec3 = [0, 0, 0],
-): void {
-  const corners: Vec3[] = [
-    [bounds.min[0], bounds.min[1], bounds.min[2]],
-    [bounds.max[0], bounds.min[1], bounds.min[2]],
-    [bounds.min[0], bounds.max[1], bounds.min[2]],
-    [bounds.max[0], bounds.max[1], bounds.min[2]],
-    [bounds.min[0], bounds.min[1], bounds.max[2]],
-    [bounds.max[0], bounds.min[1], bounds.max[2]],
-    [bounds.min[0], bounds.max[1], bounds.max[2]],
-    [bounds.max[0], bounds.max[1], bounds.max[2]],
-  ];
-  for (const [startIndex, endIndex] of [
-    [0, 1],
-    [0, 2],
-    [0, 4],
-    [1, 3],
-    [1, 5],
-    [2, 3],
-    [2, 6],
-    [3, 7],
-    [4, 5],
-    [4, 6],
-    [5, 7],
-    [6, 7],
-  ] as const) {
-    const start = corners[startIndex]!;
-    const end = corners[endIndex]!;
-    lines.push(
-      start[0] + offset[0],
-      start[1] + offset[1],
-      start[2] + offset[2],
-      ...color,
-      end[0] + offset[0],
-      end[1] + offset[1],
-      end[2] + offset[2],
-      ...color,
-    );
-  }
 }
 
 function appendSpritePlane(
@@ -243,6 +203,7 @@ export function buildSceneBuffers(
   const lines: number[] = [];
   const overlayLines: number[] = [];
   const perspectiveGridLines: number[] = [];
+  const selectionGuideLines: number[] = [];
   const renderedTopologyKeys = new Set<string>();
   const spriteByPath = new Map<string, EditorSpriteMaterial>();
   for (const sprite of sprites) {
@@ -260,6 +221,17 @@ export function buildSceneBuffers(
     isTransformTool(tool) && topologySelection.length > 0
       ? topologyHandleBounds(topologySelection)
       : objectSelectionBounds(document, selection);
+  if (
+    tool === 'select' &&
+    selectedBounds &&
+    selectionContainsHoveredObject(selection, hoverSelection)
+  ) {
+    appendSelectionBoundsGuide(selectionGuideLines, selectedBounds, theme.edgeSelected, [
+      theme.background[0],
+      theme.background[1],
+      theme.background[2],
+    ]);
+  }
   const faceToolBrushIds = new Set(
     selection?.faceId
       ? selectedFaceReferences(selection).map((face) => face.brushId)
@@ -748,6 +720,13 @@ export function buildSceneBuffers(
       GPUBufferUsage.VERTEX,
     ),
     perspectiveGridCount: perspectiveGridLines.length / 6,
+    selectionGuideLines: uploadFloatBuffer(
+      device,
+      new Float32Array(selectionGuideLines),
+      GPUBufferUsage.VERTEX,
+      'Selection bounds guide',
+    ),
+    selectionGuideLineCount: selectionGuideLines.length / 6,
     scaleBounds: tool === 'scale' ? selectedBounds : null,
   };
 }

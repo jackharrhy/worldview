@@ -930,6 +930,7 @@ export class EditorSourceRenderer {
     this.scene.remoteLines.destroy();
     for (const batch of this.scene.remoteSolids) batch.buffer.destroy();
     this.scene.perspectiveGrid.destroy();
+    this.scene.selectionGuideLines.destroy();
     this.materialResources.dispose();
     for (const viewport of this.viewports) viewport.dispose();
     this.root.destroy();

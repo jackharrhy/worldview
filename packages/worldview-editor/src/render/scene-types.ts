@@ -17,5 +17,7 @@ export interface SceneBuffers {
   readonly remoteSolids: readonly SolidBatch[];
   readonly perspectiveGrid: GPUBuffer;
   readonly perspectiveGridCount: number;
+  readonly selectionGuideLines: GPUBuffer;
+  readonly selectionGuideLineCount: number;
   readonly scaleBounds: Bounds | null;
 }

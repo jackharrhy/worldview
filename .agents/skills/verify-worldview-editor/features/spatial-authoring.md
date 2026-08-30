@@ -7,6 +7,8 @@ selection, resize, clip, sweep, hull, shape, UV, and contextual 3D actions.
 Construction-grid coverage includes number-key selection, bracket stepping, snapped creation bounds,
 undoable selected-brush or selected-face vertex snapping, and a fine screen-space perspective grid
 that remains visually subordinate to ordinary and selected brush edges while zooming.
+Hovering an object in the current selection shows its combined bounds and outward, fading corner
+guides in the perspective viewport only.
 Selection drilling uses Ctrl/Command+wheel for objects in every viewport and adds Shift for faces;
 both directions wrap through overlapping candidates beneath the pointer.
 
@@ -97,6 +99,15 @@ Perspective-grid width verification must dolly the camera through the grid's nea
 not merely frame a brush at a comfortable distance. Sample several vertical pixel columns in the
 lower viewport and reject sustained grid-colored bands; this catches screen-space line expansion
 performed before homogeneous clipping.
+
+Selection-guide verification should select through WebMCP, capture the perspective canvas while the
+pointer is in empty space, then hover the selected object and require a changed GPU image. Moving
+the pointer onto the selected object in an orthographic canvas keeps the guides visible in
+Perspective but never draws them in the orthographic canvas itself. Moving to empty space removes
+them; hover state is shared by the linked viewports just as selection is. The canvases publish the
+submitted guide state through `data-selection-guide`; require Perspective to switch between `true`
+and `false` while every orthographic canvas remains `false`. Keep a full-page GPU capture as visual
+evidence because Chromium can omit WebGPU pixels from element-clipped screenshots.
 
 Theme selection is a React Aria select rooted at `#editor-theme` with System, Dark, and Light
 options. Open its labelled button and choose the named option rather than calling native

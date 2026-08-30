@@ -40,13 +40,20 @@ out, keeping geometry aligned while preventing dense-grid shimmer.
 | Prospective face perimeter overlays the red brush edge | Matched          |
 | Selected 3D faces receive a subtle tint                | Open             |
 | Locked objects use blue edges and tint                 | Matched          |
-| Hovered selection bounds show corner spikes            | Open             |
+| Hovered selection bounds show corner spikes            | Matched          |
 | Selected bounds show viewport dimensions               | Partial          |
 | XYZ compass appears in each viewport                   | Open             |
 
 The prospective face overlay does not replace or recolor its material or projected grid. It is
 submitted after the selected brush wireframe so its amber perimeter wins on coincident edges while
 all other edges remain red.
+
+In the perspective viewport, hovering any object in the current object selection adds the combined
+selection bounds and 24 outward axis guides: three from each corner. The guides remain at full
+selection color for most of their length and then fade into the active viewport background. They
+are omitted from orthographic panes, whose continuous construction grid already provides the same
+spatial reference. This behavior was reconfirmed against TrenchBroom commit
+[`b19dad0`](https://github.com/TrenchBroom/TrenchBroom/tree/b19dad059dc6db517c8505ddfffc8f7e24fa1d36).
 
 The default dark wireframe palette follows the same contrast hierarchy as TrenchBroom's current
 preferences: a 38/255 neutral background, 0.9 ordinary brush edges, red selected edges, blue locked

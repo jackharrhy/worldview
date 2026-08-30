@@ -1808,6 +1808,62 @@ test.describe('3D source authoring', () => {
     await expect.poll(() => perspectiveGridBandThickness(page)).toBeLessThanOrEqual(4);
   });
 
+  test('draws selection bounds guides only in perspective while the selection is hovered', async ({
+    page,
+  }) => {
+    await installSiteToolRegistry(page);
+    await openEditor(page, { empty: true });
+    const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
+    const created = await executeSiteTool(page, 'worldview_create_box', {
+      expectedDocumentId: inspection.documentId,
+      expectedRevision: inspection.revision,
+      min: [-64, -64, 0],
+      max: [64, 64, 64],
+      material: 'DEV_FLOOR',
+    });
+    await executeSiteTool(page, 'worldview_select', {
+      expectedDocumentId: inspection.documentId,
+      expectedRevision: created.revision,
+      mode: 'objects',
+      brushIds: [created.brushId],
+    });
+    await executeSiteTool(page, 'worldview_frame_view', { target: 'selection' });
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    const perspective = page.getByLabel('Perspective map viewport');
+    const bounds = await perspective.boundingBox();
+    if (!bounds) throw new Error('Perspective viewport bounds are unavailable');
+    await perspective.focus();
+    const emptyPerspective = { x: 4, y: 4 };
+    await perspective.hover({ position: emptyPerspective });
+    await expect(perspective).toHaveAttribute('data-selection-guide', 'false');
+
+    await perspective.hover({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
+    await expect(perspective).toHaveAttribute('data-selection-guide', 'true');
+    for (const viewport of ['xy', 'xz', 'yz']) {
+      await expect(page.locator(`[data-viewport="${viewport}"] .source-canvas`)).toHaveAttribute(
+        'data-selection-guide',
+        'false',
+      );
+    }
+
+    const top = page.locator('[data-viewport="xy"] .source-canvas');
+    const topBounds = await top.boundingBox();
+    if (!topBounds) throw new Error('Top viewport bounds are unavailable');
+    await top.hover({ position: { x: topBounds.width / 2, y: topBounds.height / 2 } });
+    await expect(top).toBeFocused();
+    await expect(perspective).toHaveAttribute('data-selection-guide', 'true');
+    await expect(top).toHaveAttribute('data-selection-guide', 'false');
+
+    await perspective.hover({ position: emptyPerspective });
+    await expect(perspective).toBeFocused();
+    await expect(perspective).toHaveAttribute('data-selection-guide', 'false');
+  });
+
   test('links orthographic navigation and follows viewport focus under the pointer', async ({
     page,
   }) => {

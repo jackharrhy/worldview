@@ -257,6 +257,9 @@ face hits and ordinary internal edges retain their normal priority.
 Ctrl/Command-wheel reversibly drills through overlapping object candidates in every viewport;
 adding Shift drills through depth-ordered face candidates. Candidate traversal wraps, retains the
 normal perspective-depth or orthographic-smallest-area ordering, and does not alter the document.
+Hovering an object in the current selection adds the combined selection bounds and outward,
+softly-fading corner guides in the perspective viewport only. Orthographic panes keep their
+continuous construction grid instead of duplicating these guides.
 
 Editor theming has one CSS-owned color source. Shell, panel, inspector, dialog, border, SVG, and
 viewport-chrome colors consume custom properties whose concrete palette values use OKLCH. The app
