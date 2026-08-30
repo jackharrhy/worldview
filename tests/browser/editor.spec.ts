@@ -1668,7 +1668,7 @@ test.describe('3D source authoring', () => {
 
     await page.mouse.click(point.x, point.y, { button: 'right' });
     await menu.getByRole('menuitem', { name: 'Reveal DEV_FLOOR', exact: true }).click();
-    await expect(page.getByRole('tab', { name: 'Textures', exact: true })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: 'Face', exact: true })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -2879,7 +2879,7 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('[data-action="duplicate"]')).toBeDisabled();
     await expect(page.locator('[data-action="delete"]')).toBeDisabled();
 
-    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.getByRole('tab', { name: 'Face' }).click();
     await page.locator('#material-name').fill('FACE_SET');
     await page.locator('[data-action="apply-material"]').click();
     await expect(page.locator('#document-revision')).toHaveText('1');
@@ -2906,7 +2906,7 @@ test.describe('3D source authoring', () => {
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await page.locator('#map-source').fill(materialUsageSource());
     await page.getByRole('button', { name: 'Apply source', exact: true }).click();
-    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
 
     await expect(page.locator('#material-count')).toHaveText('4 loaded · 2 in use');
     await expect(page.locator('#material-coverage')).toBeHidden();
@@ -2949,7 +2949,7 @@ test.describe('3D source authoring', () => {
     ).toHaveLength(10);
 
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
-    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
     await page.getByRole('button', { name: 'DEV_FLOOR', exact: true }).click();
     await page.locator('[data-action="select-material-brushes"]').click();
     const first = await topWorldPoint(page, -64, 0);
@@ -3033,7 +3033,7 @@ test.describe('3D source authoring', () => {
 
     await expect(page.locator('#selection-kind')).toHaveText('3 Faces');
     await expect(page.locator('#status-message')).toContainText('Paint selected 3 faces');
-    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.getByRole('tab', { name: 'Face' }).click();
     await page.locator('#material-name').fill('PAINTED_PATH');
     await page.locator('[data-action="apply-material"]').click();
     await expect(page.locator('#face-material')).toHaveText('PAINTED_PATH');
@@ -3075,7 +3075,7 @@ test.describe('3D source authoring', () => {
     await page.keyboard.up('Shift');
     await expect(page.locator('#selection-kind')).toHaveText('Face');
 
-    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.getByRole('tab', { name: 'Face' }).click();
     await page.locator('#material-name').fill('TRANSFER_SOURCE');
     await page.locator('[data-action="apply-material"]').click();
     await page.locator('#texture-shift-u').fill('37');
@@ -3155,7 +3155,7 @@ test.describe('3D source authoring', () => {
     await page.mouse.click(point.x, point.y);
     await page.keyboard.up('Shift');
     await expect(page.locator('#selection-kind')).toHaveText('Face');
-    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Quake II surface' })).toBeVisible();
     await expect(page.getByText('Unknown bits: 0x100')).toBeVisible();
 
@@ -3183,7 +3183,7 @@ test.describe('3D source authoring', () => {
     await page.keyboard.down('Shift');
     await page.mouse.click(sourcePoint.x, sourcePoint.y);
     await page.keyboard.up('Shift');
-    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.getByRole('tab', { name: 'Face' }).click();
     await page.locator('#material-name').fill('CHAIN_SOURCE');
     await page.locator('[data-action="apply-material"]').click();
 
@@ -3220,7 +3220,7 @@ test.describe('3D source authoring', () => {
     await page.keyboard.down('Shift');
     await page.mouse.click(sourcePoint.x, sourcePoint.y);
     await page.keyboard.up('Shift');
-    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.getByRole('tab', { name: 'Face' }).click();
     await page.locator('#material-name').fill('CLIPBOARD_SOURCE');
     await page.locator('[data-action="apply-material"]').click();
     await page.locator('#texture-shift-u').fill('29');
@@ -3279,7 +3279,8 @@ test.describe('3D source authoring', () => {
     await page.keyboard.down('Shift');
     await page.mouse.click(point.x, point.y);
     await page.keyboard.up('Shift');
-    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.getByRole('tab', { name: 'Face' }).click();
+    await page.getByText('Alignment tools', { exact: true }).click();
 
     await page.getByRole('button', { name: 'Flip U' }).click();
     await expect(page.locator('#texture-scale-u')).toHaveValue('-1');
@@ -3345,7 +3346,7 @@ test.describe('3D source authoring', () => {
     await page.keyboard.down('Shift');
     await page.mouse.click(face.x, face.y);
     await page.keyboard.up('Shift');
-    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
 
     const editor = page.locator('#uv-editor');
     await expect(editor).toBeVisible();
@@ -3392,7 +3393,7 @@ test.describe('3D source authoring', () => {
     await page.keyboard.down('Shift');
     await page.mouse.click(face.x, face.y);
     await page.keyboard.up('Shift');
-    await page.getByRole('tab', { name: 'Textures', exact: true }).click();
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
     const editor = page.locator('#uv-editor');
     const bounds = await editor.boundingBox();
     if (!bounds) throw new Error('The UV editor has no bounds');

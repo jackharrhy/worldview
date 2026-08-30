@@ -90,7 +90,7 @@ export function TextureInspector({ shellState }: { readonly shellState: EditorSh
   return (
     <section data-inspector-panel="textures" hidden>
       <div className="panel-heading">
-        <h2>Face</h2>
+        <h2>Selected face</h2>
         <span>Valve 220</span>
       </div>
       <div className="texture-section inspector-section">
@@ -115,13 +115,7 @@ export function TextureInspector({ shellState }: { readonly shellState: EditorSh
             U <b>red</b> · V <b>green</b>
           </span>
         </div>
-        <p className="uv-editor-help">
-          Drag the face to pan the material, the outer ring to rotate, or the red and green handles
-          to scale U or V. Shift gives fine rotation or proportional scaling. Drag the yellow origin
-          to set the transform pivot; it snaps to the face center and vertices. Escape cancels a
-          live transform.
-        </p>
-        <h3>Texture projection</h3>
+        <h3 className="texture-projection-title">Projection</h3>
         <div className="texture-fields">
           <label>
             Shift U<input id="texture-shift-u" type="number" step={1} />
@@ -153,73 +147,67 @@ export function TextureInspector({ shellState }: { readonly shellState: EditorSh
             <dd id="texture-v-axis" />
           </div>
         </dl>
-        <div className="texture-alignment-controls" role="group" aria-label="Texture alignment">
-          <button type="button" data-texture-align="reset">
-            Reset face
-          </button>
-          <button type="button" data-texture-align="world">
-            Reset world
-          </button>
-          <button type="button" data-texture-align="flip-u">
-            Flip U
-          </button>
-          <button type="button" data-texture-align="flip-v">
-            Flip V
-          </button>
-          <button type="button" data-texture-align="rotate-ccw">
-            Rotate +90°
-          </button>
-          <button type="button" data-texture-align="rotate-cw">
-            Rotate −90°
-          </button>
-        </div>
-        <h4 className="texture-layout-title">Face bounds</h4>
-        <div className="texture-justify-controls" role="group" aria-label="Texture justification">
-          <button type="button" data-texture-layout="justify-v-min">
-            Top
-          </button>
-          <button type="button" data-texture-layout="justify-u-min">
-            Left
-          </button>
-          <button type="button" data-texture-layout="auto-fit">
-            Auto fit
-          </button>
-          <button type="button" data-texture-layout="justify-u-max">
-            Right
-          </button>
-          <button type="button" data-texture-layout="justify-v-max">
-            Bottom
-          </button>
-        </div>
-        <div
-          className="texture-fit-controls"
-          role="group"
-          aria-label="Texture edge alignment and fit"
-        >
-          <button type="button" data-texture-layout="align-edge">
-            Align edge
-          </button>
-          <button type="button" data-texture-layout="fit-u">
-            Fit U
-          </button>
-          <button type="button" data-texture-layout="fit-v">
-            Fit V
-          </button>
-        </div>
-        <p className="texture-layout-help">
-          Repeat to cycle edges, atlas slots, or integer fits. Shift cycles backward; Ctrl/Command
-          fits 1/n subdivisions.
-        </p>
-        <p className="texture-transfer-help">
-          <b>3D transfer:</b> select a source face, then Alt-click to project all attributes,
-          Alt+Shift-click to rotate alignment onto the target, or Alt+Ctrl/Command-click for
-          material only. Drag paints a chain; double-click affects the whole target brush.
-        </p>
+        <details className="texture-advanced-tools">
+          <summary>Alignment tools</summary>
+          <div className="texture-alignment-controls" role="group" aria-label="Texture alignment">
+            <button type="button" data-texture-align="reset">
+              Reset face
+            </button>
+            <button type="button" data-texture-align="world">
+              Reset world
+            </button>
+            <button type="button" data-texture-align="flip-u">
+              Flip U
+            </button>
+            <button type="button" data-texture-align="flip-v">
+              Flip V
+            </button>
+            <button type="button" data-texture-align="rotate-ccw">
+              Rotate +90°
+            </button>
+            <button type="button" data-texture-align="rotate-cw">
+              Rotate −90°
+            </button>
+          </div>
+          <h4 className="texture-layout-title">Face bounds</h4>
+          <div className="texture-justify-controls" role="group" aria-label="Texture justification">
+            <button type="button" data-texture-layout="justify-v-min">
+              Top
+            </button>
+            <button type="button" data-texture-layout="justify-u-min">
+              Left
+            </button>
+            <button type="button" data-texture-layout="auto-fit">
+              Auto fit
+            </button>
+            <button type="button" data-texture-layout="justify-u-max">
+              Right
+            </button>
+            <button type="button" data-texture-layout="justify-v-max">
+              Bottom
+            </button>
+          </div>
+          <div
+            className="texture-fit-controls"
+            role="group"
+            aria-label="Texture edge alignment and fit"
+          >
+            <button type="button" data-texture-layout="align-edge">
+              Align edge
+            </button>
+            <button type="button" data-texture-layout="fit-u">
+              Fit U
+            </button>
+            <button type="button" data-texture-layout="fit-v">
+              Fit V
+            </button>
+          </div>
+        </details>
       </div>
       <SurfaceInspector shellState={shellState} />
       <div className="material-section inspector-section">
         <div className="section-heading">
-          <h3>Materials</h3>
+          <h3>Material browser</h3>
           <span id="material-count">0 loaded</span>
         </div>
         <div className="material-actions">

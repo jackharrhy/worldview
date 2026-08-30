@@ -98,7 +98,7 @@ test.describe('recorded dependable-solo performance gate', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
       return performance.now() - start;
     });
-    await page.getByRole('tab', { name: 'Textures' }).click();
+    await page.getByRole('tab', { name: 'Face' }).click();
     await page.locator('#material-name').fill('BENCHMARK_CHANGED');
     const materialMilliseconds = await page.evaluate(() => {
       const start = performance.now();

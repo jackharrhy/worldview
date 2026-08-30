@@ -117,10 +117,6 @@ export function MapInspector({ shellState }: MapInspectorProps) {
             Lock all
           </button>
         </div>
-        <p>
-          New and pasted top-level objects go to the active layer. Hidden and locked layers are
-          excluded from picking; omitted layers stay in source but are removed from compile export.
-        </p>
       </div>
       <DocumentSummary shellState={shellState} />
       <div className="entity-link-section inspector-section">
@@ -137,10 +133,6 @@ export function MapInspector({ shellState }: MapInspectorProps) {
             <option value="none">None</option>
           </select>
         </label>
-        <p>
-          Resolved target and killtarget links render as directed arrows. Links touching the
-          selection are red; other visible links are green.
-        </p>
       </div>
       <div className="reference-section inspector-section">
         <div className="section-heading">
@@ -159,7 +151,6 @@ export function MapInspector({ shellState }: MapInspectorProps) {
           </button>
         </div>
         <div id="reference-list" className="reference-list" />
-        <p>Reference maps render in blue and are excluded from selection and export.</p>
       </div>
     </section>
   );

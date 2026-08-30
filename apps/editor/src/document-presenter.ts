@@ -25,7 +25,7 @@ interface CompileAssetEntry {
 export class DocumentPresenter {
   private viewportColumn = 0.5;
   private viewportTop = 0.5;
-  private inspectorWidth = 288;
+  private inspectorWidth = 320;
 
   public constructor(
     private readonly state: EditorState,

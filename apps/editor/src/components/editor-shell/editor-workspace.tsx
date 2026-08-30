@@ -69,6 +69,9 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
       />
       <aside className="inspector panel" aria-label="Inspector">
         <div className="inspector-tabs" role="tablist" aria-label="Inspector pages">
+          <button type="button" role="tab" data-inspector-tab="map" aria-selected="false">
+            Map
+          </button>
           <button
             className="active"
             type="button"
@@ -76,13 +79,10 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
             data-inspector-tab="object"
             aria-selected="true"
           >
-            Object
+            Entity
           </button>
           <button type="button" role="tab" data-inspector-tab="textures" aria-selected="false">
-            Textures
-          </button>
-          <button type="button" role="tab" data-inspector-tab="map" aria-selected="false">
-            Map
+            Face
           </button>
         </div>
         <div className="inspector-scroll">

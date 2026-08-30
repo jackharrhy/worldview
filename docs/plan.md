@@ -176,6 +176,9 @@ also mutate the corresponding DOM nodes. Focused adapters intentionally retain d
 canvas input, project/files, commands, tool forms, materials, organization, build dialogs, WebMCP
 registration, and session-to-view presentation. Those imperative seams are browser/controller
 boundaries beneath the React shell, not a second UI framework or an unfinished vanilla application.
+The resizable right inspector uses a compact Map, Entity, Face hierarchy: editable key/value data
+and face projection controls lead each view, while operation groups and asset browsers remain flat,
+dense, and separated by functional dividers instead of nested cards.
 
 `EditorSession` is the singular transaction and history coordinator. Focused DOM-free domains own
 selection/view state, object transforms, topology, geometry/CSG, entities/materials, and

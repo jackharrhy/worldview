@@ -207,6 +207,43 @@ const objectInspector = (
             <dd id="face-material" />
           </div>
         </dl>
+        <div id="entity-section" className="entity-section inspector-section">
+          <div className="section-heading">
+            <h3>Properties</h3>
+            <span id="entity-classname" />
+          </div>
+          <div id="brush-entity-actions" className="brush-entity-actions" hidden>
+            <input
+              id="brush-entity-classname"
+              type="text"
+              defaultValue="func_detail"
+              aria-label="Brush entity classname"
+              autoComplete="off"
+              spellCheck="false"
+            />
+            <button type="button" data-action="make-brush-entity">
+              Make Entity
+            </button>
+            <button type="button" data-action="make-structural">
+              Make Structural
+            </button>
+          </div>
+          <div id="entity-properties" className="entity-properties" />
+          <div className="entity-property-add">
+            <input id="entity-property-key" type="text" placeholder="Key" autoComplete="off" />
+            <input id="entity-property-value" type="text" placeholder="Value" autoComplete="off" />
+            <label
+              id="entity-property-protected-label"
+              className="entity-property-protected"
+              hidden
+            >
+              <input id="entity-property-protected" type="checkbox" /> Protected
+            </label>
+            <button type="button" data-action="set-entity-property">
+              Add
+            </button>
+          </div>
+        </div>
         <div id="group-section" className="group-section inspector-section" hidden>
           <div className="section-heading">
             <h3>Group</h3>
@@ -245,11 +282,6 @@ const objectInspector = (
               Ungroup
             </button>
           </div>
-          <p>
-            Closed groups select and transform as one object. Linked duplicates keep reusable copies
-            synchronized; purple arrows show affected siblings. Double-click or Open to edit
-            members, with everything outside locked.
-          </p>
         </div>
         <div
           id="selection-brush-section"
@@ -271,10 +303,6 @@ const objectInspector = (
               Enclosed in 2D
             </button>
           </div>
-          <p>
-            Consumes the selected structural brushes and selects editable objects touching them,
-            fully enclosed by them, or enclosed by their projection in the last pointed 2D view.
-          </p>
         </div>
         <div id="object-flip-section" className="object-flip-section inspector-section" hidden>
           <div className="section-heading">
@@ -572,50 +600,9 @@ const objectInspector = (
               Hollow
             </button>
           </div>
-          <p>
-            Subtract uses the selection as cutters against every other brush. Hollow uses the
-            current grid size for wall thickness.
-          </p>
-        </div>
-        <div id="entity-section" className="entity-section inspector-section">
-          <div className="section-heading">
-            <h3>Entity properties</h3>
-            <span id="entity-classname" />
-          </div>
-          <div id="brush-entity-actions" className="brush-entity-actions" hidden>
-            <input
-              id="brush-entity-classname"
-              type="text"
-              defaultValue="func_detail"
-              aria-label="Brush entity classname"
-              autoComplete="off"
-              spellCheck="false"
-            />
-            <button type="button" data-action="make-brush-entity">
-              Make Entity
-            </button>
-            <button type="button" data-action="make-structural">
-              Make Structural
-            </button>
-          </div>
-          <div id="entity-properties" className="entity-properties" />
-          <div className="entity-property-add">
-            <input id="entity-property-key" type="text" placeholder="Key" autoComplete="off" />
-            <input id="entity-property-value" type="text" placeholder="Value" autoComplete="off" />
-            <label
-              id="entity-property-protected-label"
-              className="entity-property-protected"
-              hidden
-            >
-              <input id="entity-property-protected" type="checkbox" /> Protected
-            </label>
-            <button type="button" data-action="set-entity-property">
-              Add
-            </button>
-          </div>
         </div>
         <div className="transform-section inspector-section">
-          <h3>Nudge by grid</h3>
+          <h3>Grid nudge</h3>
           <div className="nudge-grid">
             <span>X</span>
             <button type="button" data-nudge-axis={0} data-nudge-direction={-1}>

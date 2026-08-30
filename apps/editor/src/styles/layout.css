@@ -802,7 +802,7 @@ textarea:focus-visible {
 }
 
 .workspace {
-  --inspector-width: 288px;
+  --inspector-width: 320px;
 
   position: relative;
   display: grid;
