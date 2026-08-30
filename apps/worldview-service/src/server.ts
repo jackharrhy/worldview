@@ -132,9 +132,7 @@ function requireUser(
   return user;
 }
 
-function mapPrincipal(request: IncomingMessage, database: WorldviewDatabase, mapId: string) {
-  const user = userFor(request, database);
-  if (!user) return null;
+function mapPrincipal(database: WorldviewDatabase, mapId: string, user: WorldviewUser) {
   const map = database.map(mapId, user.id);
   return map
     ? {
@@ -425,9 +423,10 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
       }
       const mapMatch = /^\/api\/maps\/([^/]+)$/.exec(url.pathname);
       if (request.method === 'GET' && mapMatch) {
-        const principal = mapPrincipal(request, options.database, decodeURIComponent(mapMatch[1]!));
-        if (!principal)
-          return json(response, 404, { error: 'Map not found or authentication required' });
+        const user = requireUser(request, response, options.database);
+        if (!user) return;
+        const principal = mapPrincipal(options.database, decodeURIComponent(mapMatch[1]!), user);
+        if (!principal) return json(response, 404, { error: 'Map not found' });
         const snapshot = await options.maps.snapshot(principal.map.id);
         return json(response, 200, {
           map: {
@@ -460,13 +459,10 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
       if (request.method === 'POST' && ticketMatch) {
         if (!mutationAllowed(request, options.oauth.publicUrl))
           return json(response, 403, { error: 'Cross-origin mutation rejected' });
-        const principal = mapPrincipal(
-          request,
-          options.database,
-          decodeURIComponent(ticketMatch[1]!),
-        );
-        if (!principal)
-          return json(response, 404, { error: 'Map not found or authentication required' });
+        const user = requireUser(request, response, options.database);
+        if (!user) return;
+        const principal = mapPrincipal(options.database, decodeURIComponent(ticketMatch[1]!), user);
+        if (!principal) return json(response, 404, { error: 'Map not found' });
         const expiresAt = Date.now() + 60_000;
         return json(response, 201, {
           ticket: signRealtimeTicket(
