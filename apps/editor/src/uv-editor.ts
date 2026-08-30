@@ -34,6 +34,7 @@ export interface TextureUvEditorOptions {
   readonly svg: SVGSVGElement;
   readonly status: HTMLElement;
   readonly resetPivotButton: HTMLButtonElement;
+  readonly signal: AbortSignal;
   readonly onTransform: (event: UvEditorTransformEvent) => void;
   readonly onStatus: (message: string) => void;
 }
@@ -115,16 +116,26 @@ export class TextureUvEditor {
     this.resetPivotButton = options.resetPivotButton;
     this.onTransform = options.onTransform;
     this.onStatus = options.onStatus;
-    this.svg.addEventListener('pointerdown', (event) => this.pointerDown(event));
-    this.svg.addEventListener('pointermove', (event) => this.pointerMove(event));
-    this.svg.addEventListener('pointerup', (event) => this.pointerUp(event));
-    this.svg.addEventListener('pointercancel', () => this.cancel());
-    this.resetPivotButton.addEventListener('click', () => {
-      if (!this.state) return;
-      this.pivot = faceCenter(this.state.vertices);
-      this.render();
-      this.onStatus('UV transform origin reset to the face center.');
+    this.svg.addEventListener('pointerdown', (event) => this.pointerDown(event), {
+      signal: options.signal,
     });
+    this.svg.addEventListener('pointermove', (event) => this.pointerMove(event), {
+      signal: options.signal,
+    });
+    this.svg.addEventListener('pointerup', (event) => this.pointerUp(event), {
+      signal: options.signal,
+    });
+    this.svg.addEventListener('pointercancel', () => this.cancel(), { signal: options.signal });
+    this.resetPivotButton.addEventListener(
+      'click',
+      () => {
+        if (!this.state) return;
+        this.pivot = faceCenter(this.state.vertices);
+        this.render();
+        this.onStatus('UV transform origin reset to the face center.');
+      },
+      { signal: options.signal },
+    );
     this.render();
   }
 

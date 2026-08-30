@@ -24,6 +24,7 @@ type ContextMenuCommand = () => unknown;
 
 export class ContextMenuPresenter {
   private readonly commands = new Map<string, ContextMenuCommand>();
+  private readonly pendingFrames = new Set<number>();
 
   public constructor(
     private readonly state: EditorState,
@@ -52,7 +53,15 @@ export class ContextMenuPresenter {
     if (!context) return;
     const canvas = this.ui.canvases[context.viewport];
     if (!(canvas instanceof HTMLCanvasElement)) return;
-    window.requestAnimationFrame(() => canvas.focus({ preventScroll: true }));
+    this.requestFrame(() => canvas.focus({ preventScroll: true }));
+  }
+
+  private requestFrame(callback: () => void): void {
+    const frame = window.requestAnimationFrame(() => {
+      this.pendingFrames.delete(frame);
+      callback();
+    });
+    this.pendingFrames.add(frame);
   }
 
   public hideViewportContextMenu(restoreFocus = false): void {
@@ -184,7 +193,7 @@ export class ContextMenuPresenter {
     this.ui.materialFilter.value = material;
     this.ui.inspectorLayout.setActive('textures');
     this.renderMaterialCatalog();
-    window.requestAnimationFrame(() => {
+    this.requestFrame(() => {
       const tile = [
         ...this.ui.materialGrid.querySelectorAll<HTMLButtonElement>('.material-tile'),
       ].find((button) => button.textContent?.trim().toLowerCase() === material.toLowerCase());
@@ -382,5 +391,13 @@ export class ContextMenuPresenter {
         void this.invoke(commandId);
       },
     });
+  }
+
+  public dispose(): void {
+    for (const frame of this.pendingFrames) window.cancelAnimationFrame(frame);
+    this.pendingFrames.clear();
+    this.commands.clear();
+    this.state.viewportContext = null;
+    this.ui.viewportContextMenu.unbind();
   }
 }

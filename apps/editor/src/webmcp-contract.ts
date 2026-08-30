@@ -18,7 +18,7 @@ export interface WebMcpTool {
 }
 
 interface WebMcpModelContext {
-  registerTool(tool: WebMcpTool): void | Promise<void>;
+  registerTool(tool: WebMcpTool, options?: { readonly signal?: AbortSignal }): void | Promise<void>;
 }
 
 export type WebMcpDocument = Document & { readonly modelContext?: WebMcpModelContext };

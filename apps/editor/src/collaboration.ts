@@ -156,7 +156,7 @@ export interface JoinCollaborationOptions {
   readonly displayName?: string;
   readonly color?: string;
   /** Returns a fresh short-lived bearer token for protected hosted rooms. */
-  readonly authorize?: () => Promise<string>;
+  readonly authorize?: (signal?: AbortSignal) => Promise<string>;
   readonly onPresence?: (presence: CollaborationPresence) => void;
   readonly onLocalPresence?: (presence: CollaborationPresence) => void;
   readonly onConflict?: (operationId: string, conflicts: readonly CollaborationFailure[]) => void;

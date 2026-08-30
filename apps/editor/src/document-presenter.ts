@@ -110,12 +110,16 @@ export class DocumentPresenter {
     this.ui.inspectorToggle.setAttribute('aria-pressed', String(open));
   }
 
-  public connectWorkspaceResizers(): void {
+  public connectWorkspaceResizers(signal: AbortSignal): void {
     this.applyWorkspaceLayout();
     for (const handle of this.ui.workspaceResizeHandles) {
-      handle.addEventListener('pointerdown', (event) => this.beginWorkspaceResize(event, handle));
-      handle.addEventListener('keydown', (event) =>
-        this.resizeWorkspaceWithKeyboard(event, handle),
+      handle.addEventListener('pointerdown', (event) => this.beginWorkspaceResize(event, handle), {
+        signal,
+      });
+      handle.addEventListener(
+        'keydown',
+        (event) => this.resizeWorkspaceWithKeyboard(event, handle),
+        { signal },
       );
     }
   }

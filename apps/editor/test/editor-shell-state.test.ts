@@ -140,4 +140,64 @@ describe('editor shell state ports', () => {
     expect(setPreference).toHaveBeenCalledWith('light');
     expect(shell.theme.getSnapshot()).toBe('light');
   });
+
+  it('detaches application-owned actions when their lifetime ends', () => {
+    const shell = createEditorShellState();
+    const setPerspectiveOnly = vi.fn();
+    const setPreference = vi.fn();
+    const dismiss = vi.fn();
+    const invoke = vi.fn();
+    const setFlag = vi.fn();
+    const setValue = vi.fn();
+    const open = vi.fn();
+
+    shell.viewportLayout.bind({ setPerspectiveOnly });
+    shell.theme.bind({ setPreference }, 'dark');
+    shell.viewportContextMenu.bind({ dismiss, invoke });
+    shell.surfaceInspector.bind({ setFlag, setValue });
+    shell.collaborationUi.bind({
+      open,
+      close: vi.fn(),
+      setDisplayName: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+      copyLink: vi.fn(),
+    });
+    shell.viewportContextMenu.show({
+      x: 1,
+      y: 2,
+      heading: 'View',
+      detail: '0 0 0',
+      sections: [],
+    });
+
+    shell.viewportLayout.unbind();
+    shell.theme.unbind();
+    shell.viewportContextMenu.unbind();
+    shell.surfaceInspector.unbind();
+    shell.collaborationUi.unbind();
+    shell.viewportLayout.togglePerspectiveOnly();
+    shell.theme.select('light');
+    shell.viewportContextMenu.dismiss();
+    shell.viewportContextMenu.invoke('selection:focus');
+    shell.surfaceInspector.invoke('setValue', 7);
+    shell.collaborationUi.invoke('open');
+
+    expect(shell.viewportLayout.getSnapshot()).toEqual({
+      perspectiveOnly: false,
+      rendererReady: false,
+    });
+    expect(shell.viewportContextMenu.getSnapshot().open).toBe(false);
+    for (const action of [
+      setPerspectiveOnly,
+      setPreference,
+      dismiss,
+      invoke,
+      setFlag,
+      setValue,
+      open,
+    ]) {
+      expect(action).not.toHaveBeenCalled();
+    }
+  });
 });

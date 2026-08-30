@@ -42,8 +42,16 @@ test.describe('recorded dependable-solo performance gate', () => {
       Object.defineProperty(document, 'modelContext', {
         configurable: true,
         value: {
-          registerTool(tool: SiteTool) {
+          registerTool(tool: SiteTool, options?: { readonly signal?: AbortSignal }) {
+            if (options?.signal?.aborted) return;
             tools.set(tool.name, tool);
+            options?.signal?.addEventListener(
+              'abort',
+              () => {
+                if (tools.get(tool.name) === tool) tools.delete(tool.name);
+              },
+              { once: true },
+            );
           },
         },
       });

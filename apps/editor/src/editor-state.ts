@@ -204,6 +204,7 @@ export class EditorState {
   public constructor(
     public readonly ui: EditorElements,
     host: () => EditorStateHost,
+    signal: AbortSignal,
     options: EditorStateOptions = {},
   ) {
     this.activeGridSize = Number(ui.gridSizeSelect.value);
@@ -220,6 +221,7 @@ export class EditorState {
       options.buildService ?? new RemoteMapCompiler({ endpoint: compilerEndpoint });
     this.compilerCoordinator = new MapCompileCoordinator(this.buildService);
     this.buildHistory = new MapBuildHistoryService(undefined, (error) => {
+      if (signal.aborted) return;
       ui.statusMessage.setError(
         `Build history storage failed: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -229,6 +231,7 @@ export class EditorState {
       svg: ui.uvEditorSvg,
       status: ui.uvEditorStatus,
       resetPivotButton: ui.uvResetPivot,
+      signal,
       onStatus(message) {
         ui.statusMessage.textContent = message;
       },
@@ -301,6 +304,7 @@ export class EditorState {
       }),
       undefined,
       (error) => {
+        if (signal.aborted) return;
         ui.statusMessage.setError(
           `Recovery storage failed: ${error instanceof Error ? error.message : String(error)}`,
         );

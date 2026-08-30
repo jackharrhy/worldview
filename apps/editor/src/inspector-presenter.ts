@@ -62,6 +62,10 @@ export class InspectorPresenter {
     });
   }
 
+  public dispose(): void {
+    this.ui.surfaceInspector.unbind();
+  }
+
   private surfaceFlagControls(
     definitions: readonly SurfaceFlagDefinition[],
     values: readonly number[],

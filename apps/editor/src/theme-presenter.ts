@@ -23,7 +23,7 @@ export class ThemePresenter {
     private readonly ui: EditorElements,
   ) {}
 
-  public connect(): void {
+  public connect(signal: AbortSignal): void {
     this.ui.theme.bind(
       {
         setPreference: (preference) => {
@@ -40,9 +40,17 @@ export class ThemePresenter {
       this.preference,
     );
     this.apply(false);
-    this.systemTheme.addEventListener('change', () => {
-      if (this.preference === 'system') this.apply(true);
-    });
+    this.systemTheme.addEventListener(
+      'change',
+      () => {
+        if (this.preference === 'system') this.apply(true);
+      },
+      { signal },
+    );
+  }
+
+  public dispose(): void {
+    this.ui.theme.unbind();
   }
 
   private apply(updateRenderer: boolean): void {

@@ -95,6 +95,7 @@ export class CollaborationPresenter {
     private readonly ui: EditorElements,
     private readonly joinCollaboration: (options: JoinCollaborationOptions) => Promise<void>,
     private readonly leaveCollaboration: () => void,
+    private readonly signal: AbortSignal,
   ) {
     persist(ACTOR_KEY, this.actorId);
   }
@@ -120,10 +121,12 @@ export class CollaborationPresenter {
   }
 
   public async joinHostedMap(mapId: string, actorId: string, displayName: string): Promise<void> {
-    const authorize = async () => {
+    const authorize = async (signal = this.signal) => {
+      signal.throwIfAborted();
       const response = await fetch(`/api/maps/${encodeURIComponent(mapId)}/realtime-ticket`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal,
       });
       const payload = (await response.json().catch(() => null)) as {
         ticket?: unknown;
@@ -151,7 +154,7 @@ export class CollaborationPresenter {
     identity?: {
       readonly actorId: string;
       readonly displayName: string;
-      readonly authorize: () => Promise<string>;
+      readonly authorize: (signal?: AbortSignal) => Promise<string>;
       readonly hosted: true;
     },
   ): Promise<void> {
@@ -166,6 +169,7 @@ export class CollaborationPresenter {
       ...(fromLink ? { dialogOpen: true } : {}),
     });
     try {
+      this.signal.throwIfAborted();
       await this.joinCollaboration({
         endpoint: collaborationEndpoint(),
         mapId,
@@ -177,10 +181,12 @@ export class CollaborationPresenter {
         onLocalPresence: (presence) => this.receivePresence(presence),
         onConflict: () => this.setError('A remote edit conflicted with this map.'),
         onConnectionChange: (state) => {
+          if (this.signal.aborted) return;
           if (state === 'connected') this.renderLiveState();
           else if (state === 'disconnected') this.setState('Reconnecting…');
         },
       });
+      this.signal.throwIfAborted();
       this.participants.set(actorId, {
         actorId,
         displayName,
@@ -196,6 +202,8 @@ export class CollaborationPresenter {
       });
       this.renderParticipants();
     } catch (error) {
+      if (this.signal.aborted) return;
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       this.leaveCollaboration();
       this.mapId = null;
       this.setError(error instanceof Error ? error.message : String(error));
@@ -204,6 +212,7 @@ export class CollaborationPresenter {
   }
 
   private receivePresence(presence: CollaborationPresence): void {
+    if (this.signal.aborted) return;
     const previous = this.participants.get(presence.actorId);
     this.participants.set(presence.actorId, presence);
     const staleBefore = Date.now() - 10_000;
@@ -230,6 +239,7 @@ export class CollaborationPresenter {
   }
 
   private renderLiveState(): void {
+    if (this.signal.aborted) return;
     this.ui.collaborationUi.update({
       shareLink: window.location.href,
       live: true,
@@ -280,11 +290,18 @@ export class CollaborationPresenter {
   }
 
   private setState(value: string): void {
+    if (this.signal.aborted) return;
     this.ui.collaborationUi.update({ state: value });
   }
 
   private setError(value: string): void {
     this.setState('Could not connect');
     this.ui.collaborationUi.update({ error: value, joining: false });
+  }
+
+  public dispose(): void {
+    this.mapId = null;
+    this.participants.clear();
+    this.ui.collaborationUi.unbind();
   }
 }

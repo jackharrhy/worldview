@@ -57,6 +57,7 @@ export class ProjectPresenter {
     private readonly materials: MaterialsPresenter,
     private readonly organization: OrganizationPresenter,
     private readonly session: SessionPresenter,
+    private readonly signal: AbortSignal,
   ) {}
 
   private detachProjectContext(): void {
@@ -98,6 +99,7 @@ export class ProjectPresenter {
         ),
       );
       const assertExpectedDocument = (): void => {
+        this.signal.throwIfAborted();
         if (
           options.expectedDocumentId !== undefined &&
           this.state.session.document.id !== options.expectedDocumentId
@@ -169,8 +171,10 @@ export class ProjectPresenter {
         await this.state.projectLocalState.setLastMap(this.state.projectKey, logicalName);
       }
       await this.restoreBrowserAssetMounts();
+      assertExpectedDocument();
       this.ui.statusMessage.textContent = `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`;
     } catch (error) {
+      if (this.signal.aborted) throw error;
       this.ui.statusMessage.textContent = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
       if (options.throwOnError) throw error;
     }
@@ -251,6 +255,7 @@ export class ProjectPresenter {
       loadProjectEntityDefinitions(workspace),
       loadProjectSprites(workspace),
     ]);
+    this.signal.throwIfAborted();
     this.state.materialCatalog.clear();
     for (const material of stagedCatalog.materials()) this.state.materialCatalog.set(material);
     this.state.loadedWadSources.clear();
@@ -278,7 +283,9 @@ export class ProjectPresenter {
 
   public async openProjectDirectory(handle: EditorDirectoryHandle): Promise<void> {
     const workspace = await openWorldviewProject(handle);
+    this.signal.throwIfAborted();
     await this.loadProjectResources(workspace);
+    this.signal.throwIfAborted();
     this.state.projectWorkspace = workspace;
     this.state.projectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
     const remembered = await this.state.projectLocalState.remember(
@@ -286,6 +293,7 @@ export class ProjectPresenter {
       handle,
       workspace.manifest.name,
     );
+    this.signal.throwIfAborted();
     if (remembered) this.state.projectKey = remembered.projectKey;
     this.state.workspaceId = remembered?.workspaceId ?? `project:${this.state.projectKey}`;
     this.state.activeGameProfile = workspace.manifest.game;
@@ -311,6 +319,7 @@ export class ProjectPresenter {
     this.ui.buildProfile.value =
       workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? '';
     await this.build.checkCompilerService();
+    this.signal.throwIfAborted();
     const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
     if (remembered === null) {
       const warning =
@@ -355,18 +364,25 @@ export class ProjectPresenter {
 
   public async reopenProject(projectKey: string): Promise<void> {
     const recent = await this.state.projectLocalState.load(projectKey);
+    this.signal.throwIfAborted();
     if (!recent) throw new Error('Recent project is no longer available');
     if (!(await ensureProjectDirectoryPermission(recent.handle, true))) {
       throw new Error('Project directory permission was not granted');
     }
+    this.signal.throwIfAborted();
     await this.openProjectDirectory(recent.handle);
     if (!recent.lastMapPath) return;
     const map = this.state.projectWorkspace?.maps.find(({ path }) => path === recent.lastMapPath);
-    if (map) await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
+    if (map) {
+      const file = await map.handle.getFile();
+      this.signal.throwIfAborted();
+      await this.openEditorMap(file, map.handle, map.path);
+    }
   }
 
   public async restoreBrowserAssetMounts(): Promise<void> {
     const mounts = await this.state.assetMountState.list(this.state.documentKey).catch(() => []);
+    this.signal.throwIfAborted();
     for (const mount of mounts) {
       if (!mount.data || !('sourceName' in mount)) continue;
       this.state.materialCatalog.importWad(mount.sourceName, mount.data, this.state.quakePalette);
@@ -457,38 +473,54 @@ export class ProjectPresenter {
     this.state.session.restoreDocument(snapshot.document, `Restore ${snapshot.label}`);
   }
 
-  public connect(): void {
-    required<HTMLButtonElement>('[data-action="new"]').addEventListener('click', () => {
-      this.ui.workspaceHome.invoke('newMap');
-    });
+  public connect(signal: AbortSignal): void {
+    required<HTMLButtonElement>('[data-action="new"]').addEventListener(
+      'click',
+      () => {
+        this.ui.workspaceHome.invoke('newMap');
+      },
+      { signal },
+    );
 
-    required<HTMLButtonElement>('[data-action="show-source"]').addEventListener('click', () => {
-      this.document.updateSourceFromDocument(true);
-      this.ui.sourceDialog.showModal();
-      this.ui.source.focus();
-    });
-    required<HTMLButtonElement>('[data-action="close-source"]').addEventListener('click', () => {
-      this.ui.sourceDialog.close();
-    });
-    required<HTMLButtonElement>('[data-action="apply-source"]').addEventListener('click', () => {
-      try {
-        const parsed = parseMapSource(
-          this.ui.source.value,
-          createSequentialIdFactory(`source-${Date.now()}`),
-        );
-        this.session.replaceDocument(parsed.document, 'Apply map source', {
-          source: parsed.source,
-          dirty: true,
-          savedRevision: this.state.savedDocumentRevision,
-        });
+    required<HTMLButtonElement>('[data-action="show-source"]').addEventListener(
+      'click',
+      () => {
+        this.document.updateSourceFromDocument(true);
+        this.ui.sourceDialog.showModal();
+        this.ui.source.focus();
+      },
+      { signal },
+    );
+    required<HTMLButtonElement>('[data-action="close-source"]').addEventListener(
+      'click',
+      () => {
         this.ui.sourceDialog.close();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.ui.sourceMessage.textContent = message;
-        this.ui.sourceMessage.classList.add('error-text');
-        this.ui.statusMessage.textContent = 'Source contains a parse error.';
-      }
-    });
+      },
+      { signal },
+    );
+    required<HTMLButtonElement>('[data-action="apply-source"]').addEventListener(
+      'click',
+      () => {
+        try {
+          const parsed = parseMapSource(
+            this.ui.source.value,
+            createSequentialIdFactory(`source-${Date.now()}`),
+          );
+          this.session.replaceDocument(parsed.document, 'Apply map source', {
+            source: parsed.source,
+            dirty: true,
+            savedRevision: this.state.savedDocumentRevision,
+          });
+          this.ui.sourceDialog.close();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.ui.sourceMessage.textContent = message;
+          this.ui.sourceMessage.classList.add('error-text');
+          this.ui.statusMessage.textContent = 'Source contains a parse error.';
+        }
+      },
+      { signal },
+    );
 
     required<HTMLButtonElement>('[data-action="open-project"]').addEventListener(
       'click',
@@ -503,78 +535,98 @@ export class ProjectPresenter {
           this.ui.statusMessage.textContent = `Project open failed: ${error instanceof Error ? error.message : String(error)}`;
         }
       },
+      { signal },
     );
 
-    this.ui.projectMap.addEventListener('change', async () => {
-      const map = this.state.projectWorkspace?.maps.find(
-        ({ path }) => path === this.ui.projectMap.value,
-      );
-      if (!map) return;
-      await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
-    });
-    this.ui.buildProfile.addEventListener('change', () => void this.build.checkCompilerService());
-
-    required<HTMLButtonElement>('[data-action="open-file"]').addEventListener('click', async () => {
-      try {
-        await this.chooseMapFile();
-      } catch (error) {
-        this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
-      }
-    });
-    this.ui.mapFile.addEventListener('change', async () => {
-      const file = this.ui.mapFile.files?.[0];
-      if (!file) return;
-      await this.openEditorMap(file, null);
-      this.ui.mapFile.value = '';
-    });
-
-    required<HTMLButtonElement>('[data-action="download"]').addEventListener('click', async () => {
-      const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
-      if (plan.status === 'blocked') {
-        this.ui.statusMessage.textContent = `${plan.diagnostics.map(({ message }) => message).join(' ')} Use Export normalized to create a separate copy.`;
-        return;
-      }
-      if (!this.state.currentFileHandle || !this.state.lastDiskFingerprint) {
-        downloadMapCopy(this.state.currentDocumentName, plan.text);
-        this.ui.statusMessage.textContent =
-          'Downloaded a source-preserving copy; the browser cannot confirm an on-disk save.';
-        return;
-      }
-      try {
-        this.state.lastDiskFingerprint = await saveMapFile(
-          this.state.currentFileHandle,
-          this.state.lastDiskFingerprint,
-          plan.text,
+    this.ui.projectMap.addEventListener(
+      'change',
+      async () => {
+        const map = this.state.projectWorkspace?.maps.find(
+          ({ path }) => path === this.ui.projectMap.value,
         );
-        this.state.currentMapSource = rebaseMapSource(this.state.session.document, plan.text);
-        this.state.savedDocumentRevision = this.state.session.document.revision;
-        this.document.setDocumentDirty(false);
-        this.state.lastRecoveryLabel = `Saved ${this.state.currentDocumentName}`;
-        await this.state.recovery.flush();
-        this.ui.statusMessage.textContent = `Saved ${this.state.currentDocumentName} without normalizing untouched source.`;
-      } catch (error) {
-        if (error instanceof ExternalFileChangeError && this.state.currentFileHandle) {
-          const reload = window.confirm(
-            `${error.message}\n\nChoose OK to reload the disk version, or Cancel to download a source-preserving copy.`,
-          );
-          if (reload)
-            await this.openEditorMap(
-              await this.state.currentFileHandle.getFile(),
-              this.state.currentFileHandle,
-            );
-          else {
-            downloadMapCopy(
-              this.state.currentDocumentName.replace(/\.map$/i, '.copy.map'),
-              plan.text,
-            );
-            this.ui.statusMessage.textContent =
-              'Downloaded a copy; the externally changed file was not overwritten.';
-          }
-        } else {
-          this.ui.statusMessage.textContent = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
-        }
-      }
+        if (!map) return;
+        await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
+      },
+      { signal },
+    );
+    this.ui.buildProfile.addEventListener('change', () => void this.build.checkCompilerService(), {
+      signal,
     });
+
+    required<HTMLButtonElement>('[data-action="open-file"]').addEventListener(
+      'click',
+      async () => {
+        try {
+          await this.chooseMapFile();
+        } catch (error) {
+          this.ui.statusMessage.textContent =
+            error instanceof Error ? error.message : String(error);
+        }
+      },
+      { signal },
+    );
+    this.ui.mapFile.addEventListener(
+      'change',
+      async () => {
+        const file = this.ui.mapFile.files?.[0];
+        if (!file) return;
+        await this.openEditorMap(file, null);
+        this.ui.mapFile.value = '';
+      },
+      { signal },
+    );
+
+    required<HTMLButtonElement>('[data-action="download"]').addEventListener(
+      'click',
+      async () => {
+        const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
+        if (plan.status === 'blocked') {
+          this.ui.statusMessage.textContent = `${plan.diagnostics.map(({ message }) => message).join(' ')} Use Export normalized to create a separate copy.`;
+          return;
+        }
+        if (!this.state.currentFileHandle || !this.state.lastDiskFingerprint) {
+          downloadMapCopy(this.state.currentDocumentName, plan.text);
+          this.ui.statusMessage.textContent =
+            'Downloaded a source-preserving copy; the browser cannot confirm an on-disk save.';
+          return;
+        }
+        try {
+          this.state.lastDiskFingerprint = await saveMapFile(
+            this.state.currentFileHandle,
+            this.state.lastDiskFingerprint,
+            plan.text,
+          );
+          this.state.currentMapSource = rebaseMapSource(this.state.session.document, plan.text);
+          this.state.savedDocumentRevision = this.state.session.document.revision;
+          this.document.setDocumentDirty(false);
+          this.state.lastRecoveryLabel = `Saved ${this.state.currentDocumentName}`;
+          await this.state.recovery.flush();
+          this.ui.statusMessage.textContent = `Saved ${this.state.currentDocumentName} without normalizing untouched source.`;
+        } catch (error) {
+          if (error instanceof ExternalFileChangeError && this.state.currentFileHandle) {
+            const reload = window.confirm(
+              `${error.message}\n\nChoose OK to reload the disk version, or Cancel to download a source-preserving copy.`,
+            );
+            if (reload)
+              await this.openEditorMap(
+                await this.state.currentFileHandle.getFile(),
+                this.state.currentFileHandle,
+              );
+            else {
+              downloadMapCopy(
+                this.state.currentDocumentName.replace(/\.map$/i, '.copy.map'),
+                plan.text,
+              );
+              this.ui.statusMessage.textContent =
+                'Downloaded a copy; the externally changed file was not overwritten.';
+            }
+          } else {
+            this.ui.statusMessage.textContent = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      },
+      { signal },
+    );
 
     const closeCheckpointDialog = () => this.ui.checkpointDialog.close();
     const createCheckpoint = async () => {
@@ -589,35 +641,52 @@ export class ProjectPresenter {
         this.ui.statusMessage.textContent = `Checkpoint failed: ${error instanceof Error ? error.message : String(error)}`;
       }
     };
-    required<HTMLButtonElement>('[data-action="checkpoint"]').addEventListener('click', () => {
-      this.ui.checkpointLabel.value = `Checkpoint r${this.state.session.document.revision}`;
-      this.ui.checkpointDialog.showModal();
-      this.ui.checkpointLabel.focus();
-      this.ui.checkpointLabel.select();
-    });
+    required<HTMLButtonElement>('[data-action="checkpoint"]').addEventListener(
+      'click',
+      () => {
+        this.ui.checkpointLabel.value = `Checkpoint r${this.state.session.document.revision}`;
+        this.ui.checkpointDialog.showModal();
+        this.ui.checkpointLabel.focus();
+        this.ui.checkpointLabel.select();
+      },
+      { signal },
+    );
     required<HTMLButtonElement>('[data-action="create-checkpoint"]').addEventListener(
       'click',
       () => void createCheckpoint(),
+      { signal },
     );
     required<HTMLButtonElement>('[data-action="close-checkpoint"]').addEventListener(
       'click',
       closeCheckpointDialog,
+      { signal },
     );
     required<HTMLButtonElement>('[data-action="cancel-checkpoint"]').addEventListener(
       'click',
       closeCheckpointDialog,
+      { signal },
     );
-    this.ui.checkpointLabel.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
-      void createCheckpoint();
-    });
-    required<HTMLButtonElement>('[data-action="versions"]').addEventListener('click', async () => {
-      await this.renderRecoveryVersions();
-      this.ui.recoveryDialog.showModal();
-    });
-    required<HTMLButtonElement>('[data-action="close-recovery"]').addEventListener('click', () =>
-      this.ui.recoveryDialog.close(),
+    this.ui.checkpointLabel.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        void createCheckpoint();
+      },
+      { signal },
+    );
+    required<HTMLButtonElement>('[data-action="versions"]').addEventListener(
+      'click',
+      async () => {
+        await this.renderRecoveryVersions();
+        this.ui.recoveryDialog.showModal();
+      },
+      { signal },
+    );
+    required<HTMLButtonElement>('[data-action="close-recovery"]').addEventListener(
+      'click',
+      () => this.ui.recoveryDialog.close(),
+      { signal },
     );
 
     required<HTMLButtonElement>('[data-action="export-normalized"]').addEventListener(
@@ -627,11 +696,16 @@ export class ProjectPresenter {
         downloadMapCopy(normalizedName, serializeMap(this.state.session.document));
         this.ui.statusMessage.textContent = `Exported normalized source as ${normalizedName}; the original was not overwritten.`;
       },
+      { signal },
     );
 
-    required<HTMLButtonElement>('[data-action="load-reference"]').addEventListener('click', () => {
-      this.ui.referenceFiles.click();
-    });
+    required<HTMLButtonElement>('[data-action="load-reference"]').addEventListener(
+      'click',
+      () => {
+        this.ui.referenceFiles.click();
+      },
+      { signal },
+    );
     required<HTMLButtonElement>('[data-action="snapshot-reference"]').addEventListener(
       'click',
       () => {
@@ -640,21 +714,30 @@ export class ProjectPresenter {
           this.state.session.document,
         );
       },
+      { signal },
     );
-    this.ui.clearReferencesButton.addEventListener('click', () => {
-      this.state.referenceScenes = [];
-      this.state.renderer?.setReferenceScenes(this.state.referenceScenes);
-      this.materials.renderReferenceScenes();
-      this.ui.statusMessage.textContent = 'Cleared reference scenes.';
-    });
+    this.ui.clearReferencesButton.addEventListener(
+      'click',
+      () => {
+        this.state.referenceScenes = [];
+        this.state.renderer?.setReferenceScenes(this.state.referenceScenes);
+        this.materials.renderReferenceScenes();
+        this.ui.statusMessage.textContent = 'Cleared reference scenes.';
+      },
+      { signal },
+    );
 
-    this.ui.entityLinkModeSelect.addEventListener('change', () => {
-      const mode = this.ui.entityLinkModeSelect.value;
-      if (mode !== 'all' && mode !== 'transitive' && mode !== 'direct' && mode !== 'none') return;
-      this.state.entityLinkMode = mode;
-      this.state.renderer?.setEntityLinkMode(mode);
-      this.organization.updateEntityLinkSummary();
-      this.ui.statusMessage.textContent = `Entity links: ${this.ui.entityLinkModeSelect.selectedOptions[0]?.textContent ?? mode}.`;
-    });
+    this.ui.entityLinkModeSelect.addEventListener(
+      'change',
+      () => {
+        const mode = this.ui.entityLinkModeSelect.value;
+        if (mode !== 'all' && mode !== 'transitive' && mode !== 'direct' && mode !== 'none') return;
+        this.state.entityLinkMode = mode;
+        this.state.renderer?.setEntityLinkMode(mode);
+        this.organization.updateEntityLinkSummary();
+        this.ui.statusMessage.textContent = `Entity links: ${this.ui.entityLinkModeSelect.selectedOptions[0]?.textContent ?? mode}.`;
+      },
+      { signal },
+    );
   }
 }

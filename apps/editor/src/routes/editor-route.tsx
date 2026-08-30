@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
 import { EditorShell } from '../components/editor-shell.js';
@@ -19,7 +19,10 @@ interface EditorRouteProps {
 
 export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
   const routeLocation = useLocation();
-  const initialMap = hostedMap ? null : readNewMapLaunch(routeLocation.state);
+  const initialMap = useMemo(
+    () => (hostedMap ? null : readNewMapLaunch(routeLocation.state)),
+    [hostedMap, routeLocation.state],
+  );
   const [shellState] = useState(createEditorShellState);
   const [queryClient] = useState(
     () =>
@@ -43,11 +46,10 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
     openMap: () => undefined,
     reopenProject: () => undefined,
   });
-  const attachEditor = (node: HTMLElement | null) => {
-    if (!node || editor.current) return;
-    const application = new EditorApplication(
-      bindEditorElements(shellState),
-      hostedMap
+  const attachEditor = useCallback(
+    (node: HTMLElement | null) => {
+      if (!node || editor.current) return;
+      const applicationOptions = hostedMap
         ? {
             buildService: new HostedMapBuildService({
               mapId: hostedMap.id,
@@ -55,26 +57,28 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
             }),
             buildServiceEnabled: true,
           }
-        : {},
-    );
-    editor.current = application;
-    delete document.documentElement.dataset.worldviewEditorReady;
-    if (initialMap)
-      application.project.createNewMap(initialMap.profile, initialMap.format, initialMap.name);
-    void application
-      .start()
-      .then(async () => {
+        : {};
+      const application = new EditorApplication(bindEditorElements(shellState), applicationOptions);
+      editor.current = application;
+      delete document.documentElement.dataset.worldviewEditorReady;
+      if (initialMap)
+        application.project.createNewMap(initialMap.profile, initialMap.format, initialMap.name);
+      void (async () => {
+        await application.start();
+        application.signal.throwIfAborted();
         if (hostedMap) {
           const source = new File([hostedMap.source], hostedMap.name, { type: 'text/plain' });
           await application.project.openEditorMap(source, null, hostedMap.name, {
             throwOnError: true,
           });
+          application.signal.throwIfAborted();
           application.project.loadHostedResources(hostedMap.resources ?? []);
           await application.collaborationUi.joinHostedMap(
             hostedMap.id,
             hostedMap.actorId,
             hostedMap.displayName,
           );
+          application.signal.throwIfAborted();
           shellState.statusMessage.textContent = `Opened hosted map ${hostedMap.projectName} / ${hostedMap.name} · live at v${hostedMap.mapVersion}`;
         } else if (!initialMap) {
           const launch = takePendingEditorLaunch();
@@ -85,12 +89,23 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
           else if (launch?.kind === 'map')
             await application.project.openEditorMap(launch.file, null);
         }
-        document.documentElement.dataset.worldviewEditorReady = 'true';
-      })
-      .catch((error: unknown) =>
-        shellState.statusMessage.setError(error instanceof Error ? error.message : String(error)),
-      );
-  };
+        application.signal.throwIfAborted();
+        if (editor.current === application)
+          document.documentElement.dataset.worldviewEditorReady = 'true';
+      })().catch((error: unknown) => {
+        if (application.signal.aborted) return;
+        shellState.statusMessage.setError(error instanceof Error ? error.message : String(error));
+      });
+      return () => {
+        const ownsRoute = editor.current === application;
+        application.dispose();
+        if (!ownsRoute) return;
+        editor.current = null;
+        delete document.documentElement.dataset.worldviewEditorReady;
+      };
+    },
+    [hostedMap, initialMap, shellState],
+  );
   return (
     <QueryClientProvider client={queryClient}>
       <EditorShell shellState={shellState} onReady={attachEditor} />

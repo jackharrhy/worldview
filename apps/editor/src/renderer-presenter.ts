@@ -52,14 +52,17 @@ interface RendererPresenterDependencies {
 }
 
 export class RendererPresenter {
+  private scheduler: AnimationFrameScheduler | null = null;
+
   public constructor(private readonly dependencies: RendererPresenterDependencies) {}
 
-  public async start(): Promise<void> {
+  public async start(signal: AbortSignal): Promise<void> {
     const app = this.dependencies;
     const state = app.state;
     const ui = app.ui;
+    const renderScheduler = new AnimationFrameScheduler();
+    this.scheduler = renderScheduler;
     try {
-      const renderScheduler = new AnimationFrameScheduler();
       const renderer = await EditorSourceRenderer.create({
         theme: resolveEditorRenderTheme(),
         canvases: ui.canvases,
@@ -80,6 +83,7 @@ export class RendererPresenter {
         onRenderRequest: () => renderScheduler.request(),
         onPreviewDocument: (document) => app.publishCollaborationPreview(document),
         onDeviceLost(message) {
+          if (signal.aborted) return;
           ui.viewportError.hidden = false;
           ui.viewportError.textContent = `${message}. Reload the editor to restore rendering.`;
           ui.statusMessage.textContent = 'WebGPU renderer stopped.';
@@ -667,6 +671,10 @@ export class RendererPresenter {
           }
         },
       });
+      if (signal.aborted) {
+        renderer.dispose();
+        signal.throwIfAborted();
+      }
       state.renderer = renderer;
       ui.viewportLayout.bind({
         setPerspectiveOnly(enabled) {
@@ -680,9 +688,20 @@ export class RendererPresenter {
       renderScheduler.start();
       ui.statusMessage.textContent = 'Source renderer ready. Select a brush in any viewport.';
     } catch (error) {
+      renderScheduler.dispose();
+      if (this.scheduler === renderScheduler) this.scheduler = null;
+      if (signal.aborted) signal.throwIfAborted();
       ui.viewportError.hidden = false;
       ui.viewportError.textContent = error instanceof Error ? error.message : String(error);
       ui.statusMessage.textContent = 'WebGPU renderer could not start.';
     }
+  }
+
+  public dispose(): void {
+    this.scheduler?.dispose();
+    this.scheduler = null;
+    this.dependencies.state.renderer?.dispose();
+    this.dependencies.state.renderer = null;
+    this.dependencies.ui.viewportLayout.unbind();
   }
 }

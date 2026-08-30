@@ -99,6 +99,11 @@ camera, gesture, and per-frame GPU state do not flow through React. Immutable ex
 cross into React through `useSyncExternalStore`. Both application roots run in React Strict Mode.
 External-system lifetimes attach through stable callback refs with explicit cleanup. Focused layout
 effects are reserved for synchronizing native dialog and measurement lifetimes.
+The editor route owns one application `AbortSignal`; renderer/scheduler resources, DOM and media
+listeners, recovery hooks, shell command ports, compiler work, WebMCP tools, and collaboration all
+terminate through that boundary. Each live collaboration room has a nested abort generation so a
+leave or rejoin also invalidates unfinished authorization, reconciliation, presence, and socket
+work without ending the solo editor lifetime.
 
 The editor application uses React Router v7 in Data Mode (`createBrowserRouter` and
 `RouterProvider`), without the Framework Mode Vite plugin. `/` loads the browser-local workspace
@@ -413,6 +418,9 @@ undoable transforms, material and entity-property edits, object creation/duplica
 history, explicit source replacement, and opening a map from an already authorized project. Tool
 handlers call the same presenters and `EditorSession` commands as visible controls; they do not
 duplicate geometry logic or expose renderer internals.
+Tool registration receives the editor application's abort signal, which unregisters the native
+tools when the route is released; guarded handlers and abort-aware project reads prevent stale or
+in-flight calls from mutating a disposed editor.
 
 Every document edit carries the document ID and revision observed by the caller and rejects stale
 requests. Results return the new identity/revision and enough live state to verify the visible change. Source replacement

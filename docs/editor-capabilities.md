@@ -211,6 +211,8 @@ requires the caller's observed document identity and revision, reports the resul
 ordinary editing command, and visibly updates the normal canvas, inspector, history controls, and
 live status message. Source replacement and dirty project-map switching are explicitly destructive;
 site tools do not save to disk, launch external software, or accept arbitrary paths or commands.
+Registrations share the editor application's abort signal, so leaving the route unregisters every
+tool and prevents an in-flight tool from writing into a disposed editor.
 When the experimental browser API is missing or disabled, registration is a no-op and the full
 visual editor remains unchanged. Browser coverage injects only the proposed registration surface,
 then executes the real registered definitions and existing application logic.

@@ -211,8 +211,16 @@ try {
     Object.defineProperty(document, 'modelContext', {
       configurable: true,
       value: {
-        registerTool(tool) {
+        registerTool(tool, registrationOptions) {
+          if (registrationOptions?.signal?.aborted) return;
           tools.set(tool.name, tool);
+          registrationOptions?.signal?.addEventListener(
+            'abort',
+            () => {
+              if (tools.get(tool.name) === tool) tools.delete(tool.name);
+            },
+            { once: true },
+          );
         },
       },
     });

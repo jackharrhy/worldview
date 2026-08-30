@@ -23,6 +23,7 @@ export class BuildPresenter {
       DocumentPresenter,
       'compileAssets' | 'serializeCompileDocument'
     >,
+    private readonly signal: AbortSignal,
   ) {}
 
   public formatVector(value: readonly number[]): string {
@@ -159,6 +160,7 @@ export class BuildPresenter {
   }
 
   public async installCompiledPreview(result: MapCompileResult): Promise<boolean> {
+    this.signal.throwIfAborted();
     const artifact = result.artifacts.find(
       (candidate) =>
         candidate.mediaType === 'application/x-quake-bsp' ||
@@ -184,7 +186,8 @@ export class BuildPresenter {
     this.state.compiledViewer = null;
     this.ui.compiledCanvas.hidden = false;
     const { createWorldview } = await import('@jackharrhy/worldview');
-    this.state.compiledViewer = await createWorldview({
+    this.signal.throwIfAborted();
+    const viewer = await createWorldview({
       canvas: this.ui.compiledCanvas,
       source: {
         bsp: artifact.data,
@@ -199,6 +202,11 @@ export class BuildPresenter {
       textureFiltering: 'nearest',
       clearColor: resolveEditorRenderTheme().background,
     });
+    if (this.signal.aborted) {
+      viewer.dispose();
+      this.signal.throwIfAborted();
+    }
+    this.state.compiledViewer = viewer;
     this.state.compiledRevision = result.sourceDocumentRevision;
     this.ui.togglePreviewButton.disabled = false;
     this.showCompiledPreview(true);
@@ -206,6 +214,7 @@ export class BuildPresenter {
   }
 
   public async compilePreview(): Promise<void> {
+    this.signal.throwIfAborted();
     const quality = this.state.activeCompileQuality;
     this.ui.compileButton.disabled = true;
     this.setCompileState(`COMPILING ${quality.toUpperCase()}`, 'busy');
@@ -227,6 +236,7 @@ export class BuildPresenter {
         },
         () => this.state.session.document.revision,
       );
+      this.signal.throwIfAborted();
       if (outcome.status === 'cancelled') {
         this.setCompileState('COMPILE CANCELLED', 'offline');
         this.ui.statusMessage.textContent = 'Compile cancelled.';
@@ -256,15 +266,17 @@ export class BuildPresenter {
       this.setCompileState(`COMPILED R${outcome.result.sourceDocumentRevision}`, 'ready');
       this.ui.statusMessage.textContent = `${previewInstalled ? 'Compiled preview installed' : 'Compile completed'} in ${Math.round(outcome.result.elapsedMilliseconds)} ms.${this.state.compiledPreviewWarning ?? ''}`;
     } catch (error) {
+      if (this.signal.aborted) return;
       this.showCompiledPreview(false);
       this.setCompileState('COMPILER ERROR', 'offline');
       this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
     } finally {
-      this.ui.compileButton.disabled = false;
+      if (!this.signal.aborted) this.ui.compileButton.disabled = false;
     }
   }
 
   public async checkCompilerService(): Promise<void> {
+    this.signal.throwIfAborted();
     if (!this.state.buildServiceEnabled) {
       this.ui.compileButton.disabled = true;
       this.ui.launchButton.disabled = true;
@@ -272,7 +284,8 @@ export class BuildPresenter {
       return;
     }
     try {
-      const capabilities = await this.state.buildService.capabilities();
+      const capabilities = await this.state.buildService.capabilities(this.signal);
+      this.signal.throwIfAborted();
       const activeGame = this.state.projectWorkspace?.manifest.game ?? this.state.activeGameProfile;
       const logicalProfile = this.state.projectWorkspace?.manifest.buildProfiles.find(
         ({ id }) => id === this.ui.buildProfile.value,
@@ -280,6 +293,7 @@ export class BuildPresenter {
       let preferredCompileProfileId: string | undefined;
       if (this.state.projectWorkspace && this.state.projectKey && logicalProfile) {
         const local = await this.state.projectLocalState.load(this.state.projectKey);
+        this.signal.throwIfAborted();
         preferredCompileProfileId = local?.buildBindings[logicalProfile.id];
       }
       const compileProfile = selectMapBuildProfile(capabilities, {
@@ -295,6 +309,7 @@ export class BuildPresenter {
             logicalProfile.id,
             compileProfile.id,
           );
+          this.signal.throwIfAborted();
         }
       }
       this.state.activeCompileProfileId = compileProfile?.id ?? 'default';
@@ -312,6 +327,7 @@ export class BuildPresenter {
       if (compileProfile) this.setCompileState('COMPILER READY', 'ready');
       else this.setCompileState('COMPILER UNCONFIGURED', 'offline');
     } catch {
+      if (this.signal.aborted) return;
       this.ui.compileButton.disabled = true;
       this.ui.launchButton.disabled = true;
       this.setCompileState('COMPILER OFFLINE', 'offline');

@@ -18,6 +18,7 @@ import { webMcpDocumentState } from './webmcp-state.js';
 
 interface WebMcpDocumentToolHost {
   readonly state: EditorState;
+  readonly signal: AbortSignal;
   readonly replaceDocument: SessionPresenter['replaceDocument'];
   readonly openEditorMap: ProjectPresenter['openEditorMap'];
   assertDocument(input: Record<string, unknown>): number;
@@ -83,6 +84,7 @@ export function createWebMcpDocumentTools(host: WebMcpDocumentToolHost): readonl
     },
     annotations: DESTRUCTIVE_ANNOTATIONS,
     execute: async (raw) => {
+      host.signal.throwIfAborted();
       const input = inputRecord(raw);
       const expectedDocumentId = requiredString(input, 'expectedDocumentId', 512);
       const expectedRevision = host.assertDocument(input);
@@ -92,11 +94,14 @@ export function createWebMcpDocumentTools(host: WebMcpDocumentToolHost): readonl
       const path = requiredString(input, 'path', 2_048);
       const map = host.state.projectWorkspace?.maps.find((candidate) => candidate.path === path);
       if (!map) throw new Error(`Unknown project map ${path}`);
-      await host.openEditorMap(await map.handle.getFile(), map.handle, map.path, {
+      const file = await map.handle.getFile();
+      host.signal.throwIfAborted();
+      await host.openEditorMap(file, map.handle, map.path, {
         expectedDocumentId,
         expectedRevision,
         throwOnError: true,
       });
+      host.signal.throwIfAborted();
       host.status(`opened project map ${path}.`);
       return result(`Opened project map ${path}.`, webMcpDocumentState(host.state));
     },

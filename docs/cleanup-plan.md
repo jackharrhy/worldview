@@ -79,20 +79,20 @@ The primary liabilities are:
 
 ## Workstream order
 
-| ID  | Priority | Status      | Workstream                             | Depends on                  |
-| --- | -------- | ----------- | -------------------------------------- | --------------------------- |
-| C0  | P0       | ready       | Editor lifetime and teardown           | —                           |
-| C1  | P0       | in progress | React DOM ownership boundary           | C0 cleanup conventions      |
-| C2  | P1       | ready       | Presenter state and command boundaries | C1 snapshot conventions     |
-| C3  | P1       | ready       | `EditorSession` composition            | C2 command boundaries       |
-| C4  | P1       | ready       | Retained scene contributions           | C2 state boundaries         |
-| C5  | P2       | ready       | Route isolation and optional loading   | —                           |
-| C6  | P1       | ready       | Declarative runtime schemas            | —                           |
-| C7  | P2       | ready       | IndexedDB infrastructure with `idb`    | C6 persisted-record schemas |
-| C8  | P2       | ready       | Test-suite decomposition               | Follow changed domains      |
-| C9  | P2       | ready       | Viewer renderer decomposition          | C5 shared-runtime decision  |
-| C10 | P2       | ready       | Hosted service handler boundaries      | C6 hosted wire schemas      |
-| C11 | P2       | ready       | Broaden architecture enforcement       | C0–C10 conventions          |
+| ID  | Priority | Status   | Workstream                             | Depends on                  |
+| --- | -------- | -------- | -------------------------------------- | --------------------------- |
+| C0  | P0       | complete | Editor lifetime and teardown           | —                           |
+| C1  | P0       | ready    | React DOM ownership boundary           | C0 cleanup conventions      |
+| C2  | P1       | ready    | Presenter state and command boundaries | C1 snapshot conventions     |
+| C3  | P1       | ready    | `EditorSession` composition            | C2 command boundaries       |
+| C4  | P1       | ready    | Retained scene contributions           | C2 state boundaries         |
+| C5  | P2       | ready    | Route isolation and optional loading   | —                           |
+| C6  | P1       | ready    | Declarative runtime schemas            | —                           |
+| C7  | P2       | ready    | IndexedDB infrastructure with `idb`    | C6 persisted-record schemas |
+| C8  | P2       | ready    | Test-suite decomposition               | Follow changed domains      |
+| C9  | P2       | ready    | Viewer renderer decomposition          | C5 shared-runtime decision  |
+| C10 | P2       | ready    | Hosted service handler boundaries      | C6 hosted wire schemas      |
+| C11 | P2       | ready    | Broaden architecture enforcement       | C0–C10 conventions          |
 
 Dependencies describe the preferred design order, not a reason to create giant pull requests. C0,
 C5, and C6 can be delivered as independent, reviewable changes.
@@ -609,6 +609,6 @@ evidence.
 Add one concise entry per completed workstream. Do not use this as a chronological development
 journal; retain only verification and remaining intentional exceptions.
 
-| Date | ID  | Result                              | Verification | Remaining exceptions |
-| ---- | --- | ----------------------------------- | ------------ | -------------------- |
-| —    | —   | No cleanup workstream completed yet | —            | —                    |
+| Date       | ID  | Result                                                               | Verification                                                                                                                   | Remaining exceptions |
+| ---------- | --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| 2026-08-30 | C0  | One abort-owned editor, renderer, WebMCP, and collaboration lifetime | `npm run check`; `npm run test:browser:ci`; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs --no-build` | None                 |

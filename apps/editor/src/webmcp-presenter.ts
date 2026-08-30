@@ -52,6 +52,7 @@ import { webMcpDocumentState, webMcpSelectionSummary } from './webmcp-state.js';
 
 export class WebMcpPresenter {
   private idSequence = 0;
+  private readonly ownerId = crypto.randomUUID();
 
   public constructor(
     private readonly state: EditorState,
@@ -59,6 +60,7 @@ export class WebMcpPresenter {
     private readonly setEditorTool: (tool: EditorTool) => void,
     private readonly replaceDocument: SessionPresenter['replaceDocument'],
     private readonly openEditorMap: ProjectPresenter['openEditorMap'],
+    private readonly signal: AbortSignal,
   ) {}
 
   private status(message: string): void {
@@ -901,6 +903,7 @@ export class WebMcpPresenter {
       this.historyTool(),
       ...createWebMcpDocumentTools({
         state: this.state,
+        signal: this.signal,
         replaceDocument: this.replaceDocument,
         openEditorMap: this.openEditorMap,
         assertDocument: (input) => this.assertRevision(input),
@@ -911,17 +914,27 @@ export class WebMcpPresenter {
   }
 
   public async connect(): Promise<void> {
+    this.signal.throwIfAborted();
     const root = document.documentElement;
+    root.dataset.worldviewSiteToolOwner = this.ownerId;
     const modelContext = (document as WebMcpDocument).modelContext;
     if (!modelContext?.registerTool) {
       root.dataset.worldviewSiteTools = 'unsupported';
       root.dataset.worldviewSiteToolCount = '0';
       return;
     }
-    const tools = this.tools();
-    const registrations = await Promise.allSettled(
-      tools.map(async (tool) => modelContext.registerTool(tool)),
+    const tools = this.tools().map<WebMcpTool>((tool) =>
+      Object.assign({}, tool, {
+        execute: (input: unknown) => {
+          this.signal.throwIfAborted();
+          return tool.execute(input);
+        },
+      }),
     );
+    const registrations = await Promise.allSettled(
+      tools.map(async (tool) => modelContext.registerTool(tool, { signal: this.signal })),
+    );
+    this.signal.throwIfAborted();
     const registered = registrations.filter(
       (registration) => registration.status === 'fulfilled',
     ).length;
@@ -933,5 +946,13 @@ export class WebMcpPresenter {
       return;
     }
     root.dataset.worldviewSiteTools = 'ready';
+  }
+
+  public dispose(): void {
+    const root = document.documentElement;
+    if (root.dataset.worldviewSiteToolOwner !== this.ownerId) return;
+    delete root.dataset.worldviewSiteToolOwner;
+    delete root.dataset.worldviewSiteTools;
+    delete root.dataset.worldviewSiteToolCount;
   }
 }

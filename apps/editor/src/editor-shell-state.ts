@@ -108,6 +108,11 @@ export class ViewportLayoutPort {
     this.store.set({ ...this.store.getSnapshot(), rendererReady: true });
   }
 
+  public unbind(): void {
+    this.actions = null;
+    this.store.set({ perspectiveOnly: false, rendererReady: false });
+  }
+
   public setPerspectiveOnly(enabled: boolean): void {
     this.store.set({ ...this.store.getSnapshot(), perspectiveOnly: enabled });
   }
@@ -148,6 +153,10 @@ export class ThemeUiPort {
   public bind(actions: ThemeUiActions, preference: EditorThemePreference): void {
     this.actions = actions;
     this.store.set(preference);
+  }
+
+  public unbind(): void {
+    this.actions = null;
   }
 
   public setPreference(preference: EditorThemePreference): void {
@@ -208,6 +217,11 @@ export class ViewportContextMenuPort {
 
   public bind(actions: ViewportContextMenuActions): void {
     this.actions = actions;
+  }
+
+  public unbind(): void {
+    this.actions = null;
+    this.hide();
   }
 
   public show(snapshot: Omit<ViewportContextMenuSnapshot, 'open'>): void {
@@ -294,6 +308,9 @@ export class SurfaceInspectorPort {
   public readonly getSnapshot = this.store.getSnapshot;
   public bind(actions: SurfaceInspectorActions): void {
     this.actions = actions;
+  }
+  public unbind(): void {
+    this.actions = null;
   }
   public set(snapshot: SurfaceInspectorSnapshot): void {
     this.store.set(snapshot);
@@ -416,6 +433,9 @@ export class CollaborationUiPort {
   public readonly getSnapshot = this.store.getSnapshot;
   public bind(actions: CollaborationUiActions): void {
     this.actions = actions;
+  }
+  public unbind(): void {
+    this.actions = null;
   }
   public update(update: Partial<CollaborationUiSnapshot>): void {
     this.store.set({ ...this.store.getSnapshot(), ...update });
