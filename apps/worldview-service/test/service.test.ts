@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { HostedSessionResponseSchema } from '@worldview/protocol';
 import { describe, expect, test } from 'vitest';
 import { fixture, session } from './service-fixture.js';
 
@@ -37,6 +38,25 @@ const successfulCompilerFetch: typeof fetch = async (_input, init) => {
 };
 
 describe('Worldview hosted project service', () => {
+  test('returns only the public session contract', async () => {
+    const app = await fixture();
+    const { cookie, user } = session(app.database);
+
+    expect(await (await fetch(`${app.origin}/api/session`)).json()).toEqual({ user: null });
+
+    const response: unknown = await (
+      await fetch(`${app.origin}/api/session`, { headers: { Cookie: cookie } })
+    ).json();
+    expect(HostedSessionResponseSchema.parse(response)).toEqual({
+      user: {
+        id: user.id,
+        username: 'mapper',
+        displayName: 'Mapper',
+        isAdmin: false,
+      },
+    });
+  });
+
   test('creates private projects and keeps remote maps behind a 4orm session', async () => {
     const app = await fixture();
     const { cookie } = session(app.database);

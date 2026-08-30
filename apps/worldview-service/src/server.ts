@@ -10,6 +10,7 @@ import {
   CreateHostedProjectRequestSchema,
   MountHostedAssetRequestSchema,
   SetProjectMemberRoleRequestSchema,
+  type HostedSessionUser,
 } from '@worldview/protocol';
 import type { z } from 'zod';
 import { FileBlobStore, type BlobStore } from './blob-store.js';
@@ -138,6 +139,16 @@ function userFor(request: IncomingMessage, database: WorldviewDatabase): Worldvi
   return database.sessionUser(cookie(request, SESSION_COOKIE));
 }
 
+function publicSessionUser(user: WorldviewUser | null): HostedSessionUser | null {
+  if (!user) return null;
+  return {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    isAdmin: user.isAdmin,
+  };
+}
+
 function requireUser(
   request: IncomingMessage,
   response: ServerResponse,
@@ -259,7 +270,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         return json(response, 200, { ok: true });
       }
       if (request.method === 'GET' && url.pathname === '/api/session') {
-        const user = userFor(request, options.database);
+        const user = publicSessionUser(userFor(request, options.database));
         return json(response, 200, { user });
       }
       if (request.method === 'GET' && url.pathname === '/api/projects') {
