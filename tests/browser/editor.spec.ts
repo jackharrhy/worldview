@@ -1777,8 +1777,8 @@ test.describe('3D source authoring', () => {
     await menu.getByRole('menuitem', { name: 'Hide selection', exact: true }).click();
     await expect(page.locator('#hidden-object-count')).toHaveText('1');
     await expect(page.locator('#selection-kind')).toHaveText('None');
-    let document = await readEditorDocument(page);
-    expect(document.revision).toBe(0);
+    let mapDocument = await readEditorDocument(page);
+    expect(mapDocument.revision).toBe(0);
     await openToolbarMenu(page, 'Visibility and locking');
     await page.getByRole('button', { name: 'Show all', exact: true }).click();
 
@@ -1788,9 +1788,9 @@ test.describe('3D source authoring', () => {
     await expect(menu).toBeHidden();
     await expect(page.locator('#selection-kind')).toHaveText('Entity');
     await expect(page.locator('#document-revision')).toHaveText('1');
-    document = await readEditorDocument(page);
+    mapDocument = await readEditorDocument(page);
     expect(
-      document.entities.filter(
+      mapDocument.entities.filter(
         (entity) => entity.properties.classname === 'info_player_deathmatch',
       ),
     ).toHaveLength(1);
