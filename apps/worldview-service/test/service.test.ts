@@ -88,10 +88,10 @@ describe('Worldview hosted project service', () => {
       body: JSON.stringify({ token: 'no-accountless-access' }),
     });
     expect(guestResponse.status).toBe(404);
-    expect((await fetch(`${app.origin}/api/maps/${map.id}`)).status).toBe(404);
+    expect((await fetch(`${app.origin}/api/maps/${map.id}`)).status).toBe(401);
     expect(
       (await fetch(`${app.origin}/api/maps/${map.id}/realtime-ticket`, { method: 'POST' })).status,
-    ).toBe(404);
+    ).toBe(401);
 
     const hashes = await readFile(join(app.root, 'worldview.db'));
     expect(hashes.byteLength).toBeGreaterThan(0);

@@ -100,7 +100,7 @@ describe('hosted project access control', () => {
       (await fetch(`${app.origin}/api/projects/${project.id}/resources/${mount.id}/content`))
         .status,
     ).toBe(401);
-    expect((await fetch(`${app.origin}/api/maps/${mapId}`)).status).toBe(404);
+    expect((await fetch(`${app.origin}/api/maps/${mapId}`)).status).toBe(401);
     expect((await fetch(`${app.origin}/api/maps/${mapId}/builds`)).status).toBe(401);
   });
 
@@ -134,7 +134,7 @@ describe('hosted project access control', () => {
     ).toBe(404);
     expect(
       (await fetch(`${app.origin}/api/maps/${mapId}/realtime-ticket`, { method: 'POST' })).status,
-    ).toBe(404);
+    ).toBe(401);
   });
 
   test('restricts hosted mutations to their declared owner/editor policy', async () => {
