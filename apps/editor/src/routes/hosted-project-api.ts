@@ -1,3 +1,5 @@
+import { data, redirectDocument } from 'react-router';
+
 export interface HostedSessionUser {
   readonly id: string;
   readonly username: string;
@@ -73,13 +75,13 @@ export async function authenticatedApiJson<T>(
   if (response.status === 401) {
     const route = new URL(routeRequest.url);
     const returnTo = `${route.pathname}${route.search}`;
-    throw redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+    throw redirectDocument(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
   const payload = (await response.json().catch(() => null)) as ({ error?: unknown } & T) | null;
-  if (!response.ok)
-    throw new Error(
-      typeof payload?.error === 'string' ? payload.error : `Request failed (${response.status})`,
-    );
+  if (!response.ok) {
+    const message =
+      typeof payload?.error === 'string' ? payload.error : `Request failed (${response.status})`;
+    throw data(message, { status: response.status, statusText: response.statusText });
+  }
   return payload as T;
 }
-import { redirect } from 'react-router';

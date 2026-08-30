@@ -19,10 +19,11 @@ describe('authenticatedApiJson', () => {
       expect(response.headers.get('location')).toBe(
         '/auth/login?returnTo=%2Fproject%2F0123456789ab-lambda%2Fmap%2Fcdefghjkmnpq-test%3Fview%3Dtop',
       );
+      expect(response.headers.get('X-Remix-Reload-Document')).toBe('true');
     });
   });
 
-  it('keeps non-authentication API failures as errors', async () => {
+  it('keeps non-authentication API status for the route error boundary', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(Response.json({ error: 'Project not found' }, { status: 404 })),
@@ -33,6 +34,9 @@ describe('authenticatedApiJson', () => {
         new Request('https://worldview.example/project/0123456789ab-missing'),
         'https://worldview.example/api/projects/missing',
       ),
-    ).rejects.toThrow('Project not found');
+    ).rejects.toMatchObject({
+      data: 'Project not found',
+      init: { status: 404 },
+    });
   });
 });

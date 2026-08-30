@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router';
 import '@phosphor-icons/web/regular/style.css';
 import './components/ui.css';
 import './routes/landing.css';
+import { Component as RootRoute, ErrorBoundary as RootErrorBoundary } from './routes/root-route.js';
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('Editor root is missing');
@@ -14,59 +15,65 @@ function RouteLoading() {
 
 const router = createBrowserRouter([
   {
-    path: '/',
-    HydrateFallback: RouteLoading,
-    lazy: {
-      loader: async () => (await import('./routes/home-loader.js')).loader,
-      Component: async () => (await import('./routes/home-route.js')).Component,
-    },
-  },
-  {
-    path: '/design',
-    HydrateFallback: RouteLoading,
-    lazy: {
-      Component: async () => (await import('./routes/design-route.js')).Component,
-    },
-  },
-  {
-    path: '/new-map',
-    HydrateFallback: RouteLoading,
-    lazy: {
-      action: async () => (await import('./routes/new-map-action.js')).action,
-      Component: async () => (await import('./routes/new-map-route.js')).Component,
-    },
-  },
-  {
-    path: '/new-project',
-    HydrateFallback: RouteLoading,
-    lazy: {
-      action: async () => (await import('./routes/new-project-action.js')).action,
-      Component: async () => (await import('./routes/new-project-route.js')).Component,
-    },
-  },
-  {
-    path: '/project/:projectRef',
-    HydrateFallback: RouteLoading,
-    lazy: {
-      loader: async () => (await import('./routes/project-loader.js')).loader,
-      action: async () => (await import('./routes/project-action.js')).action,
-      Component: async () => (await import('./routes/project-route.js')).Component,
-    },
-  },
-  {
-    path: '/project/:projectRef/map/:mapRef',
-    HydrateFallback: RouteLoading,
-    lazy: {
-      loader: async () => (await import('./routes/hosted-map-loader.js')).loader,
-      Component: async () => (await import('./routes/hosted-map-route.js')).Component,
-    },
-  },
-  {
-    path: '/editor',
-    HydrateFallback: RouteLoading,
-    lazy: {
-      Component: async () => (await import('./routes/editor-route.js')).Component,
-    },
+    Component: RootRoute,
+    ErrorBoundary: RootErrorBoundary,
+    children: [
+      {
+        path: '/',
+        HydrateFallback: RouteLoading,
+        lazy: {
+          loader: async () => (await import('./routes/home-loader.js')).loader,
+          Component: async () => (await import('./routes/home-route.js')).Component,
+        },
+      },
+      {
+        path: '/design',
+        HydrateFallback: RouteLoading,
+        lazy: {
+          Component: async () => (await import('./routes/design-route.js')).Component,
+        },
+      },
+      {
+        path: '/new-map',
+        HydrateFallback: RouteLoading,
+        lazy: {
+          action: async () => (await import('./routes/new-map-action.js')).action,
+          Component: async () => (await import('./routes/new-map-route.js')).Component,
+        },
+      },
+      {
+        path: '/new-project',
+        HydrateFallback: RouteLoading,
+        lazy: {
+          action: async () => (await import('./routes/new-project-action.js')).action,
+          Component: async () => (await import('./routes/new-project-route.js')).Component,
+        },
+      },
+      {
+        path: '/project/:projectRef',
+        HydrateFallback: RouteLoading,
+        lazy: {
+          loader: async () => (await import('./routes/project-loader.js')).loader,
+          action: async () => (await import('./routes/project-action.js')).action,
+          Component: async () => (await import('./routes/project-route.js')).Component,
+        },
+      },
+      {
+        path: '/project/:projectRef/map/:mapRef',
+        HydrateFallback: RouteLoading,
+        lazy: {
+          loader: async () => (await import('./routes/hosted-map-loader.js')).loader,
+          Component: async () => (await import('./routes/hosted-map-route.js')).Component,
+        },
+      },
+      {
+        path: '/editor',
+        HydrateFallback: RouteLoading,
+        lazy: {
+          Component: async () => (await import('./routes/editor-route.js')).Component,
+        },
+      },
+    ],
   },
 ]);
 

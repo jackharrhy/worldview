@@ -103,6 +103,9 @@ effects are reserved for synchronizing native dialog and measurement lifetimes.
 The editor application uses React Router v7 in Data Mode (`createBrowserRouter` and
 `RouterProvider`), without the Framework Mode Vite plugin. `/` loads the browser-local workspace
 library, `/new-map` owns validated map-creation form actions, and `/editor` is a lazy route boundary.
+The pathless application root owns a themed error boundary for unmatched routes and loader/render
+failures. Authenticated route loaders use a full-document `/auth/login` redirect so the server, not
+the SPA router, performs the 4orm handoff while retaining the requested same-origin return path.
 Validated new-map options cross that boundary in browser history state, keeping the editor URL clean
 while preserving reload and back/forward behavior.
 The home route does not import or initialize the editor package, WebGPU renderer, presenters,
