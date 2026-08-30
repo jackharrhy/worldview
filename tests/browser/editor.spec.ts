@@ -552,6 +552,18 @@ function cameraDistance(left: readonly number[], right: readonly number[]): numb
   return Math.hypot(left[0]! - right[0]!, left[1]! - right[1]!, left[2]! - right[2]!);
 }
 
+async function expectPerspectiveTranslation(
+  page: Page,
+  start: readonly number[],
+  minimumDistance = 4,
+): Promise<void> {
+  await expect
+    .poll(async () => cameraDistance((await perspectiveCamera(page)).position, start), {
+      timeout: 2_000,
+    })
+    .toBeGreaterThan(minimumDistance);
+}
+
 async function controlContrast(locator: Locator): Promise<number> {
   return locator.evaluate((element) => {
     const canvas = document.createElement('canvas');
@@ -1593,9 +1605,13 @@ test.describe('3D source authoring', () => {
     await page.mouse.move(lookPoint.x, lookPoint.y);
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(lookPoint.x + 12, lookPoint.y + 6);
+    const combinedFlyStart = (await perspectiveCamera(page)).position;
     await page.keyboard.down('w');
-    await page.waitForTimeout(180);
-    await page.keyboard.up('w');
+    try {
+      await expectPerspectiveTranslation(page, combinedFlyStart);
+    } finally {
+      await page.keyboard.up('w');
+    }
     const combinedFlyEnd = await perspectiveCamera(page);
     await page.mouse.move(lookPoint.x + 36, lookPoint.y + 18);
     const combinedLookEnd = await perspectiveCamera(page);
@@ -1614,8 +1630,11 @@ test.describe('3D source authoring', () => {
     await page.locator('.source-canvas').nth(0).focus();
     const flyStart = await perspectiveCamera(page);
     await page.keyboard.down('w');
-    await page.waitForTimeout(180);
-    await page.keyboard.up('w');
+    try {
+      await expectPerspectiveTranslation(page, flyStart.position);
+    } finally {
+      await page.keyboard.up('w');
+    }
     const flyEnd = await perspectiveCamera(page);
     expect(cameraDistance(flyEnd.position, flyStart.position)).toBeGreaterThan(4);
     await expect(page.locator('#perspective-mode')).toContainText('FLY');

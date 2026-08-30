@@ -1,28 +1,18 @@
 import { describe, expect, test, vi } from 'vitest';
 import { HostedMapBuildService } from '../src/hosted-map-build-service.js';
 
-const receiverCheckingFetch: typeof fetch = async function (this: unknown) {
+const enabledCapabilityFetch: typeof fetch = async function (this: unknown) {
+  // Native browser fetch requires the Window receiver; keep this production regression covered.
   expect(this).toBe(globalThis);
   return Response.json({ capability: { profileId: 'default' } });
 };
 
 describe('HostedMapBuildService', () => {
-  test('binds the browser fetch implementation to the global object', async () => {
-    const service = new HostedMapBuildService({
-      mapId: 'map-1',
-      game: 'quake',
-      fetch: receiverCheckingFetch,
-    });
-    await expect(service.capabilities()).resolves.toMatchObject({
-      compileProfiles: [{ id: 'default' }],
-    });
-  });
-
   test('advertises only compiler profiles enabled by the host', async () => {
     const enabled = new HostedMapBuildService({
       mapId: 'map-1',
       game: 'quake',
-      fetch: async () => Response.json({ capability: { profileId: 'default' } }),
+      fetch: enabledCapabilityFetch,
     });
     const disabled = new HostedMapBuildService({
       mapId: 'map-2',

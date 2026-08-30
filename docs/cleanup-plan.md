@@ -497,6 +497,13 @@ machines—not as a mechanical replacement for readable example and browser test
 - Keep expensive GPU/browser stress and visual suites separately invokable for capable hosts rather
   than weakening them to fit lightweight CI.
 
+**Delivered 2026-08-30 (first hygiene slice):** Functional browser tests no longer use fixed sleeps
+for perspective flight or footstep audio. They poll the observable camera/audio state with bounded
+timeouts and always release held keys, so slow hosts get time to satisfy the behavior while fast
+hosts stop waiting immediately. The hosted compiler's browser-fetch receiver regression check was
+folded into its capabilities case, removing duplicate service setup without dropping the production
+regression guarantee. The opt-in performance gate retains its deliberate frame-pacing delay.
+
 **Acceptance criteria:**
 
 - A domain change has an obvious focused test command and file.

@@ -163,15 +163,21 @@ test('walking produces player audio and exposes independent footstep volume', as
   );
   await page.locator('canvas').focus();
   await page.keyboard.down('w');
-  await page.waitForTimeout(650);
-  await page.keyboard.up('w');
-
-  expect(
-    await page.evaluate(
-      () =>
-        (window as unknown as { worldviewShortAudioBuffers: number }).worldviewShortAudioBuffers,
-    ),
-  ).toBeGreaterThan(beforeWalking);
+  try {
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (window as unknown as { worldviewShortAudioBuffers: number })
+                .worldviewShortAudioBuffers,
+          ),
+        { timeout: 2_000 },
+      )
+      .toBeGreaterThan(beforeWalking);
+  } finally {
+    await page.keyboard.up('w');
+  }
 });
 
 test('alpha-test, water, and sky fixtures submit without GPU errors', async ({ page }) => {
