@@ -33,7 +33,7 @@ export function Component() {
             ) : null}
           </div>
           <footer>
-            <ActionButton type="submit" tone="primary" disabled={busy}>
+            <ActionButton type="submit" tone="primary" isDisabled={busy} isPending={busy}>
               {busy ? 'Creating…' : 'Create project'}
             </ActionButton>
           </footer>

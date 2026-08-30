@@ -61,4 +61,48 @@ describe('editor shell state ports', () => {
       geometryErrorCount: 0,
     });
   });
+
+  it('publishes immutable context-menu descriptions and invokes only its narrow command port', () => {
+    const shell = createEditorShellState();
+    const dismiss = vi.fn();
+    const invoke = vi.fn();
+    shell.viewportContextMenu.bind({ dismiss, invoke });
+    const sections = [
+      {
+        id: 'selection',
+        label: 'Selection',
+        actions: [
+          { id: 'selection:focus', label: 'Focus selection', shortcut: 'Home' },
+          { id: 'selection:hide', label: 'Hide selection', disabled: true },
+        ],
+      },
+    ] as const;
+
+    shell.viewportContextMenu.show({
+      x: 280,
+      y: 120,
+      heading: '3D view',
+      detail: '0 64 128',
+      sections,
+    });
+
+    expect(shell.viewportContextMenu.getSnapshot()).toEqual({
+      open: true,
+      x: 280,
+      y: 120,
+      heading: '3D view',
+      detail: '0 64 128',
+      sections,
+    });
+    shell.viewportContextMenu.invoke('selection:focus');
+    shell.viewportContextMenu.dismiss(true);
+    expect(invoke).toHaveBeenCalledWith('selection:focus');
+    expect(dismiss).toHaveBeenCalledWith(true);
+
+    shell.viewportContextMenu.hide();
+    expect(shell.viewportContextMenu.getSnapshot()).toMatchObject({
+      open: false,
+      sections: [],
+    });
+  });
 });

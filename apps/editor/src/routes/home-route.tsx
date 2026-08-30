@@ -45,7 +45,9 @@ export function Component() {
       const permission =
         (await recent.handle.queryPermission?.({ mode: 'readwrite' })) ?? 'granted';
       if (permission !== 'granted') {
-        const granted = await recent.handle.requestPermission?.({ mode: 'readwrite' });
+        const granted = await recent.handle.requestPermission?.({
+          mode: 'readwrite',
+        });
         if (granted !== 'granted') throw new Error('Project directory permission was not granted.');
       }
       setPendingEditorLaunch({ kind: 'recent-project', projectKey });
@@ -64,13 +66,13 @@ export function Component() {
         showWordmark={false}
       />
       <div className="landing-actions">
-        <ActionButton type="button" tone="primary" onClick={() => void navigate('/new-map')}>
+        <ActionButton type="button" tone="primary" onPress={() => void navigate('/new-map')}>
           New map
         </ActionButton>
-        <ActionButton type="button" onClick={() => void openProject()}>
+        <ActionButton type="button" onPress={() => void openProject()}>
           Open project folder
         </ActionButton>
-        <ActionButton type="button" onClick={() => mapInput.current?.click()}>
+        <ActionButton type="button" onPress={() => mapInput.current?.click()}>
           Open map file
         </ActionButton>
         <input
@@ -106,7 +108,7 @@ export function Component() {
             <ActionButton
               type="button"
               tone="primary"
-              onClick={() => void navigate('/new-project')}
+              onPress={() => void navigate('/new-project')}
             >
               New hosted project
             </ActionButton>

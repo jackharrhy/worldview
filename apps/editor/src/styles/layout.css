@@ -851,18 +851,16 @@ textarea:focus-visible {
   grid-area: 2 / 2;
 }
 
-.viewport-context-menu {
+.viewport-context-anchor {
   position: fixed;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.viewport-context-menu {
   z-index: 80;
   width: min(248px, calc(100vw - 16px));
-  max-height: min(620px, calc(100vh - 16px));
-  overflow: auto;
-  padding: 5px;
-  border: 1px solid var(--line-emphasis);
-  border-radius: 2px;
-  background: var(--surface-popover);
-  box-shadow: 0 12px 36px var(--shadow-strong);
-  color: var(--text);
 }
 
 .viewport-context-heading {
@@ -887,93 +885,4 @@ textarea:focus-visible {
   font-size: 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.viewport-context-section {
-  display: grid;
-  gap: 2px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.viewport-context-section:last-child {
-  border-bottom: 0;
-}
-
-.viewport-context-section h3 {
-  margin: 0;
-  padding: 2px 7px 4px;
-  color: var(--quiet);
-  font-size: 8px;
-  font-weight: 650;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-
-.viewport-context-section > p {
-  margin: 0;
-  padding: 5px 7px;
-  color: var(--quiet);
-  font-size: 9px;
-}
-
-.viewport-context-section button,
-.viewport-context-submenu > summary {
-  display: block;
-  width: 100%;
-  min-height: 25px;
-  padding: 5px 8px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--quiet);
-  font-size: 9px;
-  text-align: left;
-}
-
-.viewport-context-section button:hover:not(:disabled),
-.viewport-context-section button:focus-visible,
-.viewport-context-submenu > summary:hover,
-.viewport-context-submenu > summary:focus-visible {
-  border-color: var(--line-strong);
-  background: var(--surface-active);
-  color: var(--text-strong);
-}
-
-.viewport-context-section button:disabled {
-  opacity: 0.35;
-}
-
-.viewport-context-submenu > summary {
-  position: relative;
-  list-style: none;
-  cursor: pointer;
-}
-
-.viewport-context-submenu > summary::-webkit-details-marker {
-  display: none;
-}
-
-.viewport-context-submenu > summary::after {
-  position: absolute;
-  right: 8px;
-  content: '›';
-  color: var(--quiet);
-}
-
-.viewport-context-submenu[open] > summary::after {
-  transform: rotate(90deg);
-}
-
-.viewport-context-submenu-items {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
-  padding: 2px 4px 4px 12px;
-}
-
-.viewport-context-submenu-items button {
-  padding-inline: 6px;
-  border-color: var(--line);
-  background: var(--surface-raised);
-  font-size: 8px;
 }

@@ -710,6 +710,17 @@ test.describe('WebMCP site authoring', () => {
     await expect(page.getByRole('heading', { name: 'Interface system' })).toBeVisible();
     await expect(page.locator('.design-theme[data-preview-theme="dark"]')).toBeVisible();
     await expect(page.locator('.design-theme[data-preview-theme="light"]')).toBeVisible();
+    for (const theme of ['dark', 'light']) {
+      const specimen = page.locator(`.design-theme[data-preview-theme="${theme}"]`);
+      await expect(specimen.locator('.wv-button')).toHaveCount(7);
+      await expect(specimen.locator('.wv-field')).toHaveCount(4);
+      await expect(specimen.getByRole('menu')).toBeVisible();
+      await expect(specimen.getByRole('menuitemradio', { name: 'Snap to grid' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+      await expect(specimen.getByText('Use a contained project path.')).toBeVisible();
+    }
     await expect(page.getByRole('heading', { name: 'Editor chrome' })).toBeVisible();
     await expect(page.locator('main [style]')).toHaveCount(0);
   });
@@ -1660,9 +1671,15 @@ test.describe('3D source authoring', () => {
     await page.mouse.click(point.x, point.y, { button: 'right' });
     await expect(menu).toBeVisible();
     await expect(menu.locator('.viewport-context-heading')).toContainText('3D view');
+    await expect(page.locator(':focus')).toHaveAttribute('role', 'menuitem');
+    await page.keyboard.press('End');
+    await expect(page.locator(':focus')).not.toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Home');
+    await expect(page.locator(':focus')).toHaveAccessibleName('Select object');
     await expect(menu.getByRole('menuitem', { name: 'Select face', exact: true })).toBeVisible();
     await menu.getByRole('menuitem', { name: 'Select face', exact: true }).click();
     await expect(menu).toBeHidden();
+    await expect(page.getByLabel('Perspective map viewport')).toBeFocused();
     await expect(page.locator('#selection-kind')).toHaveText('Face');
     await expect(page.locator('#document-revision')).toHaveText('0');
 
@@ -1679,7 +1696,13 @@ test.describe('3D source authoring', () => {
 
     await page.mouse.click(point.x, point.y, { button: 'right' });
     await menu.getByRole('menuitem', { name: 'Select object', exact: true }).click();
+    await expect(menu).toBeHidden();
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Focus selection', exact: true }).click();
+    await expect(page.locator('#status-message')).toContainText(
+      'Framed the selection in every viewport.',
+    );
     await page.mouse.click(point.x, point.y, { button: 'right' });
     await menu.getByRole('menuitem', { name: 'Hide selection', exact: true }).click();
     await expect(page.locator('#hidden-object-count')).toHaveText('1');
@@ -1690,8 +1713,8 @@ test.describe('3D source authoring', () => {
     await page.getByRole('button', { name: 'Show all', exact: true }).click();
 
     await page.mouse.click(point.x, point.y, { button: 'right' });
-    await menu.locator('summary').filter({ hasText: 'Create point entity' }).click();
-    await menu.getByRole('menuitem', { name: 'Deathmatch start', exact: true }).click();
+    await menu.getByRole('menuitem', { name: 'Create point entity', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Deathmatch start', exact: true }).click();
     await expect(menu).toBeHidden();
     await expect(page.locator('#selection-kind')).toHaveText('Entity');
     await expect(page.locator('#document-revision')).toHaveText('1');
@@ -1701,6 +1724,11 @@ test.describe('3D source authoring', () => {
         (entity) => entity.properties.classname === 'info_player_deathmatch',
       ),
     ).toHaveLength(1);
+
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(page.getByLabel('Perspective map viewport')).toBeFocused();
 
     const beforeLook = await perspectiveCamera(page);
     await page.mouse.move(point.x, point.y);

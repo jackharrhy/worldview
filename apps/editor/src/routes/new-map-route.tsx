@@ -77,9 +77,9 @@ export function Component() {
             <ActionButton
               type="submit"
               tone="primary"
-              disabled={creating}
-              aria-busy={creating}
-              onPointerEnter={() => void preloadEditorRoute()}
+              isDisabled={creating}
+              isPending={creating}
+              onHoverStart={() => void preloadEditorRoute()}
               onFocus={() => void preloadEditorRoute()}
             >
               {creating ? 'Opening editor…' : 'Create map'}

@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import '@phosphor-icons/web/regular/style.css';
+import './components/ui.css';
 import './routes/landing.css';
 
 const root = document.querySelector<HTMLDivElement>('#app');

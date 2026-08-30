@@ -15,8 +15,16 @@ import {
 import { required, type EditorElements } from './editor-elements.js';
 import type { ObjectPastePlacement } from './editor-clipboard.js';
 import type { EditorState } from './editor-state.js';
+import type {
+  ContextMenuActionSnapshot,
+  ContextMenuSectionSnapshot,
+} from './editor-shell-state.js';
+
+type ContextMenuCommand = () => unknown;
 
 export class ContextMenuPresenter {
+  private readonly commands = new Map<string, ContextMenuCommand>();
+
   public constructor(
     private readonly state: EditorState,
     private readonly ui: EditorElements,
@@ -43,87 +51,57 @@ export class ContextMenuPresenter {
   public focusContextViewport(context = this.state.viewportContext): void {
     if (!context) return;
     const canvas = this.ui.canvases[context.viewport];
-    if (canvas instanceof HTMLCanvasElement) canvas.focus({ preventScroll: true });
+    if (!(canvas instanceof HTMLCanvasElement)) return;
+    window.requestAnimationFrame(() => canvas.focus({ preventScroll: true }));
   }
 
   public hideViewportContextMenu(restoreFocus = false): void {
-    if (this.ui.viewportContextMenu.hidden) return;
-    this.ui.viewportContextMenu.hidden = true;
-    this.ui.viewportContextMenu.replaceChildren();
+    if (!this.ui.viewportContextMenu.getSnapshot().open) return;
+    this.ui.viewportContextMenu.hide();
+    this.commands.clear();
     if (restoreFocus) this.focusContextViewport();
     this.state.viewportContext = null;
   }
 
-  public contextMenuHeading(text: string, detail?: string): HTMLElement {
-    const heading = document.createElement('div');
-    heading.className = 'viewport-context-heading';
-    const label = document.createElement('strong');
-    label.textContent = text;
-    heading.append(label);
-    if (detail) {
-      const description = document.createElement('span');
-      description.textContent = detail;
-      heading.append(description);
-    }
-    return heading;
-  }
-
-  public contextMenuSection(label: string): HTMLElement {
-    const section = document.createElement('section');
-    section.className = 'viewport-context-section';
-    const heading = document.createElement('h3');
-    heading.textContent = label;
-    section.append(heading);
-    return section;
-  }
-
-  public contextMenuAction(
-    container: HTMLElement,
+  private contextMenuAction(
+    id: string,
     label: string,
-    action: () => void,
+    action: ContextMenuCommand,
     disabled = false,
-  ): HTMLButtonElement {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.role = 'menuitem';
-    button.textContent = label;
-    button.disabled = disabled;
-    button.addEventListener('click', () => {
-      const context = this.state.viewportContext;
-      this.hideViewportContextMenu();
-      try {
-        action();
-      } catch (error) {
-        this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
-      }
+    shortcut?: string,
+  ): ContextMenuActionSnapshot {
+    this.commands.set(id, action);
+    return {
+      id,
+      label,
+      disabled,
+      ...(shortcut === undefined ? {} : { shortcut }),
+    };
+  }
+
+  private contextMenuSubmenu(
+    id: string,
+    label: string,
+    actions: readonly ContextMenuActionSnapshot[],
+    disabled = false,
+  ): ContextMenuActionSnapshot {
+    return { id, label, disabled, children: actions };
+  }
+
+  private async invoke(commandId: string): Promise<void> {
+    const command = this.commands.get(commandId);
+    if (!command) return;
+    const context = this.state.viewportContext;
+    this.ui.viewportContextMenu.hide();
+    this.commands.clear();
+    this.state.viewportContext = null;
+    try {
+      await command();
+    } catch (error) {
+      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
       this.focusContextViewport(context);
-    });
-    container.append(button);
-    return button;
-  }
-
-  public contextMenuSubmenu(
-    container: HTMLElement,
-    label: string,
-    actions: readonly { readonly label: string; readonly action: () => void }[],
-    disabled = false,
-  ): void {
-    const details = document.createElement('details');
-    details.className = 'viewport-context-submenu';
-    const summary = document.createElement('summary');
-    summary.textContent = label;
-    summary.ariaDisabled = String(disabled);
-    if (disabled) summary.tabIndex = -1;
-    const items = document.createElement('div');
-    items.className = 'viewport-context-submenu-items';
-    for (const action of actions) {
-      this.contextMenuAction(items, action.label, action.action, disabled);
     }
-    details.addEventListener('toggle', () => {
-      if (disabled && details.open) details.open = false;
-    });
-    details.append(summary, items);
-    container.append(details);
   }
 
   public selectContextObject(hit: EditorSelection): void {
@@ -210,7 +188,9 @@ export class ContextMenuPresenter {
       const tile = [
         ...this.ui.materialGrid.querySelectorAll<HTMLButtonElement>('.material-tile'),
       ].find((button) => button.textContent?.trim().toLowerCase() === material.toLowerCase());
-      (tile ?? required<HTMLElement>('.material-section')).scrollIntoView({ block: 'nearest' });
+      (tile ?? required<HTMLElement>('.material-section')).scrollIntoView({
+        block: 'nearest',
+      });
     });
     this.ui.statusMessage.textContent = this.state.materialCatalog.find(material)
       ? `Revealed ${material} in the material browser.`
@@ -221,57 +201,53 @@ export class ContextMenuPresenter {
     this.state.viewportContext = context;
     this.state.lastPointerPosition = context.pointer;
     this.ui.pasteButton.disabled = false;
-    this.ui.viewportContextMenu.replaceChildren();
-    this.ui.viewportContextMenu.append(
-      this.contextMenuHeading(
-        `${context.viewport === 'perspective' ? '3D' : context.viewport.toUpperCase()} view`,
-        this.formatVector(context.pointer.point),
-      ),
-    );
+    this.commands.clear();
 
-    const hitSection = this.contextMenuSection('Under cursor');
+    const hitActions: ContextMenuActionSnapshot[] = [];
     const hit = context.hit;
     if (hit?.brushId && hit.faceId) {
       const brush = findBrush(this.state.session.document, hit.brushId);
       const face = brush?.faces.find((candidate) => candidate.id === hit.faceId);
-      this.contextMenuAction(hitSection, 'Select object', () => this.selectContextObject(hit));
-      this.contextMenuAction(hitSection, 'Select face', () =>
-        this.state.session.selectFace({ brushId: hit.brushId!, faceId: hit.faceId! }),
-      );
-      this.contextMenuAction(hitSection, 'Select all brush faces', () =>
-        this.state.session.selectBrushFaces(hit.brushId!, false, hit.faceId!),
-      );
-      this.contextMenuAction(hitSection, 'Select coplanar surface', () =>
-        this.state.session.selectConnectedCoplanarFaces({
-          brushId: hit.brushId!,
-          faceId: hit.faceId!,
-        }),
-      );
-      this.contextMenuAction(
-        hitSection,
-        'Copy face attributes',
-        () => void this.copySelection(hit),
-      );
-      this.contextMenuAction(
-        hitSection,
-        'Paste face attributes here',
-        () => void this.pasteFromClipboard('original', hit),
+      hitActions.push(
+        this.contextMenuAction('hit:select-object', 'Select object', () =>
+          this.selectContextObject(hit),
+        ),
+        this.contextMenuAction('hit:select-face', 'Select face', () =>
+          this.state.session.selectFace({
+            brushId: hit.brushId!,
+            faceId: hit.faceId!,
+          }),
+        ),
+        this.contextMenuAction('hit:select-brush-faces', 'Select all brush faces', () =>
+          this.state.session.selectBrushFaces(hit.brushId!, false, hit.faceId!),
+        ),
+        this.contextMenuAction('hit:select-coplanar', 'Select coplanar surface', () =>
+          this.state.session.selectConnectedCoplanarFaces({
+            brushId: hit.brushId!,
+            faceId: hit.faceId!,
+          }),
+        ),
+        this.contextMenuAction('hit:copy-face', 'Copy face attributes', () =>
+          this.copySelection(hit),
+        ),
+        this.contextMenuAction('hit:paste-face', 'Paste face attributes here', () =>
+          this.pasteFromClipboard('original', hit),
+        ),
       );
       if (face) {
-        this.contextMenuAction(hitSection, `Reveal ${face.material}`, () =>
-          this.revealContextMaterial(face.material),
+        hitActions.push(
+          this.contextMenuAction('hit:reveal-material', `Reveal ${face.material}`, () =>
+            this.revealContextMaterial(face.material),
+          ),
         );
       }
     } else if (hit?.entityId) {
-      this.contextMenuAction(hitSection, 'Select point entity', () =>
-        this.selectContextObject(hit),
+      hitActions.push(
+        this.contextMenuAction('hit:select-entity', 'Select point entity', () =>
+          this.selectContextObject(hit),
+        ),
       );
-    } else {
-      const empty = document.createElement('p');
-      empty.textContent = 'No editable object';
-      hitSection.append(empty);
     }
-    this.ui.viewportContextMenu.append(hitSection);
 
     const selectedBrushCount = selectedBrushIds(this.state.session.selection).length;
     const selectedEntityCount = selectedPointEntityIds(this.state.session.selection).length;
@@ -281,150 +257,130 @@ export class ContextMenuPresenter {
       this.state.session.document,
       this.state.session.selection,
     );
-    const selectionSection = this.contextMenuSection('Selection');
-    this.contextMenuAction(
-      selectionSection,
-      'Focus selection',
-      this.focusCurrentSelection,
-      !objectSelected,
-    );
-    this.contextMenuAction(
-      selectionSection,
-      'Hide selection',
-      () => this.state.session.hideSelected(),
-      !objectSelected,
-    );
-    this.contextMenuAction(
-      selectionSection,
-      'Isolate selection',
-      () => this.state.session.isolateSelected(),
-      !objectSelected,
-    );
-    this.contextMenuAction(
-      selectionSection,
-      selectedGroup ? `Ungroup ${selectedGroup.name}` : 'Group selection',
-      () => {
-        if (selectedGroup) this.state.session.ungroupSelected(selectedGroup.id);
-        else {
-          const ids = createSequentialIdFactory(
-            `context-group-${this.state.session.document.revision + 1}`,
-          );
-          if (!this.state.session.groupSelected('Group', ids, this.state.openGroupId)) {
-            throw new Error('Select one or more objects before grouping');
-          }
-        }
-      },
-      !objectSelected,
-    );
-    const layer = this.selectedLayerForPanel();
-    if (layer) {
+    const selectionActions: ContextMenuActionSnapshot[] = [
       this.contextMenuAction(
-        selectionSection,
-        `Move to ${layer.name}`,
+        'selection:focus',
+        'Focus selection',
+        () => this.focusCurrentSelection(),
+        !objectSelected,
+        'Home',
+      ),
+      this.contextMenuAction(
+        'selection:hide',
+        'Hide selection',
+        () => this.state.session.hideSelected(),
+        !objectSelected,
+      ),
+      this.contextMenuAction(
+        'selection:isolate',
+        'Isolate selection',
+        () => this.state.session.isolateSelected(),
+        !objectSelected,
+      ),
+      this.contextMenuAction(
+        'selection:group',
+        selectedGroup ? `Ungroup ${selectedGroup.name}` : 'Group selection',
         () => {
-          if (!this.state.session.moveSelectedToLayer(layer.id)) {
-            throw new Error(`The selection is already in ${layer.name}`);
+          if (selectedGroup) this.state.session.ungroupSelected(selectedGroup.id);
+          else {
+            const ids = createSequentialIdFactory(
+              `context-group-${this.state.session.document.revision + 1}`,
+            );
+            if (!this.state.session.groupSelected('Group', ids, this.state.openGroupId)) {
+              throw new Error('Select one or more objects before grouping');
+            }
           }
         },
         !objectSelected,
+      ),
+    ];
+    const layer = this.selectedLayerForPanel();
+    if (layer) {
+      selectionActions.push(
+        this.contextMenuAction(
+          `selection:move-layer:${layer.id}`,
+          `Move to ${layer.name}`,
+          () => {
+            if (!this.state.session.moveSelectedToLayer(layer.id)) {
+              throw new Error(`The selection is already in ${layer.name}`);
+            }
+          },
+          !objectSelected,
+        ),
       );
     }
     if (selectedBrushCount > 0) {
-      this.contextMenuSubmenu(
-        selectionSection,
-        'Create brush entity',
-        ['func_detail', 'func_door', 'trigger_once'].map((classname) => ({
-          label: classname,
-          action: () => this.createBrushEntityFromContext(classname),
-        })),
+      selectionActions.push(
+        this.contextMenuSubmenu(
+          'selection:create-brush-entity',
+          'Create brush entity',
+          ['func_detail', 'func_door', 'trigger_once'].map((classname) =>
+            this.contextMenuAction(`selection:create-brush-entity:${classname}`, classname, () =>
+              this.createBrushEntityFromContext(classname),
+            ),
+          ),
+        ),
+        this.contextMenuAction('selection:make-structural', 'Make structural', () => {
+          if (!this.state.session.makeSelectedStructural())
+            throw new Error('The selection is already structural');
+        }),
       );
-      this.contextMenuAction(selectionSection, 'Make structural', () => {
-        if (!this.state.session.makeSelectedStructural())
-          throw new Error('The selection is already structural');
-      });
     }
-    this.contextMenuAction(
-      selectionSection,
-      'Show all hidden',
-      () => this.state.session.showAll(),
-      !this.state.session.canShowAll,
+    selectionActions.push(
+      this.contextMenuAction(
+        'selection:show-all',
+        'Show all hidden',
+        () => this.state.session.showAll(),
+        !this.state.session.canShowAll,
+      ),
     );
-    this.ui.viewportContextMenu.append(selectionSection);
 
-    const createSection = this.contextMenuSection('Create here');
-    this.contextMenuSubmenu(
-      createSection,
-      'Create point entity',
-      BUILTIN_POINT_ENTITY_DEFINITIONS.map((definition) => ({
-        label: definition.label,
-        action: () => this.createPointEntityFromContext(context, definition.classname),
-      })),
-      !context.pointEntityOrigin,
-    );
-    this.contextMenuAction(
-      createSection,
-      'Paste here',
-      () => void this.pasteFromClipboard('cursor'),
-      this.ui.pasteButton.disabled,
-    );
-    this.ui.viewportContextMenu.append(createSection);
+    const createActions = [
+      this.contextMenuSubmenu(
+        'create:point-entity',
+        'Create point entity',
+        BUILTIN_POINT_ENTITY_DEFINITIONS.map((definition) =>
+          this.contextMenuAction(
+            `create:point-entity:${definition.classname}`,
+            definition.label,
+            () => this.createPointEntityFromContext(context, definition.classname),
+          ),
+        ),
+        !context.pointEntityOrigin,
+      ),
+      this.contextMenuAction(
+        'create:paste',
+        'Paste here',
+        () => this.pasteFromClipboard('cursor'),
+        this.ui.pasteButton.disabled,
+      ),
+    ];
 
-    this.ui.viewportContextMenu.hidden = false;
-    this.ui.viewportContextMenu.style.left = `${context.clientX}px`;
-    this.ui.viewportContextMenu.style.top = `${context.clientY}px`;
-    const bounds = this.ui.viewportContextMenu.getBoundingClientRect();
-    this.ui.viewportContextMenu.style.left = `${Math.max(8, Math.min(context.clientX, window.innerWidth - bounds.width - 8))}px`;
-    this.ui.viewportContextMenu.style.top = `${Math.max(8, Math.min(context.clientY, window.innerHeight - bounds.height - 8))}px`;
-    const initialButton = [
-      ...this.ui.viewportContextMenu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
-    ].find((button) => button.offsetParent !== null);
-    (initialButton ?? this.ui.viewportContextMenu).focus({ preventScroll: true });
+    const sections: readonly ContextMenuSectionSnapshot[] = [
+      {
+        id: 'under-cursor',
+        label: 'Under cursor',
+        emptyMessage: 'No editable object',
+        actions: hitActions,
+      },
+      { id: 'selection', label: 'Selection', actions: selectionActions },
+      { id: 'create', label: 'Create here', actions: createActions },
+    ];
+    this.ui.viewportContextMenu.show({
+      x: context.clientX,
+      y: context.clientY,
+      heading: `${context.viewport === 'perspective' ? '3D' : context.viewport.toUpperCase()} view`,
+      detail: this.formatVector(context.pointer.point),
+      sections,
+    });
   }
 
   public connect(): void {
-    this.ui.viewportContextMenu.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        this.hideViewportContextMenu(true);
-        return;
-      }
-      if (
-        event.key !== 'ArrowDown' &&
-        event.key !== 'ArrowUp' &&
-        event.key !== 'Home' &&
-        event.key !== 'End'
-      )
-        return;
-      const buttons = [
-        ...this.ui.viewportContextMenu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
-      ].filter((button) => button.offsetParent !== null);
-      if (buttons.length === 0) return;
-      event.preventDefault();
-      const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
-      const nextIndex =
-        event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? buttons.length - 1
-            : event.key === 'ArrowDown'
-              ? (current + 1 + buttons.length) % buttons.length
-              : (current - 1 + buttons.length) % buttons.length;
-      buttons[nextIndex]?.focus({ preventScroll: true });
-    });
-    window.addEventListener(
-      'pointerdown',
-      (event) => {
-        if (
-          !this.ui.viewportContextMenu.hidden &&
-          !this.ui.viewportContextMenu.contains(event.target as Node)
-        ) {
-          this.hideViewportContextMenu();
-        }
+    this.ui.viewportContextMenu.bind({
+      dismiss: (restoreFocus) => this.hideViewportContextMenu(restoreFocus),
+      invoke: (commandId) => {
+        void this.invoke(commandId);
       },
-      { capture: true },
-    );
-    window.addEventListener('blur', () => this.hideViewportContextMenu());
-    window.addEventListener('resize', () => this.hideViewportContextMenu());
+    });
   }
 }

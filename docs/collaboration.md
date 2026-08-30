@@ -105,10 +105,20 @@ unique operation/transaction ID, actor ID, base map version, target object revis
 version, label, and typed semantic edits. Application of an operation is deterministic and
 idempotent.
 
-Disconnect never disables editing. Committed local operations remain in the IndexedDB outbox and
-reconcile when the map becomes available. Leaving multiplayer produces an ordinary local `.map`
-working copy. Rejoining a hosted map adopts its authoritative MapCell snapshot; there is no
-independent hosted-source version to reconcile.
+Local maps and projects support an unbounded single-player offline workflow and never require a
+room. A hosted team map tolerates a short interruption without pausing editing: committed local
+operations enter the IndexedDB outbox and automatically reconcile against a fresh authoritative
+snapshot when connectivity returns inside a bounded grace window. The initial product window is 15
+minutes and is also bounded by encoded outbox bytes and operation count; the exact safety caps are
+configuration with tests, not protocol guarantees.
+
+A disconnected hosted tab with no local commits may reconnect at any time by adopting the latest
+room snapshot. A dirty hosted tab that exceeds any reconnect bound becomes an explicit local working
+copy. Its document and source remain editable and recoverable, while its stale outbox is quarantined
+from automatic room replay. Rejoining the hosted map is then an intentional action that first adopts
+the MapCell snapshot; the local copy can be retained or exported, but V0 does not promise an
+indefinite multi-master merge. Leaving multiplayer likewise produces an ordinary local `.map`
+working copy. There is never an independent hosted-source authority alongside the MapCell.
 
 ## Durable state versus presence
 
@@ -263,8 +273,13 @@ without changing the Worker or browser protocol.
    accountless and never contact the service.
 8. **Done for V0:** Select the replication engine only after the Yjs/Automerge/custom-operation bake-off and fixed
    real-map performance gates pass.
+9. **Pending product hardening:** Bound dirty hosted reconnection by elapsed time, encoded outbox
+   bytes, and operation count; transition exceeded sessions into an explicit local working copy and
+   provide deterministic conflict/rejoin UI. Unbounded single-player local editing remains
+   unaffected.
 
 Collaboration is not delivered until ordinary solo editing remains fully functional with the
-collaboration service absent, offline commits survive a restart, all replicas converge after
-reconnection, accepted geometry is valid, personalized undo preserves remote work, and room state
-can be exported to a portable source-safe `.map`.
+collaboration service absent, short-disconnect hosted commits survive a restart and reconcile within
+their documented bounds, detached dirty work survives as a local copy, connected replicas converge,
+accepted geometry is valid, personalized undo preserves remote work, and room state can be exported
+to a portable source-safe `.map`.

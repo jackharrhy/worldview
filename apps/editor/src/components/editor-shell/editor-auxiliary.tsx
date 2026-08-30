@@ -1,6 +1,7 @@
 import { EDITOR_ISSUE_TYPE_INFO } from '@jackharrhy/worldview-editor';
 
 import type { EditorShellState } from '../../editor-shell-state.js';
+import { ViewportContextMenu } from '../ui/viewport-context-menu.js';
 import { StatusBar } from './status-bar.js';
 
 interface EditorAuxiliaryProps {
@@ -65,14 +66,7 @@ export function EditorAuxiliary({ shellState }: EditorAuxiliaryProps) {
           </footer>
         </div>
       </dialog>
-      <div
-        id="viewport-context-menu"
-        className="viewport-context-menu"
-        role="menu"
-        aria-label="Map view actions"
-        tabIndex={-1}
-        hidden
-      />
+      <ViewportContextMenu menu={shellState.viewportContextMenu} />
     </>
   );
 }

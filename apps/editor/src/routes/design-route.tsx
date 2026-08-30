@@ -7,6 +7,8 @@ import {
   ProductPage,
   SectionHeading,
 } from '../components/ui.js';
+import { Menu, MenuItem, MenuSection } from '../components/ui/menu.js';
+import { TextField } from '../components/ui/text-field.js';
 
 const colorTokens = [
   'bg',
@@ -41,6 +43,73 @@ function ThemeSpecimen({ theme }: { readonly theme: 'dark' | 'light' }) {
           </div>
         ))}
       </div>
+      <div className="design-control-states">
+        <div className="design-state-group">
+          <strong>Buttons</strong>
+          <div className="control-row">
+            <ActionButton tone="primary" size="compact">
+              Apply
+            </ActionButton>
+            <ActionButton size="compact" referenceState="hover">
+              Hover
+            </ActionButton>
+            <ActionButton size="compact" referenceState="pressed">
+              Pressed
+            </ActionButton>
+            <ActionButton size="compact" referenceState="focus">
+              Focus
+            </ActionButton>
+            <ActionButton size="compact" isDisabled>
+              Disabled
+            </ActionButton>
+            <ActionButton size="compact" isPending>
+              Saving
+            </ActionButton>
+            <ActionButton size="compact">Long action label stays on one line</ActionButton>
+          </div>
+        </div>
+        <div className="design-state-group design-field-states">
+          <strong>Fields</strong>
+          <TextField
+            label="Map name"
+            description="A normal editable value."
+            defaultValue="e1m1.map"
+          />
+          <TextField label="Keyboard focus" defaultValue="worldspawn" referenceState="focus" />
+          <TextField
+            label="Invalid value"
+            defaultValue="maps/../escape.map"
+            isInvalid
+            referenceState="invalid"
+            errorMessage="Use a contained project path."
+          />
+          <TextField label="Disabled value" defaultValue="Valve 220" isDisabled />
+        </div>
+        <div className="design-state-group">
+          <strong>Menu</strong>
+          <div className="wv-popover design-menu-specimen">
+            <Menu
+              aria-label={`${theme} menu specimen`}
+              selectionMode="single"
+              defaultSelectedKeys={['grid']}
+            >
+              <MenuSection label="Selection">
+                <MenuItem id="focus" label="Focus selection" shortcut="Home" />
+                <MenuItem id="grid" label="Snap to grid" shortcut="Ctrl+G" />
+                <MenuItem id="disabled" label="Unavailable action" isDisabled />
+              </MenuSection>
+              <MenuSection label="Create here">
+                <MenuItem id="entity" label="Create point entity" submenu referenceState="open" />
+                <MenuItem
+                  id="long"
+                  label="A long command name truncates without moving the shortcut column"
+                  shortcut="Shift+P"
+                />
+              </MenuSection>
+            </Menu>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -73,7 +142,7 @@ export function Component() {
             <ActionButton>Open project</ActionButton>
             <ActionButton tone="quiet">Cancel</ActionButton>
             <ActionButton tone="danger">Remove</ActionButton>
-            <ActionButton disabled>Unavailable</ActionButton>
+            <ActionButton isDisabled>Unavailable</ActionButton>
           </div>
           <div className="field-grid">
             <Field label="Map name" hint="Saved as a Quake map source file.">

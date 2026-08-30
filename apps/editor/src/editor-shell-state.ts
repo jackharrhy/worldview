@@ -84,6 +84,75 @@ export class PointerContextPort {
   }
 }
 
+export interface ContextMenuActionSnapshot {
+  readonly id: string;
+  readonly label: string;
+  readonly shortcut?: string;
+  readonly disabled?: boolean;
+  readonly children?: readonly ContextMenuActionSnapshot[];
+}
+
+export interface ContextMenuSectionSnapshot {
+  readonly id: string;
+  readonly label: string;
+  readonly emptyMessage?: string;
+  readonly actions: readonly ContextMenuActionSnapshot[];
+}
+
+export interface ViewportContextMenuSnapshot {
+  readonly open: boolean;
+  readonly x: number;
+  readonly y: number;
+  readonly heading: string;
+  readonly detail: string;
+  readonly sections: readonly ContextMenuSectionSnapshot[];
+}
+
+export interface ViewportContextMenuActions {
+  dismiss(restoreFocus: boolean): void;
+  invoke(commandId: string): void;
+}
+
+const CLOSED_VIEWPORT_CONTEXT_MENU: ViewportContextMenuSnapshot = {
+  open: false,
+  x: 0,
+  y: 0,
+  heading: '',
+  detail: '',
+  sections: [],
+};
+
+export class ViewportContextMenuPort {
+  private readonly store = new SnapshotStore<ViewportContextMenuSnapshot>(
+    CLOSED_VIEWPORT_CONTEXT_MENU,
+  );
+  private actions: ViewportContextMenuActions | null = null;
+
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+
+  public bind(actions: ViewportContextMenuActions): void {
+    this.actions = actions;
+  }
+
+  public show(snapshot: Omit<ViewportContextMenuSnapshot, 'open'>): void {
+    this.store.set({ ...snapshot, open: true });
+  }
+
+  public hide(): void {
+    if (!this.store.getSnapshot().open) return;
+    this.store.set(CLOSED_VIEWPORT_CONTEXT_MENU);
+  }
+
+  public dismiss(restoreFocus = false): void {
+    this.actions?.dismiss(restoreFocus);
+  }
+
+  public invoke(commandId: string): void {
+    this.actions?.invoke(commandId);
+  }
+}
+
 export interface DocumentSummarySnapshot {
   readonly revision: number;
   readonly entityCount: number;
@@ -292,6 +361,7 @@ export interface EditorShellState {
   readonly documentName: DocumentNamePort;
   readonly compileState: CompileStatePort;
   readonly pointerContext: PointerContextPort;
+  readonly viewportContextMenu: ViewportContextMenuPort;
   readonly documentSummary: DocumentSummaryPort;
   readonly surfaceInspector: SurfaceInspectorPort;
   readonly workspaceHome: WorkspaceHomePort;
@@ -304,6 +374,7 @@ export function createEditorShellState(): EditorShellState {
     documentName: new DocumentNamePort(),
     compileState: new CompileStatePort(),
     pointerContext: new PointerContextPort(),
+    viewportContextMenu: new ViewportContextMenuPort(),
     documentSummary: new DocumentSummaryPort(),
     surfaceInspector: new SurfaceInspectorPort(),
     workspaceHome: new WorkspaceHomePort(),

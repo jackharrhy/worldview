@@ -109,8 +109,12 @@ The home route does not import or initialize the editor package, WebGPU renderer
 WebMCP registration, compiler probes, collaboration UI, TanStack Query, or editor icon/style
 assets. Because new-map creation always enters the editor, `/new-map` warms its lazy module graph
 during idle time and on submit intent, but presenter construction and WebGPU initialization remain
-exclusive to `/editor`. Home loaders read recent local workspaces; future remote workspace
-providers can join that loader boundary without changing editor document ownership.
+exclusive to `/editor`. Route isolation and initialization cost—not an arbitrary maximum editor
+chunk size—are the performance boundary. Once a person opens the editor, its substantial parser,
+tooling, and GPU module graph is expected; size remains observable, but clarity and capability take
+priority unless measurement shows a user-facing loading regression. Home loaders read recent local
+workspaces; future remote workspace providers can join that loader boundary without changing editor
+document ownership.
 
 Hosted projects are the next delivery slice and remain peers of local projects rather than a
 replacement. Their identity, persistence, asset, realtime, and build boundaries are specified in
@@ -166,6 +170,11 @@ upload boundary. The editor architecture gate rejects reintroduction of raw WGSL
 modules, pipeline layouts, bind-group layouts, or raw render-pipeline construction.
 
 ## Editor architecture
+
+The ordered structural remediation work is tracked in
+[`cleanup-plan.md`](./cleanup-plan.md). This product plan remains authoritative for intended
+behavior and boundaries; the cleanup plan is the canonical execution and handoff document for
+bringing the implementation into conformance.
 
 The application entrypoint is composition-only. The Vanilla-to-React shell translation is
 complete: React shell components are split into chrome,
@@ -237,10 +246,13 @@ persistent System, Dark, and Light choices; runtime changes rebuild color-depend
 preserve the document, selection, camera state, and undo history.
 
 Pre-editor routes and editor chrome share the same compact, geometric interface language through
-semantic CSS variables and focused React primitives. The development-only `/design` specimen shows
-both palettes, controls, forms, project states, and representative editor chrome. Native CSS remains
-the styling foundation so presenter-owned DOM and the WebGPU theme bridge use one inspectable token
-model rather than parallel utility or CSS-in-JS systems.
+React-owned Worldview primitives backed by React Aria Components for conventional control,
+focus/keyboard, menu, overlay, and dialog behavior. Worldview retains its two-pixel visual language
+and semantic CSS variables; React Spectrum styling is not used. The development-only `/design`
+specimen shows both palettes and every control state alongside forms, menus, project states, and
+representative editor chrome. Native CSS remains the styling foundation so the UI and WebGPU theme
+bridge use one inspectable token model rather than parallel utility or CSS-in-JS systems. The full
+control contract and ordered rollout live in [`interface-system.md`](./interface-system.md).
 
 Renderer solids are partitioned by material and spatial cell. Structural-sharing signatures reuse
 unchanged GPU buffers across revisions, conservative frustum tests skip invisible batches, and an
@@ -414,21 +426,30 @@ feature-detect to a no-op while keeping the complete visual workflow.
    inspectable in history.
 7. In optional collaboration mode, a validated local commit first enters the IndexedDB outbox and
    then the map protocol. An available `MapCell` persists, validates, orders, acknowledges, and
-   broadcasts the semantic operation; reconnection reconciles queued operations without making the
-   map service a dependency of solo editing.
+   broadcasts the semantic operation. Local maps remain fully offline without a service. A dirty
+   hosted map automatically reconciles only within a bounded reconnect grace window; once elapsed
+   time, operation count, or encoded bytes exceed that window, the browser preserves the work as a
+   detached local copy and stops automatic room replay.
 
 No compiled artifact, renderer cache, browser handle, or machine-local helper binding flows back
 into canonical `.map` geometry or the portable project manifest.
 
 ## Optional collaboration mode
 
-Collaboration wraps validated `EditorSession` commits and leaves solo editing unchanged. The client
-keeps a local IndexedDB outbox and remains editable while disconnected. Durable semantic operations
-and ephemeral presence use separate channels; pointer/drag previews, cameras, selections, GPU state,
-and local commercial/shareware resources are never canonical room state. Local gesture candidates
-render before any network acknowledgement. Multiplayer presence retains only the newest immutable
-candidate and derives its semantic preview at a bounded 30 Hz, so collaboration work cannot create
-an unbounded pointer-event backlog.
+Collaboration wraps validated `EditorSession` commits and leaves solo editing unchanged. Local maps
+and projects remain fully functional offline for an unbounded duration. A hosted team map remains
+editable through a short interruption and keeps committed work in a local IndexedDB outbox. The
+initial dirty-reconnect grace is 15 minutes and is also bounded by queued operation count and encoded
+bytes. A clean disconnected hosted tab may adopt the latest room at any later time; a dirty tab that
+exceeds a bound becomes an explicit local working copy whose stale outbox is not replayed
+automatically. Worldview preserves and exports that work but does not distort the room architecture
+to promise indefinite multi-master hosted reconciliation.
+
+Durable semantic operations and ephemeral presence use separate channels; pointer/drag previews,
+cameras, selections, GPU state, and local commercial/shareware resources are never canonical room
+state. Local gesture candidates render before any network acknowledgement. Multiplayer presence
+retains only the newest immutable candidate and derives its semantic preview at a bounded 30 Hz, so
+collaboration work cannot create an unbounded pointer-event backlog.
 
 Public collaboration is available only to hosted maps. A 4orm-backed Worldview session must have a
 project role before the application service issues its short-lived room ticket; the room Worker

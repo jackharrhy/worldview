@@ -1,11 +1,18 @@
-import type { ButtonHTMLAttributes, PropsWithChildren, ReactNode } from 'react';
+import type { PropsWithChildren, ReactNode } from 'react';
 import { Link } from 'react-router';
+
+export { Button } from './ui/button.js';
+export type { ButtonProps, ButtonSize, ButtonTone } from './ui/button.js';
+import { Button, type ButtonProps } from './ui/button.js';
 
 export function ProductPage({
   children,
   wide = false,
   className = '',
-}: PropsWithChildren<{ readonly wide?: boolean; readonly className?: string }>) {
+}: PropsWithChildren<{
+  readonly wide?: boolean;
+  readonly className?: string;
+}>) {
   return (
     <main className={`product-page${wide ? ' product-page-wide' : ''} ${className}`.trim()}>
       {children}
@@ -82,14 +89,8 @@ export function Field({
   );
 }
 
-export function ActionButton({
-  tone = 'secondary',
-  className = '',
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
-  readonly tone?: 'primary' | 'secondary' | 'quiet' | 'danger';
-}) {
-  return <button className={`button button-${tone} ${className}`.trim()} {...props} />;
+export function ActionButton({ tone = 'secondary', className = '', ...props }: ButtonProps) {
+  return <Button tone={tone} className={className} {...props} />;
 }
 
 export function FormSurface({ children }: PropsWithChildren) {
