@@ -32,6 +32,23 @@
   color: var(--quiet);
   font-family: 'SFMono-Regular', Consolas, monospace;
 }
+
+.viewport-layout-toggle.wv-button {
+  width: 19px;
+  min-width: 19px;
+  height: 19px;
+  min-height: 19px;
+  padding: 0;
+  border-color: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.viewport-layout-toggle.wv-button[data-pressed] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
 .viewport-pane.moving header,
 .viewport-pane.creating header,
 .viewport-pane.extruding header,
@@ -159,10 +176,7 @@
   position: absolute;
   inset: 23px 0 0;
 }
-.viewport-grid.has-maximized .viewport-pane:not(.maximized) {
-  display: none;
-}
-.viewport-grid.has-maximized .viewport-pane.maximized {
+.viewport-grid.perspective-only .viewport-pane[data-viewport='perspective'] {
   grid-area: 1 / 1 / -1 / -1;
 }
 

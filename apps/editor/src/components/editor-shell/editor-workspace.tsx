@@ -1,3 +1,6 @@
+import { useSyncExternalStore } from 'react';
+
+import { Button } from '../ui/button.js';
 import { MapInspector } from './map-inspector.js';
 import { ObjectInspector } from './object-inspector.js';
 import { TextureInspector } from './texture-inspector.js';
@@ -9,37 +12,76 @@ interface EditorWorkspaceProps {
 }
 
 export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
+  const viewportLayout = useSyncExternalStore(
+    shellState.viewportLayout.subscribe,
+    shellState.viewportLayout.getSnapshot,
+  );
+  const { perspectiveOnly, rendererReady } = viewportLayout;
+  const perspectiveToggleLabel = perspectiveOnly
+    ? 'Restore four viewports'
+    : 'Show Perspective only';
+
   return (
     <section className="workspace">
-      <section className="viewport-grid" aria-label="Map viewports">
+      <section
+        className={`viewport-grid${perspectiveOnly ? ' perspective-only' : ''}`}
+        aria-label="Map viewports"
+      >
         <article className="viewport-pane perspective" data-viewport="perspective">
           <header>
             <strong>PERSPECTIVE</strong>
             <span id="perspective-mode">EDIT</span>
+            <Button
+              className="viewport-layout-toggle"
+              tone="quiet"
+              size="compact"
+              aria-label={perspectiveToggleLabel}
+              aria-pressed={perspectiveOnly}
+              isDisabled={!rendererReady}
+              onPress={() => shellState.viewportLayout.togglePerspectiveOnly()}
+            >
+              <i className={`ph ${perspectiveOnly ? 'ph-corners-in' : 'ph-corners-out'}`} />
+            </Button>
           </header>
-          <canvas className="source-canvas" aria-label="Perspective map viewport" />
+          <canvas
+            className="source-canvas"
+            aria-label="Perspective map viewport"
+            data-rendering="true"
+          />
           <canvas className="compiled-canvas" aria-label="Compiled BSP preview" hidden />
         </article>
-        <article className="viewport-pane" data-viewport="xy">
+        <article className="viewport-pane" data-viewport="xy" hidden={perspectiveOnly}>
           <header>
             <strong>TOP</strong>
             <span>XY</span>
           </header>
-          <canvas className="source-canvas" aria-label="Top XY map viewport" />
+          <canvas
+            className="source-canvas"
+            aria-label="Top XY map viewport"
+            data-rendering={!perspectiveOnly}
+          />
         </article>
-        <article className="viewport-pane" data-viewport="xz">
+        <article className="viewport-pane" data-viewport="xz" hidden={perspectiveOnly}>
           <header>
             <strong>FRONT</strong>
             <span>XZ</span>
           </header>
-          <canvas className="source-canvas" aria-label="Front XZ map viewport" />
+          <canvas
+            className="source-canvas"
+            aria-label="Front XZ map viewport"
+            data-rendering={!perspectiveOnly}
+          />
         </article>
-        <article className="viewport-pane" data-viewport="yz">
+        <article className="viewport-pane" data-viewport="yz" hidden={perspectiveOnly}>
           <header>
             <strong>SIDE</strong>
             <span>YZ</span>
           </header>
-          <canvas className="source-canvas" aria-label="Side YZ map viewport" />
+          <canvas
+            className="source-canvas"
+            aria-label="Side YZ map viewport"
+            data-rendering={!perspectiveOnly}
+          />
         </article>
         <div
           className="viewport-resizer viewport-column-resizer"
@@ -48,6 +90,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
           aria-orientation="vertical"
           tabIndex={0}
           data-resize="viewport-column"
+          hidden={perspectiveOnly}
         />
         <div
           className="viewport-resizer viewport-top-resizer"
@@ -56,6 +99,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
           aria-orientation="horizontal"
           tabIndex={0}
           data-resize="viewport-top"
+          hidden={perspectiveOnly}
         />
         <div className="viewport-error" hidden />
       </section>

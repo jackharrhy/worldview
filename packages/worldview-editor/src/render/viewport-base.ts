@@ -278,6 +278,12 @@ export abstract class ViewportBase {
     this.interaction.cameraChanged(this.kind, 'linked', this.camera);
   }
 
+  public invalidateRender(): void {
+    if (this.disposed) return;
+    this.renderRequested = true;
+    this.requestRender();
+  }
+
   public focusBounds(bounds: Bounds): void {
     const center: [number, number, number] = [
       (bounds.min[0] + bounds.max[0]) / 2,

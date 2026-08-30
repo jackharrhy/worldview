@@ -228,7 +228,9 @@ their common pan axes. Inspector and dialog focus is never stolen merely by cros
 The desktop four-view layout uses TrenchBroom's default balanced 2×2 arrangement with Perspective
 in the upper-left, Top in the upper-right, Front in the lower-left, and Side in the lower-right. Its
 row, column, and inspector boundaries are directly resizable with pointer or keyboard handles and
-enforce usable minimum sizes.
+enforce usable minimum sizes. The Perspective header can expand its pane across the full viewport
+workspace; while expanded, the renderer suspends all orthographic render passes instead of merely
+hiding their canvases.
 The default Select tool is likewise a permanent controller stack: clicks select, selected objects
 move or resize, and a left drag creates the configured simple shape whenever the selection is empty.
 Orthographic and perspective construction bounds align component-wise to the active power-of-two

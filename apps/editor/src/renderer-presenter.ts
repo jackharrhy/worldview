@@ -668,6 +668,14 @@ export class RendererPresenter {
         },
       });
       state.renderer = renderer;
+      ui.viewportLayout.bind({
+        setPerspectiveOnly(enabled) {
+          renderer.setRenderedViewports(
+            enabled ? ['perspective'] : ['perspective', 'xy', 'xz', 'yz'],
+          );
+          ui.viewportLayout.setPerspectiveOnly(enabled);
+        },
+      });
       renderScheduler.setTarget(renderer);
       renderScheduler.start();
       ui.statusMessage.textContent = 'Source renderer ready. Select a brush in any viewport.';

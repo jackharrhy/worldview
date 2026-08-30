@@ -84,6 +84,41 @@ export class PointerContextPort {
   }
 }
 
+export interface ViewportLayoutSnapshot {
+  readonly perspectiveOnly: boolean;
+  readonly rendererReady: boolean;
+}
+
+export interface ViewportLayoutActions {
+  setPerspectiveOnly(enabled: boolean): void;
+}
+
+export class ViewportLayoutPort {
+  private readonly store = new SnapshotStore<ViewportLayoutSnapshot>({
+    perspectiveOnly: false,
+    rendererReady: false,
+  });
+  private actions: ViewportLayoutActions | null = null;
+
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+
+  public bind(actions: ViewportLayoutActions): void {
+    this.actions = actions;
+    this.store.set({ ...this.store.getSnapshot(), rendererReady: true });
+  }
+
+  public setPerspectiveOnly(enabled: boolean): void {
+    this.store.set({ ...this.store.getSnapshot(), perspectiveOnly: enabled });
+  }
+
+  public togglePerspectiveOnly(): void {
+    const snapshot = this.store.getSnapshot();
+    if (!snapshot.rendererReady) return;
+    this.actions?.setPerspectiveOnly(!snapshot.perspectiveOnly);
+  }
+}
+
 export interface ContextMenuActionSnapshot {
   readonly id: string;
   readonly label: string;
@@ -361,6 +396,7 @@ export interface EditorShellState {
   readonly documentName: DocumentNamePort;
   readonly compileState: CompileStatePort;
   readonly pointerContext: PointerContextPort;
+  readonly viewportLayout: ViewportLayoutPort;
   readonly viewportContextMenu: ViewportContextMenuPort;
   readonly documentSummary: DocumentSummaryPort;
   readonly surfaceInspector: SurfaceInspectorPort;
@@ -374,6 +410,7 @@ export function createEditorShellState(): EditorShellState {
     documentName: new DocumentNamePort(),
     compileState: new CompileStatePort(),
     pointerContext: new PointerContextPort(),
+    viewportLayout: new ViewportLayoutPort(),
     viewportContextMenu: new ViewportContextMenuPort(),
     documentSummary: new DocumentSummaryPort(),
     surfaceInspector: new SurfaceInspectorPort(),

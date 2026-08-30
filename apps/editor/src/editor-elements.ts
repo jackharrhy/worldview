@@ -20,6 +20,7 @@ export function bindEditorElements(shellState: EditorShellState) {
   const sourceMessage = required<HTMLParagraphElement>('#source-message');
   const sourceDialog = required<HTMLDialogElement>('#source-dialog');
   const viewportContextMenu = shellState.viewportContextMenu;
+  const viewportLayout = shellState.viewportLayout;
   const statusMessage = shellState.statusMessage;
   const cameraPointerContext = shellState.pointerContext;
   const documentSummary = shellState.documentSummary;
@@ -289,6 +290,7 @@ export function bindEditorElements(shellState: EditorShellState) {
     sourceMessage,
     sourceDialog,
     viewportContextMenu,
+    viewportLayout,
     statusMessage,
     cameraPointerContext,
     editorShell,

@@ -105,4 +105,24 @@ describe('editor shell state ports', () => {
       sections: [],
     });
   });
+
+  it('routes Perspective-only layout changes through the renderer port', () => {
+    const shell = createEditorShellState();
+    const setPerspectiveOnly = vi.fn((enabled: boolean) => {
+      shell.viewportLayout.setPerspectiveOnly(enabled);
+    });
+
+    expect(shell.viewportLayout.getSnapshot()).toEqual({
+      perspectiveOnly: false,
+      rendererReady: false,
+    });
+    shell.viewportLayout.togglePerspectiveOnly();
+    expect(setPerspectiveOnly).not.toHaveBeenCalled();
+
+    shell.viewportLayout.bind({ setPerspectiveOnly });
+    expect(shell.viewportLayout.getSnapshot().rendererReady).toBe(true);
+    shell.viewportLayout.togglePerspectiveOnly();
+    expect(setPerspectiveOnly).toHaveBeenCalledWith(true);
+    expect(shell.viewportLayout.getSnapshot().perspectiveOnly).toBe(true);
+  });
 });

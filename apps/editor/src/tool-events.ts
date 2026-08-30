@@ -593,17 +593,6 @@ export class ToolEvents {
       });
     }
 
-    for (const pane of document.querySelectorAll<HTMLElement>('.viewport-pane')) {
-      pane.querySelector('header')?.addEventListener('dblclick', () => {
-        const maximized = pane.classList.toggle('maximized');
-        this.ui.viewportGrid.classList.toggle('has-maximized', maximized);
-        if (!maximized) return;
-        for (const other of document.querySelectorAll<HTMLElement>('.viewport-pane')) {
-          if (other !== pane) other.classList.remove('maximized');
-        }
-      });
-    }
-
     window.addEventListener('copy', (event) => {
       if (this.app.document.isTextEditingTarget(event.target)) return;
       const text = this.app.document.copySelectionText();

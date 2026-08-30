@@ -52,6 +52,9 @@ the command and restore the original off-grid bounds with Undo.
 For layout verification, assert relative viewport bounds before interacting. Drag every
 `[data-resize]` separator and require its `aria-valuenow` and the corresponding pane bounds to
 change; also exercise an arrow key on a focused separator. Minimum-size clamps are intentional.
+Toggle `Show Perspective only` and require the Perspective pane to match the viewport-grid bounds,
+all orthographic panes and internal separators to be hidden, and their canvases to publish
+`data-rendering="false"`. Restore the four-view layout before continuing multi-viewport gestures.
 
 The React-owned viewport context menu also owns native-menu suppression. Keep the document capture
 listener scoped to viewport targets or the short interval while the Worldview menu is open, and

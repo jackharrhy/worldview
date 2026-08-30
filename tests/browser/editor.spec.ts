@@ -805,6 +805,35 @@ test.describe('WebMCP site authoring', () => {
     await expect(inspectorHandle).not.toBeFocused();
   });
 
+  test('shows Perspective alone without rendering hidden orthographic panes', async ({ page }) => {
+    await openEditor(page, { empty: true });
+    const grid = page.locator('.viewport-grid');
+    const perspective = page.locator('[data-viewport="perspective"]');
+    const orthographicPanes = page.locator(
+      '[data-viewport="xy"], [data-viewport="xz"], [data-viewport="yz"]',
+    );
+    const toggle = page.getByRole('button', { name: 'Show Perspective only' });
+
+    await toggle.click();
+    await expect(grid).toHaveClass(/perspective-only/);
+    const restore = page.getByRole('button', { name: 'Restore four viewports' });
+    await expect(restore).toHaveAttribute('aria-pressed', 'true');
+    for (const pane of await orthographicPanes.all()) await expect(pane).toBeHidden();
+    for (const resizer of await page.locator('.viewport-resizer').all()) {
+      await expect(resizer).toBeHidden();
+    }
+    await expect(page.locator('.source-canvas[data-rendering="false"]')).toHaveCount(3);
+
+    const gridBounds = await grid.boundingBox();
+    const perspectiveBounds = await perspective.boundingBox();
+    expect(perspectiveBounds).toEqual(gridBounds);
+
+    await restore.click();
+    await expect(grid).not.toHaveClass(/perspective-only/);
+    for (const pane of await orthographicPanes.all()) await expect(pane).toBeVisible();
+    await expect(page.locator('.source-canvas[data-rendering="true"]')).toHaveCount(4);
+  });
+
   test('keeps the normal editor available when the browser has no site-tool API', async ({
     page,
   }) => {

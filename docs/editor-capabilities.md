@@ -161,8 +161,10 @@ Candidate edits are derived and validated before an atomic document transaction 
 
 The DOM-free editor session owns the document revision, selection, transactions, undo and redo,
 and normalized tool state. Perspective and orthographic viewports adapt pointer and keyboard input
-to the same tool controllers. The default application layout has perspective, XY, XZ, and YZ panes,
-but each pane can be maximized. Source geometry, materials, and GPU buffers are shared across the
+to the same tool controllers. The default application layout has perspective, XY, XZ, and YZ panes.
+An explicit Perspective-header control expands that pane to the full viewport workspace and restores
+the four-view layout; hidden orthographic panes stop encoding GPU render passes. Source geometry,
+materials, and GPU buffers are shared across the
 viewports while camera, grid, depth target, and tool overlays remain per viewport. Immutable
 documents cache their brush, group, and layer indexes by identity, and independent viewport dirty
 versions prevent a moving perspective camera from redrawing three unchanged orthographic panes.

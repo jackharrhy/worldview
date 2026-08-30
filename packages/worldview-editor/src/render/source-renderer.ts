@@ -101,6 +101,7 @@ export class EditorSourceRenderer {
   private tool: EditorTool;
   private readonly materialResources: SourceMaterialResources;
   private readonly viewports: readonly Viewport[];
+  private renderedViewportKinds: ReadonlySet<EditorViewportKind> = new Set();
   private readonly onClipPlaneChange: EditorSourceRendererOptions['onClipPlaneChange'];
   private readonly onHullCreate: EditorSourceRendererOptions['onHullCreate'];
   private readonly onTopologySelectionChange: EditorSourceRendererOptions['onTopologySelectionChange'];
@@ -485,6 +486,7 @@ export class EditorSourceRenderer {
           this.theme,
         ),
     );
+    this.renderedViewportKinds = new Set(this.viewports.map((viewport) => viewport.kind));
     for (const viewport of this.viewports) {
       options.onCameraChange?.({
         viewport: viewport.kind,
@@ -846,6 +848,23 @@ export class EditorSourceRenderer {
     this.rebuildScene();
   }
 
+  public setRenderedViewports(kinds: readonly EditorViewportKind[]): void {
+    if (this.disposed) return;
+    const next = new Set(kinds);
+    if (
+      next.size === this.renderedViewportKinds.size &&
+      [...next].every((kind) => this.renderedViewportKinds.has(kind))
+    ) {
+      return;
+    }
+    this.renderedViewportKinds = next;
+    for (const viewport of this.viewports) {
+      if (next.has(viewport.kind)) viewport.invalidateRender();
+      else viewport.cancelInteraction();
+    }
+    this.onRenderRequest?.();
+  }
+
   public render(): boolean {
     if (this.disposed) return false;
     const materialBindGroup = (name: string) => this.materialResources.bindGroup(name);
@@ -853,7 +872,10 @@ export class EditorSourceRenderer {
       label: 'Worldview editor frame',
     });
     let encoded = false;
-    for (const viewport of this.viewports) {
+    const renderedViewports = this.viewports.filter((viewport) =>
+      this.renderedViewportKinds.has(viewport.kind),
+    );
+    for (const viewport of renderedViewports) {
       encoded =
         viewport.render(
           this.scene,
@@ -864,7 +886,7 @@ export class EditorSourceRenderer {
         ) || encoded;
     }
     if (encoded) this.device.queue.submit([encoder.finish()]);
-    return this.viewports.some((viewport) => viewport.requiresContinuousRender);
+    return renderedViewports.some((viewport) => viewport.requiresContinuousRender);
   }
 
   public viewportCamera(kind: EditorViewportKind): EditorViewportCameraState | null {
