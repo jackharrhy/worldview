@@ -1,4 +1,4 @@
-import { useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 
 import type {
   ContextMenuActionSnapshot,
@@ -39,6 +39,16 @@ function ContextAction({
 export function ViewportContextMenu({ menu }: { readonly menu: ViewportContextMenuPort }) {
   const snapshot = useSyncExternalStore(menu.subscribe, menu.getSnapshot);
   const anchor = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const suppressNativeMenu = (event: MouseEvent) => {
+      const target = event.target;
+      const targetsViewport =
+        target instanceof Element && target.closest('.viewport-grid') !== null;
+      if (targetsViewport || menu.getSnapshot().open) event.preventDefault();
+    };
+    document.addEventListener('contextmenu', suppressNativeMenu, { capture: true });
+    return () => document.removeEventListener('contextmenu', suppressNativeMenu, true);
+  }, [menu]);
   return (
     <>
       <span

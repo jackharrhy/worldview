@@ -209,9 +209,10 @@ rollout live in [`interface-system.md`](./interface-system.md).
 **Delivered 2026-08-30:** The editor app now has Worldview-styled React Aria button, text-field,
 menu, section, popover, and submenu primitives. Pre-editor action buttons use the shared button,
 `/design` covers the first-slice states in both themes, and the viewport context menu is React-owned
-through an immutable snapshot and opaque command port. C1 remains in progress: raw editor controls,
-inspectors, catalogs, dialogs, and the imperative-UI architecture gate are intentionally separate
-slices.
+through an immutable snapshot and opaque command port. Its React lifetime also owns narrowly scoped
+native-menu suppression, including the Windows event order where `contextmenu` arrives after the
+popover has made the canvas inert. C1 remains in progress: raw editor controls, inspectors,
+catalogs, dialogs, and the imperative-UI architecture gate are intentionally separate slices.
 
 **Acceptance criteria:**
 

@@ -53,6 +53,13 @@ For layout verification, assert relative viewport bounds before interacting. Dra
 `[data-resize]` separator and require its `aria-valuenow` and the corresponding pane bounds to
 change; also exercise an arrow key on a focused separator. Minimum-size clamps are intentional.
 
+The React-owned viewport context menu also owns native-menu suppression. Keep the document capture
+listener scoped to viewport targets or the short interval while the Worldview menu is open, and
+remove it when the component unmounts. This covers Windows browsers that dispatch `contextmenu`
+after `pointerup`, when React Aria has made the original canvas inert and retargeted the event to the
+document body. Browser proof must require that late event to be cancelled while preserving native
+context menus on ordinary inputs outside the viewport.
+
 Drag previews are transient candidates and may share the same next document and brush revision.
 Their solid-buffer cache identity must include actual geometry and texture projection. For stale-mesh
 regressions, select semantically through WebMCP, hold a real pointer drag open, capture at least two

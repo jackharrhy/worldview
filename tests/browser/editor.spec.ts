@@ -1670,6 +1670,18 @@ test.describe('3D source authoring', () => {
 
     await page.mouse.click(point.x, point.y, { button: 'right' });
     await expect(menu).toBeVisible();
+    expect(
+      await page.evaluate(() => {
+        const event = new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+        });
+        document.body.dispatchEvent(event);
+        return event.defaultPrevented;
+      }),
+      'a Windows-style contextmenu event retargeted after the popover opens',
+    ).toBe(true);
     await expect(menu.locator('.viewport-context-heading')).toContainText('3D view');
     await expect(page.locator(':focus')).toHaveAttribute('role', 'menuitem');
     await page.keyboard.press('End');
@@ -1729,6 +1741,29 @@ test.describe('3D source authoring', () => {
     await page.keyboard.press('Escape');
     await expect(menu).toBeHidden();
     await expect(page.getByLabel('Perspective map viewport')).toBeFocused();
+    expect(
+      await page.getByLabel('Perspective map viewport').evaluate((canvas) => {
+        const event = new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+        });
+        canvas.dispatchEvent(event);
+        return event.defaultPrevented;
+      }),
+    ).toBe(true);
+    expect(
+      await page.locator('#material-filter').evaluate((input) => {
+        const event = new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+        });
+        input.dispatchEvent(event);
+        return event.defaultPrevented;
+      }),
+      'native context menus outside the viewport remain available',
+    ).toBe(false);
 
     const beforeLook = await perspectiveCamera(page);
     await page.mouse.move(point.x, point.y);

@@ -6,7 +6,6 @@ import { isBrushRayHit, selectionForHit } from './viewport-common.js';
 import { ViewportPointerMove } from './viewport-pointer-move.js';
 export class Viewport extends ViewportPointerMove {
   protected connectInput(): void {
-    this.canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     this.connectPointerDown();
     this.connectPointerMove();
     this.canvas.addEventListener('pointerup', (event) => {
