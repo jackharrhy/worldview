@@ -33,7 +33,8 @@
   "dependencies": {
     "@jackharrhy/worldview": "*",
     "typegpu": "0.12.1",
-    "wgpu-matrix": "^3.4.0"
+    "wgpu-matrix": "^3.4.0",
+    "zod": "^4.4.3"
   },
   "engines": {
     "node": ">=24"

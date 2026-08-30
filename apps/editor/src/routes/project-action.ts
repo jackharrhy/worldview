@@ -1,4 +1,9 @@
-import { apiJson, type HostedProjectMap } from './hosted-project-api.js';
+import {
+  HostedMapCreatedResponseSchema,
+  HostedOkResponseSchema,
+  HostedResourceMountedResponseSchema,
+} from '@worldview/protocol';
+import { apiJson } from './hosted-project-api.js';
 import { hostedIdFromRouteReference } from './hosted-route.js';
 
 export async function action({
@@ -17,6 +22,7 @@ export async function action({
     if (!userId) return { error: 'Choose a user.' };
     try {
       await apiJson(
+        HostedOkResponseSchema,
         new URL(
           `/api/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`,
           request.url,
@@ -36,7 +42,8 @@ export async function action({
   }
   if (intent === 'mount-asset') {
     try {
-      const result = await apiJson<{ mount: { id: string } }>(
+      const result = await apiJson(
+        HostedResourceMountedResponseSchema,
         new URL(`/api/projects/${encodeURIComponent(projectId)}/resources`, request.url),
         {
           method: 'POST',
@@ -55,7 +62,8 @@ export async function action({
   if (format !== 'valve-220' && format !== 'quake')
     return { error: 'Choose a supported map format.' };
   try {
-    const result = await apiJson<{ map: HostedProjectMap }>(
+    const result = await apiJson(
+      HostedMapCreatedResponseSchema,
       new URL(`/api/projects/${encodeURIComponent(projectId)}/maps`, request.url),
       {
         method: 'POST',

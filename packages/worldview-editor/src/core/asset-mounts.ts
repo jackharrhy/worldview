@@ -17,7 +17,7 @@ export interface BuiltinAssetMount extends AssetMountBase {
 export interface ProjectWadAssetMount extends AssetMountBase {
   readonly kind: 'project-wad';
   readonly sourceName: string;
-  readonly contentFingerprint?: string;
+  readonly contentFingerprint?: string | undefined;
 }
 
 export interface BrowserWadAssetMount extends AssetMountBase {

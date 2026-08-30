@@ -1,6 +1,7 @@
 import { redirect } from 'react-router';
 import { isWorldviewGameProfile } from '@jackharrhy/worldview-editor/core';
-import { apiJson, type HostedProjectSummary } from './hosted-project-api.js';
+import { HostedProjectCreatedResponseSchema } from '@worldview/protocol';
+import { apiJson } from './hosted-project-api.js';
 import { hostedProjectPath } from './hosted-route.js';
 
 export async function action({ request }: { readonly request: Request }) {
@@ -10,7 +11,8 @@ export async function action({ request }: { readonly request: Request }) {
   if (!name) return { error: 'Enter a project name.' };
   if (!isWorldviewGameProfile(game)) return { error: 'Choose a supported game.' };
   try {
-    const { project } = await apiJson<{ project: HostedProjectSummary }>(
+    const { project } = await apiJson(
+      HostedProjectCreatedResponseSchema,
       new URL('/api/projects', request.url),
       {
         method: 'POST',

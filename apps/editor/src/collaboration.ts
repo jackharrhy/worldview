@@ -4,11 +4,19 @@ import {
   collaborationEditsBetween,
   inverseCollaborationEdits,
   type CollaborationOperation,
-  type CollaborationEdit,
   type CollaborationFailure,
   type EditorSession,
   type MapDocument,
+  CollaborationOperationSchema,
 } from '@jackharrhy/worldview-editor/core';
+import {
+  parseCollaborationServerFrame,
+  type CollaborationPresence,
+  type CollaborationServerFrame,
+} from '@worldview/protocol';
+import { z } from 'zod';
+
+export type { CollaborationPresence } from '@worldview/protocol';
 
 const DATABASE_NAME = 'worldview-map-outbox';
 const DATABASE_VERSION = 1;
@@ -26,6 +34,12 @@ interface StoredOperation {
   readonly mapId: string;
   readonly operation: CollaborationOperation;
 }
+
+const StoredOperationSchema = z.strictObject({
+  key: z.string().min(1).max(4_096),
+  mapId: z.string().min(1).max(256),
+  operation: CollaborationOperationSchema,
+}) satisfies z.ZodType<StoredOperation>;
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -76,11 +90,14 @@ export class IndexedDbCollaborationOutbox implements CollaborationOutbox {
   public async pending(mapId: string): Promise<readonly CollaborationOperation[]> {
     const database = await this.database;
     const transaction = database.transaction(OUTBOX_STORE, 'readonly');
-    const rows = await requestResult<StoredOperation[]>(
+    const rows = await requestResult<unknown[]>(
       transaction.objectStore(OUTBOX_STORE).index('mapId').getAll(mapId),
     );
     return rows
-      .map((row) => row.operation)
+      .flatMap((row) => {
+        const stored = StoredOperationSchema.safeParse(row);
+        return stored.success ? [stored.data.operation] : [];
+      })
       .toSorted((left, right) => left.operationId.localeCompare(right.operationId));
   }
 
@@ -132,23 +149,6 @@ export interface CollaborationControllerOptions {
   readonly onAcknowledged?: (operationId: string, mapVersion: number) => void;
 }
 
-export interface CollaborationPresence {
-  readonly actorId: string;
-  readonly displayName?: string;
-  readonly color?: string;
-  readonly selectedObjectIds?: readonly string[];
-  readonly viewport?: 'perspective' | 'xy' | 'xz' | 'yz';
-  readonly pointer?: readonly [number, number, number];
-  readonly tool?: string;
-  readonly preview?: {
-    readonly interactionId: string;
-    readonly sequence: number;
-    readonly baseMapVersion: number;
-    readonly edits: readonly CollaborationEdit[];
-  };
-  readonly sentAt: number;
-}
-
 export interface JoinCollaborationOptions {
   readonly endpoint: string;
   readonly mapId: string;
@@ -185,35 +185,6 @@ export function reconcilePendingOperations(
   }
   return { document, conflicts };
 }
-
-type CollaborationServerFrame =
-  | {
-      readonly type: 'ready';
-      readonly mapId: string;
-      readonly mapVersion: number;
-      readonly document: MapDocument;
-      readonly source: string;
-      readonly sourceSha256: string;
-    }
-  | {
-      readonly type: 'operation';
-      readonly mapVersion: number;
-      readonly sourceSha256: string;
-      readonly operation: CollaborationOperation;
-    }
-  | {
-      readonly type: 'ack';
-      readonly operationId: string;
-      readonly mapVersion: number;
-      readonly sourceSha256: string;
-    }
-  | {
-      readonly type: 'conflict';
-      readonly operationId: string;
-      readonly conflicts: readonly CollaborationFailure[];
-    }
-  | { readonly type: 'presence'; readonly presence: CollaborationPresence }
-  | { readonly type: 'error'; readonly message: string };
 
 export interface CollaborationSocket {
   readonly readyState: number;
@@ -447,7 +418,7 @@ export class CollaborationSocketClient {
 
   private async receive(serialized: string): Promise<void> {
     try {
-      const frame = JSON.parse(serialized) as CollaborationServerFrame;
+      const frame = parseCollaborationServerFrame(serialized);
       if (frame.type === 'ready') {
         this.options.controller.setMapVersion(frame.mapVersion);
         await this.options.onReady?.(frame);

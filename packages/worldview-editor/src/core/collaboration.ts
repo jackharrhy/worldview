@@ -13,7 +13,7 @@ export interface CollaborationOperation {
   readonly label: string;
   readonly edits: readonly CollaborationEdit[];
   /** Conditional inverse captured at commit time for this actor's personalized undo. */
-  readonly inverseEdits?: readonly CollaborationEdit[];
+  readonly inverseEdits?: readonly CollaborationEdit[] | undefined;
 }
 
 export type CollaborationEdit =

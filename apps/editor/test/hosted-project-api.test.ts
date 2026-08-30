@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { HostedOkResponseSchema } from '@worldview/protocol';
 import { authenticatedApiJson } from '../src/routes/hosted-project-api.js';
 
 describe('authenticatedApiJson', () => {
@@ -8,6 +9,7 @@ describe('authenticatedApiJson', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
 
     const result = authenticatedApiJson(
+      HostedOkResponseSchema,
       new Request(
         'https://worldview.example/project/0123456789ab-lambda/map/cdefghjkmnpq-test?view=top',
       ),
@@ -31,6 +33,7 @@ describe('authenticatedApiJson', () => {
 
     await expect(
       authenticatedApiJson(
+        HostedOkResponseSchema,
         new Request('https://worldview.example/project/0123456789ab-missing'),
         'https://worldview.example/api/projects/missing',
       ),

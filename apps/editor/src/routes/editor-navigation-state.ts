@@ -1,27 +1,23 @@
 import {
   gameProfileSupportsFaceSyntax,
-  isWorldviewGameProfile,
   worldviewGameProfile,
-  type MapFaceSyntax,
-  type WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor/core';
+import { z } from 'zod';
 
-export interface NewMapLaunch {
-  readonly name: string;
-  readonly profile: WorldviewGameProfile;
-  readonly format: MapFaceSyntax;
-}
-
-export interface EditorNavigationState {
-  readonly newMap: NewMapLaunch;
-}
+const EditorNavigationStateSchema = z.strictObject({
+  newMap: z.strictObject({
+    name: z.string().max(4_096),
+    profile: z.enum(['quake', 'goldsrc', 'quake2']),
+    format: z.enum(['valve-220', 'quake']),
+  }),
+});
+export type EditorNavigationState = z.infer<typeof EditorNavigationStateSchema>;
+export type NewMapLaunch = EditorNavigationState['newMap'];
 
 export function readNewMapLaunch(state: unknown): NewMapLaunch | null {
-  if (!state || typeof state !== 'object' || !('newMap' in state)) return null;
-  const launch = state.newMap;
-  if (!launch || typeof launch !== 'object') return null;
-  const { name, profile, format } = launch as Record<string, unknown>;
-  if (typeof name !== 'string' || !isWorldviewGameProfile(profile)) return null;
+  const result = EditorNavigationStateSchema.safeParse(state);
+  if (!result.success) return null;
+  const { name, profile, format } = result.data.newMap;
   if (!gameProfileSupportsFaceSyntax(worldviewGameProfile(profile), format)) return null;
   return { name: name.trim() || 'untitled.map', profile, format };
 }

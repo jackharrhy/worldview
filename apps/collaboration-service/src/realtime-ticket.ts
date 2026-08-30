@@ -1,11 +1,6 @@
-export interface HostedRealtimeTicket {
-  readonly version: 2;
-  readonly mapId: string;
-  readonly principalId: string;
-  readonly actorId: string;
-  readonly role: 'owner' | 'editor' | 'viewer';
-  readonly expiresAt: number;
-}
+import { parseActiveRealtimeTicketPayload, type RealtimeTicketPayload } from '@worldview/protocol';
+
+export type HostedRealtimeTicket = RealtimeTicketPayload;
 
 function decode(value: string): Uint8Array {
   const normalized = value.replaceAll('-', '+').replaceAll('_', '/');
@@ -34,20 +29,7 @@ export async function verifyHostedRealtimeTicket(
       new TextEncoder().encode(`${header}.${content}`),
     );
     if (!valid) return null;
-    const payload = JSON.parse(
-      new TextDecoder().decode(decode(content)),
-    ) as Partial<HostedRealtimeTicket>;
-    if (
-      payload.version !== 2 ||
-      typeof payload.mapId !== 'string' ||
-      typeof payload.principalId !== 'string' ||
-      typeof payload.actorId !== 'string' ||
-      (payload.role !== 'owner' && payload.role !== 'editor' && payload.role !== 'viewer') ||
-      typeof payload.expiresAt !== 'number' ||
-      payload.expiresAt <= Date.now()
-    )
-      return null;
-    return payload as HostedRealtimeTicket;
+    return parseActiveRealtimeTicketPayload(JSON.parse(new TextDecoder().decode(decode(content))));
   } catch {
     return null;
   }

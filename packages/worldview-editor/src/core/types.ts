@@ -40,9 +40,9 @@ export interface Valve220TextureProjection extends TextureProjectionBase {
 export type TextureProjection = AxialTextureProjection | Valve220TextureProjection;
 
 export interface SurfaceAttributes {
-  readonly contents?: number;
-  readonly flags?: number;
-  readonly value?: number;
+  readonly contents?: number | undefined;
+  readonly flags?: number | undefined;
+  readonly value?: number | undefined;
 }
 
 export interface MapFace {

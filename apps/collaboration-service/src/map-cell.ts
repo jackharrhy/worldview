@@ -1,13 +1,19 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   applyCollaborationOperation,
+  MapDocumentSchema,
   parseMapSource,
   planMapSave,
   rebaseMapSource,
   type CollaborationOperation,
   type MapDocument,
 } from '@jackharrhy/worldview-editor/core';
-import { parseClientFrame, type ServerFrame } from './protocol.js';
+import {
+  parseCollaborationClientFrame,
+  type CollaborationServerFrame,
+  type HostedCheckpoint,
+  type HostedMapSnapshot,
+} from '@worldview/protocol';
 
 interface SocketAttachment {
   readonly actorId: string;
@@ -16,22 +22,8 @@ interface SocketAttachment {
   readonly operationCount: number;
 }
 
-export interface MapSnapshot {
-  readonly mapId: string;
-  readonly mapVersion: number;
-  readonly document: MapDocument;
-  readonly source: string;
-  readonly sourceSha256: string;
-}
-
-export interface MapCheckpoint {
-  readonly id: string;
-  readonly name: string;
-  readonly mapVersion: number;
-  readonly sourceSha256: string;
-  readonly createdBy: string;
-  readonly createdAt: number;
-}
+type MapSnapshot = HostedMapSnapshot;
+type MapCheckpoint = HostedCheckpoint;
 
 interface StateRow {
   readonly [key: string]: string | number;
@@ -56,6 +48,10 @@ async function sha256(value: string): Promise<string> {
 }
 
 export class MapCell extends DurableObject<Env> {
+  private documentCache:
+    | { readonly serialized: string; readonly document: MapDocument }
+    | undefined;
+
   public constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => this.migrate());
@@ -137,7 +133,10 @@ export class MapCell extends DurableObject<Env> {
     return this.toSnapshot(state);
   }
 
-  public async submit(actorId: string, operation: CollaborationOperation): Promise<ServerFrame> {
+  public async submit(
+    actorId: string,
+    operation: CollaborationOperation,
+  ): Promise<CollaborationServerFrame> {
     if (actorId !== operation.actorId) throw new Error('Operation actor does not match the caller');
     const response = await this.applyOperation(operation);
     if (response.type === 'operation') this.broadcast(response);
@@ -151,10 +150,7 @@ export class MapCell extends DurableObject<Env> {
       : response;
   }
 
-  public createCheckpoint(
-    actorId: string,
-    name: string,
-  ): { id: string; name: string; mapVersion: number; createdAt: number } {
+  public createCheckpoint(actorId: string, name: string): MapCheckpoint {
     const state = this.state();
     if (!name.trim() || name.length > 120) throw new Error('Checkpoint name is invalid');
     const id = crypto.randomUUID();
@@ -175,7 +171,14 @@ export class MapCell extends DurableObject<Env> {
       )`,
       MAX_CHECKPOINTS,
     );
-    return { id, name, mapVersion: state.map_version, createdAt };
+    return {
+      id,
+      name,
+      mapVersion: state.map_version,
+      sourceSha256: state.source_sha256,
+      createdBy: actorId,
+      createdAt,
+    };
   }
 
   public listCheckpoints(): readonly MapCheckpoint[] {
@@ -235,13 +238,13 @@ export class MapCell extends DurableObject<Env> {
       operationCount: 0,
     } satisfies SocketAttachment);
     this.ctx.acceptWebSocket(server, [`actor:${actorId}`]);
-    server.send(JSON.stringify({ type: 'ready', ...snapshot } satisfies ServerFrame));
+    server.send(JSON.stringify({ type: 'ready', ...snapshot } satisfies CollaborationServerFrame));
     return new Response(null, { status: 101, webSocket: client });
   }
 
   public async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
     try {
-      const frame = parseClientFrame(message);
+      const frame = parseCollaborationClientFrame(message);
       if (frame.type === 'presence') {
         const attachment = socket.deserializeAttachment() as SocketAttachment | null;
         if (!attachment || attachment.actorId !== frame.presence.actorId) {
@@ -262,7 +265,7 @@ export class MapCell extends DurableObject<Env> {
             operationId: frame.operation.operationId,
             mapVersion: response.mapVersion,
             sourceSha256: response.sourceSha256,
-          } satisfies ServerFrame),
+          } satisfies CollaborationServerFrame),
         );
         this.broadcast(response, socket);
       } else socket.send(JSON.stringify(response));
@@ -271,7 +274,7 @@ export class MapCell extends DurableObject<Env> {
         JSON.stringify({
           type: 'error',
           message: error instanceof Error ? error.message : 'Invalid collaboration frame',
-        } satisfies ServerFrame),
+        } satisfies CollaborationServerFrame),
       );
     }
   }
@@ -294,12 +297,14 @@ export class MapCell extends DurableObject<Env> {
     socket.serializeAttachment({ ...attachment, operationWindowStartedAt, operationCount });
   }
 
-  private async applyOperation(operation: CollaborationOperation): Promise<ServerFrame> {
+  private async applyOperation(
+    operation: CollaborationOperation,
+  ): Promise<CollaborationServerFrame> {
     for (;;) {
       const receipt = this.receipt(operation.operationId);
       if (receipt) return receipt;
       const before = this.state();
-      const document = JSON.parse(before.document_json) as MapDocument;
+      const document = this.document(before.document_json);
       const result = applyCollaborationOperation(document, operation);
       if (result.status === 'conflict') {
         return {
@@ -318,6 +323,7 @@ export class MapCell extends DurableObject<Env> {
         };
       }
       const sourceSha256 = await sha256(plan.text);
+      const documentJson = JSON.stringify(result.document);
       const committed = this.ctx.storage.transactionSync(() => {
         if (this.receipt(operation.operationId)) return false;
         if (this.state().map_version !== before.map_version) return false;
@@ -340,7 +346,7 @@ export class MapCell extends DurableObject<Env> {
           `UPDATE map_state SET map_version=?,document_json=?,source_text=?,source_sha256=?,updated_at=?
            WHERE singleton=1`,
           mapVersion,
-          JSON.stringify(result.document),
+          documentJson,
           plan.text,
           sourceSha256,
           Date.now(),
@@ -352,6 +358,7 @@ export class MapCell extends DurableObject<Env> {
         return true;
       });
       if (!committed) continue;
+      this.documentCache = { serialized: documentJson, document: result.document };
       return {
         type: 'operation',
         mapVersion: before.map_version + 1,
@@ -361,7 +368,7 @@ export class MapCell extends DurableObject<Env> {
     }
   }
 
-  private receipt(operationId: string): Extract<ServerFrame, { type: 'ack' }> | null {
+  private receipt(operationId: string): Extract<CollaborationServerFrame, { type: 'ack' }> | null {
     const receipt = this.ctx.storage.sql
       .exec<{ map_version: number; source_sha256: string }>(
         'SELECT map_version,source_sha256 FROM operation_receipts WHERE operation_id = ?',
@@ -396,13 +403,20 @@ export class MapCell extends DurableObject<Env> {
     return {
       mapId: state.map_id,
       mapVersion: state.map_version,
-      document: JSON.parse(state.document_json) as MapDocument,
+      document: this.document(state.document_json),
       source: state.source_text,
       sourceSha256: state.source_sha256,
     };
   }
 
-  private broadcast(frame: ServerFrame, except?: WebSocket): void {
+  private document(serialized: string): MapDocument {
+    if (this.documentCache?.serialized === serialized) return this.documentCache.document;
+    const document = MapDocumentSchema.parse(JSON.parse(serialized));
+    this.documentCache = { serialized, document };
+    return document;
+  }
+
+  private broadcast(frame: CollaborationServerFrame, except?: WebSocket): void {
     const serialized = JSON.stringify(frame);
     for (const socket of this.ctx.getWebSockets()) if (socket !== except) socket.send(serialized);
   }

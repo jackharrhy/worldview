@@ -147,6 +147,14 @@ describe('native compiler planning', () => {
         WORLDVIEW_LAUNCH_MAP_DIRECTORY: '/games/id1/maps',
       }),
     ).toThrow(/absolute paths/);
+    expect(() =>
+      configuredLaunchProfile({
+        WORLDVIEW_LAUNCH_EXECUTABLE: '/games/quake',
+        WORLDVIEW_LAUNCH_WORKING_DIRECTORY: '/games',
+        WORLDVIEW_LAUNCH_MAP_DIRECTORY: '/games/id1/maps',
+        WORLDVIEW_LAUNCH_ARGS_JSON: '["+map", 7]',
+      }),
+    ).toThrow(/JSON array of strings/);
   });
 
   it('enforces loopback origin and configured-profile request boundaries', () => {
@@ -165,35 +173,25 @@ describe('native compiler planning', () => {
     ).toThrow(/Unknown compile profile/);
   });
 
-  it('sanitizes browser requests to data and safe profile identifiers', () => {
-    const compile = parseCompileRequest({
-      mapName: 'test',
-      mapText: '{}',
-      quality: 'final',
-      expectedDocumentRevision: 9,
-      profileId: 'default',
-      executable: '/tmp/untrusted',
-      arguments: ['--delete-everything'],
-    });
-    const launch = parseLaunchRequest({
-      buildId: 'build-1',
-      profileId: 'launch-1',
-      expectedDocumentRevision: 9,
-      executable: '/tmp/untrusted',
-    });
-
-    expect(compile).toEqual({
-      mapName: 'test',
-      mapText: '{}',
-      quality: 'final',
-      expectedDocumentRevision: 9,
-      profileId: 'default',
-    });
-    expect(launch).toEqual({
-      buildId: 'build-1',
-      profileId: 'launch-1',
-      expectedDocumentRevision: 9,
-    });
+  it('rejects unrecognized browser-controlled compiler and launcher fields', () => {
+    expect(() =>
+      parseCompileRequest({
+        mapName: 'test',
+        mapText: '{}',
+        quality: 'final',
+        expectedDocumentRevision: 9,
+        profileId: 'default',
+        executable: '/tmp/untrusted',
+      }),
+    ).toThrow(/invalid compile fields/);
+    expect(() =>
+      parseLaunchRequest({
+        buildId: 'build-1',
+        profileId: 'launch-1',
+        expectedDocumentRevision: 9,
+        executable: '/tmp/untrusted',
+      }),
+    ).toThrow(/invalid launch fields/);
   });
 
   it('rejects oversized map and asset payloads before invoking native tools', () => {

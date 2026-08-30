@@ -5,6 +5,7 @@ import {
   createStarterDocument,
   EditorSession,
   insertBrush,
+  serializeMap,
 } from '@jackharrhy/worldview-editor/core';
 import {
   CollaborationController,
@@ -134,12 +135,24 @@ describe('CollaborationController', () => {
     });
     client.connect();
     listeners.get('message')?.({
-      data: JSON.stringify({ type: 'ready', mapVersion: 0, document: before }),
+      data: JSON.stringify({
+        type: 'ready',
+        mapId: 'room',
+        mapVersion: 0,
+        document: before,
+        source: serializeMap(before),
+        sourceSha256: 'a'.repeat(64),
+      }),
     } as MessageEvent<string>);
     await vi.waitFor(() => expect(finishReconciliation).not.toBeNull());
     expect(sent).toHaveLength(0);
     listeners.get('message')?.({
-      data: JSON.stringify({ type: 'operation', mapVersion: 1, operation: queued }),
+      data: JSON.stringify({
+        type: 'operation',
+        mapVersion: 1,
+        sourceSha256: 'b'.repeat(64),
+        operation: queued,
+      }),
     } as MessageEvent<string>);
     expect(peers).not.toHaveBeenCalled();
     finishReconciliation!();
@@ -151,6 +164,7 @@ describe('CollaborationController', () => {
         type: 'ack',
         mapVersion: 1,
         operationId: queued!.operationId,
+        sourceSha256: 'b'.repeat(64),
       }),
     } as MessageEvent<string>);
     await vi.waitFor(async () => expect(await controller.pending()).toEqual([]));
@@ -192,13 +206,20 @@ describe('CollaborationController', () => {
       controller,
       createSocket: () => socket,
     });
+    const before = createStarterDocument();
     client.connect();
     listeners.get('message')?.({
-      data: JSON.stringify({ type: 'ready', mapVersion: 0, document: null }),
+      data: JSON.stringify({
+        type: 'ready',
+        mapId: 'room',
+        mapVersion: 0,
+        document: before,
+        source: serializeMap(before),
+        sourceSha256: 'a'.repeat(64),
+      }),
     } as MessageEvent<string>);
     await vi.waitFor(() => expect(sent).toHaveLength(0));
 
-    const before = createStarterDocument();
     const ids = createSequentialIdFactory('live');
     const after = insertBrush(
       before,

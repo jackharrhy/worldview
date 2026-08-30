@@ -122,7 +122,7 @@ export function Component() {
             <div className="landing-recent-list">
               {mounts.map((mount) => (
                 <div className="landing-recent" key={String(mount.id)}>
-                  <strong>{String(mount.display_name)}</strong>
+                  <strong>{mount.displayName}</strong>
                   <span>{String(mount.kind)} · pinned by SHA-256</span>
                 </div>
               ))}

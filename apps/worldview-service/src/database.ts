@@ -1,8 +1,28 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  HostedBuildResultSchema,
+  type HostedBuild as HostedBuildRecord,
+  type HostedBuildArtifact,
+  type HostedBuildResult,
+  type HostedProjectAccessUser as ProjectAccessUser,
+  type HostedProjectMap as HostedMapSummary,
+  type HostedProjectSummary as ProjectSummary,
+  type HostedResourceMount,
+  type ProjectRole as ProtocolProjectRole,
+} from '@worldview/protocol';
+import { z } from 'zod';
 import { createHostedId, hostedSlug, isHostedId } from './hosted-identity.js';
 
-export type ProjectRole = 'owner' | 'editor' | 'viewer';
+export type ProjectRole = ProtocolProjectRole;
+export type {
+  HostedBuildArtifact,
+  HostedBuildRecord,
+  HostedBuildResult,
+  HostedMapSummary,
+  ProjectAccessUser,
+  ProjectSummary,
+};
 
 export interface WorldviewUser {
   readonly id: string;
@@ -11,58 +31,6 @@ export interface WorldviewUser {
   readonly displayName: string;
   readonly isAdmin: boolean;
 }
-export interface ProjectSummary {
-  readonly id: string;
-  readonly slug: string;
-  readonly name: string;
-  readonly game: 'quake' | 'goldsrc';
-  readonly role: ProjectRole;
-  readonly updatedAt: number;
-}
-
-export interface HostedMapSummary {
-  readonly id: string;
-  readonly slug: string;
-  readonly name: string;
-  readonly format: 'valve-220' | 'quake';
-  readonly updatedAt: number;
-}
-
-export interface ProjectAccessUser {
-  readonly id: string;
-  readonly username: string;
-  readonly displayName: string;
-  readonly role: ProjectRole | null;
-}
-
-export interface HostedBuildArtifact {
-  readonly name: string;
-  readonly kind: string;
-  readonly mediaType: string;
-  readonly sha256: string;
-  readonly size: number;
-}
-
-export interface HostedBuildResult {
-  readonly error?: string;
-  readonly diagnostics?: readonly unknown[];
-  readonly logs?: readonly unknown[];
-  readonly elapsedMilliseconds?: number;
-  readonly artifacts?: readonly HostedBuildArtifact[];
-}
-
-export interface HostedBuildRecord {
-  readonly id: string;
-  readonly mapVersion: number;
-  readonly profileId: string;
-  readonly quality: 'preview' | 'final';
-  readonly status: 'queued' | 'running' | 'succeeded' | 'failed';
-  readonly sourceSha256: string | null;
-  readonly result: HostedBuildResult | null;
-  readonly createdAt: number;
-  readonly updatedAt: number;
-}
-
 interface SqlBuild {
   id: string;
   map_version: number;
@@ -83,7 +51,7 @@ function hostedBuild(row: SqlBuild): HostedBuildRecord {
     quality: row.quality,
     status: row.status,
     sourceSha256: row.source_sha256,
-    result: row.result_json ? (JSON.parse(row.result_json) as HostedBuildResult) : null,
+    result: row.result_json ? HostedBuildResultSchema.parse(JSON.parse(row.result_json)) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -96,6 +64,19 @@ interface SqlUser {
   display_name: string;
   is_admin: number;
 }
+
+interface SqlResourceMount {
+  readonly id: string;
+  readonly ordinal: number;
+  readonly provider: 'artbin';
+  readonly provider_asset_id: string;
+  readonly expected_sha256: string;
+  readonly kind: string;
+  readonly display_name: string;
+  readonly created_at: number;
+}
+
+const ResourceMetadataSchema = z.record(z.string(), z.unknown());
 
 function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -511,19 +492,30 @@ export class WorldviewDatabase {
   public listResourceMounts(
     projectId: string,
     userId: string,
-  ): readonly Record<string, unknown>[] | null {
+  ): readonly HostedResourceMount[] | null {
     if (!this.role(projectId, userId)) return null;
-    return this.sql
-      .prepare(`SELECT id,ordinal,provider,provider_asset_id,expected_sha256,kind,display_name,metadata_json,created_at
-      FROM resource_mounts WHERE project_id=? ORDER BY ordinal`)
-      .all(projectId) as Record<string, unknown>[];
+    return this.resourceMounts(projectId);
   }
 
-  public listResourceMountsForProject(projectId: string): readonly Record<string, unknown>[] {
-    return this.sql
+  private resourceMounts(projectId: string): readonly HostedResourceMount[] {
+    const rows = this.sql
       .prepare(`SELECT id,ordinal,provider,provider_asset_id,expected_sha256,kind,display_name,metadata_json,created_at
       FROM resource_mounts WHERE project_id=? ORDER BY ordinal`)
-      .all(projectId) as Record<string, unknown>[];
+      .all(projectId) as unknown as SqlResourceMount[];
+    return rows.map((row) => ({
+      id: row.id,
+      ordinal: row.ordinal,
+      provider: row.provider,
+      providerAssetId: row.provider_asset_id,
+      expectedSha256: row.expected_sha256,
+      kind: row.kind,
+      displayName: row.display_name,
+      createdAt: row.created_at,
+    }));
+  }
+
+  public listResourceMountsForProject(projectId: string): readonly HostedResourceMount[] {
+    return this.resourceMounts(projectId);
   }
 
   public createResourceMount(input: {
@@ -534,7 +526,7 @@ export class WorldviewDatabase {
     kind: string;
     displayName: string;
     metadata: unknown;
-  }): Record<string, unknown> | null {
+  }): HostedResourceMount | null {
     const role = this.role(input.projectId, input.userId);
     if (role !== 'owner') return null;
     const id = randomUUID();
@@ -604,7 +596,7 @@ export class WorldviewDatabase {
           expectedSha256: row.expected_sha256,
           kind: row.kind,
           displayName: row.display_name,
-          metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
+          metadata: ResourceMetadataSchema.parse(JSON.parse(row.metadata_json)),
         }
       : null;
   }
@@ -635,7 +627,7 @@ export class WorldviewDatabase {
           expectedSha256: row.expected_sha256,
           kind: row.kind,
           displayName: row.display_name,
-          metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
+          metadata: ResourceMetadataSchema.parse(JSON.parse(row.metadata_json)),
         }
       : null;
   }
@@ -646,7 +638,7 @@ export class WorldviewDatabase {
     mapVersion: number;
     profileId: string;
     quality: 'preview' | 'final';
-  }): { id: string; createdAt: number } {
+  }): HostedBuildRecord {
     const id = randomUUID();
     const createdAt = Date.now();
     this.sql
@@ -662,7 +654,17 @@ export class WorldviewDatabase {
         createdAt,
         createdAt,
       );
-    return { id, createdAt };
+    return {
+      id,
+      mapVersion: input.mapVersion,
+      profileId: input.profileId,
+      quality: input.quality,
+      status: 'queued',
+      sourceSha256: null,
+      result: null,
+      createdAt,
+      updatedAt: createdAt,
+    };
   }
 
   public buildAdmission(

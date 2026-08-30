@@ -1,4 +1,8 @@
 export { MapCell } from './map-cell.js';
+import {
+  MapCellCheckpointRequestSchema,
+  MapCellInitializeRequestSchema,
+} from '@worldview/protocol';
 import { verifyHostedRealtimeTicket } from './realtime-ticket.js';
 
 type MapAction = 'snapshot' | 'live' | 'initialize' | 'checkpoints';
@@ -54,11 +58,13 @@ export default {
       url.searchParams.set('role', ticket.role);
       const stub = env.MAP_CELLS.getByName(route.mapId);
       if (request.method === 'PUT' && route.action === 'initialize') {
-        const input = (await request.json()) as { source?: unknown };
-        if (typeof input.source !== 'string') {
+        const input = MapCellInitializeRequestSchema.safeParse(
+          await request.json().catch(() => null),
+        );
+        if (!input.success) {
           return json({ error: 'Map source is required' }, { status: 400 });
         }
-        return json(await stub.initialize(route.mapId, input.source));
+        return json(await stub.initialize(route.mapId, input.data.source));
       }
       if (request.method === 'GET' && route.action === 'snapshot') {
         return json(await stub.snapshot(route.mapId));
@@ -67,11 +73,13 @@ export default {
         return json({ checkpoints: await stub.listCheckpoints() });
       }
       if (request.method === 'POST' && route.action === 'checkpoints') {
-        const input = (await request.json()) as { name?: unknown };
-        if (typeof input.name !== 'string' || !input.name.trim()) {
+        const input = MapCellCheckpointRequestSchema.safeParse(
+          await request.json().catch(() => null),
+        );
+        if (!input.success) {
           return json({ error: 'Checkpoint name is required' }, { status: 400 });
         }
-        return json({ checkpoint: await stub.createCheckpoint(ticket.actorId, input.name.trim()) });
+        return json({ checkpoint: await stub.createCheckpoint(ticket.actorId, input.data.name) });
       }
       if (route.action !== 'live') return json({ error: 'Not found' }, { status: 404 });
       url.searchParams.set('map', route.mapId);

@@ -1,7 +1,13 @@
 import { readFile } from 'node:fs/promises';
 
 const configPath = new URL('../apps/collaboration-service/wrangler.jsonc', import.meta.url);
-const workerPath = new URL('../apps/collaboration-service/src/', import.meta.url);
+const sourcePaths = [
+  '../apps/collaboration-service/src/index.ts',
+  '../apps/collaboration-service/src/map-cell.ts',
+  '../apps/collaboration-service/src/realtime-ticket.ts',
+  '../packages/worldview-protocol/src/collaboration.ts',
+  '../packages/worldview-protocol/src/realtime-ticket.ts',
+];
 const configSource = await readFile(configPath, 'utf8');
 const config = JSON.parse(configSource.replace(/,\s*([}\]])/g, '$1'));
 const supportedKeys = new Set([
@@ -31,9 +37,7 @@ if (!migrations.some((migration) => migration.new_sqlite_classes?.includes('MapC
   throw new Error('celld SQLite MapCell migration is missing');
 }
 const sources = await Promise.all(
-  ['index.ts', 'map-cell.ts', 'protocol.ts'].map((file) =>
-    readFile(new URL(file, workerPath), 'utf8'),
-  ),
+  sourcePaths.map((sourcePath) => readFile(new URL(sourcePath, import.meta.url), 'utf8')),
 );
 const unsupportedRuntimeBindings = ['KVNamespace', 'R2Bucket', 'Queue<', 'WorkflowEntrypoint'];
 for (const binding of unsupportedRuntimeBindings) {

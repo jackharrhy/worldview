@@ -2,36 +2,18 @@ import type {
   MapBuildCapabilities,
   MapBuildService,
   MapCompileArtifact,
-  MapCompileDiagnostic,
-  MapCompileLog,
   MapCompileRequest,
   MapCompileResult,
   MapLaunchRequest,
   MapLaunchResult,
   WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor';
-
-type BuildStatus = 'queued' | 'running' | 'succeeded' | 'failed';
-
-interface HostedArtifact {
-  readonly name: string;
-  readonly kind: MapCompileArtifact['kind'];
-  readonly mediaType: string;
-  readonly sha256: string;
-}
-
-interface HostedBuild {
-  readonly id: string;
-  readonly mapVersion: number;
-  readonly status: BuildStatus;
-  readonly result: {
-    readonly error?: string;
-    readonly diagnostics?: readonly MapCompileDiagnostic[];
-    readonly logs?: readonly MapCompileLog[];
-    readonly elapsedMilliseconds?: number;
-    readonly artifacts?: readonly HostedArtifact[];
-  } | null;
-}
+import {
+  HostedBuildCreatedResponseSchema,
+  HostedBuildsResponseSchema,
+  HostedErrorResponseSchema,
+} from '@worldview/protocol';
+import type { z } from 'zod';
 
 interface HostedMapBuildServiceOptions {
   readonly mapId: string;
@@ -41,16 +23,15 @@ interface HostedMapBuildServiceOptions {
   readonly timeoutMilliseconds?: number;
 }
 
-async function responseJson<T>(response: Response): Promise<T> {
-  const payload = (await response.json().catch(() => null)) as ({ error?: unknown } & T) | null;
-  if (!response.ok)
-    throw new Error(
-      typeof payload?.error === 'string'
-        ? payload.error
-        : `Build request failed (${response.status})`,
-    );
-  if (!payload) throw new Error('Build service returned an empty response');
-  return payload;
+async function responseJson<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = HostedErrorResponseSchema.safeParse(payload);
+    throw new Error(error.success ? error.data.error : `Build request failed (${response.status})`);
+  }
+  const result = schema.safeParse(payload);
+  if (!result.success) throw new Error('Build service returned an invalid response');
+  return result.data;
 }
 
 function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -81,11 +62,12 @@ export class HostedMapBuildService implements MapBuildService {
   }
 
   public async capabilities(signal?: AbortSignal): Promise<MapBuildCapabilities> {
-    const response = await responseJson<{ capability: { profileId: string } | null }>(
+    const response = await responseJson(
       await this.fetch(this.endpoint(), {
         credentials: 'same-origin',
         signal: signal ?? null,
       }),
+      HostedBuildsResponseSchema,
     );
     return {
       protocolVersion: 1,
@@ -109,7 +91,7 @@ export class HostedMapBuildService implements MapBuildService {
 
   public async compile(request: MapCompileRequest): Promise<MapCompileResult> {
     const endpoint = this.endpoint();
-    const created = await responseJson<{ build: HostedBuild }>(
+    const created = await responseJson(
       await this.fetch(endpoint, {
         method: 'POST',
         credentials: 'same-origin',
@@ -120,17 +102,19 @@ export class HostedMapBuildService implements MapBuildService {
         }),
         signal: request.signal ?? null,
       }),
+      HostedBuildCreatedResponseSchema,
     );
     const deadline = Date.now() + this.timeoutMilliseconds;
     let build = created.build;
     while (build.status === 'queued' || build.status === 'running') {
       if (Date.now() >= deadline) throw new Error('Hosted build timed out');
       await delay(this.pollIntervalMilliseconds, request.signal);
-      const listed = await responseJson<{ builds: readonly HostedBuild[] }>(
+      const listed = await responseJson(
         await this.fetch(endpoint, {
           credentials: 'same-origin',
           signal: request.signal ?? null,
         }),
+        HostedBuildsResponseSchema,
       );
       const current = listed.builds.find(({ id }) => id === build.id);
       if (!current) throw new Error('Hosted build disappeared from build history');

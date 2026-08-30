@@ -1,4 +1,11 @@
-import type { IdFactory, MapDocument, MapSourceState } from '@jackharrhy/worldview-editor/core';
+import {
+  MapDocumentSchema,
+  MapSourceStateSchema,
+  type IdFactory,
+  type MapDocument,
+  type MapSourceState,
+} from '@jackharrhy/worldview-editor/core';
+import { z } from 'zod';
 
 const DATABASE_NAME = 'worldview-editor-recovery';
 const DATABASE_VERSION = 1;
@@ -19,6 +26,19 @@ export interface DocumentRecoverySnapshot {
   readonly label: string;
   readonly protected: boolean;
 }
+
+export const DocumentRecoverySnapshotSchema = z.strictObject({
+  version: z.literal(1),
+  snapshotId: z.string().min(1).max(4_096),
+  documentKey: z.string().min(1).max(4_096),
+  fileName: z.string().min(1).max(4_096),
+  document: MapDocumentSchema,
+  source: MapSourceStateSchema,
+  savedDocumentRevision: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+  label: z.string().max(4_096),
+  protected: z.boolean(),
+}) satisfies z.ZodType<DocumentRecoverySnapshot>;
 
 export interface DocumentRecoveryStorage {
   load(documentKey: string): Promise<DocumentRecoverySnapshot | null>;
@@ -127,23 +147,6 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-function isSnapshot(value: unknown): value is DocumentRecoverySnapshot {
-  if (!value || typeof value !== 'object') return false;
-  const snapshot = value as Partial<DocumentRecoverySnapshot>;
-  return (
-    snapshot.version === 1 &&
-    typeof snapshot.snapshotId === 'string' &&
-    typeof snapshot.documentKey === 'string' &&
-    typeof snapshot.fileName === 'string' &&
-    typeof snapshot.savedDocumentRevision === 'number' &&
-    typeof snapshot.updatedAt === 'number' &&
-    typeof snapshot.label === 'string' &&
-    typeof snapshot.protected === 'boolean' &&
-    Boolean(snapshot.document) &&
-    Boolean(snapshot.source)
-  );
-}
-
 export class IndexedDbDocumentRecoveryStorage implements DocumentRecoveryStorage {
   public async load(documentKey: string): Promise<DocumentRecoverySnapshot | null> {
     const database = await openDatabase();
@@ -152,7 +155,8 @@ export class IndexedDbDocumentRecoveryStorage implements DocumentRecoveryStorage
       const value: unknown = await requestResult(
         transaction.objectStore(LATEST_STORE).get(documentKey),
       );
-      return isSnapshot(value) ? value : null;
+      const snapshot = DocumentRecoverySnapshotSchema.safeParse(value);
+      return snapshot.success ? snapshot.data : null;
     } finally {
       database.close();
     }
@@ -177,7 +181,12 @@ export class IndexedDbDocumentRecoveryStorage implements DocumentRecoveryStorage
       const values: unknown[] = await requestResult(
         transaction.objectStore(HISTORY_STORE).index('documentKey').getAll(documentKey),
       );
-      return values.filter(isSnapshot).toSorted((left, right) => right.updatedAt - left.updatedAt);
+      return values
+        .flatMap((value) => {
+          const snapshot = DocumentRecoverySnapshotSchema.safeParse(value);
+          return snapshot.success ? [snapshot.data] : [];
+        })
+        .toSorted((left, right) => right.updatedAt - left.updatedAt);
     } finally {
       database.close();
     }

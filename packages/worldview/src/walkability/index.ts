@@ -12,6 +12,7 @@ export {
   assertWalkabilityCompatible,
   parseWalkability,
   serializeWalkability,
+  WalkabilityMapSchema,
 } from './serialization.js';
 export {
   WALKABILITY_FORMAT,

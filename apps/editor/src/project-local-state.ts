@@ -1,4 +1,5 @@
 import type { EditorDirectoryHandle } from './project-workspace.js';
+import { z } from 'zod';
 
 const DATABASE_NAME = 'worldview-editor-local-projects';
 const DATABASE_VERSION = 2;
@@ -11,9 +12,31 @@ export interface LocalProjectState {
   readonly displayName: string;
   readonly handle: EditorDirectoryHandle;
   readonly buildBindings: Readonly<Record<string, string>>;
-  readonly lastMapPath?: string;
+  readonly lastMapPath?: string | undefined;
   readonly updatedAt: number;
 }
+
+const DirectoryHandleSchema = z.custom<EditorDirectoryHandle>(
+  (value) =>
+    typeof value === 'object' &&
+    value !== null &&
+    'kind' in value &&
+    value.kind === 'directory' &&
+    'name' in value &&
+    typeof value.name === 'string',
+  { error: 'must be a directory handle' },
+);
+
+export const LocalProjectStateSchema = z.strictObject({
+  version: z.literal(2),
+  workspaceId: z.string().min(1).max(256),
+  projectKey: z.string().min(1).max(4_096),
+  displayName: z.string().min(1).max(4_096),
+  handle: DirectoryHandleSchema,
+  buildBindings: z.record(z.string().max(256), z.string().max(256)),
+  lastMapPath: z.string().min(1).max(4_096).optional(),
+  updatedAt: z.number().int().nonnegative(),
+}) satisfies z.ZodType<LocalProjectState>;
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -45,30 +68,9 @@ function transactionComplete(transaction: IDBTransaction): Promise<void> {
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.addEventListener('upgradeneeded', (event) => {
+    request.addEventListener('upgradeneeded', () => {
       if (!request.result.objectStoreNames.contains(PROJECT_STORE)) {
         request.result.createObjectStore(PROJECT_STORE, { keyPath: 'projectKey' });
-      } else if ((event as IDBVersionChangeEvent).oldVersion < 2 && request.transaction) {
-        const cursorRequest = request.transaction.objectStore(PROJECT_STORE).openCursor();
-        cursorRequest.addEventListener('success', () => {
-          const cursor = cursorRequest.result;
-          if (!cursor) return;
-          const previous = cursor.value as {
-            readonly projectKey: string;
-            readonly handle: EditorDirectoryHandle;
-            readonly buildBindings?: Readonly<Record<string, string>>;
-            readonly updatedAt?: number;
-          };
-          cursor.update({
-            ...previous,
-            version: 2,
-            workspaceId: crypto.randomUUID(),
-            displayName: previous.handle.name,
-            buildBindings: previous.buildBindings ?? {},
-            updatedAt: previous.updatedAt ?? Date.now(),
-          });
-          cursor.continue();
-        });
       }
     });
     request.addEventListener('success', () => resolve(request.result), { once: true });
@@ -78,20 +80,6 @@ function openDatabase(): Promise<IDBDatabase> {
       { once: true },
     );
   });
-}
-
-function isLocalProjectState(value: unknown): value is LocalProjectState {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<LocalProjectState>;
-  return (
-    candidate.version === 2 &&
-    typeof candidate.workspaceId === 'string' &&
-    typeof candidate.projectKey === 'string' &&
-    typeof candidate.displayName === 'string' &&
-    candidate.handle?.kind === 'directory' &&
-    Boolean(candidate.buildBindings) &&
-    typeof candidate.updatedAt === 'number'
-  );
 }
 
 export interface ProjectLocalStateStorage {
@@ -108,7 +96,8 @@ export class IndexedDbProjectLocalStateStorage implements ProjectLocalStateStora
       const value: unknown = await requestResult(
         transaction.objectStore(PROJECT_STORE).get(projectKey),
       );
-      return isLocalProjectState(value) ? value : null;
+      const state = LocalProjectStateSchema.safeParse(value);
+      return state.success ? state.data : null;
     } finally {
       database.close();
     }
@@ -122,7 +111,10 @@ export class IndexedDbProjectLocalStateStorage implements ProjectLocalStateStora
         transaction.objectStore(PROJECT_STORE).getAll(),
       );
       return values
-        .filter(isLocalProjectState)
+        .flatMap((value) => {
+          const state = LocalProjectStateSchema.safeParse(value);
+          return state.success ? [state.data] : [];
+        })
         .toSorted((left, right) => right.updatedAt - left.updatedAt);
     } finally {
       database.close();

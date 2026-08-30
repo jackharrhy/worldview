@@ -4,8 +4,25 @@ import { HostedMapBuildService } from '../src/hosted-map-build-service.js';
 const enabledCapabilityFetch: typeof fetch = async function (this: unknown) {
   // Native browser fetch requires the Window receiver; keep this production regression covered.
   expect(this).toBe(globalThis);
-  return Response.json({ capability: { profileId: 'default' } });
+  return Response.json({ builds: [], capability: { profileId: 'default' } });
 };
+
+function build(
+  status: 'queued' | 'running' | 'succeeded',
+  result: Record<string, unknown> | null = null,
+) {
+  return {
+    id: 'build-1',
+    mapVersion: 4,
+    profileId: 'default',
+    quality: 'preview',
+    status,
+    sourceSha256: status === 'queued' ? null : 'b'.repeat(64),
+    result,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
 
 describe('HostedMapBuildService', () => {
   test('advertises only compiler profiles enabled by the host', async () => {
@@ -17,7 +34,7 @@ describe('HostedMapBuildService', () => {
     const disabled = new HostedMapBuildService({
       mapId: 'map-2',
       game: 'goldsrc',
-      fetch: async () => Response.json({ capability: null }),
+      fetch: async () => Response.json({ builds: [], capability: null }),
     });
     await expect(enabled.capabilities()).resolves.toMatchObject({
       compileProfiles: [{ id: 'default', game: 'quake' }],
@@ -31,35 +48,29 @@ describe('HostedMapBuildService', () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input);
       if (init?.method === 'POST')
-        return Response.json(
-          { build: { id: 'build-1', mapVersion: 4, status: 'queued', result: null } },
-          { status: 202 },
-        );
+        return Response.json({ build: build('queued') }, { status: 202 });
       if (url.endsWith(`/artifacts/${'a'.repeat(64)}`)) return new Response(bsp);
       polls += 1;
       return Response.json({
         builds: [
           polls === 1
-            ? { id: 'build-1', mapVersion: 4, status: 'running', result: null }
-            : {
-                id: 'build-1',
-                mapVersion: 4,
-                status: 'succeeded',
-                result: {
-                  diagnostics: [],
-                  logs: [{ stage: 'qbsp', text: 'built', truncated: false }],
-                  elapsedMilliseconds: 12,
-                  artifacts: [
-                    {
-                      name: 'room.bsp',
-                      kind: 'bsp',
-                      mediaType: 'application/octet-stream',
-                      sha256: 'a'.repeat(64),
-                    },
-                  ],
-                },
-              },
+            ? build('running')
+            : build('succeeded', {
+                diagnostics: [],
+                logs: [{ stage: 'qbsp', text: 'built', truncated: false }],
+                elapsedMilliseconds: 12,
+                artifacts: [
+                  {
+                    name: 'room.bsp',
+                    kind: 'bsp',
+                    mediaType: 'application/octet-stream',
+                    sha256: 'a'.repeat(64),
+                    size: 4,
+                  },
+                ],
+              }),
         ],
+        capability: { profileId: 'default' },
       });
     });
     const service = new HostedMapBuildService({

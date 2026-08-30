@@ -3,8 +3,10 @@ import { deriveBrush } from './geometry.js';
 import { deriveEditorGroups, isEditorGroupEntity } from './groups.js';
 import { isEditorLayerEntity } from './layers.js';
 import { pointEntityBounds } from './point-entities.js';
+import { Vec2Schema, Vec3Schema } from './runtime-schemas.js';
 import { selectedBrushIds, selectedPointEntityIds } from './selection.js';
 import { serializeMap } from './map-serializer.js';
+import { z } from 'zod';
 import type {
   Bounds,
   EditorSelection,
@@ -33,89 +35,55 @@ function clonedVec3(value: Vec3): Vec3 {
   return [value[0], value[1], value[2]];
 }
 
-function finiteTuple(candidate: unknown, length: number, label: string): readonly number[] {
-  if (
-    !Array.isArray(candidate) ||
-    candidate.length !== length ||
-    !candidate.every((component) => typeof component === 'number' && Number.isFinite(component))
-  ) {
-    throw new Error(`${label} must contain ${length} finite numbers`);
-  }
-  return [...candidate];
-}
-
-function finiteVec2(candidate: unknown, label: string): readonly [number, number] {
-  const values = finiteTuple(candidate, 2, label);
-  return [values[0]!, values[1]!];
-}
-
-function finiteVec3(candidate: unknown, label: string): Vec3 {
-  const values = finiteTuple(candidate, 3, label);
-  return [values[0]!, values[1]!, values[2]!];
-}
+const FaceAttributeClipboardSchema = z.strictObject({
+  type: z.literal('worldview-face-attributes'),
+  version: z.literal(1),
+  material: z.string().refine((material) => material.trim().length > 0, {
+    message: 'material must be a non-empty string',
+  }),
+  planePoints: z.tuple([Vec3Schema, Vec3Schema, Vec3Schema]),
+  projection: z.strictObject({
+    kind: z.enum(['axial', 'valve-220']),
+    uAxis: Vec3Schema,
+    vAxis: Vec3Schema,
+    offset: Vec2Schema,
+    rotationDegrees: z.number().finite(),
+    scale: Vec2Schema.refine(
+      (scale) => scale.every((component) => Math.abs(component) > Number.EPSILON),
+      { message: 'scale components must be non-zero' },
+    ),
+  }),
+  surface: z.strictObject({
+    flags: z.number().finite().optional(),
+    value: z.number().finite().optional(),
+  }),
+});
 
 function faceAttributeClipboardFromUnknown(value: unknown): FaceAttributeClipboard {
-  if (!value || typeof value !== 'object')
-    throw new Error('Face attribute payload must be an object');
-  const record = value as Record<string, unknown>;
-  if (record.type !== 'worldview-face-attributes' || record.version !== 1) {
-    throw new Error('Unsupported face attribute clipboard payload');
+  const result = FaceAttributeClipboardSchema.safeParse(value);
+  if (!result.success) {
+    const issue = result.error.issues[0]!;
+    const path = issue.path.length > 0 ? ` at ${issue.path.join('.')}` : '';
+    throw new Error(`Face attribute clipboard payload is invalid${path}: ${issue.message}`);
   }
-  if (typeof record.material !== 'string' || record.material.trim().length === 0) {
-    throw new Error('Face attribute material must be a non-empty string');
-  }
-  if (!Array.isArray(record.planePoints) || record.planePoints.length !== 3) {
-    throw new Error('Face attribute plane must contain three points');
-  }
-  const planePoints: readonly [Vec3, Vec3, Vec3] = [
-    finiteVec3(record.planePoints[0], 'Face attribute plane point 1'),
-    finiteVec3(record.planePoints[1], 'Face attribute plane point 2'),
-    finiteVec3(record.planePoints[2], 'Face attribute plane point 3'),
-  ];
-  if (!record.projection || typeof record.projection !== 'object') {
-    throw new Error('Face attribute projection must be an object');
-  }
-  const projectionRecord = record.projection as Record<string, unknown>;
-  const uAxis = finiteVec3(projectionRecord.uAxis, 'Face attribute U axis');
-  const vAxis = finiteVec3(projectionRecord.vAxis, 'Face attribute V axis');
-  const offset = finiteVec2(projectionRecord.offset, 'Face attribute offset');
-  const scale = finiteVec2(projectionRecord.scale, 'Face attribute scale');
-  if (scale.some((component) => Math.abs(component) <= Number.EPSILON)) {
-    throw new Error('Face attribute scale must be non-zero');
-  }
-  if (
-    typeof projectionRecord.rotationDegrees !== 'number' ||
-    !Number.isFinite(projectionRecord.rotationDegrees)
-  ) {
-    throw new Error('Face attribute rotation must be finite');
-  }
-  const surfaceRecord =
-    record.surface && typeof record.surface === 'object'
-      ? (record.surface as Record<string, unknown>)
-      : {};
-  const surface: { flags?: number; value?: number } = {};
-  for (const key of ['flags', 'value'] as const) {
-    const component = surfaceRecord[key];
-    if (component === undefined) continue;
-    if (typeof component !== 'number' || !Number.isFinite(component)) {
-      throw new Error(`Face attribute ${key} must be finite`);
-    }
-    surface[key] = component;
-  }
+  const payload = result.data;
   return {
     type: 'worldview-face-attributes',
     version: 1,
-    material: record.material,
-    planePoints,
+    material: payload.material,
+    planePoints: payload.planePoints,
     projection: {
       kind: 'valve-220',
-      uAxis,
-      vAxis,
-      offset,
-      rotationDegrees: projectionRecord.rotationDegrees,
-      scale,
+      uAxis: payload.projection.uAxis,
+      vAxis: payload.projection.vAxis,
+      offset: payload.projection.offset,
+      rotationDegrees: payload.projection.rotationDegrees,
+      scale: payload.projection.scale,
     },
-    surface,
+    surface: {
+      ...(payload.surface.flags === undefined ? {} : { flags: payload.surface.flags }),
+      ...(payload.surface.value === undefined ? {} : { value: payload.surface.value }),
+    },
   };
 }
 

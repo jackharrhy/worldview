@@ -68,3 +68,10 @@ Unicode-aware decorative URL slugs. Their package distributions retain their lic
   copyright Sindre Sorhus.
 - [`escape-string-regexp`](https://github.com/sindresorhus/escape-string-regexp) 5.0.0,
   copyright Sindre Sorhus.
+
+## Runtime schema validation
+
+Worldview uses [`zod`](https://github.com/colinhacks/zod) 4.4.3 for declarative runtime schemas at
+browser, persistence, package, and service trust boundaries. Zod is distributed under the MIT
+License; its package distribution retains the license text. Copyright Colin McDonnell and
+contributors.
