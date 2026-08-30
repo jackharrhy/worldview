@@ -1,4 +1,5 @@
-import type { MapCompileResult } from '@jackharrhy/worldview-editor/core';
+import { MapCompileResultSchema, type MapCompileResult } from '@jackharrhy/worldview-editor/core';
+import { z } from 'zod';
 
 const DATABASE_NAME = 'worldview-editor-builds';
 const DATABASE_VERSION = 1;
@@ -12,6 +13,14 @@ export interface MapBuildHistoryRecord {
   readonly createdAt: number;
   readonly result: MapCompileResult;
 }
+
+export const MapBuildHistoryRecordSchema = z.strictObject({
+  version: z.literal(1),
+  buildId: z.string().min(1).max(256),
+  mapKey: z.string().min(1).max(4_096),
+  createdAt: z.number().int().nonnegative(),
+  result: MapCompileResultSchema,
+}) satisfies z.ZodType<MapBuildHistoryRecord>;
 
 export interface MapBuildHistoryStorage {
   save(record: MapBuildHistoryRecord): Promise<void>;
@@ -63,18 +72,6 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-function buildRecord(value: unknown): value is MapBuildHistoryRecord {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<MapBuildHistoryRecord>;
-  return (
-    candidate.version === 1 &&
-    typeof candidate.buildId === 'string' &&
-    typeof candidate.mapKey === 'string' &&
-    typeof candidate.createdAt === 'number' &&
-    Boolean(candidate.result)
-  );
-}
-
 export class IndexedDbMapBuildHistoryStorage implements MapBuildHistoryStorage {
   public async save(record: MapBuildHistoryRecord): Promise<void> {
     const database = await openDatabase();
@@ -94,7 +91,12 @@ export class IndexedDbMapBuildHistoryStorage implements MapBuildHistoryStorage {
       const values: unknown[] = await requestResult(
         transaction.objectStore(BUILD_STORE).index('mapKey').getAll(mapKey),
       );
-      return values.filter(buildRecord).toSorted((left, right) => right.createdAt - left.createdAt);
+      return values
+        .flatMap((value) => {
+          const record = MapBuildHistoryRecordSchema.safeParse(value);
+          return record.success ? [record.data] : [];
+        })
+        .toSorted((left, right) => right.createdAt - left.createdAt);
     } finally {
       database.close();
     }

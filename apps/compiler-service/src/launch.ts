@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
+import { z } from 'zod';
 
 import { parseCompilerGameProfile, safeMapName, type CompilerGameProfile } from './compiler.js';
 
@@ -29,6 +30,8 @@ export interface NativeLaunchResult {
   readonly launchedAt: number;
 }
 
+const LaunchArgumentsSchema = z.array(z.string().max(4_096)).max(256);
+
 export function configuredLaunchProfile(environment: NodeJS.ProcessEnv): NativeLaunchConfig | null {
   const executable = environment.WORLDVIEW_LAUNCH_EXECUTABLE?.trim();
   const workingDirectory = environment.WORLDVIEW_LAUNCH_WORKING_DIRECTORY?.trim();
@@ -38,8 +41,14 @@ export function configuredLaunchProfile(environment: NodeJS.ProcessEnv): NativeL
     throw new Error('Configured launch executable and directories must be absolute paths');
   }
   const rawArguments = environment.WORLDVIEW_LAUNCH_ARGS_JSON ?? '[]';
-  const argumentsValue: unknown = JSON.parse(rawArguments);
-  if (!Array.isArray(argumentsValue) || argumentsValue.some((value) => typeof value !== 'string')) {
+  let rawArgumentsValue: unknown;
+  try {
+    rawArgumentsValue = JSON.parse(rawArguments);
+  } catch {
+    throw new Error('WORLDVIEW_LAUNCH_ARGS_JSON must be a JSON array of strings');
+  }
+  const argumentsValue = LaunchArgumentsSchema.safeParse(rawArgumentsValue);
+  if (!argumentsValue.success) {
     throw new Error('WORLDVIEW_LAUNCH_ARGS_JSON must be a JSON array of strings');
   }
   return {
@@ -47,7 +56,7 @@ export function configuredLaunchProfile(environment: NodeJS.ProcessEnv): NativeL
     label: environment.WORLDVIEW_LAUNCH_PROFILE_LABEL?.trim() || 'Local game',
     game: parseCompilerGameProfile(environment.WORLDVIEW_GAME_PROFILE),
     executable,
-    arguments: argumentsValue,
+    arguments: argumentsValue.data,
     workingDirectory,
     mapDirectory,
   };

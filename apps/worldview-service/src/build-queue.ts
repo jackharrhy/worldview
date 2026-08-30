@@ -1,13 +1,26 @@
 import type { BlobStore } from './blob-store.js';
 import type { WorldviewDatabase } from './database.js';
+import { MapCompileDiagnosticSchema, MapCompileLogSchema } from '@worldview/protocol';
+import { z } from 'zod';
 
-interface NativeResult {
-  readonly status: 'succeeded' | 'failed';
-  readonly diagnostics: readonly unknown[];
-  readonly logs: readonly unknown[];
-  readonly elapsedMilliseconds: number;
-  readonly artifacts: readonly { name: string; kind: string; mediaType: string; base64: string }[];
-}
+const NativeResultSchema = z.strictObject({
+  status: z.enum(['succeeded', 'failed']),
+  diagnostics: z.array(MapCompileDiagnosticSchema).max(10_000),
+  logs: z.array(MapCompileLogSchema).max(1_000),
+  elapsedMilliseconds: z.number().finite().nonnegative(),
+  artifacts: z
+    .array(
+      z.strictObject({
+        name: z.string().min(1).max(4_096),
+        kind: z.enum(['bsp', 'portal', 'leak-path', 'log', 'other']),
+        mediaType: z.string().min(1).max(256),
+        base64: z.string(),
+        stage: z.string().min(1).max(256).optional(),
+      }),
+    )
+    .max(1_000),
+});
+const NativeErrorSchema = z.strictObject({ error: z.string().max(16_384).optional() });
 
 export class RemoteBuildQueue {
   private readonly pending: (() => Promise<void>)[] = [];
@@ -59,15 +72,17 @@ export class RemoteBuildQueue {
           }),
           signal: AbortSignal.timeout(190_000),
         });
-        const result = (await response.json()) as NativeResult | { error?: unknown };
-        if (!response.ok || !('status' in result)) {
-          const detail = 'error' in result ? result.error : null;
+        const payload: unknown = await response.json().catch(() => null);
+        const result = NativeResultSchema.safeParse(payload);
+        if (!response.ok || !result.success) {
+          const error = NativeErrorSchema.safeParse(payload);
+          const detail = error.success ? error.data.error : null;
           throw new Error(
             typeof detail === 'string' ? detail : `Build worker failed (${response.status})`,
           );
         }
         const artifacts = [];
-        for (const artifact of result.artifacts) {
+        for (const artifact of result.data.artifacts) {
           const blob = await this.blobs.put(Buffer.from(artifact.base64, 'base64'));
           artifacts.push({
             name: artifact.name,
@@ -79,11 +94,11 @@ export class RemoteBuildQueue {
         }
         this.database.updateBuild(
           input.id,
-          result.status,
+          result.data.status,
           {
-            diagnostics: result.diagnostics,
-            logs: result.logs,
-            elapsedMilliseconds: result.elapsedMilliseconds,
+            diagnostics: result.data.diagnostics,
+            logs: result.data.logs,
+            elapsedMilliseconds: result.data.elapsedMilliseconds,
             artifacts,
           },
           input.sourceSha256,

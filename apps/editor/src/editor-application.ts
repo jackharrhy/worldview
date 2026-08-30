@@ -30,6 +30,7 @@ import {
   type CollaborationOperation,
   type MapDocument,
 } from '@jackharrhy/worldview-editor/core';
+import { HostedMapSnapshotSchema } from '@worldview/protocol';
 
 const COLLABORATOR_RENDER_COLORS: Readonly<Record<string, readonly [number, number, number]>> = {
   red: [0.95, 0.2, 0.18],
@@ -302,12 +303,7 @@ export class EditorApplication implements EditorStateHost {
       signal,
     });
     if (!snapshotResponse.ok) throw new Error(`Cannot inspect room (${snapshotResponse.status})`);
-    const snapshot = (await snapshotResponse.json()) as {
-      readonly mapVersion: number;
-      readonly document: MapDocument;
-      readonly source: string;
-      readonly sourceSha256: string;
-    };
+    const snapshot = HostedMapSnapshotSchema.parse(await snapshotResponse.json());
     signal.throwIfAborted();
     this.state.session.replaceDocument(snapshot.document, `Open hosted map ${options.mapId}`);
     this.state.currentMapSource = rebaseMapSource(snapshot.document, snapshot.source);

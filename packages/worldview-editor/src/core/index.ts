@@ -40,6 +40,29 @@ export {
   type CollaborationSimulationResult,
 } from './collaboration.js';
 export {
+  BrushIdSchema,
+  CollaborationEditSchema,
+  CollaborationFailureSchema,
+  CollaborationOperationSchema,
+  DocumentIdSchema,
+  EntityIdSchema,
+  FaceIdSchema,
+  MapBrushDefSchema,
+  MapBrushSchema,
+  MapCompileDiagnosticSchema,
+  MapCompileLogSchema,
+  MapCompileResultSchema,
+  MapDocumentSchema,
+  MapEntitySchema,
+  MapFaceSchema,
+  MapPatchSchema,
+  MapSourceDiagnosticSchema,
+  MapSourceStateSchema,
+  PrimitiveIdSchema,
+  Vec2Schema,
+  Vec3Schema,
+} from './runtime-schemas.js';
+export {
   BoundsSpatialIndex,
   type BoundsSpatialEntry,
   type SpatialRayHit,
@@ -302,6 +325,7 @@ export type {
   ParsedMapSource,
 } from './map-source-types.js';
 export {
+  WorldviewProjectManifestSchema,
   parseWorldviewProject,
   serializeWorldviewProject,
   WorldviewProjectParseError,

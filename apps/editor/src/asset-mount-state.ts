@@ -3,6 +3,7 @@ import {
   type AssetMountDescriptor,
   type WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor/core';
+import { z } from 'zod';
 
 const DATABASE_NAME = 'worldview-editor-asset-mounts';
 const DATABASE_VERSION = 1;
@@ -10,8 +11,33 @@ const STORE = 'mounts';
 
 export type StoredAssetMount = AssetMountDescriptor & {
   readonly scopeId: string;
-  readonly data?: ArrayBuffer;
+  readonly data?: ArrayBuffer | undefined;
 };
+
+const StoredAssetMountBaseSchema = {
+  id: z.string().min(1).max(4_096),
+  scopeId: z.string().min(1).max(4_096),
+  label: z.string().min(1).max(4_096),
+  priority: z.number().int(),
+  profile: z.enum(['quake', 'goldsrc', 'quake2']),
+  data: z.instanceof(ArrayBuffer).optional(),
+};
+
+export const StoredAssetMountSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ ...StoredAssetMountBaseSchema, kind: z.literal('builtin') }),
+  z.strictObject({
+    ...StoredAssetMountBaseSchema,
+    kind: z.literal('project-wad'),
+    sourceName: z.string().min(1).max(4_096),
+    contentFingerprint: z.string().min(1).max(256).optional(),
+  }),
+  z.strictObject({
+    ...StoredAssetMountBaseSchema,
+    kind: z.literal('browser-wad'),
+    sourceName: z.string().min(1).max(4_096),
+    contentFingerprint: z.string().min(1).max(256),
+  }),
+]) satisfies z.ZodType<StoredAssetMount>;
 
 export interface AssetMountStorage {
   list(scopeId: string): Promise<readonly StoredAssetMount[]>;
@@ -44,10 +70,13 @@ export class IndexedDbAssetMountStorage implements AssetMountStorage {
     const database = await openDatabase();
     try {
       const transaction = database.transaction(STORE, 'readonly');
-      const values = await requestResult<StoredAssetMount[]>(
+      const values = await requestResult<unknown[]>(
         transaction.objectStore(STORE).index('scopeId').getAll(scopeId),
       );
-      return values;
+      return values.flatMap((value) => {
+        const mount = StoredAssetMountSchema.safeParse(value);
+        return mount.success ? [mount.data] : [];
+      });
     } finally {
       database.close();
     }

@@ -1,4 +1,3 @@
-import type { NewMapLaunch } from './editor-navigation-state.js';
 import {
   gameProfileSupportsFaceSyntax,
   isWorldviewGameProfile,
@@ -15,5 +14,5 @@ export async function action({ request }: { readonly request: Request }) {
   if (!gameProfileSupportsFaceSyntax(definition, format)) {
     return { error: `${definition.label} does not support that map format.` };
   }
-  return { launch: { name, profile, format } as NewMapLaunch };
+  return { launch: { name, profile, format } };
 }

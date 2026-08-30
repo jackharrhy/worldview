@@ -20,6 +20,7 @@ export default defineConfig({
         /^@jackharrhy\/worldview\//,
         /^typegpu(?:\/.*)?$/,
         'wgpu-matrix',
+        'zod',
       ],
     },
     sourcemap: true,

@@ -14,8 +14,8 @@ import {
   type CollaborationOperation,
   type MapDocument,
 } from '@jackharrhy/worldview-editor/core';
+import { parseCollaborationClientFrame } from '@worldview/protocol';
 import type { MapCell } from '../src/map-cell.js';
-import { parseClientFrame } from '../src/protocol.js';
 
 function hostedTicket(mapId: string, role: 'owner' | 'editor' | 'viewer' = 'editor') {
   const header = Buffer.from(JSON.stringify({ algorithm: 'HS256', type: 'WVT' })).toString(
@@ -65,7 +65,7 @@ function nextSocketFrame(socket: WebSocket): Promise<unknown> {
 describe('MapCell', () => {
   it('rejects malformed and oversized operation frames before state access', () => {
     expect(() =>
-      parseClientFrame(
+      parseCollaborationClientFrame(
         JSON.stringify({
           type: 'operation',
           operation: {
@@ -79,15 +79,15 @@ describe('MapCell', () => {
           },
         }),
       ),
-    ).toThrow('Invalid collaboration operation');
-    expect(() => parseClientFrame('x'.repeat(512 * 1024 + 1))).toThrow(
+    ).toThrow('Invalid collaboration frame');
+    expect(() => parseCollaborationClientFrame('x'.repeat(512 * 1024 + 1))).toThrow(
       'Collaboration frame is too large',
     );
   });
 
   it('accepts bounded gesture presence and rejects malformed pointers', () => {
     expect(
-      parseClientFrame(
+      parseCollaborationClientFrame(
         JSON.stringify({
           type: 'presence',
           presence: {
@@ -106,13 +106,13 @@ describe('MapCell', () => {
       ).type,
     ).toBe('presence');
     expect(() =>
-      parseClientFrame(
+      parseCollaborationClientFrame(
         JSON.stringify({
           type: 'presence',
           presence: { actorId: 'alice', pointer: [0, 'bad', 0], sentAt: 1 },
         }),
       ),
-    ).toThrow('Invalid presence payload');
+    ).toThrow('Invalid collaboration frame');
   });
 
   it('requires signed map access and initializes one canonical snapshot', async () => {

@@ -1,3 +1,5 @@
+import { HostedErrorResponseSchema, HostedRealtimeTicketResponseSchema } from '@worldview/protocol';
+
 import type { CollaborationPresence, JoinCollaborationOptions } from './collaboration.js';
 import type { EditorElements } from './editor-elements.js';
 
@@ -128,18 +130,17 @@ export class CollaborationPresenter {
         headers: { 'Content-Type': 'application/json' },
         signal,
       });
-      const payload = (await response.json().catch(() => null)) as {
-        ticket?: unknown;
-        error?: unknown;
-      } | null;
-      if (!response.ok || typeof payload?.ticket !== 'string') {
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const error = HostedErrorResponseSchema.safeParse(payload);
         throw new Error(
-          typeof payload?.error === 'string'
-            ? payload.error
-            : `Cannot authorize collaboration (${response.status})`,
+          error.success ? error.data.error : `Cannot authorize collaboration (${response.status})`,
         );
       }
-      return payload.ticket;
+      const ticket = HostedRealtimeTicketResponseSchema.safeParse(payload);
+      if (!ticket.success)
+        throw new Error('Collaboration authorization returned an invalid response');
+      return ticket.data.ticket;
     };
     await this.join(mapId, false, { actorId, displayName, authorize, hosted: true });
   }

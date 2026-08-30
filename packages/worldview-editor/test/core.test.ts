@@ -22,6 +22,7 @@ import {
   createSimpleShapeBrushes,
   createStarterDocument,
   compiledBspVersion,
+  FACE_ATTRIBUTE_CLIPBOARD_HEADER,
   DEFAULT_SIMPLE_SHAPE_OPTIONS,
   deleteBrushVertices,
   deriveBrush,
@@ -4328,6 +4329,15 @@ describe('face attribute clipboard transactions', () => {
     expect(() => parseFaceAttributeClipboard('// Worldview face attributes v1\n{')).toThrow(
       'invalid JSON',
     );
+    const withUnknownField = JSON.parse(
+      text.slice(FACE_ATTRIBUTE_CLIPBOARD_HEADER.length),
+    ) as Record<string, unknown>;
+    withUnknownField.legacy = true;
+    expect(() =>
+      parseFaceAttributeClipboard(
+        `${FACE_ATTRIBUTE_CLIPBOARD_HEADER}\n${JSON.stringify(withUnknownField)}`,
+      ),
+    ).toThrow(/invalid.*legacy/i);
   });
 
   it('pastes one payload onto a face set atomically and preserves each target contents value', () => {

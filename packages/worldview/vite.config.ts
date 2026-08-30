@@ -16,7 +16,7 @@ export default defineConfig({
       fileName: (_, entryName) => `${entryName}.js`,
     },
     rollupOptions: {
-      external: [/^typegpu(?:\/.*)?$/, 'wgpu-matrix'],
+      external: [/^typegpu(?:\/.*)?$/, 'wgpu-matrix', 'zod'],
     },
     sourcemap: true,
     emptyOutDir: true,

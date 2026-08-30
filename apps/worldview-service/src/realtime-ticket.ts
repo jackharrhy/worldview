@@ -1,14 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { ProjectRole } from './database.js';
+import { parseActiveRealtimeTicketPayload, type RealtimeTicketPayload } from '@worldview/protocol';
 
-export interface RealtimeTicketPayload {
-  readonly version: 2;
-  readonly mapId: string;
-  readonly principalId: string;
-  readonly actorId: string;
-  readonly role: ProjectRole;
-  readonly expiresAt: number;
-}
+export type { RealtimeTicketPayload } from '@worldview/protocol';
 
 function encoded(value: string): string {
   return Buffer.from(value).toString('base64url');
@@ -35,20 +28,9 @@ export function verifyRealtimeTicket(ticket: string, secret: string): RealtimeTi
   }
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
   try {
-    const payload = JSON.parse(
-      Buffer.from(content, 'base64url').toString('utf8'),
-    ) as Partial<RealtimeTicketPayload>;
-    if (
-      payload.version !== 2 ||
-      typeof payload.mapId !== 'string' ||
-      typeof payload.principalId !== 'string' ||
-      typeof payload.actorId !== 'string' ||
-      !['owner', 'editor', 'viewer'].includes(String(payload.role)) ||
-      typeof payload.expiresAt !== 'number' ||
-      payload.expiresAt <= Date.now()
-    )
-      return null;
-    return payload as RealtimeTicketPayload;
+    return parseActiveRealtimeTicketPayload(
+      JSON.parse(Buffer.from(content, 'base64url').toString('utf8')),
+    );
   } catch {
     return null;
   }

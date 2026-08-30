@@ -11,9 +11,9 @@ export interface MapSourceDiagnostic {
   readonly severity: 'warning' | 'error';
   readonly code: 'unsupported-construct' | 'unsafe-source-edit' | 'external-source-change';
   readonly message: string;
-  readonly line?: number;
-  readonly column?: number;
-  readonly keyword?: string;
+  readonly line?: number | undefined;
+  readonly column?: number | undefined;
+  readonly keyword?: string | undefined;
 }
 
 export interface MapSourcePropertySpan {

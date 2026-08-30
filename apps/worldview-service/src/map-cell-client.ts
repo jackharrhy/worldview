@@ -1,20 +1,15 @@
 import { signRealtimeTicket } from './realtime-ticket.js';
-import type { MapDocument } from '@jackharrhy/worldview-editor/core';
+import {
+  HostedCheckpointResponseSchema,
+  HostedMapSnapshotSchema,
+  type HostedCheckpoint as HostedMapCheckpoint,
+  type HostedMapSnapshot,
+} from '@worldview/protocol';
 
-export interface HostedMapSnapshot {
-  readonly mapId: string;
-  readonly mapVersion: number;
-  readonly document: MapDocument;
-  readonly source: string;
-  readonly sourceSha256: string;
-}
-
-export interface HostedMapCheckpoint {
-  readonly id: string;
-  readonly name: string;
-  readonly mapVersion: number;
-  readonly createdAt: number;
-}
+export type {
+  HostedCheckpoint as HostedMapCheckpoint,
+  HostedMapSnapshot,
+} from '@worldview/protocol';
 
 export class MapCellClient {
   public constructor(
@@ -62,16 +57,18 @@ export class MapCellClient {
   }
 
   public async initialize(mapId: string, source: string): Promise<HostedMapSnapshot> {
-    return (await (
+    const payload: unknown = await (
       await this.request(mapId, 'initialize', {
         method: 'PUT',
         body: JSON.stringify({ source }),
       })
-    ).json()) as HostedMapSnapshot;
+    ).json();
+    return HostedMapSnapshotSchema.parse(payload);
   }
 
   public async snapshot(mapId: string): Promise<HostedMapSnapshot> {
-    return (await (await this.request(mapId, 'snapshot')).json()) as HostedMapSnapshot;
+    const payload: unknown = await (await this.request(mapId, 'snapshot')).json();
+    return HostedMapSnapshotSchema.parse(payload);
   }
 
   public async createCheckpoint(
@@ -79,18 +76,17 @@ export class MapCellClient {
     name: string,
     actorId: string,
   ): Promise<HostedMapCheckpoint> {
-    return (
-      (await (
-        await this.request(
-          mapId,
-          'checkpoints',
-          {
-            method: 'POST',
-            body: JSON.stringify({ name }),
-          },
-          actorId,
-        )
-      ).json()) as { checkpoint: HostedMapCheckpoint }
-    ).checkpoint;
+    const payload: unknown = await (
+      await this.request(
+        mapId,
+        'checkpoints',
+        {
+          method: 'POST',
+          body: JSON.stringify({ name }),
+        },
+        actorId,
+      )
+    ).json();
+    return HostedCheckpointResponseSchema.parse(payload).checkpoint;
   }
 }

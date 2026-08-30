@@ -1,8 +1,6 @@
-import {
-  isWorldviewGameProfile,
-  worldviewGameProfile,
-  type WorldviewGameProfile,
-} from './game-profiles.js';
+import { z } from 'zod';
+
+import { worldviewGameProfile, type WorldviewGameProfile } from './game-profiles.js';
 
 export type { WorldviewGameProfile } from './game-profiles.js';
 export type EntityDefinitionFormat = 'fgd' | 'def' | 'ent';
@@ -16,8 +14,8 @@ export interface WorldviewProjectResources {
   /** Later entries override earlier WAD entries with the same logical texture name. */
   readonly wads: readonly string[];
   /** Ordered roots for loose profile-native materials such as Quake II WAL files. */
-  readonly materialRoots?: readonly string[];
-  readonly palette?: string;
+  readonly materialRoots?: readonly string[] | undefined;
+  readonly palette?: string | undefined;
   readonly spriteRoots: readonly string[];
   readonly entityDefinitions: readonly WorldviewEntityDefinitionSource[];
 }
@@ -35,7 +33,7 @@ export interface WorldviewProjectManifest {
   readonly mapRoots: readonly string[];
   readonly resources: WorldviewProjectResources;
   readonly buildProfiles: readonly WorldviewProjectBuildProfile[];
-  readonly defaultBuildProfile?: string;
+  readonly defaultBuildProfile?: string | undefined;
 }
 
 export class WorldviewProjectParseError extends Error {
@@ -48,115 +46,119 @@ export class WorldviewProjectParseError extends Error {
   }
 }
 
-function record(value: unknown, field: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new WorldviewProjectParseError('must be an object', field);
-  }
-  return value as Record<string, unknown>;
+const nonEmptyString = z
+  .string({ error: 'must be a non-empty string' })
+  .trim()
+  .min(1, { error: 'must be a non-empty string' });
+
+function relativePathSchema(allowRoot = false) {
+  return nonEmptyString
+    .refine(
+      (path) =>
+        !path.includes('\\') &&
+        !path.startsWith('/') &&
+        !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(path) &&
+        !path.split('/').some((part) => part === '..' || part === '') &&
+        (allowRoot || path !== '.'),
+      { error: 'must be a contained project-relative POSIX path' },
+    )
+    .transform((path) => path.replace(/^\.\//, ''));
 }
 
-function string(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new WorldviewProjectParseError('must be a non-empty string', field);
-  }
-  return value.trim();
+function uniquePaths(allowRoot = false) {
+  return z
+    .array(relativePathSchema(allowRoot), { error: 'must be an array' })
+    .refine((values) => new Set(values).size === values.length, {
+      error: 'must not contain duplicates',
+    });
 }
 
-function array(value: unknown, field: string): readonly unknown[] {
-  if (!Array.isArray(value)) throw new WorldviewProjectParseError('must be an array', field);
-  return value;
-}
+const EntityDefinitionSourceSchema = z.strictObject({
+  path: relativePathSchema(),
+  format: z.enum(['fgd', 'def', 'ent'], { error: 'must be fgd, def, or ent' }),
+});
 
-function relativePath(value: unknown, field: string, allowRoot = false): string {
-  const path = string(value, field);
-  if (
-    path.includes('\\') ||
-    path.startsWith('/') ||
-    /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(path) ||
-    path.split('/').some((part) => part === '..' || part === '') ||
-    (!allowRoot && path === '.')
-  ) {
-    throw new WorldviewProjectParseError('must be a contained project-relative POSIX path', field);
-  }
-  return path.replace(/^\.\//, '');
-}
+const ProjectResourcesSchema = z.strictObject({
+  wads: uniquePaths().default([]),
+  materialRoots: uniquePaths(true).optional(),
+  palette: relativePathSchema().optional(),
+  spriteRoots: uniquePaths(true).default([]),
+  entityDefinitions: z
+    .array(EntityDefinitionSourceSchema, { error: 'must be an array' })
+    .default([]),
+});
 
-function unique(values: readonly string[], field: string): readonly string[] {
-  if (new Set(values).size !== values.length) {
-    throw new WorldviewProjectParseError('must not contain duplicates', field);
-  }
-  return values;
-}
+const BuildProfileSchema = z.strictObject({
+  id: nonEmptyString,
+  label: nonEmptyString,
+  quality: z.enum(['preview', 'final'], { error: 'must be preview or final' }),
+});
 
-function parseResources(value: unknown): WorldviewProjectResources {
-  const resources = record(value, 'resources');
-  const wads = unique(
-    array(resources.wads ?? [], 'resources.wads').map((path, index) =>
-      relativePath(path, `resources.wads[${index}]`),
-    ),
-    'resources.wads',
-  );
-  const spriteRoots = unique(
-    array(resources.spriteRoots ?? [], 'resources.spriteRoots').map((path, index) =>
-      relativePath(path, `resources.spriteRoots[${index}]`, true),
-    ),
-    'resources.spriteRoots',
-  );
-  const materialRoots = unique(
-    array(resources.materialRoots ?? [], 'resources.materialRoots').map((path, index) =>
-      relativePath(path, `resources.materialRoots[${index}]`, true),
-    ),
-    'resources.materialRoots',
-  );
-  const entityDefinitions = array(
-    resources.entityDefinitions ?? [],
-    'resources.entityDefinitions',
-  ).map((definitionValue, index) => {
-    const definition = record(definitionValue, `resources.entityDefinitions[${index}]`);
-    const format = string(definition.format, `resources.entityDefinitions[${index}].format`);
-    if (format !== 'fgd' && format !== 'def' && format !== 'ent') {
-      throw new WorldviewProjectParseError(
-        'must be fgd, def, or ent',
-        `resources.entityDefinitions[${index}].format`,
-      );
+const ProjectManifestObjectSchema = z
+  .strictObject({
+    schemaVersion: z.literal(1, { error: 'only schemaVersion 1 is supported' }),
+    name: nonEmptyString,
+    game: z.enum(['quake', 'goldsrc', 'quake2'], {
+      error: 'must be quake, goldsrc, or quake2',
+    }),
+    mapRoots: uniquePaths(true).min(1, { error: 'must contain at least one map root' }),
+    resources: ProjectResourcesSchema,
+    buildProfiles: z.array(BuildProfileSchema, { error: 'must be an array' }).default([]),
+    defaultBuildProfile: nonEmptyString.optional(),
+  })
+  .superRefine((project, context) => {
+    const ids = project.buildProfiles.map(({ id }) => id);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['buildProfiles'],
+        message: 'buildProfiles[].id must not contain duplicates',
+      });
     }
-    return {
-      path: relativePath(definition.path, `resources.entityDefinitions[${index}].path`),
-      format,
-    } satisfies WorldviewEntityDefinitionSource;
+    if (
+      project.defaultBuildProfile !== undefined &&
+      !project.buildProfiles.some(({ id }) => id === project.defaultBuildProfile)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['defaultBuildProfile'],
+        message: 'must reference an existing build profile',
+      });
+    }
+    const supportedFormats = worldviewGameProfile(project.game).entityDefinitionFormats;
+    for (const [index, definition] of project.resources.entityDefinitions.entries()) {
+      if (!supportedFormats.includes(definition.format)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['resources', 'entityDefinitions', index, 'format'],
+          message: `${definition.format} is not supported by the ${project.game} profile`,
+        });
+      }
+    }
   });
-  return {
-    wads,
-    ...(materialRoots.length === 0 ? {} : { materialRoots }),
-    ...(resources.palette === undefined
-      ? {}
-      : { palette: relativePath(resources.palette, 'resources.palette') }),
-    spriteRoots,
-    entityDefinitions,
-  };
+
+/** Strict canonical schema for a `worldview.project.json` manifest. */
+export const WorldviewProjectManifestSchema =
+  ProjectManifestObjectSchema satisfies z.ZodType<WorldviewProjectManifest>;
+
+function fieldForIssue(issue: z.core.$ZodIssue): string {
+  const path = [...issue.path];
+  if (issue.code === 'unrecognized_keys' && issue.keys[0]) path.push(issue.keys[0]);
+  if (path.length === 0) return 'project';
+  return path
+    .map((part, index) =>
+      typeof part === 'number' ? `[${part}]` : `${index > 0 ? '.' : ''}${String(part)}`,
+    )
+    .join('')
+    .replace(/\.\[/g, '[');
 }
 
-function parseBuildProfiles(value: unknown): readonly WorldviewProjectBuildProfile[] {
-  const profiles = array(value ?? [], 'buildProfiles').map((profileValue, index) => {
-    const profile = record(profileValue, `buildProfiles[${index}]`);
-    const quality = string(profile.quality, `buildProfiles[${index}].quality`);
-    if (quality !== 'preview' && quality !== 'final') {
-      throw new WorldviewProjectParseError(
-        'must be preview or final',
-        `buildProfiles[${index}].quality`,
-      );
-    }
-    return {
-      id: string(profile.id, `buildProfiles[${index}].id`),
-      label: string(profile.label, `buildProfiles[${index}].label`),
-      quality,
-    } satisfies WorldviewProjectBuildProfile;
-  });
-  unique(
-    profiles.map(({ id }) => id),
-    'buildProfiles[].id',
-  );
-  return profiles;
+function messageForIssue(issue: z.core.$ZodIssue): string {
+  if (issue.code === 'unrecognized_keys') return 'is not a recognized project field';
+  if (issue.message.startsWith('buildProfiles[].id: ')) {
+    return issue.message.slice('buildProfiles[].id: '.length);
+  }
+  return issue.message;
 }
 
 export function parseWorldviewProject(source: string): WorldviewProjectManifest {
@@ -168,56 +170,12 @@ export function parseWorldviewProject(source: string): WorldviewProjectManifest 
       `contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  const project = record(value, 'project');
-  if (project.schemaVersion !== 1) {
-    throw new WorldviewProjectParseError('only schemaVersion 1 is supported', 'schemaVersion');
+  const result = WorldviewProjectManifestSchema.safeParse(value);
+  if (!result.success) {
+    const issue = result.error.issues[0]!;
+    throw new WorldviewProjectParseError(messageForIssue(issue), fieldForIssue(issue));
   }
-  const game = string(project.game, 'game');
-  if (!isWorldviewGameProfile(game)) {
-    throw new WorldviewProjectParseError('must be quake, goldsrc, or quake2', 'game');
-  }
-  const resources = parseResources(project.resources);
-  const supportedDefinitionFormats = worldviewGameProfile(game).entityDefinitionFormats;
-  for (const [index, definition] of resources.entityDefinitions.entries()) {
-    if (!supportedDefinitionFormats.includes(definition.format)) {
-      throw new WorldviewProjectParseError(
-        `${definition.format} is not supported by the ${game} profile`,
-        `resources.entityDefinitions[${index}].format`,
-      );
-    }
-  }
-  const mapRoots = unique(
-    array(project.mapRoots, 'mapRoots').map((path, index) =>
-      relativePath(path, `mapRoots[${index}]`, true),
-    ),
-    'mapRoots',
-  );
-  if (mapRoots.length === 0) {
-    throw new WorldviewProjectParseError('must contain at least one map root', 'mapRoots');
-  }
-  const buildProfiles = parseBuildProfiles(project.buildProfiles);
-  const defaultBuildProfile =
-    project.defaultBuildProfile === undefined
-      ? undefined
-      : string(project.defaultBuildProfile, 'defaultBuildProfile');
-  if (
-    defaultBuildProfile !== undefined &&
-    !buildProfiles.some(({ id }) => id === defaultBuildProfile)
-  ) {
-    throw new WorldviewProjectParseError(
-      'must reference an existing build profile',
-      'defaultBuildProfile',
-    );
-  }
-  return {
-    schemaVersion: 1,
-    name: string(project.name, 'name'),
-    game,
-    mapRoots,
-    resources,
-    buildProfiles,
-    ...(defaultBuildProfile === undefined ? {} : { defaultBuildProfile }),
-  };
+  return result.data;
 }
 
 export function serializeWorldviewProject(project: WorldviewProjectManifest): string {

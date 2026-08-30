@@ -143,7 +143,19 @@ describe('Artbin machine client', () => {
         );
       expect(requestUrl.pathname).toBe('/api/assets/wad-1/wad');
       return Response.json({
-        asset: { id: 'wad-1' },
+        asset: {
+          id: 'wad-1',
+          name: 'halflife.wad',
+          path: 'wads/halflife.wad',
+          kind: 'wad',
+          mimeType: 'application/octet-stream',
+          size: 1,
+          sha256: 'a'.repeat(64),
+          width: null,
+          height: null,
+          folder: null,
+          tags: [],
+        },
         wad: { version: 'WAD3', lumpCount: 0, textures: [] },
       });
     };

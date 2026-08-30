@@ -3,6 +3,15 @@ import { stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  CreateHostedBuildRequestSchema,
+  CreateHostedCheckpointRequestSchema,
+  CreateHostedMapRequestSchema,
+  CreateHostedProjectRequestSchema,
+  MountHostedAssetRequestSchema,
+  SetProjectMemberRoleRequestSchema,
+} from '@worldview/protocol';
+import type { z } from 'zod';
 import { FileBlobStore, type BlobStore } from './blob-store.js';
 import { WorldviewDatabase, type ProjectRole, type WorldviewUser } from './database.js';
 import {
@@ -80,10 +89,11 @@ function redirect(response: ServerResponse, location: string): void {
   response.end();
 }
 
-async function body(
+async function body<T>(
   request: IncomingMessage,
+  schema: z.ZodType<T>,
   limit = 1024 * 1024,
-): Promise<Record<string, unknown>> {
+): Promise<T> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -92,11 +102,23 @@ async function body(
     if (size > limit) throw Object.assign(new Error('Request body is too large'), { status: 413 });
     chunks.push(bytes);
   }
-  if (size === 0) return {};
-  const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw Object.assign(new Error('JSON object required'), { status: 400 });
-  return value as Record<string, unknown>;
+  let value: unknown;
+  try {
+    value = size === 0 ? null : JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw Object.assign(new Error('Request body contains invalid JSON'), { status: 400 });
+  }
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    const path = result.error.issues[0]?.path.join('.');
+    throw Object.assign(
+      new Error(path ? `Request field ${path} is invalid` : 'Request body is invalid'),
+      {
+        status: 400,
+      },
+    );
+  }
+  return result.data;
 }
 
 function mutationAllowed(request: IncomingMessage, publicUrl: string): boolean {
@@ -104,12 +126,6 @@ function mutationAllowed(request: IncomingMessage, publicUrl: string): boolean {
   if (site && site !== 'same-origin' && site !== 'none') return false;
   const origin = request.headers.origin;
   return !origin || origin === new URL(publicUrl).origin;
-}
-
-function text(value: unknown, field: string, maximum = 120): string {
-  if (typeof value !== 'string' || !value.trim() || value.trim().length > maximum)
-    throw Object.assign(new Error(`${field} is invalid`), { status: 400 });
-  return value.trim();
 }
 
 function emptyMap(format: 'valve-220' | 'quake'): string {
@@ -268,12 +284,9 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           return json(response, 403, { error: 'Cross-origin mutation rejected' });
         const user = requireUser(request, response, options.database);
         if (!user) return;
-        const input = await body(request);
-        const game = input.game;
-        if (game !== 'quake' && game !== 'goldsrc')
-          return json(response, 400, { error: 'game must be quake or goldsrc' });
+        const input = await body(request, CreateHostedProjectRequestSchema);
         return json(response, 201, {
-          project: options.database.createProject(user.id, text(input.name, 'name'), game),
+          project: options.database.createProject(user.id, input.name, input.game),
         });
       }
       const projectMatch = /^\/api\/projects\/([^/]+)$/.exec(url.pathname);
@@ -311,9 +324,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
             ? json(response, 200, { ok: true })
             : json(response, 403, { error: 'Project owner access required' });
         }
-        const input = await body(request);
-        if (input.role !== 'editor' && input.role !== 'viewer')
-          return json(response, 400, { error: 'role must be editor or viewer' });
+        const input = await body(request, SetProjectMemberRoleRequestSchema);
         const updated = options.database.setProjectMemberRole(
           projectId,
           user.id,
@@ -333,11 +344,12 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const projectId = decodeURIComponent(mapsMatch[1]!);
         const role = options.database.role(projectId, user.id);
         if (!canEdit(role)) return json(response, 403, { error: 'Editor access required' });
-        const input = await body(request);
-        const format = input.format;
-        if (format !== 'valve-220' && format !== 'quake')
-          return json(response, 400, { error: 'Unsupported map format' });
-        const name = text(input.name, 'name');
+        const input = await body(
+          request,
+          CreateHostedMapRequestSchema,
+          MAX_HOSTED_MAP_BYTES + 1024,
+        );
+        const { format, name } = input;
         if (options.database.hasMapNamed(projectId, name))
           return json(response, 409, { error: 'A map with this name already exists' });
         const source = typeof input.source === 'string' ? input.source : emptyMap(format);
@@ -375,8 +387,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           return json(response, 403, { error: 'Owner access required' });
         if (!options.artbin)
           return json(response, 503, { error: 'Artbin integration is not configured' });
-        const input = await body(request);
-        const assetId = text(input.assetId, 'assetId', 256);
+        const { assetId } = await body(request, MountHostedAssetRequestSchema);
         const { asset } = await options.artbin.metadata(assetId);
         if (!asset.sha256 || !/^[a-f0-9]{64}$/.test(asset.sha256))
           return json(response, 422, { error: 'Artbin asset has no stable SHA-256' });
@@ -443,16 +454,12 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           return json(response, 403, { error: 'Cross-origin mutation rejected' });
         const user = requireUser(request, response, options.database);
         if (!user) return;
-        const input = await body(request);
+        const input = await body(request, CreateHostedCheckpointRequestSchema);
         const mapId = decodeURIComponent(checkpointMatch[1]!);
         const map = options.database.map(mapId, user.id);
         if (!map || !canEdit(map.role))
           return json(response, 403, { error: 'Editor access required' });
-        const checkpoint = await options.maps.createCheckpoint(
-          mapId,
-          text(input.name, 'name'),
-          user.id,
-        );
+        const checkpoint = await options.maps.createCheckpoint(mapId, input.name, user.id);
         return json(response, 201, { checkpoint });
       }
       const ticketMatch = /^\/api\/maps\/([^/]+)\/realtime-ticket$/.exec(url.pathname);
@@ -505,11 +512,11 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           return json(response, 403, { error: 'Editor access required' });
         if (!options.builds.supports(map.game))
           return json(response, 503, { error: `No ${map.game} build worker is configured` });
-        const input = await body(request);
-        const quality = input.quality === 'final' ? 'final' : 'preview';
+        const input = await body(request, CreateHostedBuildRequestSchema);
+        const { quality } = input;
         const snapshot = await options.maps.snapshot(map.id);
         if (
-          typeof input.expectedMapVersion === 'number' &&
+          input.expectedMapVersion !== undefined &&
           input.expectedMapVersion !== snapshot.mapVersion
         )
           return json(response, 409, {
@@ -554,7 +561,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           return json(response, 429, { error: 'The build queue is full' });
         }
         return json(response, 202, {
-          build: { ...build, status: 'queued', mapVersion: snapshot.mapVersion, quality },
+          build,
         });
       }
       const artifactMatch =

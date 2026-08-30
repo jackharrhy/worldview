@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { z } from 'zod';
 import type { WorldviewDatabase, WorldviewUser } from './database.js';
 
 export interface OAuthConfig {
@@ -7,12 +8,21 @@ export interface OAuthConfig {
   readonly publicUrl: string;
 }
 
-export interface OAuthProfile {
-  readonly sub: string;
-  readonly username: string;
-  readonly display_name: string;
-  readonly is_admin: boolean;
-}
+const OAuthTokenResponseSchema = z.looseObject({
+  access_token: z.string().min(1).max(16_384),
+  token_type: z
+    .string()
+    .refine((value) => value.toLowerCase() === 'bearer')
+    .optional(),
+  expires_in: z.number().finite().positive().optional(),
+});
+const OAuthProfileSchema = z.looseObject({
+  sub: z.string().min(1).max(512),
+  username: z.string().min(1).max(256),
+  display_name: z.string().min(1).max(256),
+  is_admin: z.boolean().default(false),
+});
+export type OAuthProfile = z.infer<typeof OAuthProfileSchema>;
 
 export function codeVerifier(): string {
   return randomBytes(32).toString('base64url');
@@ -89,41 +99,20 @@ export async function completeAuthorization(input: {
     }),
   });
   if (!tokenResponse.ok) throw new Error(`4orm token exchange failed (${tokenResponse.status})`);
-  const tokenPayload = (await tokenResponse.json()) as {
-    access_token?: unknown;
-    token_type?: unknown;
-    expires_in?: unknown;
-  };
-  if (
-    typeof tokenPayload.access_token !== 'string' ||
-    (tokenPayload.token_type !== undefined &&
-      (typeof tokenPayload.token_type !== 'string' ||
-        tokenPayload.token_type.toLowerCase() !== 'bearer')) ||
-    (tokenPayload.expires_in !== undefined &&
-      (typeof tokenPayload.expires_in !== 'number' ||
-        !Number.isFinite(tokenPayload.expires_in) ||
-        tokenPayload.expires_in <= 0))
-  ) {
-    throw new Error('4orm returned an invalid access token response');
-  }
+  const tokenPayload = OAuthTokenResponseSchema.safeParse(await tokenResponse.json());
+  if (!tokenPayload.success) throw new Error('4orm returned an invalid access token response');
   const profileResponse = await input.fetch(new URL('/oauth/userinfo', input.config.fourmUrl), {
-    headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
+    headers: { Authorization: `Bearer ${tokenPayload.data.access_token}` },
   });
   if (!profileResponse.ok) throw new Error(`4orm userinfo failed (${profileResponse.status})`);
-  const profile = (await profileResponse.json()) as Partial<OAuthProfile>;
-  if (
-    typeof profile.sub !== 'string' ||
-    typeof profile.username !== 'string' ||
-    typeof profile.display_name !== 'string'
-  ) {
-    throw new Error('4orm returned invalid userinfo');
-  }
+  const profile = OAuthProfileSchema.safeParse(await profileResponse.json());
+  if (!profile.success) throw new Error('4orm returned invalid userinfo');
   return {
     user: input.database.upsertUser({
-      fourmSub: profile.sub,
-      username: profile.username,
-      displayName: profile.display_name,
-      isAdmin: profile.is_admin === true,
+      fourmSub: profile.data.sub,
+      username: profile.data.username,
+      displayName: profile.data.display_name,
+      isAdmin: profile.data.is_admin,
     }),
     returnTo: transaction.returnTo,
   };

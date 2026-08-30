@@ -25,7 +25,7 @@ export interface MapCompileDiagnostic {
   readonly severity: 'info' | 'warning' | 'error';
   readonly stage: string;
   readonly message: string;
-  readonly line?: number;
+  readonly line?: number | undefined;
 }
 
 export interface MapCompileArtifact {
@@ -33,7 +33,7 @@ export interface MapCompileArtifact {
   readonly mediaType: string;
   readonly data: ArrayBuffer;
   readonly kind: MapCompileArtifactKind;
-  readonly stage?: string;
+  readonly stage?: string | undefined;
 }
 
 export interface MapCompileLog {

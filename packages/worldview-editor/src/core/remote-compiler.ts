@@ -1,6 +1,5 @@
 import type {
   MapCompileArtifact,
-  MapCompileDiagnostic,
   MapCompileRequest,
   MapCompileResult,
   MapCompiler,
@@ -9,7 +8,8 @@ import type {
   MapLaunchRequest,
   MapLaunchResult,
 } from './compiler.js';
-import { isWorldviewGameProfile } from './game-profiles.js';
+import { MapCompileDiagnosticSchema, MapCompileLogSchema } from './runtime-schemas.js';
+import { z } from 'zod';
 
 export type CompilerFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -21,23 +21,47 @@ export interface RemoteMapCompilerOptions {
   readonly maxArtifactBytes?: number;
 }
 
-interface RemoteArtifact {
-  readonly name: string;
-  readonly mediaType: string;
-  readonly base64: string;
-  readonly kind: MapCompileArtifact['kind'];
-  readonly stage?: string;
-}
-
-interface RemoteResponse {
-  readonly status: MapCompileResult['status'];
-  readonly buildId: string;
-  readonly sourceDocumentRevision: number;
-  readonly diagnostics: readonly MapCompileDiagnostic[];
-  readonly artifacts: readonly RemoteArtifact[];
-  readonly elapsedMilliseconds: number;
-  readonly logs: MapCompileResult['logs'];
-}
+const RemoteArtifactSchema = z.strictObject({
+  name: z.string().min(1).max(4_096),
+  mediaType: z.string().min(1).max(256),
+  base64: z.string(),
+  kind: z.enum(['bsp', 'portal', 'leak-path', 'log', 'other']),
+  stage: z.string().min(1).max(256).optional(),
+});
+const RemoteResponseSchema = z.strictObject({
+  status: z.enum(['succeeded', 'failed']),
+  buildId: z.string().min(1).max(256),
+  sourceDocumentRevision: z.number().int().nonnegative(),
+  diagnostics: z.array(MapCompileDiagnosticSchema).max(10_000),
+  artifacts: z.array(RemoteArtifactSchema).max(1_000),
+  elapsedMilliseconds: z.number().finite().nonnegative(),
+  logs: z.array(MapCompileLogSchema).max(1_000),
+});
+type RemoteResponse = z.infer<typeof RemoteResponseSchema>;
+const BuildCapabilitiesSchema = z.strictObject({
+  protocolVersion: z.literal(1),
+  compileProfiles: z.array(
+    z.strictObject({
+      id: z.string().min(1).max(256),
+      label: z.string().min(1).max(256),
+      game: z.enum(['quake', 'goldsrc', 'quake2']),
+      qualities: z.array(z.enum(['preview', 'final'])).max(2),
+    }),
+  ),
+  launchProfiles: z.array(
+    z.strictObject({
+      id: z.string().min(1).max(256),
+      label: z.string().min(1).max(256),
+      game: z.enum(['quake', 'goldsrc', 'quake2']),
+    }),
+  ),
+}) satisfies z.ZodType<MapBuildCapabilities>;
+const LaunchResultSchema = z.strictObject({
+  buildId: z.string().min(1).max(256),
+  profileId: z.string().min(1).max(256),
+  sourceDocumentRevision: z.number().int().nonnegative(),
+  launchedAt: z.number().finite().nonnegative(),
+}) satisfies z.ZodType<MapLaunchResult>;
 
 function decodeBase64(value: string, limit: number): ArrayBuffer {
   const estimatedBytes = Math.floor((value.length * 3) / 4);
@@ -60,97 +84,21 @@ function encodeBase64(value: ArrayBuffer): string {
 }
 
 function remoteResponse(value: unknown): RemoteResponse {
-  if (!value || typeof value !== 'object') throw new Error('Compiler returned a non-object result');
-  const candidate = value as Partial<RemoteResponse>;
-  if (
-    !Number.isInteger(candidate.sourceDocumentRevision) ||
-    (candidate.status !== 'succeeded' && candidate.status !== 'failed') ||
-    typeof candidate.buildId !== 'string' ||
-    !Number.isFinite(candidate.elapsedMilliseconds) ||
-    !Array.isArray(candidate.diagnostics) ||
-    !Array.isArray(candidate.artifacts) ||
-    !Array.isArray(candidate.logs)
-  ) {
-    throw new Error('Compiler returned an invalid result envelope');
-  }
-  const artifactKinds = new Set<MapCompileArtifact['kind']>([
-    'bsp',
-    'portal',
-    'leak-path',
-    'log',
-    'other',
-  ]);
-  if (
-    candidate.diagnostics.some(
-      (diagnostic) =>
-        !diagnostic ||
-        !['info', 'warning', 'error'].includes(diagnostic.severity) ||
-        typeof diagnostic.stage !== 'string' ||
-        typeof diagnostic.message !== 'string',
-    ) ||
-    candidate.logs.some(
-      (log) =>
-        !log ||
-        typeof log.stage !== 'string' ||
-        typeof log.text !== 'string' ||
-        typeof log.truncated !== 'boolean',
-    ) ||
-    candidate.artifacts.some(
-      (artifact) =>
-        !artifact ||
-        typeof artifact.name !== 'string' ||
-        typeof artifact.mediaType !== 'string' ||
-        typeof artifact.base64 !== 'string' ||
-        !artifactKinds.has(artifact.kind),
-    )
-  ) {
-    throw new Error('Compiler returned invalid diagnostics, logs, or artifacts');
-  }
-  return candidate as RemoteResponse;
+  const result = RemoteResponseSchema.safeParse(value);
+  if (!result.success) throw new Error('Compiler returned an invalid result');
+  return result.data;
 }
 
 function buildCapabilities(value: unknown): MapBuildCapabilities {
-  if (!value || typeof value !== 'object') throw new Error('Helper returned invalid capabilities');
-  const candidate = value as Partial<MapBuildCapabilities>;
-  if (
-    candidate.protocolVersion !== 1 ||
-    !Array.isArray(candidate.compileProfiles) ||
-    !Array.isArray(candidate.launchProfiles) ||
-    candidate.compileProfiles.some(
-      (profile) =>
-        !profile ||
-        typeof profile.id !== 'string' ||
-        typeof profile.label !== 'string' ||
-        !isWorldviewGameProfile(profile.game) ||
-        !Array.isArray(profile.qualities) ||
-        profile.qualities.some((quality: unknown) => quality !== 'preview' && quality !== 'final'),
-    ) ||
-    candidate.launchProfiles.some(
-      (profile) =>
-        !profile ||
-        typeof profile.id !== 'string' ||
-        typeof profile.label !== 'string' ||
-        !isWorldviewGameProfile(profile.game),
-    )
-  ) {
-    throw new Error('Helper returned invalid capabilities');
-  }
-  return candidate as MapBuildCapabilities;
+  const result = BuildCapabilitiesSchema.safeParse(value);
+  if (!result.success) throw new Error('Helper returned invalid capabilities');
+  return result.data;
 }
 
 function launchResult(value: unknown): MapLaunchResult {
-  if (!value || typeof value !== 'object')
-    throw new Error('Helper returned an invalid launch result');
-  const candidate = value as Partial<MapLaunchResult>;
-  if (
-    typeof candidate.buildId !== 'string' ||
-    typeof candidate.profileId !== 'string' ||
-    !Number.isInteger(candidate.sourceDocumentRevision) ||
-    !Number.isFinite(candidate.launchedAt)
-  ) {
-    throw new Error('Helper returned an invalid launch result');
-  }
-  return candidate as MapLaunchResult;
+  const result = LaunchResultSchema.safeParse(value);
+  if (!result.success) throw new Error('Helper returned an invalid launch result');
+  return result.data;
 }
 
 export class RemoteMapCompiler implements MapCompiler, MapBuildService {
@@ -199,18 +147,13 @@ export class RemoteMapCompiler implements MapCompiler, MapBuildService {
       );
     }
     const payload = remoteResponse(await response.json());
-    const artifacts: MapCompileArtifact[] = payload.artifacts.map((artifact) => {
-      if (!artifact.name || !artifact.mediaType || typeof artifact.base64 !== 'string') {
-        throw new Error('Compiler returned an invalid artifact');
-      }
-      return {
-        name: artifact.name,
-        mediaType: artifact.mediaType,
-        data: decodeBase64(artifact.base64, this.maxArtifactBytes),
-        kind: artifact.kind,
-        ...(artifact.stage ? { stage: artifact.stage } : {}),
-      };
-    });
+    const artifacts: MapCompileArtifact[] = payload.artifacts.map((artifact) => ({
+      name: artifact.name,
+      mediaType: artifact.mediaType,
+      data: decodeBase64(artifact.base64, this.maxArtifactBytes),
+      kind: artifact.kind,
+      ...(artifact.stage ? { stage: artifact.stage } : {}),
+    }));
     return {
       backend: this.backend,
       status: payload.status,

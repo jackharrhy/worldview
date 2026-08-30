@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
 
 export interface ArtbinConfig {
   readonly url: string;
@@ -7,56 +8,74 @@ export interface ArtbinConfig {
   readonly clientSecret: string;
 }
 
-export interface ArtbinAsset {
-  readonly id: string;
-  readonly name: string;
-  readonly path: string;
-  readonly kind: string;
-  readonly mimeType: string;
-  readonly size: number;
-  readonly sha256: string;
-  readonly width: number | null;
-  readonly height: number | null;
-  readonly folder: { readonly id: string; readonly name: string; readonly slug: string } | null;
-  readonly tags: readonly {
-    readonly id: string;
-    readonly name: string;
-    readonly slug: string;
-  }[];
-}
+const id = z.string().min(1).max(256);
+const name = z.string().min(1).max(256);
+const sha256 = z.string().regex(/^[a-f\d]{64}$/i);
+const ArtbinAssetSchema = z.object({
+  id,
+  name,
+  path: z.string().max(4_096),
+  kind: z.string().min(1).max(128),
+  mimeType: z.string().min(1).max(256),
+  size: z.number().int().nonnegative(),
+  sha256,
+  width: z.number().int().nonnegative().nullable(),
+  height: z.number().int().nonnegative().nullable(),
+  folder: z.object({ id, name, slug: z.string().min(1).max(256) }).nullable(),
+  tags: z.array(z.object({ id, name, slug: z.string().min(1).max(256) })).max(1_000),
+});
+export type ArtbinAsset = z.infer<typeof ArtbinAssetSchema>;
 
-export interface ArtbinCatalog {
-  readonly assets: readonly ArtbinAsset[];
-  readonly nextCursor: string | null;
-}
+const ArtbinCatalogSchema = z.object({
+  assets: z.array(ArtbinAssetSchema).max(10_000),
+  nextCursor: z.string().max(4_096).nullable(),
+});
+export type ArtbinCatalog = z.infer<typeof ArtbinCatalogSchema>;
 
-export interface ArtbinWadInspection {
-  readonly asset: ArtbinAsset;
-  readonly wad: {
-    readonly version: 'WAD2' | 'WAD3';
-    readonly lumpCount: number;
-    readonly textures: readonly {
-      readonly index: number;
-      readonly name: string;
-      readonly width: number;
-      readonly height: number;
-      readonly transparent: boolean;
-    }[];
-  };
-}
+const ArtbinWadInspectionSchema = z.object({
+  asset: ArtbinAssetSchema,
+  wad: z.object({
+    version: z.enum(['WAD2', 'WAD3']),
+    lumpCount: z.number().int().nonnegative(),
+    textures: z
+      .array(
+        z.object({
+          index: z.number().int().nonnegative(),
+          name,
+          width: z.number().int().positive(),
+          height: z.number().int().positive(),
+          transparent: z.boolean(),
+        }),
+      )
+      .max(100_000),
+  }),
+});
+export type ArtbinWadInspection = z.infer<typeof ArtbinWadInspectionSchema>;
 
 interface CachedToken {
   readonly value: string;
   readonly renewAt: number;
 }
 
-interface ArtbinErrorBody {
-  readonly error?: {
-    readonly code?: string;
-    readonly message?: string;
-    readonly details?: unknown;
-  };
-}
+const ArtbinErrorBodySchema = z.looseObject({
+  error: z
+    .looseObject({
+      code: z.string().optional(),
+      message: z.string().optional(),
+      details: z.unknown().optional(),
+    })
+    .optional(),
+});
+type ArtbinErrorBody = z.infer<typeof ArtbinErrorBodySchema>;
+
+const MachineTokenSchema = z.looseObject({
+  access_token: z.string().min(1).max(16_384),
+  token_type: z
+    .string()
+    .refine((value) => value.toLowerCase() === 'bearer')
+    .optional(),
+  expires_in: z.number().finite().positive(),
+});
 
 const MACHINE_SCOPES = 'artbin:assets:read artbin:assets:content';
 const RENEWAL_SKEW_MS = 30_000;
@@ -88,11 +107,16 @@ function integrationError(response: Response, body: ArtbinErrorBody): Error & { 
 }
 
 async function errorBody(response: Response): Promise<ArtbinErrorBody> {
-  try {
-    return (await response.json()) as ArtbinErrorBody;
-  } catch {
-    return {};
+  const parsed = ArtbinErrorBodySchema.safeParse(await response.json().catch(() => null));
+  return parsed.success ? parsed.data : {};
+}
+
+async function payload<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
+  const parsed = schema.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) {
+    throw Object.assign(new Error('Artbin returned an invalid response'), { status: 502 });
   }
+  return parsed.data;
 }
 
 export class ArtbinClient {
@@ -121,28 +145,18 @@ export class ArtbinClient {
     }).catch(() => {
       throw Object.assign(new Error('4orm machine authentication is unavailable'), { status: 503 });
     });
-    if (!response.ok)
+    if (!response.ok) {
       throw Object.assign(new Error('4orm machine authentication is unavailable'), {
         status: response.status === 503 ? 503 : 502,
       });
-    const result = (await response.json().catch(() => null)) as {
-      access_token?: unknown;
-      token_type?: unknown;
-      expires_in?: unknown;
-    } | null;
-    if (
-      !result ||
-      typeof result.access_token !== 'string' ||
-      (result.token_type !== undefined &&
-        (typeof result.token_type !== 'string' || result.token_type.toLowerCase() !== 'bearer')) ||
-      typeof result.expires_in !== 'number' ||
-      !Number.isFinite(result.expires_in) ||
-      result.expires_in <= 0
-    )
+    }
+    const result = MachineTokenSchema.safeParse(await response.json().catch(() => null));
+    if (!result.success) {
       throw Object.assign(new Error('4orm returned an invalid machine token'), { status: 502 });
+    }
     return {
-      value: result.access_token,
-      renewAt: this.now() + Math.max(0, result.expires_in * 1000 - RENEWAL_SKEW_MS),
+      value: result.data.access_token,
+      renewAt: this.now() + Math.max(0, result.data.expires_in * 1000 - RENEWAL_SKEW_MS),
     };
   }
 
@@ -181,32 +195,33 @@ export class ArtbinClient {
 
   public async search(parameters: URLSearchParams): Promise<ArtbinCatalog> {
     const query = parameters.size ? `?${parameters}` : '';
-    return this.request(`/api/assets${query}`).then(
-      (response) => response.json() as Promise<ArtbinCatalog>,
+    return payload(await this.request(`/api/assets${query}`), ArtbinCatalogSchema);
+  }
+
+  public async metadata(assetId: string): Promise<{ asset: ArtbinAsset }> {
+    return payload(
+      await this.request(`/api/assets/${encodeURIComponent(assetId)}`),
+      z.object({ asset: ArtbinAssetSchema }),
     );
   }
 
-  public async metadata(id: string): Promise<{ asset: ArtbinAsset }> {
-    return this.request(`/api/assets/${encodeURIComponent(id)}`).then(
-      (response) => response.json() as Promise<{ asset: ArtbinAsset }>,
-    );
-  }
-
-  public async content(id: string, expectedSha256: string): Promise<Uint8Array> {
+  public async content(assetId: string, expectedSha256: string): Promise<Uint8Array> {
     const parameters = new URLSearchParams({ sha256: expectedSha256 });
     const response = await this.request(
-      `/api/assets/${encodeURIComponent(id)}/content?${parameters}`,
+      `/api/assets/${encodeURIComponent(assetId)}/content?${parameters}`,
     );
     const bytes = new Uint8Array(await response.arrayBuffer());
     const actual = createHash('sha256').update(bytes).digest('hex');
-    if (actual !== expectedSha256)
+    if (actual !== expectedSha256) {
       throw Object.assign(new Error('Artbin content failed SHA-256 verification'), { status: 502 });
+    }
     return bytes;
   }
 
-  public async inspectWad(id: string): Promise<ArtbinWadInspection> {
-    return this.request(`/api/assets/${encodeURIComponent(id)}/wad`).then(
-      (response) => response.json() as Promise<ArtbinWadInspection>,
+  public async inspectWad(assetId: string): Promise<ArtbinWadInspection> {
+    return payload(
+      await this.request(`/api/assets/${encodeURIComponent(assetId)}/wad`),
+      ArtbinWadInspectionSchema,
     );
   }
 }

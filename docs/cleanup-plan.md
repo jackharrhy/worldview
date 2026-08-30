@@ -87,7 +87,7 @@ The primary liabilities are:
 | C3  | P1       | ready    | `EditorSession` composition            | C2 command boundaries       |
 | C4  | P1       | ready    | Retained scene contributions           | C2 state boundaries         |
 | C5  | P2       | ready    | Route isolation and optional loading   | —                           |
-| C6  | P1       | ready    | Declarative runtime schemas            | —                           |
+| C6  | P1       | complete | Declarative runtime schemas            | —                           |
 | C7  | P2       | ready    | IndexedDB infrastructure with `idb`    | C6 persisted-record schemas |
 | C8  | P2       | ready    | Test-suite decomposition               | Follow changed domains      |
 | C9  | P2       | ready    | Viewer renderer decomposition          | C5 shared-runtime decision  |
@@ -439,6 +439,16 @@ development dependency.
   visibility. Schema readability and correctness take precedence unless measurement demonstrates a
   user-facing regression.
 
+**Delivered 2026-08-30:** Zod 4 now owns strict project, map document, collaboration, realtime
+ticket, hosted wire, compiler, walkability, browser persistence, and WebMCP boundary schemas. A
+private DOM-free `@worldview/protocol` workspace is the single collaboration/hosted contract shared
+by browser and services. Owned payloads reject unknown fields; OAuth and Artbin provider responses
+strip additions. Parsing remains at ingress and preserves separate byte, authorization,
+transaction, geometry, and expiry checks. Current shapes are the baseline, with no migration or
+compatibility layer. The public application gained a 20.14 kB-gzip shared schema chunk while its
+home route stayed 1.46 kB gzip and remained isolated from the editor/WebGPU graph. The editor route
+moved from 235.59 to 235.89 kB gzip, and the published editor core from 69.21 to 70.78 kB gzip.
+
 ## C7 — IndexedDB infrastructure with `idb`
 
 **Problem:** Request-to-promise, transaction completion, version/open handling, and error translation
@@ -612,3 +622,4 @@ journal; retain only verification and remaining intentional exceptions.
 | Date       | ID  | Result                                                               | Verification                                                                                                                   | Remaining exceptions |
 | ---------- | --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
 | 2026-08-30 | C0  | One abort-owned editor, renderer, WebMCP, and collaboration lifetime | `npm run check`; `npm run test:browser:ci`; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs --no-build` | None                 |
+| 2026-08-30 | C6  | One strict declarative schema per untrusted runtime boundary         | `npm run check`; focused WebMCP browser suite; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs`         | None                 |

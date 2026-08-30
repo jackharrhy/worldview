@@ -18,8 +18,8 @@ export interface NativeCompilerRequest {
   readonly mapText: string;
   readonly quality: CompileQuality;
   readonly expectedDocumentRevision: number;
-  readonly profileId?: string;
-  readonly assets?: readonly NativeCompilerAsset[];
+  readonly profileId?: string | undefined;
+  readonly assets?: readonly NativeCompilerAsset[] | undefined;
 }
 
 export interface NativeCompilerAsset {

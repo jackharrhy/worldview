@@ -4,6 +4,7 @@ import type {
   NativeCompilerResult,
 } from './compiler.js';
 import type { LaunchableBuild, NativeLaunchConfig } from './launch.js';
+import { z } from 'zod';
 
 export interface NativeLaunchRequest {
   readonly buildId: string;
@@ -24,6 +25,28 @@ export interface CompileRequestLimits {
   readonly maxAssetBase64Bytes: number;
 }
 
+const NativeCompilerRequestSchema = z.strictObject({
+  mapName: z.string().min(1).max(512),
+  mapText: z.string(),
+  quality: z.enum(['preview', 'final']),
+  expectedDocumentRevision: z.number().int().nonnegative(),
+  profileId: z.literal('default').optional(),
+  assets: z
+    .array(
+      z.strictObject({
+        name: z.string().min(1).max(4_096),
+        mediaType: z.string().min(1).max(256),
+        base64: z.string(),
+      }),
+    )
+    .optional(),
+}) satisfies z.ZodType<NativeCompilerRequest>;
+const NativeLaunchRequestSchema = z.strictObject({
+  buildId: z.string().min(1).max(256),
+  profileId: z.string().min(1).max(256),
+  expectedDocumentRevision: z.number().int().nonnegative(),
+});
+
 export function parseCompileRequest(
   value: unknown,
   limits: CompileRequestLimits = {
@@ -32,35 +55,18 @@ export function parseCompileRequest(
     maxAssetBase64Bytes: 32 * 1024 * 1024,
   },
 ): NativeCompilerRequest {
-  if (!value || typeof value !== 'object') throw new Error('Request must be a JSON object');
-  const request = value as Partial<NativeCompilerRequest>;
-  if (
-    typeof request.mapName !== 'string' ||
-    typeof request.mapText !== 'string' ||
-    (request.quality !== 'preview' && request.quality !== 'final') ||
-    !Number.isInteger(request.expectedDocumentRevision) ||
-    request.expectedDocumentRevision! < 0
-  ) {
+  const parsed = NativeCompilerRequestSchema.safeParse(value);
+  if (!parsed.success) {
+    if (parsed.error.issues.some((issue) => issue.path[0] === 'profileId')) {
+      throw new Error('Unknown compile profile');
+    }
     throw new Error('Request contains invalid compile fields');
   }
-  if (request.profileId !== undefined && request.profileId !== 'default') {
-    throw new Error('Unknown compile profile');
-  }
+  const request = parsed.data;
   if (Buffer.byteLength(request.mapText) > limits.maxMapBytes) {
     throw new Error(`Map source exceeds the ${limits.maxMapBytes} byte limit`);
   }
-  if (
-    request.assets !== undefined &&
-    (!Array.isArray(request.assets) ||
-      request.assets.length > limits.maxAssets ||
-      request.assets.some(
-        (asset) =>
-          !asset ||
-          typeof asset.name !== 'string' ||
-          typeof asset.mediaType !== 'string' ||
-          typeof asset.base64 !== 'string',
-      ))
-  ) {
+  if (request.assets !== undefined && request.assets.length > limits.maxAssets) {
     throw new Error('Request contains invalid compile assets');
   }
   const assetBase64Bytes =
@@ -68,32 +74,13 @@ export function parseCompileRequest(
   if (assetBase64Bytes > limits.maxAssetBase64Bytes) {
     throw new Error(`Compile assets exceed the ${limits.maxAssetBase64Bytes} base64 byte limit`);
   }
-  return {
-    mapName: request.mapName,
-    mapText: request.mapText,
-    quality: request.quality,
-    expectedDocumentRevision: Number(request.expectedDocumentRevision),
-    ...(request.profileId ? { profileId: request.profileId } : {}),
-    ...(request.assets ? { assets: request.assets } : {}),
-  };
+  return request;
 }
 
 export function parseLaunchRequest(value: unknown): NativeLaunchRequest {
-  if (!value || typeof value !== 'object') throw new Error('Request must be a JSON object');
-  const request = value as Record<string, unknown>;
-  if (
-    typeof request.buildId !== 'string' ||
-    typeof request.profileId !== 'string' ||
-    !Number.isInteger(request.expectedDocumentRevision) ||
-    Number(request.expectedDocumentRevision) < 0
-  ) {
-    throw new Error('Request contains invalid launch fields');
-  }
-  return {
-    buildId: request.buildId,
-    profileId: request.profileId,
-    expectedDocumentRevision: Number(request.expectedDocumentRevision),
-  };
+  const request = NativeLaunchRequestSchema.safeParse(value);
+  if (!request.success) throw new Error('Request contains invalid launch fields');
+  return request.data;
 }
 
 export function helperCapabilities(

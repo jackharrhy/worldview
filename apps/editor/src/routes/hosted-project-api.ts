@@ -1,72 +1,52 @@
+import {
+  HostedErrorResponseSchema,
+  HostedMapLaunchSchema as HostedMapLaunchWireSchema,
+} from '@worldview/protocol';
 import { data, redirectDocument } from 'react-router';
+import { z } from 'zod';
 
-export interface HostedSessionUser {
-  readonly id: string;
-  readonly username: string;
-  readonly displayName: string;
-  readonly isAdmin: boolean;
+export type {
+  HostedProject,
+  HostedProjectAccessUser,
+  HostedProjectMap,
+  HostedProjectSummary,
+  HostedSessionUser,
+} from '@worldview/protocol';
+
+export const HostedMapLaunchSchema = HostedMapLaunchWireSchema.extend({
+  resources: z
+    .array(
+      z.strictObject({
+        name: z.string().min(1).max(4_096),
+        kind: z.string().min(1).max(128),
+        data: z.instanceof(ArrayBuffer),
+      }),
+    )
+    .optional(),
+});
+export type HostedMapLaunch = z.infer<typeof HostedMapLaunchSchema>;
+
+async function decodeResponse<T>(response: Response, responseSchema: z.ZodType<T>): Promise<T> {
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = HostedErrorResponseSchema.safeParse(payload);
+    throw new Error(error.success ? error.data.error : `Request failed (${response.status})`);
+  }
+  const result = responseSchema.safeParse(payload);
+  if (!result.success) throw new Error('The hosted service returned an invalid response');
+  return result.data;
 }
 
-export interface HostedProjectSummary {
-  readonly id: string;
-  readonly slug: string;
-  readonly name: string;
-  readonly game: 'quake' | 'goldsrc';
-  readonly role: 'owner' | 'editor' | 'viewer';
-  readonly updatedAt: number;
-}
-
-export interface HostedProjectMap {
-  readonly id: string;
-  readonly slug: string;
-  readonly name: string;
-  readonly format: 'valve-220' | 'quake';
-  readonly updatedAt: number;
-}
-
-export interface HostedProject extends HostedProjectSummary {
-  readonly maps: readonly HostedProjectMap[];
-}
-
-export interface HostedProjectAccessUser {
-  readonly id: string;
-  readonly username: string;
-  readonly displayName: string;
-  readonly role: HostedProjectSummary['role'] | null;
-}
-
-export interface HostedMapLaunch {
-  readonly id: string;
-  readonly slug: string;
-  readonly projectId: string;
-  readonly projectSlug: string;
-  readonly projectName: string;
-  readonly game: 'quake' | 'goldsrc';
-  readonly name: string;
-  readonly format: 'valve-220' | 'quake';
-  readonly mapVersion: number;
-  readonly role: 'owner' | 'editor' | 'viewer';
-  readonly actorId: string;
-  readonly displayName: string;
-  readonly source: string;
-  readonly resources?: readonly {
-    readonly name: string;
-    readonly kind: string;
-    readonly data: ArrayBuffer;
-  }[];
-}
-
-export async function apiJson<T>(request: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const response = await fetch(request, init);
-  const payload = (await response.json().catch(() => null)) as ({ error?: unknown } & T) | null;
-  if (!response.ok)
-    throw new Error(
-      typeof payload?.error === 'string' ? payload.error : `Request failed (${response.status})`,
-    );
-  return payload as T;
+export async function apiJson<T>(
+  responseSchema: z.ZodType<T>,
+  request: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<T> {
+  return decodeResponse(await fetch(request, init), responseSchema);
 }
 
 export async function authenticatedApiJson<T>(
+  responseSchema: z.ZodType<T>,
   routeRequest: Request,
   request: RequestInfo | URL,
   init?: RequestInit,
@@ -77,11 +57,13 @@ export async function authenticatedApiJson<T>(
     const returnTo = `${route.pathname}${route.search}`;
     throw redirectDocument(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
-  const payload = (await response.json().catch(() => null)) as ({ error?: unknown } & T) | null;
-  if (!response.ok) {
-    const message =
-      typeof payload?.error === 'string' ? payload.error : `Request failed (${response.status})`;
-    throw data(message, { status: response.status, statusText: response.statusText });
+  try {
+    return await decodeResponse(response, responseSchema);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `Request failed (${response.status})`;
+    throw data(message, {
+      status: response.ok ? 502 : response.status,
+      statusText: response.statusText,
+    });
   }
-  return payload as T;
 }

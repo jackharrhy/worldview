@@ -36,13 +36,16 @@ export class FakeMapCells {
   async createCheckpoint(
     mapId: string,
     name: string,
-    _actorId: string,
+    actorId: string,
   ): Promise<HostedMapCheckpoint> {
     this.checkpoints.push({ mapId, name });
+    const snapshot = await this.snapshot(mapId);
     return {
       id: 'checkpoint-1',
       name,
-      mapVersion: (await this.snapshot(mapId)).mapVersion,
+      mapVersion: snapshot.mapVersion,
+      sourceSha256: snapshot.sourceSha256,
+      createdBy: actorId,
       createdAt: Date.now(),
     };
   }
