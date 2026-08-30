@@ -20,6 +20,11 @@
 - Hosted workspaces use `/project/{id}-{name}` and `/project/{id}-{name}/map/{id}-{name}`. The
   12-character ID prefix is authoritative; the decorative name may be stale or omitted. UUID-form
   browser routes are intentionally unsupported.
+- A signed-out hosted-route loader performs a full-document handoff through `/auth/login`, allowing
+  the server to redirect to 4orm before the SPA can claim that server-only path. The original path
+  and query are carried as the bounded `returnTo` value.
+- A root route error boundary renders Worldview-owned recovery UI for unmatched routes, denied
+  access, and unexpected loader or render failures. It never exposes raw exception details.
 
 ## Proof
 
@@ -29,3 +34,6 @@ readiness, then continues its ordinary WebMCP empty-map inspection/edit/undo pro
 Playwright tests additionally cover profile-dependent format choices, reloads, and browser history.
 Focused editor route tests prove hosted path generation and stale-name parsing; service tests prove
 that created project and map records use the matching short-ID and derived-name contract.
+Browser routing tests intercept the hosted map API with `401`, require `/auth/login` to be requested
+as a document navigation with the exact `returnTo`, and require an unmatched route to render the
+Worldview error state instead of React Router's development fallback.

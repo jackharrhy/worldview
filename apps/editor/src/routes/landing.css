@@ -448,6 +448,93 @@ a:focus-visible {
   color: var(--muted);
 }
 
+.route-error-page {
+  display: grid;
+  min-height: 100dvh;
+  padding: 24px;
+  place-items: center;
+  background: var(--bg);
+}
+
+.route-error-panel {
+  width: min(680px, 100%);
+  border: 2px solid var(--line-strong);
+  background: var(--surface);
+}
+
+.route-error-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 18px;
+  border-bottom: 2px solid var(--line-strong);
+  background: var(--surface-raised);
+  font: 700 10px/1 var(--font-mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.route-error-wordmark {
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+.route-error-wordmark:hover {
+  color: var(--accent-hover);
+}
+
+.route-error-code {
+  color: var(--quiet);
+}
+
+.route-error-message {
+  padding: clamp(28px, 7vw, 64px) clamp(24px, 7vw, 64px);
+}
+
+.route-error-message h1 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: clamp(28px, 6vw, 46px);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+.route-error-message p {
+  max-width: 48ch;
+  margin: 14px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.route-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.route-error-actions .wv-button {
+  text-decoration: none;
+}
+
+.route-error-actions .wv-button:hover {
+  border-color: var(--line-emphasis);
+  background: var(--surface-hover);
+  color: var(--text-strong);
+}
+
+.route-error-actions .wv-button-primary:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+  color: var(--on-accent);
+}
+
+.route-error-actions .wv-button:active {
+  transform: translateY(1px);
+}
+
 .new-map-page {
   display: grid;
   place-items: start center;
@@ -863,6 +950,16 @@ a:focus-visible {
   }
   .specimen-inspector {
     display: none;
+  }
+  .route-error-page {
+    padding: 12px;
+  }
+  .route-error-panel > header,
+  .route-error-actions {
+    padding-inline: 14px;
+  }
+  .route-error-actions {
+    display: grid;
   }
 }
 @media (prefers-reduced-motion: reduce) {
