@@ -1,11 +1,10 @@
-import { randomUUID } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FileBlobStore, type BlobStore } from './blob-store.js';
-import { WorldviewDatabase, type WorldviewUser } from './database.js';
+import { WorldviewDatabase, type ProjectRole, type WorldviewUser } from './database.js';
 import {
   beginAuthorization,
   completeAuthorization,
@@ -146,6 +145,10 @@ function mapPrincipal(request: IncomingMessage, database: WorldviewDatabase, map
         user,
       }
     : null;
+}
+
+function canEdit(role: ProjectRole | null): role is 'owner' | 'editor' {
+  return role === 'owner' || role === 'editor';
 }
 
 const mediaTypes: Record<string, string> = {
@@ -331,20 +334,25 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         if (!user) return;
         const projectId = decodeURIComponent(mapsMatch[1]!);
         const role = options.database.role(projectId, user.id);
-        if (role !== 'owner' && role !== 'editor' && !user.isAdmin)
-          return json(response, 403, { error: 'Editor access required' });
+        if (!canEdit(role)) return json(response, 403, { error: 'Editor access required' });
         const input = await body(request);
         const format = input.format;
         if (format !== 'valve-220' && format !== 'quake')
           return json(response, 400, { error: 'Unsupported map format' });
+        const name = text(input.name, 'name');
+        if (options.database.hasMapNamed(projectId, name))
+          return json(response, 409, { error: 'A map with this name already exists' });
         const source = typeof input.source === 'string' ? input.source : emptyMap(format);
-        const mapId = randomUUID();
+        const mapId = options.database.createMapId();
+        // The cell remains unreachable unless the metadata insert succeeds. Predictable database
+        // errors are checked above; for an infrastructure failure, an orphan cell is safer than a
+        // visible map whose sole source authority was never initialized.
         const snapshot = await options.maps.initialize(mapId, source);
         const map = options.database.createMap({
           id: mapId,
           projectId,
           userId: user.id,
-          name: text(input.name, 'name'),
+          name,
           format,
         });
         return json(response, 201, { map: { ...map, ...snapshot } });
@@ -364,6 +372,9 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
           return json(response, 403, { error: 'Cross-origin mutation rejected' });
         const user = requireUser(request, response, options.database);
         if (!user) return;
+        const projectId = decodeURIComponent(resourcesMatch[1]!);
+        if (options.database.role(projectId, user.id) !== 'owner')
+          return json(response, 403, { error: 'Owner access required' });
         if (!options.artbin)
           return json(response, 503, { error: 'Artbin integration is not configured' });
         const input = await body(request);
@@ -374,7 +385,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const bytes = await options.artbin.content(asset.id, asset.sha256);
         await options.blobs.put(bytes);
         const mount = options.database.createResourceMount({
-          projectId: decodeURIComponent(resourcesMatch[1]!),
+          projectId,
           userId: user.id,
           providerAssetId: asset.id,
           expectedSha256: asset.sha256,
@@ -436,7 +447,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         const input = await body(request);
         const mapId = decodeURIComponent(checkpointMatch[1]!);
         const map = options.database.map(mapId, user.id);
-        if (!map || map.role === 'viewer')
+        if (!map || !canEdit(map.role))
           return json(response, 403, { error: 'Editor access required' });
         const checkpoint = await options.maps.createCheckpoint(
           mapId,
@@ -494,7 +505,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
         if (!options.builds)
           return json(response, 503, { error: 'Remote builds are not configured' });
         const map = options.database.map(decodeURIComponent(buildsMatch[1]!), user.id);
-        if (!map || map.role === 'viewer')
+        if (!map || !canEdit(map.role))
           return json(response, 403, { error: 'Editor access required' });
         if (!options.builds.supports(map.game))
           return json(response, 503, { error: `No ${map.game} build worker is configured` });

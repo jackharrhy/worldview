@@ -9,7 +9,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@jackharrhy/worldview-editor": "*"
+    "@jackharrhy/worldview-editor": "*",
+    "@sindresorhus/slugify": "^3.0.0",
+    "nanoid": "^6.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0"

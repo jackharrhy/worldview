@@ -56,3 +56,15 @@ DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVI
 DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
 IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+## Hosted URL dependencies
+
+The Worldview service uses the following MIT-licensed packages for compact random identifiers and
+Unicode-aware decorative URL slugs. Their package distributions retain their license texts.
+
+- [`nanoid`](https://github.com/ai/nanoid) 6.0.1, copyright Andrey Sitnik and contributors.
+- [`@sindresorhus/slugify`](https://github.com/sindresorhus/slugify) 3.0.0, copyright Sindre Sorhus.
+- [`@sindresorhus/transliterate`](https://github.com/sindresorhus/transliterate) 2.3.1,
+  copyright Sindre Sorhus.
+- [`escape-string-regexp`](https://github.com/sindresorhus/escape-string-regexp) 5.0.0,
+  copyright Sindre Sorhus.

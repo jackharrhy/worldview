@@ -45,7 +45,7 @@ const router = createBrowserRouter([
     },
   },
   {
-    path: '/projects/:projectId',
+    path: '/project/:projectRef',
     HydrateFallback: RouteLoading,
     lazy: {
       loader: async () => (await import('./routes/project-loader.js')).loader,
@@ -54,7 +54,7 @@ const router = createBrowserRouter([
     },
   },
   {
-    path: '/projects/:projectId/maps/:mapId',
+    path: '/project/:projectRef/map/:mapRef',
     HydrateFallback: RouteLoading,
     lazy: {
       loader: async () => (await import('./routes/hosted-map-loader.js')).loader,

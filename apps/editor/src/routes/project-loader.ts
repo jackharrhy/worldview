@@ -3,6 +3,7 @@ import {
   type HostedProject,
   type HostedProjectAccessUser,
 } from './hosted-project-api.js';
+import { hostedIdFromRouteReference } from './hosted-route.js';
 
 export async function loader({
   request,
@@ -11,8 +12,9 @@ export async function loader({
   readonly request: Request;
   readonly params: Record<string, string | undefined>;
 }) {
-  if (!params.projectId) throw new Response('Project ID required', { status: 400 });
-  const projectId = encodeURIComponent(params.projectId);
+  const routeProjectId = hostedIdFromRouteReference(params.projectRef);
+  if (!routeProjectId) throw new Response('Valid project reference required', { status: 400 });
+  const projectId = encodeURIComponent(routeProjectId);
   const url = new URL(request.url);
   const query = url.searchParams.get('assets')?.trim() ?? '';
   const [projectResult, resourceResult, assetResult] = await Promise.all([

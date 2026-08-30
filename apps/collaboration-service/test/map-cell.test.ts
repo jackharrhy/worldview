@@ -52,6 +52,16 @@ function operation(
   };
 }
 
+function nextSocketFrame(socket: WebSocket): Promise<unknown> {
+  return new Promise((resolve) => {
+    socket.addEventListener(
+      'message',
+      (event) => resolve(JSON.parse(String(event.data)) as unknown),
+      { once: true },
+    );
+  });
+}
+
 describe('MapCell', () => {
   it('rejects malformed and oversized operation frames before state access', () => {
     expect(() =>
@@ -153,6 +163,36 @@ describe('MapCell', () => {
       headers: { Authorization: `Bearer ${hostedTicket(mapId)}` },
     });
     expect(await snapshot.json()).toMatchObject({ mapId, mapVersion: 0, source });
+  });
+
+  it('lets viewers observe a live room without accepting their durable edits', async () => {
+    const mapId = 'viewer-room';
+    const cell = env.MAP_CELLS.getByName(mapId);
+    const initial = createStarterDocument();
+    await cell.initialize(mapId, serializeMap(initial));
+    const after = insertBrush(
+      initial,
+      initial.entities[0]!.id,
+      createBoxBrush([0, 0, 0], [64, 64, 64], 'STONE', createSequentialIdFactory('viewer')),
+    );
+    const response = await cell.fetch(
+      new Request(`https://map.test/live?map=${mapId}&actor=viewer&role=viewer`, {
+        headers: { Upgrade: 'websocket' },
+      }),
+    );
+    expect(response.status).toBe(101);
+    const socket = response.webSocket;
+    if (!socket) throw new Error('MapCell did not return a WebSocket');
+    socket.accept();
+    expect(await nextSocketFrame(socket)).toMatchObject({ type: 'ready', mapVersion: 0 });
+    const rejected = nextSocketFrame(socket);
+    socket.send(JSON.stringify({ type: 'operation', operation: operation(initial, after) }));
+    await expect(rejected).resolves.toMatchObject({
+      type: 'error',
+      message: 'Viewer connections cannot edit maps',
+    });
+    expect(await cell.snapshot(mapId)).toMatchObject({ mapVersion: 0 });
+    socket.close(1000, 'test complete');
   });
 
   it('atomically advances document, source, hash, receipt, and version', async () => {

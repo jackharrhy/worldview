@@ -1,4 +1,5 @@
 import { authenticatedApiJson, type HostedMapLaunch } from './hosted-project-api.js';
+import { hostedIdFromRouteReference } from './hosted-route.js';
 
 export async function loader({
   request,
@@ -7,20 +8,22 @@ export async function loader({
   readonly request: Request;
   readonly params: Record<string, string | undefined>;
 }) {
-  if (!params.projectId || !params.mapId)
-    throw new Response('Project and map IDs required', { status: 400 });
+  const projectId = hostedIdFromRouteReference(params.projectRef);
+  const mapId = hostedIdFromRouteReference(params.mapRef);
+  if (!projectId || !mapId)
+    throw new Response('Valid project and map references required', { status: 400 });
   const { map } = await authenticatedApiJson<{ map: HostedMapLaunch }>(
     request,
-    new URL(`/api/maps/${encodeURIComponent(params.mapId)}`, request.url),
+    new URL(`/api/maps/${encodeURIComponent(mapId)}`, request.url),
   );
-  if (map.projectId !== params.projectId)
+  if (map.projectId !== projectId)
     throw new Response('Map does not belong to this project', { status: 404 });
   const { mounts } = await authenticatedApiJson<{
     mounts: readonly { id: string; kind: string; display_name: string }[];
   }>(
     request,
     new URL(
-      `/api/projects/${encodeURIComponent(params.projectId)}/resources?mapId=${encodeURIComponent(params.mapId)}`,
+      `/api/projects/${encodeURIComponent(projectId)}/resources?mapId=${encodeURIComponent(mapId)}`,
       request.url,
     ),
   );
@@ -28,7 +31,7 @@ export async function loader({
     mounts.map(async (mount) => {
       const response = await fetch(
         new URL(
-          `/api/projects/${encodeURIComponent(params.projectId!)}/resources/${encodeURIComponent(mount.id)}/content?mapId=${encodeURIComponent(params.mapId!)}`,
+          `/api/projects/${encodeURIComponent(projectId)}/resources/${encodeURIComponent(mount.id)}/content?mapId=${encodeURIComponent(mapId)}`,
           request.url,
         ),
       );

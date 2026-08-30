@@ -11,6 +11,7 @@ import {
 } from '../components/ui.js';
 import { setPendingEditorLaunch } from './editor-launch.js';
 import type { loader } from './home-loader.js';
+import { hostedProjectPath } from './hosted-route.js';
 
 const projects = new ProjectLocalStateService();
 
@@ -120,7 +121,7 @@ export function Component() {
                   type="button"
                   className="landing-recent"
                   key={project.id}
-                  onClick={() => void navigate(`/projects/${encodeURIComponent(project.id)}`)}
+                  onClick={() => void navigate(hostedProjectPath(project))}
                 >
                   <strong>{project.name}</strong>
                   <span>

@@ -3,7 +3,8 @@
 ## Sub-features
 
 `worldview.project.json`, authorized directory traversal, map enumeration, ordered WAD and entity
-definition loading, remembered browser-local handles, and project map switching.
+definition loading, remembered browser-local handles, project map switching, and authenticated
+content-addressed mounts for hosted projects.
 
 ## How to get to it (user POV)
 
@@ -22,3 +23,8 @@ to the generic helper.
 LibreQuake's `dev.zip` is a useful GPL-republished external corpus, but download and unpack it into
 a temporary directory and do not commit it. Material resolution requires its project layout; a
 standalone `.map` load correctly reports unresolved materials.
+
+Hosted resource tests must prove that all project roles can read a mounted resource, outsiders and
+unauthenticated users cannot, and only the owner can begin an Artbin mount. Reject authorization
+before Artbin metadata/content or blob-cache work so forbidden requests cannot consume upstream
+resources.
