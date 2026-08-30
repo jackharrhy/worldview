@@ -1,8 +1,7 @@
 import type { EditorElements } from './editor-elements.js';
+import type { EditorThemePreference } from './editor-shell-state.js';
 import { resolveEditorRenderTheme } from './render-theme.js';
 import type { EditorState } from './editor-state.js';
-
-type EditorThemePreference = 'system' | 'dark' | 'light';
 
 const STORAGE_KEY = 'worldview.editor.theme';
 
@@ -25,19 +24,22 @@ export class ThemePresenter {
   ) {}
 
   public connect(): void {
-    this.ui.themeSelect.value = this.preference;
+    this.ui.theme.bind(
+      {
+        setPreference: (preference) => {
+          this.preference = preference;
+          this.ui.theme.setPreference(preference);
+          try {
+            localStorage.setItem(STORAGE_KEY, preference);
+          } catch {
+            // Theme selection still applies when storage is unavailable.
+          }
+          this.apply(true);
+        },
+      },
+      this.preference,
+    );
     this.apply(false);
-    this.ui.themeSelect.addEventListener('change', () => {
-      const value = this.ui.themeSelect.value;
-      if (value !== 'system' && value !== 'dark' && value !== 'light') return;
-      this.preference = value;
-      try {
-        localStorage.setItem(STORAGE_KEY, value);
-      } catch {
-        // Theme selection still applies when storage is unavailable.
-      }
-      this.apply(true);
-    });
     this.systemTheme.addEventListener('change', () => {
       if (this.preference === 'system') this.apply(true);
     });

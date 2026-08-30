@@ -78,9 +78,10 @@
 
 .wv-button-primary[data-disabled],
 .wv-button-primary:disabled {
-  border-color: color-mix(in oklch, var(--accent) 62%, var(--line));
-  background: color-mix(in oklch, var(--accent) 42%, var(--surface));
-  color: color-mix(in oklch, var(--on-accent) 78%, var(--quiet));
+  border-color: color-mix(in oklch, var(--accent) 48%, var(--line));
+  background: color-mix(in oklch, var(--accent) 18%, var(--surface));
+  color: var(--text);
+  opacity: 1;
 }
 
 .wv-button-quiet {
@@ -260,4 +261,373 @@
 
 .wv-submenu-popover {
   min-width: 200px;
+}
+
+.wv-select {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wv-select-trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: var(--surface-input);
+  color: var(--text-strong);
+  font: 12px/1 var(--font-mono);
+  text-align: left;
+  outline: none;
+}
+
+.wv-select-trigger[data-hovered],
+.wv-select[data-reference-state='hover'] .wv-select-trigger {
+  border-color: var(--line-emphasis);
+  background: color-mix(in oklch, var(--surface-input) 82%, var(--surface-hover));
+}
+
+.wv-select-trigger[data-focus-visible],
+.wv-select[data-reference-state='focus'] .wv-select-trigger {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.wv-select[data-open] .wv-select-trigger,
+.wv-select[data-reference-state='open'] .wv-select-trigger {
+  border-color: var(--accent);
+  background: var(--surface-active);
+}
+
+.wv-select[data-invalid] .wv-select-trigger,
+.wv-select[data-reference-state='invalid'] .wv-select-trigger {
+  border-color: var(--danger);
+}
+
+.wv-select[data-disabled] .wv-select-trigger {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--quiet);
+}
+
+.wv-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wv-select-caret {
+  color: var(--quiet);
+  font-size: 10px;
+}
+
+.wv-select-popover {
+  min-width: var(--trigger-width);
+}
+
+.wv-listbox {
+  max-height: min(320px, calc(100vh - 24px));
+  padding: 4px;
+  outline: none;
+}
+
+.wv-listbox-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  min-height: 28px;
+  padding: 6px 7px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  outline: none;
+}
+
+.wv-listbox-item small {
+  grid-column: 1;
+  color: var(--quiet);
+  font-size: 9px;
+}
+
+.wv-listbox-item[data-hovered],
+.wv-listbox-item[data-focused] {
+  border-color: var(--line-strong);
+  background: var(--surface-active);
+  color: var(--text-strong);
+}
+
+.wv-listbox-item[data-selected] {
+  color: var(--text-strong);
+}
+
+.wv-listbox-item[data-focus-visible] {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.wv-listbox-item[data-disabled] {
+  color: var(--quiet);
+  opacity: 0.52;
+}
+
+.wv-listbox-check {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--accent-text);
+  opacity: 0;
+}
+
+.wv-listbox-item[data-selected] .wv-listbox-check {
+  opacity: 1;
+}
+
+.wv-number-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  min-width: 0;
+}
+
+.wv-number-control .wv-input {
+  border-radius: 2px 0 0 2px;
+}
+
+.wv-number-control[data-focus-within] .wv-input {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.wv-number-steppers {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+}
+
+.wv-number-stepper {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-left: 0;
+  border-radius: 0 2px 0 0;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1;
+  outline: none;
+}
+
+.wv-number-stepper:last-child {
+  border-top: 0;
+  border-radius: 0 0 2px;
+}
+
+.wv-number-stepper[data-hovered] {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+}
+
+.wv-number-stepper[data-pressed] {
+  background: var(--surface-active);
+}
+
+.wv-number-stepper[data-focus-visible] {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.wv-checkbox-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wv-checkbox {
+  display: inline-grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+  outline: none;
+  cursor: pointer;
+}
+
+.wv-checkbox-indicator {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: var(--surface-input);
+  color: transparent;
+  font-size: 9px;
+}
+
+.wv-checkbox[data-hovered] .wv-checkbox-indicator,
+.wv-checkbox[data-reference-state='hover'] .wv-checkbox-indicator {
+  border-color: var(--line-emphasis);
+  background: var(--surface-hover);
+}
+
+.wv-checkbox[data-selected] .wv-checkbox-indicator,
+.wv-checkbox[data-indeterminate] .wv-checkbox-indicator {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.wv-checkbox[data-pressed] .wv-checkbox-indicator,
+.wv-checkbox[data-reference-state='pressed'] .wv-checkbox-indicator {
+  background: var(--accent-active);
+}
+
+.wv-checkbox[data-focus-visible] .wv-checkbox-indicator,
+.wv-checkbox[data-reference-state='focus'] .wv-checkbox-indicator {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.wv-checkbox[data-disabled] {
+  color: var(--quiet);
+  cursor: default;
+  opacity: 0.62;
+}
+
+.wv-checkbox-description {
+  padding-left: 20px;
+}
+
+.wv-tabs {
+  min-width: 0;
+  min-height: 0;
+}
+
+.wv-tab-list {
+  display: flex;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--surface-deep);
+}
+
+.wv-tab {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  outline: none;
+  cursor: default;
+}
+
+.wv-tab[data-hovered] {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+}
+
+.wv-tab[data-selected] {
+  color: var(--text);
+}
+
+.wv-tab[data-selected]::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--accent);
+  content: '';
+}
+
+.wv-tab[data-focus-visible] {
+  outline: 2px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.wv-tab[data-disabled] {
+  color: var(--quiet);
+  opacity: 0.55;
+}
+
+.wv-tab-panel {
+  min-width: 0;
+  min-height: 0;
+  outline: none;
+}
+
+.wv-tab-panel[data-focus-visible] {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.wv-modal-overlay {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 14px;
+  background: var(--overlay);
+}
+
+.wv-modal {
+  width: min(520px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: var(--surface-popover);
+  box-shadow: 0 18px 60px var(--shadow-strong);
+  color: var(--text);
+  outline: none;
+}
+
+.wv-dialog {
+  outline: none;
+}
+
+.wv-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 0 8px 0 13px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+
+.wv-dialog-header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wv-dialog-title {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.wv-dialog-detail {
+  color: var(--quiet);
+  font: 8px/1.2 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }

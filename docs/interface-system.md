@@ -67,3 +67,11 @@ The first slice establishes button/field/menu styling and converts the viewport 
 imperative DOM construction to a React-owned React Aria surface. `/design` must show this slice in
 both themes with ordinary, hover/pressed reference, focus-visible, disabled, invalid, selected/open,
 busy, and long-label cases before broader replacement begins.
+
+The second slice adds tabs, select/listbox, number field, checkbox, modal, and dialog primitives.
+The live inspector tabs, editor theme selector, Quake II surface flags and value, and collaboration
+dialog use those primitives through narrow snapshot/command ports. Inactive inspector panels remain
+mounted and inert because presenters still bind stable native refs inside them; React owns which
+panel is selected and visible. React Aria's focus-scope sentinels and visually hidden native inputs
+may carry library-generated inline clipping styles, but application-authored visible layout remains
+class- and token-driven.

@@ -214,6 +214,15 @@ native-menu suppression, including the Windows event order where `contextmenu` a
 popover has made the canvas inert. C1 remains in progress: raw editor controls, inspectors,
 catalogs, dialogs, and the imperative-UI architecture gate are intentionally separate slices.
 
+**Delivered 2026-08-30 (second slice):** Worldview-styled React Aria tabs, select/listbox, number
+field, checkbox, modal, and dialog primitives now join the initial set. The live inspector page and
+theme preference use typed snapshot ports instead of imperative class, hidden, ARIA, value, and
+change-listener mutation. Quake II surface flags/value use the shared checkbox and number field, and
+collaboration uses a portal-backed modal with React Aria focus containment and dismissal instead of
+`showModal()` synchronization. `/design` exercises every new primitive in both themes and exposes an
+interactive dialog. C1 remains in progress for the remaining raw tool controls, catalogs, build and
+project dialogs, and imperative-UI architecture gate.
+
 **Acceptance criteria:**
 
 - Presenters do not create or mutate user-visible DOM.

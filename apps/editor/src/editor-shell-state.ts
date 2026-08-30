@@ -119,6 +119,46 @@ export class ViewportLayoutPort {
   }
 }
 
+export type InspectorPage = 'map' | 'object' | 'textures';
+
+export class InspectorLayoutPort {
+  private readonly store = new SnapshotStore<InspectorPage>('object');
+
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+
+  public setActive(page: InspectorPage): void {
+    this.store.set(page);
+  }
+}
+
+export type EditorThemePreference = 'system' | 'dark' | 'light';
+
+export interface ThemeUiActions {
+  setPreference(preference: EditorThemePreference): void;
+}
+
+export class ThemeUiPort {
+  private readonly store = new SnapshotStore<EditorThemePreference>('system');
+  private actions: ThemeUiActions | null = null;
+
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+
+  public bind(actions: ThemeUiActions, preference: EditorThemePreference): void {
+    this.actions = actions;
+    this.store.set(preference);
+  }
+
+  public setPreference(preference: EditorThemePreference): void {
+    this.store.set(preference);
+  }
+
+  public select(preference: EditorThemePreference): void {
+    this.actions?.setPreference(preference);
+  }
+}
+
 export interface ContextMenuActionSnapshot {
   readonly id: string;
   readonly label: string;
@@ -397,6 +437,8 @@ export interface EditorShellState {
   readonly compileState: CompileStatePort;
   readonly pointerContext: PointerContextPort;
   readonly viewportLayout: ViewportLayoutPort;
+  readonly inspectorLayout: InspectorLayoutPort;
+  readonly theme: ThemeUiPort;
   readonly viewportContextMenu: ViewportContextMenuPort;
   readonly documentSummary: DocumentSummaryPort;
   readonly surfaceInspector: SurfaceInspectorPort;
@@ -411,6 +453,8 @@ export function createEditorShellState(): EditorShellState {
     compileState: new CompileStatePort(),
     pointerContext: new PointerContextPort(),
     viewportLayout: new ViewportLayoutPort(),
+    inspectorLayout: new InspectorLayoutPort(),
+    theme: new ThemeUiPort(),
     viewportContextMenu: new ViewportContextMenuPort(),
     documentSummary: new DocumentSummaryPort(),
     surfaceInspector: new SurfaceInspectorPort(),

@@ -182,7 +182,7 @@ export class ContextMenuPresenter {
     this.state.activeMaterialName = material;
     this.ui.materialName.value = material;
     this.ui.materialFilter.value = material;
-    required<HTMLButtonElement>('[data-inspector-tab="textures"]').click();
+    this.ui.inspectorLayout.setActive('textures');
     this.renderMaterialCatalog();
     window.requestAnimationFrame(() => {
       const tile = [

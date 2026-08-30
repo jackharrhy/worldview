@@ -59,7 +59,7 @@ function DocumentSummary({ shellState }: MapInspectorProps) {
 
 export function MapInspector({ shellState }: MapInspectorProps) {
   return (
-    <section data-inspector-panel="map" hidden>
+    <section>
       <div className="panel-heading">
         <h2>Map</h2>
         <span>Valve 220</span>

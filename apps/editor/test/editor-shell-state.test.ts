@@ -125,4 +125,19 @@ describe('editor shell state ports', () => {
     expect(setPerspectiveOnly).toHaveBeenCalledWith(true);
     expect(shell.viewportLayout.getSnapshot().perspectiveOnly).toBe(true);
   });
+
+  it('publishes React-owned inspector and theme selections through narrow ports', () => {
+    const shell = createEditorShellState();
+    const setPreference = vi.fn((preference: 'system' | 'dark' | 'light') => {
+      shell.theme.setPreference(preference);
+    });
+
+    shell.inspectorLayout.setActive('textures');
+    expect(shell.inspectorLayout.getSnapshot()).toBe('textures');
+
+    shell.theme.bind({ setPreference }, 'system');
+    shell.theme.select('light');
+    expect(setPreference).toHaveBeenCalledWith('light');
+    expect(shell.theme.getSnapshot()).toBe('light');
+  });
 });

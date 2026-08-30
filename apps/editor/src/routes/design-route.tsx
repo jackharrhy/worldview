@@ -8,6 +8,11 @@ import {
   SectionHeading,
 } from '../components/ui.js';
 import { Menu, MenuItem, MenuSection } from '../components/ui/menu.js';
+import { Checkbox } from '../components/ui/checkbox.js';
+import { Dialog } from '../components/ui/dialog.js';
+import { NumberField } from '../components/ui/number-field.js';
+import { Select } from '../components/ui/select.js';
+import { Tab, TabList, TabPanel, Tabs } from '../components/ui/tabs.js';
 import { TextField } from '../components/ui/text-field.js';
 
 const colorTokens = [
@@ -109,6 +114,30 @@ function ThemeSpecimen({ theme }: { readonly theme: 'dark' | 'light' }) {
             </Menu>
           </div>
         </div>
+        <div className="design-state-group design-composite-states">
+          <strong>Selection and values</strong>
+          <Select
+            label="Game profile"
+            defaultSelectedKey="quake"
+            options={[
+              { id: 'quake', label: 'Quake' },
+              { id: 'goldsrc', label: 'GoldSrc' },
+            ]}
+          />
+          <NumberField label="Grid size" defaultValue={16} minValue={1} step={1} />
+          <Checkbox defaultSelected>Texture lock</Checkbox>
+          <Checkbox isIndeterminate>Mixed surface flag</Checkbox>
+          <Tabs defaultSelectedKey="entity">
+            <TabList aria-label={`${theme} inspector specimen`}>
+              <Tab id="map">Map</Tab>
+              <Tab id="entity">Entity</Tab>
+              <Tab id="face">Face</Tab>
+            </TabList>
+            <TabPanel id="map">Map properties</TabPanel>
+            <TabPanel id="entity">Entity properties</TabPanel>
+            <TabPanel id="face">Face properties</TabPanel>
+          </Tabs>
+        </div>
       </div>
     </section>
   );
@@ -116,6 +145,7 @@ function ThemeSpecimen({ theme }: { readonly theme: 'dark' | 'light' }) {
 
 export function Component() {
   const [selectedTool, setSelectedTool] = useState('select');
+  const [dialogOpen, setDialogOpen] = useState(false);
   return (
     <ProductPage wide>
       <ProductHeader
@@ -143,6 +173,7 @@ export function Component() {
             <ActionButton tone="quiet">Cancel</ActionButton>
             <ActionButton tone="danger">Remove</ActionButton>
             <ActionButton isDisabled>Unavailable</ActionButton>
+            <ActionButton onPress={() => setDialogOpen(true)}>Open dialog</ActionButton>
           </div>
           <div className="field-grid">
             <Field label="Map name" hint="Saved as a Quake map source file.">
@@ -157,6 +188,19 @@ export function Component() {
           </div>
         </div>
       </section>
+
+      <Dialog
+        title="Dialog specimen"
+        detail="React Aria focus and dismissal"
+        isOpen={dialogOpen}
+        isDismissable
+        onOpenChange={setDialogOpen}
+      >
+        <div className="design-dialog-body">
+          <p>Dialogs use the same compact surface, border, field, and action language.</p>
+          <TextField label="Checkpoint label" defaultValue="before-lighting" />
+        </div>
+      </Dialog>
 
       <section className="design-section">
         <SectionHeading title="Before the editor" detail="Project and map surfaces" />

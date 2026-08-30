@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { Button } from '../ui/button.js';
+import { Tab, TabList, TabPanel, Tabs } from '../ui/tabs.js';
 import { MapInspector } from './map-inspector.js';
 import { ObjectInspector } from './object-inspector.js';
 import { TextureInspector } from './texture-inspector.js';
@@ -15,6 +16,10 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
   const viewportLayout = useSyncExternalStore(
     shellState.viewportLayout.subscribe,
     shellState.viewportLayout.getSnapshot,
+  );
+  const inspectorPage = useSyncExternalStore(
+    shellState.inspectorLayout.subscribe,
+    shellState.inspectorLayout.getSnapshot,
   );
   const { perspectiveOnly, rendererReady } = viewportLayout;
   const perspectiveToggleLabel = perspectiveOnly
@@ -112,28 +117,51 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
         data-resize="inspector"
       />
       <aside className="inspector panel" aria-label="Inspector">
-        <div className="inspector-tabs" role="tablist" aria-label="Inspector pages">
-          <button type="button" role="tab" data-inspector-tab="map" aria-selected="false">
-            Map
-          </button>
-          <button
-            className="active"
-            type="button"
-            role="tab"
-            data-inspector-tab="object"
-            aria-selected="true"
+        <Tabs
+          className="inspector-tabs-shell"
+          selectedKey={inspectorPage}
+          onSelectionChange={(key) => {
+            if (key === 'map' || key === 'object' || key === 'textures') {
+              shellState.inspectorLayout.setActive(key);
+            }
+          }}
+        >
+          <TabList className="inspector-tabs" aria-label="Inspector pages">
+            <Tab id="map" data-inspector-tab="map">
+              Map
+            </Tab>
+            <Tab id="object" data-inspector-tab="object">
+              Entity
+            </Tab>
+            <Tab id="textures" data-inspector-tab="textures">
+              Face
+            </Tab>
+          </TabList>
+          <TabPanel
+            id="map"
+            className="inspector-scroll"
+            data-inspector-panel="map"
+            shouldForceMount
           >
-            Entity
-          </button>
-          <button type="button" role="tab" data-inspector-tab="textures" aria-selected="false">
-            Face
-          </button>
-        </div>
-        <div className="inspector-scroll">
-          <ObjectInspector />
-          <TextureInspector shellState={shellState} />
-          <MapInspector shellState={shellState} />
-        </div>
+            <MapInspector shellState={shellState} />
+          </TabPanel>
+          <TabPanel
+            id="object"
+            className="inspector-scroll"
+            data-inspector-panel="object"
+            shouldForceMount
+          >
+            <ObjectInspector />
+          </TabPanel>
+          <TabPanel
+            id="textures"
+            className="inspector-scroll"
+            data-inspector-panel="textures"
+            shouldForceMount
+          >
+            <TextureInspector shellState={shellState} />
+          </TabPanel>
+        </Tabs>
       </aside>
     </section>
   );

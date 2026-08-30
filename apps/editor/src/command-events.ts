@@ -212,21 +212,5 @@ export class CommandEvents {
     this.ui.inspectorToggle.addEventListener('click', () => {
       this.app.document.setInspectorOpen(this.ui.inspector.classList.contains('closed'));
     });
-
-    for (const tab of document.querySelectorAll<HTMLButtonElement>('[data-inspector-tab]')) {
-      tab.addEventListener('click', () => {
-        const target = tab.dataset.inspectorTab;
-        for (const candidate of document.querySelectorAll<HTMLButtonElement>(
-          '[data-inspector-tab]',
-        )) {
-          const active = candidate === tab;
-          candidate.classList.toggle('active', active);
-          candidate.setAttribute('aria-selected', String(active));
-        }
-        for (const panel of document.querySelectorAll<HTMLElement>('[data-inspector-panel]')) {
-          panel.hidden = panel.dataset.inspectorPanel !== target;
-        }
-      });
-    }
   }
 }

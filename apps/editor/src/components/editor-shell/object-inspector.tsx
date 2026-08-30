@@ -2,7 +2,7 @@ import { BUILTIN_POINT_ENTITY_DEFINITIONS } from '@jackharrhy/worldview-editor';
 
 const objectInspector = (
   <>
-    <section data-inspector-panel="object">
+    <section>
       <div className="panel-heading">
         <h2>Selection</h2>
         <span id="selection-kind">None</span>

@@ -98,7 +98,14 @@ not merely frame a brush at a comfortable distance. Sample several vertical pixe
 lower viewport and reject sustained grid-colored bands; this catches screen-space line expansion
 performed before homogeneous clipping.
 
-Theme selection is available through `#editor-theme` with System, Dark, and Light values. Verify a
-runtime switch by requiring the root `data-theme`, computed `color-scheme`, persisted
+Theme selection is a React Aria select rooted at `#editor-theme` with System, Dark, and Light
+options. Open its labelled button and choose the named option rather than calling native
+`selectOption`. Verify a runtime switch by requiring the root `data-theme`, computed `color-scheme`, persisted
 `worldview.editor.theme` value, and a new viewport screenshot. Reload to prove persistence. A theme
 switch must not change the document revision, selection, camera state, or undo history.
+
+Inspector Map, Entity, and Face pages are React Aria tabs. Verify arrow-key selection from a focused
+tab and require the matching `[data-inspector-panel]` to be visible while forced-mounted inactive
+panels are inert and hidden. Quake II surface checkboxes should be toggled with keyboard Space on the
+named checkbox (their native inputs are visually hidden); verify the serialized face flags/value,
+not only the visual control state.

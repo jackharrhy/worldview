@@ -21,6 +21,8 @@ export function bindEditorElements(shellState: EditorShellState) {
   const sourceDialog = required<HTMLDialogElement>('#source-dialog');
   const viewportContextMenu = shellState.viewportContextMenu;
   const viewportLayout = shellState.viewportLayout;
+  const inspectorLayout = shellState.inspectorLayout;
+  const theme = shellState.theme;
   const statusMessage = shellState.statusMessage;
   const cameraPointerContext = shellState.pointerContext;
   const documentSummary = shellState.documentSummary;
@@ -254,26 +256,6 @@ export function bindEditorElements(shellState: EditorShellState) {
   const workspaceResizeHandles = [...document.querySelectorAll<HTMLElement>('[data-resize]')];
   const inspector = required<HTMLElement>('.inspector');
   const inspectorToggle = required<HTMLButtonElement>('[data-action="toggle-inspector"]');
-  const themeSelect = required<HTMLSelectElement>('#editor-theme');
-  const collaborationToggle = required<HTMLButtonElement>('#collaboration-toggle');
-  const collaborationPresenceStrip = required<HTMLDivElement>('#collaboration-presence-strip');
-  const collaborationDialog = required<HTMLDialogElement>('#collaboration-dialog');
-  const collaborationState = required<HTMLElement>('#collaboration-state');
-  const collaborationDescription = required<HTMLParagraphElement>('#collaboration-description');
-  const collaborationDisplayName = required<HTMLInputElement>('#collaboration-display-name');
-  const collaborationShareFields = required<HTMLElement>('#collaboration-share-fields');
-  const collaborationShareLink = required<HTMLInputElement>('#collaboration-share-link');
-  const collaborationParticipants = required<HTMLElement>('#collaboration-participants');
-  const collaborationParticipantList = required<HTMLUListElement>(
-    '#collaboration-participant-list',
-  );
-  const collaborationError = required<HTMLParagraphElement>('#collaboration-error');
-  const startCollaborationButton = required<HTMLButtonElement>(
-    '[data-action="start-collaboration"]',
-  );
-  const leaveCollaborationButton = required<HTMLButtonElement>(
-    '[data-action="leave-collaboration"]',
-  );
   const gridSizeSelect = required<HTMLSelectElement>('#grid-size');
   const textureLock = required<HTMLInputElement>('#texture-lock');
   const documentName = shellState.documentName;
@@ -291,6 +273,8 @@ export function bindEditorElements(shellState: EditorShellState) {
     sourceDialog,
     viewportContextMenu,
     viewportLayout,
+    inspectorLayout,
+    theme,
     statusMessage,
     cameraPointerContext,
     editorShell,
@@ -500,20 +484,6 @@ export function bindEditorElements(shellState: EditorShellState) {
     workspaceResizeHandles,
     inspector,
     inspectorToggle,
-    themeSelect,
-    collaborationToggle,
-    collaborationPresenceStrip,
-    collaborationDialog,
-    collaborationState,
-    collaborationDescription,
-    collaborationDisplayName,
-    collaborationShareFields,
-    collaborationShareLink,
-    collaborationParticipants,
-    collaborationParticipantList,
-    collaborationError,
-    startCollaborationButton,
-    leaveCollaborationButton,
     gridSizeSelect,
     textureLock,
     documentName,

@@ -1,5 +1,8 @@
-import { useEffect, useRef, useSyncExternalStore, type FormEvent } from 'react';
+import { useSyncExternalStore, type FormEvent } from 'react';
 import type { EditorShellState, SurfaceFlagControl } from '../../editor-shell-state.js';
+import { Button } from '../ui/button.js';
+import { Checkbox } from '../ui/checkbox.js';
+import { NumberField } from '../ui/number-field.js';
 
 function FlagCheckbox({
   field,
@@ -10,27 +13,16 @@ function FlagCheckbox({
   readonly flag: SurfaceFlagControl;
   readonly shellState: EditorShellState;
 }) {
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (input.current) input.current.indeterminate = flag.mixed;
-  }, [flag.mixed]);
   return (
-    <label>
-      <input
-        ref={input}
-        type="checkbox"
-        checked={flag.checked}
-        onChange={(event) =>
-          shellState.surfaceInspector.invoke(
-            'setFlag',
-            field,
-            flag.value,
-            event.currentTarget.checked,
-          )
-        }
-      />
+    <Checkbox
+      isSelected={flag.checked}
+      isIndeterminate={flag.mixed}
+      onChange={(selected) =>
+        shellState.surfaceInspector.invoke('setFlag', field, flag.value, selected)
+      }
+    >
       {flag.label}
-    </label>
+    </Checkbox>
   );
 }
 
@@ -47,6 +39,7 @@ function SurfaceInspector({ shellState }: { readonly shellState: EditorShellStat
     const value = Number(data.get('surface-value'));
     if (Number.isInteger(value)) shellState.surfaceInspector.invoke('setValue', value);
   };
+  const surfaceValue = Number(snapshot.value);
   return (
     <div className="surface-attributes inspector-section">
       <h3>Quake II surface</h3>
@@ -69,18 +62,19 @@ function SurfaceInspector({ shellState }: { readonly shellState: EditorShellStat
         {snapshot.unknownFlags ? <p>Unknown bits: {snapshot.unknownFlags}</p> : null}
       </fieldset>
       <form onSubmit={submitValue} className="surface-value-form">
-        <label>
-          {snapshot.valueLabel}
-          <input
-            key={`${snapshot.value}:${snapshot.valueMixed}`}
-            name="surface-value"
-            type="number"
-            step={1}
-            defaultValue={snapshot.value}
-            placeholder={snapshot.valueMixed ? 'Mixed' : undefined}
-          />
-        </label>
-        <button type="submit">Apply</button>
+        <NumberField
+          key={`${snapshot.value}:${snapshot.valueMixed}`}
+          label={snapshot.valueLabel}
+          name="surface-value"
+          step={1}
+          {...(snapshot.value.trim() && Number.isFinite(surfaceValue)
+            ? { defaultValue: surfaceValue }
+            : {})}
+          input={snapshot.valueMixed ? { placeholder: 'Mixed' } : {}}
+        />
+        <Button type="submit" size="compact">
+          Apply
+        </Button>
       </form>
     </div>
   );
@@ -88,7 +82,7 @@ function SurfaceInspector({ shellState }: { readonly shellState: EditorShellStat
 
 export function TextureInspector({ shellState }: { readonly shellState: EditorShellState }) {
   return (
-    <section data-inspector-panel="textures" hidden>
+    <section>
       <div className="panel-heading">
         <h2>Selected face</h2>
         <span>Valve 220</span>

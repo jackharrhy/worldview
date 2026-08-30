@@ -54,15 +54,15 @@
   color: var(--quiet);
 }
 
-.theme-control select {
+.theme-select {
   width: 72px;
   min-width: 0;
-  height: 23px;
+}
+
+.theme-select .wv-select-trigger {
+  min-height: 23px;
   padding: 0 4px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: var(--surface-input);
-  color: var(--text);
+  border-color: var(--line);
   font-size: 9px;
 }
 

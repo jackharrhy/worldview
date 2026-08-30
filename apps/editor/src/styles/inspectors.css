@@ -420,10 +420,7 @@
   gap: 4px 8px;
 }
 
-.surface-flag-grid label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.surface-flag-grid .wv-checkbox-field {
   min-width: 0;
 }
 
@@ -434,9 +431,12 @@
   gap: 8px;
 }
 
-.surface-value-form label {
-  display: grid;
+.surface-value-form .wv-number-field {
   gap: 4px;
+}
+
+.surface-value-form .wv-input {
+  min-height: 28px;
 }
 
 .texture-axes {

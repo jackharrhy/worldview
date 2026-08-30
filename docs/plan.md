@@ -259,7 +259,9 @@ React-owned Worldview primitives backed by React Aria Components for conventiona
 focus/keyboard, menu, overlay, and dialog behavior. Worldview retains its two-pixel visual language
 and semantic CSS variables; React Spectrum styling is not used. The development-only `/design`
 specimen shows both palettes and every control state alongside forms, menus, project states, and
-representative editor chrome. Native CSS remains the styling foundation so the UI and WebGPU theme
+representative editor chrome. Inspector tabs, theme selection, surface flags and values, and live
+collaboration are the first editor surfaces using the tabs, listbox, number-field, checkbox, and
+modal primitives through typed snapshot ports. Native CSS remains the styling foundation so the UI and WebGPU theme
 bridge use one inspectable token model rather than parallel utility or CSS-in-JS systems. The full
 control contract and ordered rollout live in [`interface-system.md`](./interface-system.md).
 

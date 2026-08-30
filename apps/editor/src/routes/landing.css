@@ -73,11 +73,11 @@ button {
   padding: 0 12px;
   cursor: pointer;
 }
-button:hover:not(:disabled) {
+button:not(.wv-button, .wv-select-trigger, .wv-number-stepper):hover:not(:disabled) {
   border-color: var(--line-emphasis);
   background: var(--surface-hover);
 }
-button:active:not(:disabled) {
+button:not(.wv-button, .wv-select-trigger, .wv-number-stepper):active:not(:disabled) {
   background: var(--surface-active);
   transform: translateY(1px);
 }
@@ -724,6 +724,32 @@ a:focus-visible {
 }
 .design-field-states {
   gap: 14px;
+}
+.design-composite-states {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.design-composite-states > strong,
+.design-composite-states > .wv-tabs {
+  grid-column: 1 / -1;
+}
+.design-composite-states .wv-tab-panel {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+.design-dialog-body {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+.design-dialog-body p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 .design-menu-specimen {
   min-width: 0;

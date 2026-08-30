@@ -606,6 +606,11 @@ async function controlContrast(locator: Locator): Promise<number> {
   });
 }
 
+async function chooseSelectOption(page: Page, label: string, option: string): Promise<void> {
+  await page.getByRole('button', { name: new RegExp(`${label}$`) }).click();
+  await page.getByRole('option', { name: option, exact: true }).click();
+}
+
 test.describe('WebMCP site authoring', () => {
   test('keeps button contrast legible across themes and interaction states', async ({ page }) => {
     await page.goto('http://127.0.0.1:5174/');
@@ -634,6 +639,7 @@ test.describe('WebMCP site authoring', () => {
     const create = page.getByRole('button', { name: 'Create map', exact: true });
     await create.evaluate((button: HTMLButtonElement) => {
       button.disabled = true;
+      button.dataset.pending = 'true';
     });
     for (const theme of ['dark', 'light'] as const) {
       await page.evaluate((value) => {
@@ -647,7 +653,7 @@ test.describe('WebMCP site authoring', () => {
   test('keeps visible editor controls above non-text contrast minimums', async ({ page }) => {
     await openEditor(page, { empty: true });
     for (const theme of ['dark', 'light'] as const) {
-      await page.getByLabel('Editor theme').selectOption(theme);
+      await chooseSelectOption(page, 'Editor theme', theme === 'dark' ? 'Dark' : 'Light');
       const buttons = page.locator('button:visible:not(:disabled)');
       const failures: string[] = [];
       for (let index = 0; index < (await buttons.count()); index += 1) {
@@ -713,7 +719,13 @@ test.describe('WebMCP site authoring', () => {
     for (const theme of ['dark', 'light']) {
       const specimen = page.locator(`.design-theme[data-preview-theme="${theme}"]`);
       await expect(specimen.locator('.wv-button')).toHaveCount(7);
-      await expect(specimen.locator('.wv-field')).toHaveCount(4);
+      await expect(specimen.locator('.wv-field')).toHaveCount(5);
+      await expect(specimen.locator('.wv-select')).toHaveCount(1);
+      await expect(specimen.locator('.wv-checkbox-field')).toHaveCount(2);
+      await expect(specimen.getByRole('tab', { name: 'Entity' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
       await expect(specimen.getByRole('menu')).toBeVisible();
       await expect(specimen.getByRole('menuitemradio', { name: 'Snap to grid' })).toHaveAttribute(
         'aria-checked',
@@ -721,8 +733,12 @@ test.describe('WebMCP site authoring', () => {
       );
       await expect(specimen.getByText('Use a contained project path.')).toBeVisible();
     }
+    await page.getByRole('button', { name: 'Open dialog' }).click();
+    await expect(page.getByRole('dialog', { name: 'Dialog specimen' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Dialog specimen' })).toBeHidden();
     await expect(page.getByRole('heading', { name: 'Editor chrome' })).toBeVisible();
-    await expect(page.locator('main [style]')).toHaveCount(0);
+    await expect(page.locator('main [style]:not([style*="clip: rect"])')).toHaveCount(0);
   });
 
   test('keeps anonymous local maps offline when collaboration is opened @ci-smoke', async ({
@@ -745,8 +761,8 @@ test.describe('WebMCP site authoring', () => {
 
   test('switches and persists the editor theme', async ({ page }) => {
     await openEditor(page, { empty: true });
-    const selector = page.getByLabel('Editor theme');
-    await selector.selectOption('light');
+    const selector = page.getByRole('button', { name: /Editor theme$/ });
+    await chooseSelectOption(page, 'Editor theme', 'Light');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect
       .poll(() => page.evaluate(() => localStorage.getItem('worldview.editor.theme')))
@@ -762,9 +778,22 @@ test.describe('WebMCP site authoring', () => {
 
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
-    await expect(selector).toHaveValue('light');
+    await expect(selector).toContainText('Light');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await selector.selectOption('dark');
+    await chooseSelectOption(page, 'Editor theme', 'Dark');
+  });
+
+  test('uses keyboard-navigable React Aria inspector tabs', async ({ page }) => {
+    await openEditor(page, { empty: true });
+    const entityTab = page.getByRole('tab', { name: 'Entity' });
+    await expect(entityTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[data-inspector-panel="object"]')).toBeVisible();
+
+    await entityTab.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Face' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[data-inspector-panel="textures"]')).toBeVisible();
+    await expect(page.locator('[data-inspector-panel="object"]')).toBeHidden();
   });
 
   test('uses a resizable TrenchBroom-style four-pane workspace', async ({ page }) => {
@@ -3251,7 +3280,7 @@ test.describe('3D source authoring', () => {
     await expect(page.getByRole('heading', { name: 'Quake II surface' })).toBeVisible();
     await expect(page.getByText('Unknown bits: 0x100')).toBeVisible();
 
-    await page.getByLabel('Sky', { exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Sky', exact: true }).press('Space');
     expect(
       brushesInDocument(await readEditorDocument(page)).some((brush) =>
         brush.faces.some(({ surface }) => surface.flags === 0x104),
@@ -3261,6 +3290,15 @@ test.describe('3D source authoring', () => {
     expect(
       brushesInDocument(await readEditorDocument(page)).every((brush) =>
         brush.faces.every(({ surface }) => surface.flags === 0x100),
+      ),
+    ).toBe(true);
+
+    const surfaceValueForm = page.locator('.surface-value-form');
+    await surfaceValueForm.getByRole('textbox', { name: /value$/i }).fill('512');
+    await surfaceValueForm.getByRole('button', { name: 'Apply', exact: true }).click();
+    expect(
+      brushesInDocument(await readEditorDocument(page)).some((brush) =>
+        brush.faces.some(({ surface }) => surface.value === 512),
       ),
     ).toBe(true);
   });
@@ -3535,18 +3573,19 @@ test.describe('3D source authoring', () => {
 
     await page.getByRole('button', { name: 'Clip' }).click();
     await expect(page.locator('#clip-tool-section')).toBeVisible();
-    const first = await viewportPoint(page, 0, 0.5, 0.3);
-    const second = await viewportPoint(page, 0, 0.5, 0.7);
+    const first = await perspectiveWorldPoint(page, [96, -16, 64]);
+    const second = await perspectiveWorldPoint(page, [0, -128, -16]);
     await page.mouse.click(first.x, first.y);
     await expect(page.locator('#clip-point-count')).toHaveText('1 / 3 points');
     await page.mouse.click(second.x, second.y);
     await expect(page.locator('#clip-point-count')).toHaveText('2 / 3 points');
     await expect(page.locator('#status-message')).toContainText('Clip preview ready');
-    await expect(page.locator('#clip-point-positions')).toHaveText('1: 0 128 -16 · 2: 0 -128 -16');
+    await expect(page.locator('#clip-point-positions')).toHaveText('1: 96 -16 64 · 2: 0 -128 -16');
 
-    const partialMove = await topWorldPoint(page, 32, 112);
-    const movedFirst = await topWorldPoint(page, 64, 96);
-    await page.mouse.move(first.x, first.y);
+    const firstInTop = await topWorldPoint(page, 96, -16);
+    const partialMove = await topWorldPoint(page, 64, 0);
+    const movedFirst = await topWorldPoint(page, 32, 16);
+    await page.mouse.move(firstInTop.x, firstInTop.y);
     await page.mouse.down();
     await page.mouse.move(partialMove.x, partialMove.y, { steps: 5 });
     await page.keyboard.down('Shift');
@@ -3556,7 +3595,7 @@ test.describe('3D source authoring', () => {
     await page.keyboard.up('Shift');
     await expect(page.locator('#status-message')).toContainText('Moved clip point 1 · X locked');
     await expect(page.locator('#clip-point-count')).toHaveText('2 / 3 points');
-    await expect(page.locator('#clip-point-positions')).toHaveText('1: 64 128 -16 · 2: 0 -128 -16');
+    await expect(page.locator('#clip-point-positions')).toHaveText('1: 32 -16 64 · 2: 0 -128 -16');
 
     await page.getByRole('button', { name: 'Split' }).click();
     await expect(page.locator('#status-message')).toContainText('Split preview ready');
@@ -3638,7 +3677,7 @@ test.describe('3D source authoring', () => {
     await page.mouse.click(second.x, second.y);
     await expect(page.locator('#clip-point-positions')).toHaveText('1: 0 0 0 · 2: 0 -128 -16');
 
-    const target = await perspectivePoint(page, 0.4, 0.68);
+    const target = await perspectiveWorldPoint(page, [64, -128, -16]);
     await page.mouse.move(first.x, first.y);
     await page.mouse.down();
     await page.keyboard.down('Shift');
@@ -3652,9 +3691,9 @@ test.describe('3D source authoring', () => {
     const movedPositions = await page.locator('#clip-point-positions').textContent();
     const movedPoint = movedPositions?.match(/^1: (-?\d+) (-?\d+) (-?\d+)/);
     expect(movedPoint).not.toBeNull();
-    expect(Number(movedPoint?.[1])).not.toBe(0);
-    expect(Number(movedPoint?.[2])).not.toBe(0);
-    expect(Number(movedPoint?.[3])).toBe(-32);
+    expect(Number(movedPoint?.[1])).toBe(64);
+    expect(Number(movedPoint?.[2])).toBe(-128);
+    expect(Number(movedPoint?.[3])).toBe(-16);
   });
 
   test('Ctrl-click builds an object set for atomic movement, transforms, duplicate, and delete', async ({
@@ -3819,8 +3858,20 @@ test.describe('3D source authoring', () => {
     const brushPoint = await perspectivePoint(page, 0.5, 0.58);
     await page.mouse.click(brushPoint.x, brushPoint.y);
     await page.getByRole('button', { name: 'Rotate' }).click();
-    const start = await viewportPoint(page, 0, 0.82, 0.5);
-    const end = await viewportPoint(page, 0, 0.5, 0.18);
+    const radius = 256 * 0.62 + 10;
+    const pivot = [0, 0, -16] as const;
+    const startRadians = Math.PI / 4;
+    const endRadians = startRadians + Math.PI / 6;
+    const start = await perspectiveWorldPoint(page, [
+      pivot[0],
+      Math.cos(startRadians) * radius,
+      pivot[2] + Math.sin(startRadians) * radius,
+    ]);
+    const end = await perspectiveWorldPoint(page, [
+      pivot[0],
+      Math.cos(endRadians) * radius,
+      pivot[2] + Math.sin(endRadians) * radius,
+    ]);
 
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();

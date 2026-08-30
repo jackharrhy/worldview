@@ -1,9 +1,11 @@
-import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
-import { createPortal } from 'react-dom';
+import { useSyncExternalStore } from 'react';
 import type {
   CollaborationParticipantSnapshot,
   CollaborationUiPort,
 } from '../../editor-shell-state.js';
+import { Button } from '../ui/button.js';
+import { Dialog } from '../ui/dialog.js';
+import { TextField } from '../ui/text-field.js';
 
 function participantIcon(participant: CollaborationParticipantSnapshot): string {
   return participant.moving
@@ -50,64 +52,50 @@ export function CollaborationPresence({ port }: { readonly port: CollaborationUi
 
 export function CollaborationDialog({ port }: { readonly port: CollaborationUiPort }) {
   const state = useSyncExternalStore(port.subscribe, port.getSnapshot);
-  const ref = useRef<HTMLDialogElement>(null);
-  useLayoutEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (state.dialogOpen && !dialog.open) dialog.showModal();
-    else if (!state.dialogOpen && dialog.open) dialog.close();
-  }, [state.dialogOpen]);
-  return createPortal(
-    <dialog
-      ref={ref}
+  return (
+    <Dialog
       id="collaboration-dialog"
       className="collaboration-dialog"
-      aria-labelledby="collaboration-dialog-title"
-      onCancel={(event) => {
-        event.preventDefault();
-        port.invoke('close');
+      title="Live collaboration"
+      detail={<span id="collaboration-state">{state.state}</span>}
+      isOpen={state.dialogOpen}
+      isDismissable
+      onOpenChange={(open) => {
+        if (!open) port.invoke('close');
       }}
     >
-      <header>
-        <div>
-          <strong id="collaboration-dialog-title">Live collaboration</strong>
-          <span id="collaboration-state">{state.state}</span>
-        </div>
-        <button type="button" onClick={() => port.invoke('close')}>
-          Close
-        </button>
-      </header>
       <div className="collaboration-body">
         <p id="collaboration-description">{state.description}</p>
-        <label>
-          Your name
-          <input
-            id="collaboration-display-name"
-            type="text"
-            maxLength={48}
-            autoComplete="nickname"
-            spellCheck="false"
-            value={state.displayName}
-            disabled={state.live}
-            onChange={(event) => port.invoke('setDisplayName', event.currentTarget.value)}
-          />
-        </label>
+        <TextField
+          label="Your name"
+          value={state.displayName}
+          isDisabled={state.live}
+          onChange={(value) => port.invoke('setDisplayName', value)}
+          input={{
+            id: 'collaboration-display-name',
+            maxLength: 48,
+            autoComplete: 'nickname',
+            spellCheck: false,
+          }}
+        />
         <div
           id="collaboration-share-fields"
           className="collaboration-share-fields"
           hidden={!state.live}
         >
-          <label>
-            Share link
-            <input id="collaboration-share-link" type="url" readOnly value={state.shareLink} />
-          </label>
-          <button
-            type="button"
+          <TextField
+            label="Share link"
+            value={state.shareLink}
+            isReadOnly
+            input={{ id: 'collaboration-share-link', type: 'url' }}
+          />
+          <Button
+            size="compact"
             data-action="copy-collaboration-link"
-            onClick={() => port.invoke('copyLink')}
+            onPress={() => port.invoke('copyLink')}
           >
             Copy link
-          </button>
+          </Button>
         </div>
         <div
           id="collaboration-participants"
@@ -138,26 +126,27 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
           {state.error}
         </p>
         <div className="collaboration-actions">
-          <button
-            type="button"
+          <Button
+            tone="danger"
+            size="compact"
             data-action="leave-collaboration"
             hidden={!state.live}
-            onClick={() => port.invoke('stop')}
+            onPress={() => port.invoke('stop')}
           >
             Stop session
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            tone="primary"
+            size="compact"
             data-action="start-collaboration"
             hidden={state.live}
-            disabled={state.joining}
-            onClick={() => port.invoke('start')}
+            isDisabled={state.joining}
+            onPress={() => port.invoke('start')}
           >
             {state.joining ? 'Joining…' : 'Open hosted projects'}
-          </button>
+          </Button>
         </div>
       </div>
-    </dialog>,
-    document.body,
+    </Dialog>
   );
 }

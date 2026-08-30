@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import type { EditorShellState } from '../../editor-shell-state.js';
+import { Select } from '../ui/select.js';
 import { CollaborationPresence } from './collaboration-ui.js';
 
 interface EditorChromeProps {
@@ -415,6 +416,7 @@ function ActionMenu({
 }
 
 function TopBar({ shellState }: EditorChromeProps) {
+  const theme = useSyncExternalStore(shellState.theme.subscribe, shellState.theme.getSnapshot);
   return (
     <header className="topbar">
       <div className="brand-lockup">
@@ -447,14 +449,24 @@ function TopBar({ shellState }: EditorChromeProps) {
         </div>
       </nav>
       <CollaborationPresence port={shellState.collaborationUi} />
-      <label className="theme-control" title="Editor theme">
+      <div className="theme-control" title="Editor theme">
         <i className="ph ph-circle-half" aria-hidden="true" />
-        <select id="editor-theme" aria-label="Editor theme" defaultValue="system">
-          <option value="system">System</option>
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-        </select>
-      </label>
+        <Select
+          id="editor-theme"
+          className="theme-select"
+          label="Editor theme"
+          hideLabel
+          options={[
+            { id: 'system', label: 'System' },
+            { id: 'dark', label: 'Dark' },
+            { id: 'light', label: 'Light' },
+          ]}
+          selectedKey={theme}
+          onSelectionChange={(key) => {
+            if (key === 'system' || key === 'dark' || key === 'light') shellState.theme.select(key);
+          }}
+        />
+      </div>
       <button
         className="inspector-toggle icon-button"
         type="button"
