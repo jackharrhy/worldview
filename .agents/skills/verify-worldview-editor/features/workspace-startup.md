@@ -17,6 +17,9 @@
 - The submit button remains disabled and explicitly busy throughout the action and route load, with
   primary-button contrast retained in both themes.
 - Legacy collaboration room hashes have no routing behavior.
+- Hosted workspaces use `/project/{id}-{name}` and `/project/{id}-{name}/map/{id}-{name}`. The
+  12-character ID prefix is authoritative; the decorative name may be stale or omitted. UUID-form
+  browser routes are intentionally unsupported.
 
 ## Proof
 
@@ -24,3 +27,5 @@ The managed verifier follows **New map** before expecting renderer readiness, re
 `/new-map` path and dedicated heading, submits its action, waits for `/editor` and renderer/site-tool
 readiness, then continues its ordinary WebMCP empty-map inspection/edit/undo proof. UI-focused
 Playwright tests additionally cover profile-dependent format choices, reloads, and browser history.
+Focused editor route tests prove hosted path generation and stale-name parsing; service tests prove
+that created project and map records use the matching short-ID and derived-name contract.

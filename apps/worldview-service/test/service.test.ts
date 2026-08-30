@@ -1,106 +1,7 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
-import { createStarterDocument } from '@jackharrhy/worldview-editor/core';
-import { FileBlobStore } from '../src/blob-store.js';
-import { RemoteBuildQueue } from '../src/build-queue.js';
-import { WorldviewDatabase } from '../src/database.js';
-import { createWorldviewService } from '../src/server.js';
-import type { HostedMapCheckpoint, HostedMapSnapshot } from '../src/map-cell-client.js';
-
-class FakeMapCells {
-  readonly snapshots = new Map<string, HostedMapSnapshot>();
-  readonly checkpoints: { mapId: string; name: string }[] = [];
-
-  async initialize(mapId: string, source: string): Promise<HostedMapSnapshot> {
-    const snapshot = {
-      mapId,
-      mapVersion: 0,
-      document: createStarterDocument(),
-      source,
-      sourceSha256: 'a'.repeat(64),
-    };
-    this.snapshots.set(mapId, snapshot);
-    return snapshot;
-  }
-
-  async snapshot(mapId: string): Promise<HostedMapSnapshot> {
-    const snapshot = this.snapshots.get(mapId);
-    if (!snapshot) throw new Error('MapCell is not initialized');
-    return snapshot;
-  }
-
-  async createCheckpoint(
-    mapId: string,
-    name: string,
-    _actorId: string,
-  ): Promise<HostedMapCheckpoint> {
-    this.checkpoints.push({ mapId, name });
-    return {
-      id: 'checkpoint-1',
-      name,
-      mapVersion: (await this.snapshot(mapId)).mapVersion,
-      createdAt: Date.now(),
-    };
-  }
-}
-
-const cleanups: (() => Promise<void>)[] = [];
-afterEach(async () => {
-  while (cleanups.length) await cleanups.pop()!();
-});
-
-async function fixture(fetchImpl?: typeof fetch, compilerFetch?: typeof fetch) {
-  const root = await mkdtemp(join(tmpdir(), 'worldview-service-test-'));
-  const database = new WorldviewDatabase(join(root, 'worldview.db'));
-  const maps = new FakeMapCells();
-  const blobs = new FileBlobStore(join(root, 'blobs'));
-  const server = createWorldviewService({
-    database,
-    blobs,
-    oauth: {
-      fourmUrl: 'https://4orm.example',
-      clientId: 'worldview',
-      publicUrl: 'http://127.0.0.1',
-    },
-    realtimeTicketSecret: 'test-worldview-realtime-ticket-secret-0001',
-    maps,
-    ...(fetchImpl ? { fetch: fetchImpl } : {}),
-    ...(compilerFetch
-      ? {
-          builds: new RemoteBuildQueue(
-            database,
-            blobs,
-            { quake: 'http://compiler.internal' },
-            compilerFetch,
-          ),
-        }
-      : {}),
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new Error('Server has no address');
-  const origin = `http://127.0.0.1:${address.port}`;
-  cleanups.push(async () => {
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
-    database.close();
-    await rm(root, { recursive: true, force: true });
-  });
-  return { origin, root, database, maps };
-}
-
-function session(database: WorldviewDatabase) {
-  const user = database.upsertUser({
-    fourmSub: 'fourm-1',
-    username: 'mapper',
-    displayName: 'Mapper',
-    isAdmin: false,
-  });
-  return { user, cookie: `worldview_session=${database.createSession(user.id).token}` };
-}
+import { describe, expect, test } from 'vitest';
+import { fixture, session } from './service-fixture.js';
 
 const malformedHumanTokenFetch: typeof fetch = async (input) => {
   if (String(input).endsWith('/oauth/token'))
@@ -145,8 +46,13 @@ describe('Worldview hosted project service', () => {
       body: JSON.stringify({ name: 'Lambda Complex', game: 'goldsrc' }),
     });
     expect(projectResponse.status).toBe(201);
-    const project = ((await projectResponse.json()) as { project: { id: string; role: string } })
-      .project;
+    const project = (
+      (await projectResponse.json()) as {
+        project: { id: string; slug: string; role: string };
+      }
+    ).project;
+    expect(project.id).toMatch(/^[0123456789abcdefghjkmnpqrstvwxyz]{12}$/);
+    expect(project.slug).toBe('lambda-complex');
     expect(project.role).toBe('owner');
 
     const mapResponse = await fetch(`${app.origin}/api/projects/${project.id}/maps`, {
@@ -159,13 +65,21 @@ describe('Worldview hosted project service', () => {
       }),
     });
     expect(mapResponse.status).toBe(201);
-    const map = ((await mapResponse.json()) as { map: { id: string; mapVersion: number } }).map;
+    const map = (
+      (await mapResponse.json()) as { map: { id: string; slug: string; mapVersion: number } }
+    ).map;
+    expect(map.id).toMatch(/^[0123456789abcdefghjkmnpqrstvwxyz]{12}$/);
+    expect(map.slug).toBe('test-chamber');
     expect(map.mapVersion).toBe(0);
     const projectState = await fetch(`${app.origin}/api/projects/${project.id}`, {
       headers: { Cookie: cookie },
     });
     expect(await projectState.json()).toMatchObject({
-      project: { name: 'Lambda Complex', maps: [{ id: map.id, name: 'test-chamber.map' }] },
+      project: {
+        slug: 'lambda-complex',
+        name: 'Lambda Complex',
+        maps: [{ id: map.id, slug: 'test-chamber', name: 'test-chamber.map' }],
+      },
     });
 
     const guestResponse = await fetch(`${app.origin}/api/guest-sessions`, {
@@ -253,6 +167,31 @@ describe('Worldview hosted project service', () => {
         await fetch(`${app.origin}/api/projects/${project.id}`, { headers: { Cookie: cookie } })
       ).json(),
     ).toMatchObject({ project: { maps: [] } });
+  });
+
+  test('rejects invalid or duplicate map names before initializing another MapCell', async () => {
+    const app = await fixture();
+    const { cookie } = session(app.database);
+    const project = (
+      (await (
+        await fetch(`${app.origin}/api/projects`, {
+          method: 'POST',
+          headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'No orphan cells', game: 'quake' }),
+        })
+      ).json()) as { project: { id: string } }
+    ).project;
+    const create = (name: string) =>
+      fetch(`${app.origin}/api/projects/${project.id}/maps`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, format: 'quake' }),
+      });
+    expect((await create('kept.map')).status).toBe(201);
+    expect(app.maps.snapshots.size).toBe(1);
+    expect((await create('')).status).toBe(400);
+    expect((await create('kept.map')).status).toBe(409);
+    expect(app.maps.snapshots.size).toBe(1);
   });
 
   test('isolates project listings by membership and rejects cross-origin mutations', async () => {
@@ -367,7 +306,7 @@ describe('Worldview hosted project service', () => {
     const { user } = session(app.database);
     const project = app.database.createProject(user.id, 'Build quota', 'quake');
     const map = app.database.createMap({
-      id: crypto.randomUUID(),
+      id: app.database.createMapId(),
       projectId: project.id,
       userId: user.id,
       name: 'quota.map',
@@ -400,9 +339,24 @@ describe('Worldview hosted project service', () => {
   test('builds canonical hosted maps and serves artifacts only to project members', async () => {
     const app = await fixture(undefined, successfulCompilerFetch);
     const { user, cookie } = session(app.database);
+    const viewer = session(app.database, {
+      fourmSub: 'build-viewer',
+      username: 'build-viewer',
+      displayName: 'Build Viewer',
+      isAdmin: false,
+    });
+    const outsider = session(app.database, {
+      fourmSub: 'build-outsider',
+      username: 'build-outsider',
+      displayName: 'Build Outsider',
+      isAdmin: false,
+    });
     const project = app.database.createProject(user.id, 'Hosted build', 'quake');
+    expect(app.database.setProjectMemberRole(project.id, user.id, viewer.user.id, 'viewer')).toBe(
+      true,
+    );
     const map = app.database.createMap({
-      id: crypto.randomUUID(),
+      id: app.database.createMapId(),
       projectId: project.id,
       userId: user.id,
       name: 'showcase.map',
@@ -443,6 +397,8 @@ describe('Worldview hosted project service', () => {
     const downloaded = await fetch(artifactUrl, { headers: { Cookie: cookie } });
     expect(downloaded.status).toBe(200);
     expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(Uint8Array.from([29, 0, 0, 0]));
+    expect((await fetch(artifactUrl, { headers: { Cookie: viewer.cookie } })).status).toBe(200);
+    expect((await fetch(artifactUrl, { headers: { Cookie: outsider.cookie } })).status).toBe(404);
   });
 
   test('completes the existing 4orm PKCE flow into a Worldview session', async () => {
@@ -467,7 +423,7 @@ describe('Worldview hosted project service', () => {
     };
     const app = await fixture(mockFetch);
     const login = await fetch(
-      `${app.origin}/auth/login?returnTo=${encodeURIComponent('/projects/example')}`,
+      `${app.origin}/auth/login?returnTo=${encodeURIComponent('/project/0123456789ab-example')}`,
       { redirect: 'manual' },
     );
     expect(login.status).toBe(303);
@@ -480,7 +436,7 @@ describe('Worldview hosted project service', () => {
       { headers: { Cookie: oauthCookie }, redirect: 'manual' },
     );
     expect(callback.status).toBe(303);
-    expect(callback.headers.get('location')).toBe('/projects/example');
+    expect(callback.headers.get('location')).toBe('/project/0123456789ab-example');
     const callbackCookies = callback.headers.getSetCookie();
     expect(callbackCookies).toHaveLength(2);
     expect(callbackCookies).toEqual(

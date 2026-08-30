@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Form, Link, useActionData, useLoaderData, useNavigate, useNavigation } from 'react-router';
 import type { action } from './project-action.js';
 import type { loader } from './project-loader.js';
+import { hostedMapPath } from './hosted-route.js';
 
 export function Component() {
   const { project, mounts, assets, assetQuery, accessUsers } = useLoaderData<typeof loader>();
@@ -9,9 +10,9 @@ export function Component() {
   const navigate = useNavigate();
   const navigation = useNavigation();
   useEffect(() => {
-    if (actionData && 'createdMapId' in actionData)
-      void navigate(`/projects/${project.id}/maps/${actionData.createdMapId}`);
-  }, [actionData, navigate, project.id]);
+    if (actionData && 'createdMap' in actionData)
+      void navigate(hostedMapPath(project, actionData.createdMap));
+  }, [actionData, navigate, project]);
   const canEdit = project.role === 'owner' || project.role === 'editor';
   return (
     <main className="landing-page">
@@ -36,10 +37,7 @@ export function Component() {
             ) : (
               project.maps.map((map) => (
                 <div className="landing-recent" key={map.id}>
-                  <button
-                    type="button"
-                    onClick={() => void navigate(`/projects/${project.id}/maps/${map.id}`)}
-                  >
+                  <button type="button" onClick={() => void navigate(hostedMapPath(project, map))}>
                     <strong>{map.name}</strong>
                     <span>{map.format === 'valve-220' ? 'Valve 220' : 'Classic Quake'}</span>
                   </button>

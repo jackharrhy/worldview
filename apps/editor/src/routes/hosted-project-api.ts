@@ -7,6 +7,7 @@ export interface HostedSessionUser {
 
 export interface HostedProjectSummary {
   readonly id: string;
+  readonly slug: string;
   readonly name: string;
   readonly game: 'quake' | 'goldsrc';
   readonly role: 'owner' | 'editor' | 'viewer';
@@ -15,9 +16,10 @@ export interface HostedProjectSummary {
 
 export interface HostedProjectMap {
   readonly id: string;
+  readonly slug: string;
   readonly name: string;
   readonly format: 'valve-220' | 'quake';
-  readonly updated_at: number;
+  readonly updatedAt: number;
 }
 
 export interface HostedProject extends HostedProjectSummary {
@@ -33,7 +35,9 @@ export interface HostedProjectAccessUser {
 
 export interface HostedMapLaunch {
   readonly id: string;
+  readonly slug: string;
   readonly projectId: string;
+  readonly projectSlug: string;
   readonly projectName: string;
   readonly game: 'quake' | 'goldsrc';
   readonly name: string;

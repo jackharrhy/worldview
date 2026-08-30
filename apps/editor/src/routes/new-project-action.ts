@@ -1,6 +1,7 @@
 import { redirect } from 'react-router';
 import { isWorldviewGameProfile } from '@jackharrhy/worldview-editor/core';
 import { apiJson, type HostedProjectSummary } from './hosted-project-api.js';
+import { hostedProjectPath } from './hosted-route.js';
 
 export async function action({ request }: { readonly request: Request }) {
   const data = await request.formData();
@@ -17,7 +18,7 @@ export async function action({ request }: { readonly request: Request }) {
         body: JSON.stringify({ name, game }),
       },
     );
-    return redirect(`/projects/${encodeURIComponent(project.id)}`);
+    return redirect(hostedProjectPath(project));
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }

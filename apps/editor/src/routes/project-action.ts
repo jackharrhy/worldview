@@ -1,4 +1,5 @@
-import { apiJson } from './hosted-project-api.js';
+import { apiJson, type HostedProjectMap } from './hosted-project-api.js';
+import { hostedIdFromRouteReference } from './hosted-route.js';
 
 export async function action({
   request,
@@ -7,8 +8,8 @@ export async function action({
   readonly request: Request;
   readonly params: Record<string, string | undefined>;
 }) {
-  const projectId = params.projectId;
-  if (!projectId) throw new Response('Project ID required', { status: 400 });
+  const projectId = hostedIdFromRouteReference(params.projectRef);
+  if (!projectId) throw new Response('Valid project reference required', { status: 400 });
   const data = await request.formData();
   const intent = String(data.get('intent') ?? '');
   if (intent === 'set-member-role' || intent === 'remove-member') {
@@ -54,7 +55,7 @@ export async function action({
   if (format !== 'valve-220' && format !== 'quake')
     return { error: 'Choose a supported map format.' };
   try {
-    const result = await apiJson<{ map: { id: string } }>(
+    const result = await apiJson<{ map: HostedProjectMap }>(
       new URL(`/api/projects/${encodeURIComponent(projectId)}/maps`, request.url),
       {
         method: 'POST',
@@ -62,7 +63,7 @@ export async function action({
         body: JSON.stringify({ name, format }),
       },
     );
-    return { createdMapId: result.map.id };
+    return { createdMap: result.map };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }

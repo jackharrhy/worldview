@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { createHostedId, hostedSlug, isHostedId } from './hosted-identity.js';
 
 export type ProjectRole = 'owner' | 'editor' | 'viewer';
 
@@ -12,9 +13,18 @@ export interface WorldviewUser {
 }
 export interface ProjectSummary {
   readonly id: string;
+  readonly slug: string;
   readonly name: string;
   readonly game: 'quake' | 'goldsrc';
   readonly role: ProjectRole;
+  readonly updatedAt: number;
+}
+
+export interface HostedMapSummary {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly format: 'valve-220' | 'quake';
   readonly updatedAt: number;
 }
 
@@ -98,7 +108,10 @@ function token(): string {
 export class WorldviewDatabase {
   private readonly sql: DatabaseSync;
 
-  public constructor(path: string) {
+  public constructor(
+    path: string,
+    private readonly createPublicId: () => string = createHostedId,
+  ) {
     this.sql = new DatabaseSync(path);
     this.sql.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     this.migrate();
@@ -164,6 +177,16 @@ export class WorldviewDatabase {
         status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled')),
         source_sha256 TEXT, result_json TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS project_members_by_user
+        ON project_members(user_id, project_id);
+      CREATE INDEX IF NOT EXISTS builds_by_map_created
+        ON builds(map_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS builds_by_requester_status
+        ON builds(requested_by, status);
+      CREATE INDEX IF NOT EXISTS builds_by_requester_created
+        ON builds(requested_by, created_at DESC);
+      CREATE INDEX IF NOT EXISTS builds_by_status
+        ON builds(status);
     `);
     this.sql
       .prepare(
@@ -176,7 +199,9 @@ export class WorldviewDatabase {
     const state = token();
     const expiresAt = Date.now() + 10 * 60_000;
     this.sql
-      .prepare('INSERT INTO oauth_transactions VALUES (?, ?, ?, ?)')
+      .prepare(
+        'INSERT INTO oauth_transactions(state_hash,verifier,return_to,expires_at) VALUES (?,?,?,?)',
+      )
       .run(digest(state), verifier, returnTo, expiresAt);
     return { state, expiresAt };
   }
@@ -219,7 +244,7 @@ export class WorldviewDatabase {
     const value = token();
     const expiresAt = Date.now() + 30 * 24 * 60 * 60_000;
     this.sql
-      .prepare('INSERT INTO sessions VALUES (?, ?, ?, ?)')
+      .prepare('INSERT INTO sessions(token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)')
       .run(digest(value), userId, expiresAt, Date.now());
     return { token: value, expiresAt };
   }
@@ -250,21 +275,37 @@ export class WorldviewDatabase {
     };
   }
 
+  private availableHostedId(table: 'projects' | 'maps'): string {
+    const query =
+      table === 'projects'
+        ? this.sql.prepare('SELECT 1 FROM projects WHERE id=?')
+        : this.sql.prepare('SELECT 1 FROM maps WHERE id=?');
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const id = this.createPublicId();
+      if (!query.get(id)) return id;
+    }
+    throw new Error(`Could not allocate a unique ${table} ID`);
+  }
+
   public createProject(userId: string, name: string, game: 'quake' | 'goldsrc'): ProjectSummary {
-    const id = randomUUID();
     const now = Date.now();
     this.sql.exec('BEGIN IMMEDIATE');
     try {
+      const id = this.availableHostedId('projects');
       this.sql
-        .prepare('INSERT INTO projects VALUES (?, ?, ?, ?, NULL, ?, ?)')
+        .prepare(`INSERT INTO projects(
+          id,name,game,created_by,archived_at,created_at,updated_at
+        ) VALUES(?,?,?,?,NULL,?,?)`)
         .run(id, name, game, userId, now, now);
-      this.sql.prepare("INSERT INTO project_members VALUES (?, ?, 'owner')").run(id, userId);
+      this.sql
+        .prepare("INSERT INTO project_members(project_id,user_id,role) VALUES (?,?,'owner')")
+        .run(id, userId);
       this.sql.exec('COMMIT');
+      return { id, slug: hostedSlug(name, 'project'), name, game, role: 'owner', updatedAt: now };
     } catch (error) {
       this.sql.exec('ROLLBACK');
       throw error;
     }
-    return { id, name, game, role: 'owner', updatedAt: now };
   }
 
   public listProjects(userId: string): readonly ProjectSummary[] {
@@ -283,6 +324,7 @@ export class WorldviewDatabase {
     }[];
     return rows.map((row) => ({
       id: row.id,
+      slug: hostedSlug(row.name, 'project'),
       name: row.name,
       game: row.game,
       role: row.role,
@@ -351,7 +393,7 @@ export class WorldviewDatabase {
   public project(
     projectId: string,
     userId: string,
-  ): (ProjectSummary & { maps: readonly Record<string, unknown>[] }) | null {
+  ): (ProjectSummary & { maps: readonly HostedMapSummary[] }) | null {
     const role = this.role(projectId, userId);
     if (!role) return null;
     const row = this.sql
@@ -362,8 +404,37 @@ export class WorldviewDatabase {
     if (!row) return null;
     const maps = this.sql
       .prepare('SELECT id,name,format,updated_at FROM maps WHERE project_id=? ORDER BY name')
-      .all(projectId) as Record<string, unknown>[];
-    return { id: row.id, name: row.name, game: row.game, role, updatedAt: row.updated_at, maps };
+      .all(projectId) as {
+      id: string;
+      name: string;
+      format: 'valve-220' | 'quake';
+      updated_at: number;
+    }[];
+    return {
+      id: row.id,
+      slug: hostedSlug(row.name, 'project'),
+      name: row.name,
+      game: row.game,
+      role,
+      updatedAt: row.updated_at,
+      maps: maps.map((map) => ({
+        id: map.id,
+        slug: hostedSlug(map.name, 'map'),
+        name: map.name,
+        format: map.format,
+        updatedAt: map.updated_at,
+      })),
+    };
+  }
+
+  public createMapId(): string {
+    return this.availableHostedId('maps');
+  }
+
+  public hasMapNamed(projectId: string, name: string): boolean {
+    return Boolean(
+      this.sql.prepare('SELECT 1 FROM maps WHERE project_id=? AND name=?').get(projectId, name),
+    );
   }
 
   public createMap(input: {
@@ -372,14 +443,21 @@ export class WorldviewDatabase {
     userId: string;
     name: string;
     format: 'valve-220' | 'quake';
-  }): Record<string, unknown> {
+  }): HostedMapSummary {
+    if (!isHostedId(input.id)) throw new Error('Map ID does not satisfy the hosted ID contract');
     const now = Date.now();
     this.sql
       .prepare(`INSERT INTO maps(id,project_id,name,format,created_by,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?)`)
       .run(input.id, input.projectId, input.name, input.format, input.userId, now, now);
     this.sql.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(now, input.projectId);
-    return { id: input.id, name: input.name, format: input.format, updatedAt: now };
+    return {
+      id: input.id,
+      slug: hostedSlug(input.name, 'map'),
+      name: input.name,
+      format: input.format,
+      updatedAt: now,
+    };
   }
 
   public map(
@@ -387,7 +465,9 @@ export class WorldviewDatabase {
     userId: string,
   ): {
     readonly id: string;
+    readonly slug: string;
     readonly projectId: string;
+    readonly projectSlug: string;
     readonly projectName: string;
     readonly game: 'quake' | 'goldsrc';
     readonly name: string;
@@ -416,7 +496,9 @@ export class WorldviewDatabase {
     return row
       ? {
           id: row.id,
+          slug: hostedSlug(row.name, 'map'),
           projectId: row.project_id,
+          projectSlug: hostedSlug(row.project_name, 'project'),
           projectName: row.project_name,
           game: row.game,
           name: row.name,
@@ -465,7 +547,10 @@ export class WorldviewDatabase {
     ).value;
     const createdAt = Date.now();
     this.sql
-      .prepare('INSERT INTO resource_mounts VALUES(?,?,?,?,?,?,?,?,?,?)')
+      .prepare(`INSERT INTO resource_mounts(
+        id,project_id,ordinal,provider,provider_asset_id,expected_sha256,kind,display_name,
+        metadata_json,created_by,created_at
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id,
         input.projectId,

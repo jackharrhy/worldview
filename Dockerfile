@@ -37,5 +37,11 @@ COPY package.json ./
 COPY --from=build /app/apps/editor/dist apps/editor/dist
 COPY --from=build /app/apps/worldview-service/dist apps/worldview-service/dist
 COPY --from=build /app/apps/compiler-service/dist apps/compiler-service/dist
+# The service build is plain ESM, so retain only its non-Node runtime dependencies instead of
+# copying the monorepo's complete development installation into the production image.
+COPY --from=build /app/node_modules/@sindresorhus/slugify node_modules/@sindresorhus/slugify
+COPY --from=build /app/node_modules/@sindresorhus/transliterate node_modules/@sindresorhus/transliterate
+COPY --from=build /app/node_modules/escape-string-regexp node_modules/escape-string-regexp
+COPY --from=build /app/apps/worldview-service/node_modules/nanoid apps/worldview-service/node_modules/nanoid
 EXPOSE 8789
 CMD ["node", "apps/worldview-service/dist/server.js"]

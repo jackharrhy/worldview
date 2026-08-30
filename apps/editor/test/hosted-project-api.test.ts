@@ -8,14 +8,16 @@ describe('authenticatedApiJson', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
 
     const result = authenticatedApiJson(
-      new Request('https://worldview.example/projects/project-1/maps/map-1?view=top'),
+      new Request(
+        'https://worldview.example/project/0123456789ab-lambda/map/cdefghjkmnpq-test?view=top',
+      ),
       'https://worldview.example/api/maps/map-1',
     );
 
     await expect(result).rejects.toMatchObject({ status: 302 });
     await result.catch((response: Response) => {
       expect(response.headers.get('location')).toBe(
-        '/auth/login?returnTo=%2Fprojects%2Fproject-1%2Fmaps%2Fmap-1%3Fview%3Dtop',
+        '/auth/login?returnTo=%2Fproject%2F0123456789ab-lambda%2Fmap%2Fcdefghjkmnpq-test%3Fview%3Dtop',
       );
     });
   });
@@ -28,7 +30,7 @@ describe('authenticatedApiJson', () => {
 
     await expect(
       authenticatedApiJson(
-        new Request('https://worldview.example/projects/missing'),
+        new Request('https://worldview.example/project/0123456789ab-missing'),
         'https://worldview.example/api/projects/missing',
       ),
     ).rejects.toThrow('Project not found');

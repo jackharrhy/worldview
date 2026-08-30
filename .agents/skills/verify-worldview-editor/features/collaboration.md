@@ -50,4 +50,5 @@ The default endpoint is `127.0.0.1:8787` for local editor development and the si
 
 All public `/sync/maps/` requests require a valid hosted-map ticket. An arbitrary map ID, stale
 ticket, wrong-map ticket, or absent ticket must receive `401`; a viewer ticket must not initialize a
-map.
+map or submit a durable edit. Service access tests must prove that owner, editor, viewer, outsider,
+and unauthenticated principals receive the declared project role at the ticket boundary.
