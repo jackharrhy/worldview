@@ -1,9 +1,9 @@
-import type { EditorDirectoryHandle } from '../project-workspace.js';
+import type { EditorApplicationLaunch } from '../editor-application-contracts.js';
 
-export type PendingEditorLaunch =
-  | { readonly kind: 'project'; readonly handle: EditorDirectoryHandle }
-  | { readonly kind: 'recent-project'; readonly projectKey: string }
-  | { readonly kind: 'map'; readonly file: File };
+export type PendingEditorLaunch = Extract<
+  EditorApplicationLaunch,
+  { readonly kind: 'project' | 'recent-project' | 'map' }
+>;
 
 let pending: PendingEditorLaunch | null = null;
 

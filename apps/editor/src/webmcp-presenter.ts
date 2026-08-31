@@ -24,9 +24,11 @@ import { z } from 'zod';
 import type { EditorShellState } from './editor-shell-state.js';
 
 type WebMcpUi = Pick<EditorShellState, 'statusMessage'>;
-import type { EditorState } from './editor-state.js';
-import type { ProjectPresenter } from './project-presenter.js';
-import type { SessionPresenter } from './session-presenter.js';
+import type { EditorStatePort } from './editor-state-port.js';
+import type {
+  OpenEditorMapCommand,
+  ReplaceDocumentCommand,
+} from './editor-application-contracts.js';
 import {
   DESTRUCTIVE_ANNOTATIONS,
   EmptyInputSchema,
@@ -153,6 +155,25 @@ const DuplicateSelectionInputSchema = ExpectedDocumentInputSchema.extend({
 });
 const HistoryInputSchema = ExpectedDocumentInputSchema.extend({ action: z.enum(['undo', 'redo']) });
 
+type WebMcpState = EditorStatePort<
+  | 'activeCompileProfileId'
+  | 'activeCompileQuality'
+  | 'activeGridSize'
+  | 'activeTool'
+  | 'compiledRevision'
+  | 'currentDocumentName'
+  | 'currentMapSource'
+  | 'documentDirty'
+  | 'latestBuild'
+  | 'materialCatalog'
+  | 'openGroupId'
+  | 'perspectiveCamera'
+  | 'projectWorkspace'
+  | 'renderer'
+  | 'session'
+  | 'showingCompiled'
+>;
+
 function transformAxis(axis: 'x' | 'y' | 'z'): 0 | 1 | 2 {
   return axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
 }
@@ -162,11 +183,11 @@ export class WebMcpPresenter {
   private readonly ownerId = crypto.randomUUID();
 
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: WebMcpState,
     private readonly ui: WebMcpUi,
     private readonly setEditorTool: (tool: EditorTool) => void,
-    private readonly replaceDocument: SessionPresenter['replaceDocument'],
-    private readonly openEditorMap: ProjectPresenter['openEditorMap'],
+    private readonly replaceDocument: ReplaceDocumentCommand,
+    private readonly openEditorMap: OpenEditorMapCommand,
     private readonly signal: AbortSignal,
   ) {}
 

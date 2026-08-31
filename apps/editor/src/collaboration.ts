@@ -507,10 +507,10 @@ export class EditorCollaborationBridge {
     }
   }
 
-  public synchronize(document: MapDocument, label = 'Synchronize hosted map'): void {
+  public synchronize(replaceDocument: () => void): void {
     this.applyingRemote = true;
     try {
-      this.session.replaceDocument(document, label);
+      replaceDocument();
       this.previousDocument = this.session.document;
     } finally {
       this.applyingRemote = false;

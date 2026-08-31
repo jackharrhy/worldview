@@ -9,6 +9,7 @@ import { takePendingEditorLaunch } from './editor-launch.js';
 import { readNewMapLaunch } from './editor-navigation-state.js';
 import type { HostedMapLaunch } from './hosted-project-api.js';
 import { HostedMapBuildService } from '../hosted-map-build-service.js';
+import type { EditorApplicationLaunch } from '../editor-application-contracts.js';
 
 import '../style.css';
 
@@ -64,42 +65,23 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
       );
       editor.current = application;
       delete document.documentElement.dataset.worldviewEditorReady;
+      const launch: EditorApplicationLaunch | null = initialMap
+        ? { kind: 'new-map', ...initialMap }
+        : hostedMap
+          ? {
+              kind: 'hosted-map',
+              id: hostedMap.id,
+              name: hostedMap.name,
+              source: hostedMap.source,
+              projectName: hostedMap.projectName,
+              mapVersion: hostedMap.mapVersion,
+              actorId: hostedMap.actorId,
+              displayName: hostedMap.displayName,
+              resources: hostedMap.resources ?? [],
+            }
+          : takePendingEditorLaunch();
       void (async () => {
-        await application.start();
-        application.signal.throwIfAborted();
-        if (initialMap) {
-          application.project.createNewMap(
-            initialMap.profile,
-            initialMap.format,
-            initialMap.name,
-            initialMap.workspaceId,
-          );
-        } else if (hostedMap) {
-          const source = new File([hostedMap.source], hostedMap.name, { type: 'text/plain' });
-          await application.project.openEditorMap(source, null, hostedMap.name, {
-            throwOnError: true,
-            viewportWorkspaceKey: `hosted-map:${hostedMap.id}`,
-          });
-          application.signal.throwIfAborted();
-          application.project.loadHostedResources(hostedMap.resources ?? []);
-          await application.collaborationUi.joinHostedMap(
-            hostedMap.id,
-            hostedMap.actorId,
-            hostedMap.displayName,
-          );
-          application.signal.throwIfAborted();
-          shellState.statusMessage.set(
-            `Opened hosted map ${hostedMap.projectName} / ${hostedMap.name} · live at v${hostedMap.mapVersion}`,
-          );
-        } else {
-          const launch = takePendingEditorLaunch();
-          if (launch?.kind === 'project')
-            await application.project.openProjectDirectory(launch.handle);
-          else if (launch?.kind === 'recent-project')
-            await application.project.reopenProject(launch.projectKey);
-          else if (launch?.kind === 'map')
-            await application.project.openEditorMap(launch.file, null);
-        }
+        await application.start(launch);
         application.signal.throwIfAborted();
         if (editor.current === application)
           document.documentElement.dataset.worldviewEditorReady = 'true';

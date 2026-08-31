@@ -298,6 +298,14 @@ describe('CollaborationController', () => {
       edits: [],
     });
     expect(await controller.pending()).toEqual([]);
+    const synchronized = insertBrush(
+      session.document,
+      session.document.entities[0]!.id,
+      createBoxBrush([128, 0, 0], [192, 64, 64], 'STONE', ids),
+    );
+    bridge.synchronize(() => session.replaceDocument(synchronized, 'Hosted reconciliation'));
+    expect(session.document).toBe(synchronized);
+    expect(await controller.pending()).toEqual([]);
     bridge.close();
   });
 });

@@ -19,26 +19,26 @@ import {
   type EditorFaceDragEvent,
   type EditorFaceTransferEvent,
   type EditorHullCreateEvent,
+  type EditorObjectViewState,
+  type EditorSelection,
   type EditorSweepDragEvent,
   type EditorTopologyDragEvent,
   type EditorTransformDragEvent,
   type EditorTransformPivotDragEvent,
   type EditorViewportCanvases,
   type EditorViewportOverlays,
+  type MapDocument,
+  type SimpleShapeKind,
 } from '@jackharrhy/worldview-editor';
 import { AnimationFrameScheduler } from '@jackharrhy/worldview';
 
-import type { BuildPresenter } from './build-presenter.js';
-import type { ContextMenuPresenter } from './context-menu-presenter.js';
-import type { DocumentPresenter } from './document-presenter.js';
 import { resolveEditorRenderTheme } from './render-theme.js';
 import type { EditorShellState } from './editor-shell-state.js';
-import type { EditorState } from './editor-state.js';
-import type { GeometryToolPresenter } from './geometry-tool-presenter.js';
-import type { InspectorPresenter } from './inspector-presenter.js';
-import type { OrganizationPresenter } from './organization-presenter.js';
-import type { TransformToolPresenter } from './transform-tool-presenter.js';
-import type { ViewportWorkspacePresenter } from './viewport-workspace-presenter.js';
+import type { EditorStatePort } from './editor-state-port.js';
+import type {
+  ViewportWorkspaceActions,
+  ViewportWorkspaceLayout,
+} from './viewport-workspace-contracts.js';
 
 type RendererUi = Pick<
   EditorShellState,
@@ -51,20 +51,122 @@ type RendererUi = Pick<
   | 'viewportPresentation'
 >;
 
+type RendererState = EditorStatePort<
+  | 'activeGridSize'
+  | 'activeMaterialName'
+  | 'activeTool'
+  | 'creationCandidate'
+  | 'creationSequence'
+  | 'duplicateSequence'
+  | 'duplicationBase'
+  | 'duplicationCandidate'
+  | 'entityDefinitions'
+  | 'entityLinkMode'
+  | 'faceCandidate'
+  | 'faceSplitSequence'
+  | 'faceStampSequence'
+  | 'faceTransferCandidate'
+  | 'faceTranslationSequence'
+  | 'hullBuildPoints'
+  | 'hullCandidate'
+  | 'hullSequence'
+  | 'lastPointerPosition'
+  | 'materialCatalog'
+  | 'moveCandidate'
+  | 'openGroupId'
+  | 'perspectiveCamera'
+  | 'referenceScenes'
+  | 'renderer'
+  | 'session'
+  | 'showingCompiled'
+  | 'simpleShapeOptions'
+  | 'textureLock'
+  | 'topologySelectedVertices'
+  | 'topologySelectionCount'
+  | 'topologySelectionKind',
+  | 'creationCandidate'
+  | 'creationSequence'
+  | 'duplicateSequence'
+  | 'duplicationBase'
+  | 'duplicationCandidate'
+  | 'faceCandidate'
+  | 'faceSplitSequence'
+  | 'faceStampSequence'
+  | 'faceTransferCandidate'
+  | 'faceTranslationSequence'
+  | 'hullBuildPoints'
+  | 'hullCandidate'
+  | 'hullSequence'
+  | 'lastPointerPosition'
+  | 'moveCandidate'
+  | 'perspectiveCamera'
+  | 'renderer'
+  | 'topologySelectedVertices'
+  | 'topologySelectionCount'
+  | 'topologySelectionKind'
+>;
+
+interface RendererFormatting {
+  formatVector(value: readonly number[]): string;
+  movementDescription(
+    event: Pick<EditorBrushDragEvent, 'movementPlane' | 'axisRestriction'>,
+  ): string;
+}
+
+interface RendererContextMenuCommands {
+  showViewportContextMenu(
+    context: import('@jackharrhy/worldview-editor').EditorViewportContextMenuEvent,
+  ): void;
+}
+
+interface RendererDocumentCommands {
+  openGroupEntityId(document?: MapDocument): MapDocument['entities'][number]['id'] | undefined;
+  restoreWorkspaceLayout(layout: ViewportWorkspaceLayout): void;
+}
+
+interface RendererGeometryCommands {
+  handleClipPlaneChange(event: EditorClipPlaneEvent): void;
+  handleSweepDrag(event: EditorSweepDragEvent): void;
+  simpleShapeLabel(kind: SimpleShapeKind): string;
+}
+
+interface RendererInspectorCommands {
+  updateInspector(document?: MapDocument, selection?: EditorSelection | null): void;
+}
+
+interface RendererOrganizationCommands {
+  closeEditorGroup(selectGroup?: boolean): boolean;
+  effectiveObjectViewState(document?: MapDocument): EditorObjectViewState;
+  openEditorGroup(groupId: string, selection?: EditorSelection | null): boolean;
+}
+
+interface RendererTransformCommands {
+  handleTopologyDrag(event: EditorTopologyDragEvent): void;
+  handleTransformDrag(event: EditorTransformDragEvent): void;
+  handleTransformPivotDrag(event: EditorTransformPivotDragEvent): void;
+}
+
+interface RendererViewportWorkspaceCommands {
+  bind(actions: ViewportWorkspaceActions): void;
+  setCamera(event: EditorCameraChangeEvent): void;
+  setPerspectiveOnly(enabled: boolean): void;
+  unbind(): void;
+}
+
 interface RendererPresenterDependencies {
-  readonly state: EditorState;
+  readonly state: RendererState;
   readonly ui: RendererUi;
   readonly canvases: EditorViewportCanvases;
   readonly viewportOverlays: EditorViewportOverlays;
-  readonly build: BuildPresenter;
-  readonly contextMenu: ContextMenuPresenter;
-  readonly document: DocumentPresenter;
-  readonly geometry: GeometryToolPresenter;
-  readonly inspector: InspectorPresenter;
-  readonly organization: OrganizationPresenter;
-  readonly transform: TransformToolPresenter;
-  readonly viewportWorkspace: ViewportWorkspacePresenter;
-  readonly publishCollaborationPreview: (document: EditorState['session']['document']) => void;
+  readonly build: RendererFormatting;
+  readonly contextMenu: RendererContextMenuCommands;
+  readonly document: RendererDocumentCommands;
+  readonly geometry: RendererGeometryCommands;
+  readonly inspector: RendererInspectorCommands;
+  readonly organization: RendererOrganizationCommands;
+  readonly transform: RendererTransformCommands;
+  readonly viewportWorkspace: RendererViewportWorkspaceCommands;
+  readonly publishCollaborationPreview: (document: MapDocument) => void;
   readonly publishCollaborationPointer: () => void;
 }
 

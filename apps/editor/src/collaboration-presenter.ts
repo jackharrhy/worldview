@@ -1,6 +1,10 @@
 import { HostedErrorResponseSchema, HostedRealtimeTicketResponseSchema } from '@worldview/protocol';
 
 import type { CollaborationPresence, JoinCollaborationOptions } from './collaboration.js';
+import {
+  CollaborationLifecycle,
+  type CollaborationLifecycleSnapshot,
+} from './collaboration-lifecycle.js';
 import type { EditorShellState } from './editor-shell-state.js';
 
 type CollaborationUi = Pick<EditorShellState, 'collaborationUi'>;
@@ -90,15 +94,69 @@ function collaborationEndpoint(): string {
   return endpoint.toString();
 }
 
+function lifecyclePresentation(snapshot: CollaborationLifecycleSnapshot): {
+  readonly state: string;
+  readonly description: string;
+  readonly error: string | null;
+} {
+  switch (snapshot.status) {
+    case 'solo':
+      return {
+        state: 'Local only',
+        description:
+          'Live collaboration requires a hosted project and a 4orm account. This local map stays offline.',
+        error: null,
+      };
+    case 'connecting':
+      return {
+        state: 'Connecting…',
+        description: 'Connecting this hosted map to its live session.',
+        error: null,
+      };
+    case 'live':
+      return {
+        state: 'Live',
+        description: 'This map is live. Share the link to invite another mapper.',
+        error: null,
+      };
+    case 'reconnecting':
+      return {
+        state: 'Reconnecting…',
+        description: 'Local edits remain responsive while the hosted connection recovers.',
+        error: null,
+      };
+    case 'detached-local':
+      return {
+        state: 'Detached local copy',
+        description: 'This map is now an editable local copy and is no longer in the hosted room.',
+        error: snapshot.reason,
+      };
+    case 'conflict':
+      return {
+        state: 'Conflict',
+        description: 'The hosted session needs attention before editing can continue live.',
+        error: snapshot.reason,
+      };
+    case 'leaving':
+      return {
+        state: 'Leaving…',
+        description: 'Closing the live session. The current map remains available locally.',
+        error: null,
+      };
+  }
+}
+
 export class CollaborationPresenter {
   private readonly actorId = stored(ACTOR_KEY) ?? crypto.randomUUID();
   private readonly participants = new Map<string, CollaborationPresence>();
-  private mapId: string | null = null;
+  private activeActorId = this.actorId;
+  private unsubscribeLifecycle: (() => void) | null = null;
 
   public constructor(
     private readonly ui: CollaborationUi,
     private readonly joinCollaboration: (options: JoinCollaborationOptions) => Promise<void>,
     private readonly leaveCollaboration: () => void,
+    private readonly lifecycle: CollaborationLifecycle,
     private readonly signal: AbortSignal,
   ) {
     persist(ACTOR_KEY, this.actorId);
@@ -111,6 +169,14 @@ export class CollaborationPresenter {
         ? previousName
         : generatedName(this.actorId);
     this.ui.collaborationUi.update({ displayName });
+    const renderLifecycle = (snapshot: CollaborationLifecycleSnapshot) => {
+      this.ui.collaborationUi.update({
+        lifecycle: snapshot,
+        ...lifecyclePresentation(snapshot),
+      });
+    };
+    renderLifecycle(this.lifecycle.getSnapshot());
+    this.unsubscribeLifecycle = this.lifecycle.subscribe(renderLifecycle);
     this.ui.collaborationUi.bind({
       open: () => this.ui.collaborationUi.update({ dialogOpen: true }),
       close: () => this.ui.collaborationUi.update({ dialogOpen: false }),
@@ -145,33 +211,23 @@ export class CollaborationPresenter {
         throw new Error('Collaboration authorization returned an invalid response');
       return ticket.data.ticket;
     };
-    await this.join(mapId, false, { actorId, displayName, authorize, hosted: true });
-  }
-
-  private displayName(): string {
-    return this.ui.collaborationUi.getSnapshot().displayName.trim().slice(0, 48) || 'Guest mapper';
+    await this.join(mapId, { actorId, displayName, authorize });
   }
 
   private async join(
     mapId: string,
-    fromLink: boolean,
-    identity?: {
+    identity: {
       readonly actorId: string;
       readonly displayName: string;
       readonly authorize: (signal?: AbortSignal) => Promise<string>;
-      readonly hosted: true;
     },
   ): Promise<void> {
-    const actorId = identity?.actorId ?? this.actorId;
-    const displayName = identity?.displayName ?? this.displayName();
-    this.mapId = mapId;
-    persist(NAME_KEY, this.displayName());
-    this.setState('Joining…');
-    this.ui.collaborationUi.update({
-      joining: true,
-      error: null,
-      ...(fromLink ? { dialogOpen: true } : {}),
-    });
+    const { actorId, displayName } = identity;
+    this.activeActorId = actorId;
+    this.participants.clear();
+    persist(NAME_KEY, displayName.trim().slice(0, 48));
+    this.lifecycle.beginConnect(mapId);
+    this.ui.collaborationUi.update({ error: null });
     try {
       this.signal.throwIfAborted();
       await this.joinCollaboration({
@@ -180,14 +236,18 @@ export class CollaborationPresenter {
         actorId,
         displayName,
         color: collaboratorColor(actorId),
-        ...(identity ? { authorize: identity.authorize } : {}),
+        authorize: identity.authorize,
         onPresence: (presence) => this.receivePresence(presence),
         onLocalPresence: (presence) => this.receivePresence(presence),
-        onConflict: () => this.setError('A remote edit conflicted with this map.'),
+        onConflict: () => {
+          if (this.isCurrentMap(mapId))
+            this.lifecycle.conflicted(mapId, 'A remote edit conflicted with this map.');
+        },
         onConnectionChange: (state) => {
           if (this.signal.aborted) return;
-          if (state === 'connected') this.renderLiveState();
-          else if (state === 'disconnected') this.setState('Reconnecting…');
+          if (!this.isCurrentMap(mapId)) return;
+          if (state === 'connected') this.lifecycle.connected(mapId);
+          else if (state === 'disconnected') this.lifecycle.disconnected(mapId);
         },
       });
       this.signal.throwIfAborted();
@@ -199,20 +259,20 @@ export class CollaborationPresenter {
       });
       this.ui.collaborationUi.update({
         shareLink: window.location.href,
-        live: true,
-        joining: true,
-        state: 'Connecting…',
-        description: 'Connecting this hosted map to its live session.',
       });
       this.renderParticipants();
     } catch (error) {
       if (this.signal.aborted) return;
       if (error instanceof DOMException && error.name === 'AbortError') return;
       this.leaveCollaboration();
-      this.mapId = null;
-      this.setError(error instanceof Error ? error.message : String(error));
-      this.ui.collaborationUi.update({ joining: false });
+      const reason = error instanceof Error ? error.message : String(error);
+      if (this.isCurrentMap(mapId)) this.lifecycle.conflicted(mapId, reason);
     }
+  }
+
+  private isCurrentMap(mapId: string): boolean {
+    const snapshot = this.lifecycle.getSnapshot();
+    return snapshot.status !== 'solo' && snapshot.mapId === mapId;
   }
 
   private receivePresence(presence: CollaborationPresence): void {
@@ -242,18 +302,6 @@ export class CollaborationPresenter {
     this.renderParticipants();
   }
 
-  private renderLiveState(): void {
-    if (this.signal.aborted) return;
-    this.ui.collaborationUi.update({
-      shareLink: window.location.href,
-      live: true,
-      joining: false,
-      state: 'Live',
-      description: 'This map is live. Share the link to invite another mapper.',
-    });
-    this.renderParticipants();
-  }
-
   private renderParticipants(): void {
     const presences = [...this.participants.values()];
     this.ui.collaborationUi.update({
@@ -264,24 +312,21 @@ export class CollaborationPresenter {
         viewport: viewportLabel(presence.viewport),
         selectedCount: presence.selectedObjectIds?.length ?? 0,
         moving: Boolean(presence.preview),
-        isLocal: presence.actorId === this.actorId,
+        isLocal: presence.actorId === this.activeActorId,
       })),
     });
   }
 
   private stopSession(): void {
+    this.lifecycle.beginLeave();
     this.leaveCollaboration();
-    this.mapId = null;
+    this.activeActorId = this.actorId;
     this.participants.clear();
     this.ui.collaborationUi.update({
-      live: false,
-      joining: false,
       shareLink: '',
       participants: [],
-      state: 'Local only',
-      description:
-        'Live collaboration requires a hosted project and a 4orm account. This local map stays offline.',
     });
+    this.lifecycle.left();
   }
 
   private async copyLink(): Promise<void> {
@@ -298,14 +343,11 @@ export class CollaborationPresenter {
     this.ui.collaborationUi.update({ state: value });
   }
 
-  private setError(value: string): void {
-    this.setState('Could not connect');
-    this.ui.collaborationUi.update({ error: value, joining: false });
-  }
-
   public dispose(): void {
-    this.mapId = null;
+    this.activeActorId = this.actorId;
     this.participants.clear();
+    this.unsubscribeLifecycle?.();
+    this.unsubscribeLifecycle = null;
     this.ui.collaborationUi.unbind();
   }
 }

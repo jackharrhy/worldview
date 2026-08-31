@@ -18,8 +18,17 @@ function participantIcon(participant: CollaborationParticipantSnapshot): IconNam
         : 'viewport-2d';
 }
 
+function hasJoinedSession(
+  status: ReturnType<CollaborationUiPort['getSnapshot']>['lifecycle']['status'],
+) {
+  return (
+    status === 'live' || status === 'reconnecting' || status === 'conflict' || status === 'leaving'
+  );
+}
+
 export function CollaborationPresence({ port }: { readonly port: CollaborationUiPort }) {
   const state = useSyncExternalStore(port.subscribe, port.getSnapshot);
+  const live = hasJoinedSession(state.lifecycle.status);
   return (
     <div className="collaboration-presence" aria-label="Live collaborators">
       <div id="collaboration-presence-strip" className="collaboration-presence-strip">
@@ -42,7 +51,7 @@ export function CollaborationPresence({ port }: { readonly port: CollaborationUi
         tooltip="Live collaboration"
         id="collaboration-toggle"
         className="collaboration-toggle icon-button"
-        aria-pressed={state.live}
+        aria-pressed={live}
         onPress={() => port.invoke('open')}
       />
     </div>
@@ -51,6 +60,8 @@ export function CollaborationPresence({ port }: { readonly port: CollaborationUi
 
 export function CollaborationDialog({ port }: { readonly port: CollaborationUiPort }) {
   const state = useSyncExternalStore(port.subscribe, port.getSnapshot);
+  const live = hasJoinedSession(state.lifecycle.status);
+  const joining = state.lifecycle.status === 'connecting';
   return (
     <Dialog
       id="collaboration-dialog"
@@ -68,7 +79,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
         <TextField
           label="Your name"
           value={state.displayName}
-          isDisabled={state.live}
+          isDisabled={live}
           onChange={(value) => port.invoke('setDisplayName', value)}
           input={{
             id: 'collaboration-display-name',
@@ -77,11 +88,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
             spellCheck: false,
           }}
         />
-        <div
-          id="collaboration-share-fields"
-          className="collaboration-share-fields"
-          hidden={!state.live}
-        >
+        <div id="collaboration-share-fields" className="collaboration-share-fields" hidden={!live}>
           <TextField
             label="Share link"
             value={state.shareLink}
@@ -96,11 +103,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
             Copy link
           </Button>
         </div>
-        <div
-          id="collaboration-participants"
-          className="collaboration-participants"
-          hidden={!state.live}
-        >
+        <div id="collaboration-participants" className="collaboration-participants" hidden={!live}>
           <strong>People here</strong>
           <ul id="collaboration-participant-list">
             {state.participants.map((participant) => (
@@ -129,7 +132,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
             tone="danger"
             size="compact"
             data-action="leave-collaboration"
-            hidden={!state.live}
+            hidden={!live}
             onPress={() => port.invoke('stop')}
           >
             Stop session
@@ -138,11 +141,11 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
             tone="primary"
             size="compact"
             data-action="start-collaboration"
-            hidden={state.live}
-            isDisabled={state.joining}
+            hidden={live}
+            isDisabled={joining}
             onPress={() => port.invoke('start')}
           >
-            {state.joining ? 'Joining…' : 'Open hosted projects'}
+            {joining ? 'Joining…' : 'Open hosted projects'}
           </Button>
         </div>
       </div>

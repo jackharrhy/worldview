@@ -1,15 +1,66 @@
-import { createSequentialIdFactory, parseMap } from '@jackharrhy/worldview-editor';
+import {
+  createSequentialIdFactory,
+  parseMap,
+  type EditorTool,
+  type MapDocument,
+} from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
 import type { EditorCommandId } from './editor-command-state.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
+
+type CommandEventState = EditorStatePort<
+  | 'activeGridSize'
+  | 'buildService'
+  | 'latestBuild'
+  | 'launchProfileId'
+  | 'leakOverlayVisible'
+  | 'portalOverlayVisible'
+  | 'referenceSequence'
+  | 'session'
+  | 'showingCompiled'
+  | 'textureLock',
+  'leakOverlayVisible' | 'portalOverlayVisible'
+>;
+
+type CommandEventUi = Pick<EditorShellState, 'buildLog' | 'editorCommands' | 'statusMessage'>;
+
+interface CommandDocumentCommands {
+  copySelection(): Promise<void>;
+  deleteSelection(): void;
+  duplicateSelection(): void;
+  invertEditableObjectSelection(): void;
+  pasteFromClipboard(placement: 'cursor' | 'original'): Promise<void>;
+  repeatRecordedCommands(): void;
+  selectAllEditableObjects(): void;
+}
+
+interface CommandBuildCommands {
+  compilePreview(): Promise<void>;
+  renderBuildHistory(): Promise<void>;
+  showCompiledPreview(show: boolean): void;
+  updateDiagnosticOverlayVisibility(): void;
+}
+
+interface CommandEventPorts {
+  readonly state: CommandEventState;
+  readonly ui: CommandEventUi;
+  readonly elements: Pick<EditorElements, 'referenceFiles'>;
+  readonly document: CommandDocumentCommands;
+  readonly build: CommandBuildCommands;
+  readonly focusSelection: () => void;
+  readonly addReferenceDocument: (label: string, document: MapDocument) => void;
+  readonly setEditorTool: (tool: EditorTool) => void;
+}
 
 export class CommandEvents {
-  public constructor(private readonly app: EditorApplication) {}
+  public constructor(private readonly ports: CommandEventPorts) {}
   private get state() {
-    return this.app.state;
+    return this.ports.state;
   }
   private get ui() {
-    return this.app.ui;
+    return this.ports.ui;
   }
 
   private invokeCommand(command: EditorCommandId): void {
@@ -21,7 +72,7 @@ export class CommandEvents {
         this.state.session.redo();
         return;
       case 'repeat-commands':
-        this.app.document.repeatRecordedCommands();
+        this.ports.document.repeatRecordedCommands();
         return;
       case 'clear-repeat-commands':
         if (!this.state.session.clearRepeatableCommands()) {
@@ -29,10 +80,10 @@ export class CommandEvents {
         }
         return;
       case 'select-all':
-        this.app.document.selectAllEditableObjects();
+        this.ports.document.selectAllEditableObjects();
         return;
       case 'invert-selection':
-        this.app.document.invertEditableObjectSelection();
+        this.ports.document.invertEditableObjectSelection();
         return;
       case 'snap-selection-to-grid':
         try {
@@ -50,22 +101,22 @@ export class CommandEvents {
         }
         return;
       case 'duplicate':
-        this.app.document.duplicateSelection();
+        this.ports.document.duplicateSelection();
         return;
       case 'copy':
-        void this.app.document.copySelection();
+        void this.ports.document.copySelection();
         return;
       case 'paste':
-        void this.app.document.pasteFromClipboard('cursor');
+        void this.ports.document.pasteFromClipboard('cursor');
         return;
       case 'paste-original':
-        void this.app.document.pasteFromClipboard('original');
+        void this.ports.document.pasteFromClipboard('original');
         return;
       case 'delete':
-        this.app.document.deleteSelection();
+        this.ports.document.deleteSelection();
         return;
       case 'focus-selection':
-        this.app.contextMenu.focusCurrentSelection();
+        this.ports.focusSelection();
         return;
       case 'hide-selection':
         this.state.session.hideSelected();
@@ -83,18 +134,18 @@ export class CommandEvents {
         this.state.session.unlockAll();
         return;
       case 'compile':
-        void this.app.build.compilePreview();
+        void this.ports.build.compilePreview();
         return;
       case 'toggle-preview':
-        this.app.build.showCompiledPreview(!this.state.showingCompiled);
+        this.ports.build.showCompiledPreview(!this.state.showingCompiled);
         return;
       case 'toggle-leak':
         this.state.leakOverlayVisible = !this.state.leakOverlayVisible;
-        this.app.build.updateDiagnosticOverlayVisibility();
+        this.ports.build.updateDiagnosticOverlayVisibility();
         return;
       case 'toggle-portals':
         this.state.portalOverlayVisible = !this.state.portalOverlayVisible;
-        this.app.build.updateDiagnosticOverlayVisibility();
+        this.ports.build.updateDiagnosticOverlayVisibility();
         return;
       case 'build-log':
         void this.openBuildLog();
@@ -105,7 +156,7 @@ export class CommandEvents {
   }
 
   private async openBuildLog(): Promise<void> {
-    await this.app.build.renderBuildHistory();
+    await this.ports.build.renderBuildHistory();
     this.ui.buildLog.setOpen(true);
   }
 
@@ -137,13 +188,13 @@ export class CommandEvents {
   public connect(signal: AbortSignal): void {
     this.ui.editorCommands.bind({
       invoke: (command) => this.invokeCommand(command),
-      selectTool: (tool) => this.app.session.setEditorTool(tool),
+      selectTool: (tool) => this.ports.setEditorTool(tool),
     });
     signal.addEventListener('abort', () => this.ui.editorCommands.unbind(), { once: true });
-    this.app.elements.referenceFiles.addEventListener(
+    this.ports.elements.referenceFiles.addEventListener(
       'change',
       async () => {
-        const files = [...(this.app.elements.referenceFiles.files ?? [])];
+        const files = [...(this.ports.elements.referenceFiles.files ?? [])];
         const sources = await Promise.allSettled(files.map((file) => file.text()));
         for (const [index, file] of files.entries()) {
           try {
@@ -155,14 +206,14 @@ export class CommandEvents {
               source.value,
               createSequentialIdFactory(`reference-source-${this.state.referenceSequence + 1}`),
             );
-            this.app.materials.addReferenceDocument(file.name, document);
+            this.ports.addReferenceDocument(file.name, document);
           } catch (error) {
             this.ui.statusMessage.set(
               `${file.name}: ${error instanceof Error ? error.message : String(error)}`,
             );
           }
         }
-        this.app.elements.referenceFiles.value = '';
+        this.ports.elements.referenceFiles.value = '';
       },
       { signal },
     );

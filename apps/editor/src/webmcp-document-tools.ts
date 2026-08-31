@@ -1,9 +1,11 @@
 import { parseMapSource, type IdFactory } from '@jackharrhy/worldview-editor';
 import { z } from 'zod';
 
-import type { EditorState } from './editor-state.js';
-import type { ProjectPresenter } from './project-presenter.js';
-import type { SessionPresenter } from './session-presenter.js';
+import type { EditorStatePort } from './editor-state-port.js';
+import type {
+  OpenEditorMapCommand,
+  ReplaceDocumentCommand,
+} from './editor-application-contracts.js';
 import {
   DESTRUCTIVE_ANNOTATIONS,
   ExpectedDocumentInputSchema,
@@ -15,10 +17,12 @@ import {
 import { webMcpDocumentState } from './webmcp-state.js';
 
 interface WebMcpDocumentToolHost {
-  readonly state: EditorState;
+  readonly state: EditorStatePort<
+    'currentDocumentName' | 'documentDirty' | 'projectWorkspace' | 'session'
+  >;
   readonly signal: AbortSignal;
-  readonly replaceDocument: SessionPresenter['replaceDocument'];
-  readonly openEditorMap: ProjectPresenter['openEditorMap'];
+  readonly replaceDocument: ReplaceDocumentCommand;
+  readonly openEditorMap: OpenEditorMapCommand;
   assertDocument(input: ExpectedDocumentInput): number;
   ids(label: string): IdFactory;
   status(message: string): void;

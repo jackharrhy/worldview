@@ -14,15 +14,16 @@ import {
   selectedFaceReferences,
   selectedPointEntityIds,
   worldviewGameProfile,
+  type EditorObjectViewState,
+  type EditorSelection,
+  type EditorTool,
   type SurfaceFlagDefinition,
   type MapDocument,
+  type Vec3,
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorShellState } from './editor-shell-state.js';
-import type { EditorState } from './editor-state.js';
-import type { EntityPresenter } from './entity-presenter.js';
-import type { OrganizationPresenter } from './organization-presenter.js';
-import type { TransformToolPresenter } from './transform-tool-presenter.js';
+import type { EditorStatePort } from './editor-state-port.js';
 
 type InspectorUi = Pick<
   EditorShellState,
@@ -38,6 +39,58 @@ type InspectorUi = Pick<
   | 'sweepTool'
 >;
 
+type InspectorState = EditorStatePort<
+  | 'activeGameProfile'
+  | 'activeGridSize'
+  | 'activeTool'
+  | 'clipCandidate'
+  | 'clipMode'
+  | 'hullBuildPoints'
+  | 'hullCandidate'
+  | 'lastPointerPosition'
+  | 'materialCatalog'
+  | 'openGroupId'
+  | 'renderer'
+  | 'session'
+  | 'sweepCandidate'
+  | 'topologySelectedVertices'
+  | 'topologySelectionCount'
+  | 'topologySelectionKind'
+  | 'transformPivot'
+  | 'transformPivotSelectionKey'
+  | 'uvEditor',
+  'transformPivot' | 'transformPivotSelectionKey'
+>;
+
+interface InspectorOrganizationView {
+  effectiveObjectViewState(document?: MapDocument): EditorObjectViewState;
+  renderIssues(): void;
+  renderLayers(document?: MapDocument, selection?: EditorSelection | null): void;
+  renderViewFilters(): void;
+  updateEntityLinkSummary(document?: MapDocument, selection?: EditorSelection | null): void;
+}
+
+interface InspectorEntityView {
+  renderEntityProperties(
+    document: MapDocument,
+    selection: EditorSelection | null,
+    visible?: boolean,
+  ): void;
+}
+
+interface SelectionBounds {
+  readonly min: Vec3;
+  readonly max: Vec3;
+}
+
+interface InspectorTransformView {
+  isTopologyTool(tool: EditorTool): tool is 'vertex' | 'edge';
+  isTransformTool(tool: EditorTool): tool is 'rotate' | 'scale' | 'shear';
+  selectedObjectBounds(document?: MapDocument): SelectionBounds | null;
+  selectedTransformBounds(document?: MapDocument): SelectionBounds | null;
+  selectedTransformKey(selection?: EditorSelection | null): string | null;
+}
+
 function unknownSurfaceBitsLabel(
   values: readonly number[],
   definitions: readonly SurfaceFlagDefinition[],
@@ -52,11 +105,11 @@ function unknownSurfaceBitsLabel(
 
 export class InspectorPresenter {
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: InspectorState,
     private readonly ui: InspectorUi,
-    private readonly organization: OrganizationPresenter,
-    private readonly entity: EntityPresenter,
-    private readonly transform: TransformToolPresenter,
+    private readonly organization: InspectorOrganizationView,
+    private readonly entity: InspectorEntityView,
+    private readonly transform: InspectorTransformView,
     private readonly formatVector: (value: readonly number[]) => string,
   ) {
     this.ui.surfaceInspector.bind({

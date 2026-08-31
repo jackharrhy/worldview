@@ -4,6 +4,7 @@ import process from 'node:process';
 
 const MAX_PRODUCTION_LINES = 1_000;
 const MAX_COMPOSITION_ROOT_LINES = 100;
+const MAX_APPLICATION_COMPOSITION_LINES = 350;
 const roots = ['apps/editor/src', 'packages/worldview-editor/src'];
 const svgOwnershipAllowlist = new Set([
   // React owns the element; the focused UV renderer owns only this SVG's drawing children.
@@ -25,6 +26,15 @@ const presenterDomMutationAllowlist = new Set([
   'apps/editor/src/tool-events.ts',
   // Document metadata lives outside the React application root.
   'apps/editor/src/theme-presenter.ts',
+]);
+const focusedStateConsumers = new Set([
+  'apps/editor/src/collaboration-session.ts',
+  'apps/editor/src/command-events.ts',
+  'apps/editor/src/editor-tool-controller-registry.ts',
+  'apps/editor/src/keyboard-events.ts',
+  'apps/editor/src/tool-events.ts',
+  'apps/editor/src/webmcp-document-tools.ts',
+  'apps/editor/src/webmcp-state.ts',
 ]);
 
 async function sourceFiles(directory) {
@@ -64,6 +74,27 @@ for (const file of files) {
     /from ['"]\.\/editor-application\.js['"]/.test(source)
   ) {
     violations.push(`${file}: presenters may not depend on the EditorApplication container`);
+  }
+  if (
+    (file.endsWith('-presenter.ts') || focusedStateConsumers.has(file)) &&
+    /from ['"]\.\/editor-state\.js['"]/.test(source)
+  ) {
+    violations.push(
+      `${file}: coordinators must declare a focused EditorStatePort instead of accepting EditorState`,
+    );
+  }
+  if (file.endsWith('-presenter.ts') && /from ['"]\.\/[^'"]+-presenter\.js['"]/.test(source)) {
+    violations.push(
+      `${file}: presenters coordinate through focused command/query ports, not peer presenter types`,
+    );
+  }
+  if (
+    /(?:command|keyboard|tool)-events\.ts$/.test(file) &&
+    /from ['"]\.\/editor-application\.js['"]/.test(source)
+  ) {
+    violations.push(
+      `${file}: input adapters must receive focused ports instead of the EditorApplication container`,
+    );
   }
   if (
     file === 'apps/editor/src/editor-elements.ts' &&
@@ -170,6 +201,16 @@ const compositionRootLines = physicalLines(await readFile(compositionRoot, 'utf8
 if (compositionRootLines > MAX_COMPOSITION_ROOT_LINES) {
   violations.push(
     `${compositionRoot}: ${compositionRootLines} lines (composition roots may use at most ${MAX_COMPOSITION_ROOT_LINES})`,
+  );
+}
+
+const applicationCompositionRoot = 'apps/editor/src/editor-application.ts';
+const applicationCompositionLines = physicalLines(
+  await readFile(applicationCompositionRoot, 'utf8'),
+);
+if (applicationCompositionLines > MAX_APPLICATION_COMPOSITION_LINES) {
+  violations.push(
+    `${applicationCompositionRoot}: ${applicationCompositionLines} lines (application composition may use at most ${MAX_APPLICATION_COMPOSITION_LINES})`,
   );
 }
 

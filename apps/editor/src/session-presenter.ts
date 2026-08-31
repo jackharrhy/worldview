@@ -1,49 +1,127 @@
-import { type EditorFileHandle } from './project-files.js';
+import type { ReplaceDocumentOptions } from './editor-application-contracts.js';
 import {
-  selectedFaceReferences,
   serializeMap,
   rebaseMapSource,
+  type EditorObjectViewState,
+  type EditorSelection,
   type EditorTool,
   type MapDocument,
-  type MapSourceState,
 } from '@jackharrhy/worldview-editor';
 
-import type { BuildPresenter } from './build-presenter.js';
-import type { DocumentPresenter } from './document-presenter.js';
 import type { EditorShellState } from './editor-shell-state.js';
-import type { EditorState } from './editor-state.js';
-import type { GeometryToolPresenter } from './geometry-tool-presenter.js';
-import type { InspectorPresenter } from './inspector-presenter.js';
-import type { MaterialsPresenter } from './materials-presenter.js';
-import type { OrganizationPresenter } from './organization-presenter.js';
-import type { TransformToolPresenter } from './transform-tool-presenter.js';
+import type { EditorStatePort } from './editor-state-port.js';
 
-type SessionUi = Pick<
-  EditorShellState,
-  'editorCommands' | 'pointEntityTool' | 'pointerContext' | 'projectUi' | 'statusMessage'
+type SessionUi = Pick<EditorShellState, 'editorCommands' | 'projectUi' | 'statusMessage'>;
+
+type SessionState = EditorStatePort<
+  | 'clipCandidate'
+  | 'clipPlanePoints'
+  | 'compiledRevision'
+  | 'creationCandidate'
+  | 'currentFileHandle'
+  | 'currentMapSource'
+  | 'duplicationBase'
+  | 'duplicationCandidate'
+  | 'faceCandidate'
+  | 'faceTransferCandidate'
+  | 'hiddenIssueIds'
+  | 'hullBuildPoints'
+  | 'hullCandidate'
+  | 'lastDiskFingerprint'
+  | 'lastPointerPosition'
+  | 'lastRecoveryLabel'
+  | 'moveCandidate'
+  | 'openGroupId'
+  | 'recovery'
+  | 'renderer'
+  | 'replacingDocument'
+  | 'savedDocumentRevision'
+  | 'selectedLayerId'
+  | 'session'
+  | 'stopSubscription'
+  | 'sweepCandidate'
+  | 'sweepDragBase'
+  | 'sweepEscapeReset'
+  | 'topologyCandidate'
+  | 'topologySelectedVertices'
+  | 'topologySelectionCount'
+  | 'topologySelectionKind'
+  | 'transformCandidate'
+  | 'transformPivot'
+  | 'transformPivotSelectionKey'
+  | 'uvEditor'
+  | 'uvTextureCandidate',
+  | 'clipCandidate'
+  | 'clipPlanePoints'
+  | 'creationCandidate'
+  | 'currentFileHandle'
+  | 'currentMapSource'
+  | 'duplicationBase'
+  | 'duplicationCandidate'
+  | 'faceCandidate'
+  | 'faceTransferCandidate'
+  | 'hullBuildPoints'
+  | 'hullCandidate'
+  | 'lastDiskFingerprint'
+  | 'lastPointerPosition'
+  | 'lastRecoveryLabel'
+  | 'moveCandidate'
+  | 'openGroupId'
+  | 'replacingDocument'
+  | 'savedDocumentRevision'
+  | 'selectedLayerId'
+  | 'stopSubscription'
+  | 'sweepCandidate'
+  | 'sweepDragBase'
+  | 'sweepEscapeReset'
+  | 'topologyCandidate'
+  | 'topologySelectedVertices'
+  | 'topologySelectionCount'
+  | 'topologySelectionKind'
+  | 'transformCandidate'
+  | 'transformPivot'
+  | 'transformPivotSelectionKey'
+  | 'uvTextureCandidate'
 >;
 
-interface ReplaceDocumentOptions {
-  readonly name?: string;
-  readonly source?: MapSourceState;
-  readonly fileHandle?: EditorFileHandle | null;
-  readonly diskFingerprint?: string | null;
-  readonly dirty?: boolean;
-  readonly savedRevision?: number;
-  readonly focusView?: boolean;
+interface SessionBuildCommands {
+  setCompileState(label: string, state: 'offline' | 'ready' | 'busy' | 'stale'): void;
+  showCompiledPreview(show: boolean): void;
+}
+
+interface SessionDocumentCommands {
+  setDocumentDirty(dirty: boolean): void;
+  setDocumentName(name: string): void;
+  updateSourceFromDocument(force?: boolean): void;
+}
+
+interface SessionInspectorCommands {
+  updateInspector(document?: MapDocument, selection?: EditorSelection | null): void;
+}
+
+interface SessionMaterialCommands {
+  renderMaterialCatalog(): void;
+  updateMaterialBrowserControls(): void;
+}
+
+interface SessionOrganizationView {
+  effectiveObjectViewState(document?: MapDocument): EditorObjectViewState;
+}
+
+interface SessionToolCommands {
+  activate(tool: EditorTool): void;
 }
 
 export class SessionPresenter {
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: SessionState,
     private readonly ui: SessionUi,
-    private readonly build: BuildPresenter,
-    private readonly document: DocumentPresenter,
-    private readonly geometry: GeometryToolPresenter,
-    private readonly inspector: InspectorPresenter,
-    private readonly materials: MaterialsPresenter,
-    private readonly organization: OrganizationPresenter,
-    private readonly transform: TransformToolPresenter,
+    private readonly build: SessionBuildCommands,
+    private readonly document: SessionDocumentCommands,
+    private readonly inspector: SessionInspectorCommands,
+    private readonly materials: SessionMaterialCommands,
+    private readonly organization: SessionOrganizationView,
+    private readonly tools: SessionToolCommands,
   ) {}
 
   public connectSession(): void {
@@ -145,73 +223,6 @@ export class SessionPresenter {
   }
 
   public setEditorTool(tool: EditorTool): void {
-    const previousTool = this.state.activeTool;
-    if (previousTool === 'sweep' && tool !== 'sweep') {
-      this.state.sweepCandidate = null;
-      this.state.sweepDragBase = null;
-      this.state.renderer?.setDocument(this.state.session.document, this.state.session.selection);
-      this.state.renderer?.setSweepCaps([]);
-    }
-    if (
-      (tool === 'clip' ||
-        this.transform.isTransformTool(tool) ||
-        this.transform.isTopologyTool(tool)) &&
-      this.state.session.selection?.faceId
-    ) {
-      this.state.session.select({ brushId: this.state.session.selection.brushId });
-    }
-    if (this.transform.isTransformTool(tool) && tool !== this.state.activeTool) {
-      this.state.transformPivot = null;
-      this.state.transformPivotSelectionKey = null;
-      this.state.renderer?.setTransformPivot(null);
-    }
-    this.state.activeTool = tool;
-    this.state.renderer?.setTool(tool);
-    if (tool === 'sweep' && previousTool !== 'sweep') {
-      this.state.sweepDefaultTransform = this.geometry.initialSweepTransform();
-      this.state.sweepTransform = this.geometry.cloneSweepTransform(
-        this.state.sweepDefaultTransform,
-      );
-      this.state.sweepEscapeReset = false;
-      this.geometry.resetSweep(false);
-    }
-    if (tool === 'create') this.geometry.updateSimpleShapeFields();
-    this.ui.editorCommands.setActiveTool(tool);
-    this.ui.pointerContext.set(
-      `${tool === 'create' ? 'CREATE' : tool === 'entity' ? 'ENTITY' : tool === 'hull' ? 'HULL' : tool === 'face' ? 'FACE' : tool === 'sweep' ? 'SWEEP' : tool === 'clip' ? 'CLIP' : this.transform.isTopologyTool(tool) || this.transform.isTransformTool(tool) ? tool.toUpperCase() : 'PERSPECTIVE'} / edit`,
-    );
-    this.ui.statusMessage.set(
-      tool === 'create'
-        ? `Simple Shape tool active. Drag in any viewport to draw a ${this.geometry.simpleShapeLabel(this.state.simpleShapeOptions.kind)}; use the Object inspector for shape options.`
-        : tool === 'entity'
-          ? `Entity tool active. Click a surface or 2D viewport to place ${this.ui.pointEntityTool.getSnapshot().classname.trim() || 'a point entity'}.`
-          : tool === 'hull'
-            ? 'Hull tool active in perspective. Place points on reference faces; Enter creates their convex hull and Escape discards the point set.'
-            : tool === 'face'
-              ? 'Face tool active. Drag a center handle to extrude, Alt-drag it on the viewport plane, or use Arrow keys on the pointed viewport. Ctrl/Command-drag splits and Ctrl/Command+Alt-drag stamps. Escape clears handles before leaving.'
-              : tool === 'sweep'
-                ? selectedFaceReferences(this.state.session.selection).length > 0
-                  ? 'Sweep tool active. Move, rotate, or scale the green destination cap in 3D; tune its path in the inspector and press Enter to generate the gap.'
-                  : 'Sweep tool needs one or more selected brush faces. Select faces with the Face tool or Shift-click in Select, then activate Sweep again.'
-                : tool === 'clip'
-                  ? 'Clip tool active. Click two or three points, drag to place two, or drag an orange point to move it. Shift locks moved points to one axis in 2D; double-click matches a face plane.'
-                  : tool === 'vertex'
-                    ? 'Vertex tool active. Shift+Alt-click a target vertex to snap; Arrow keys nudge on the pointed viewport. Ctrl/Command adds corners or toggles absolute drag snapping. Escape clears handles before leaving.'
-                    : tool === 'edge'
-                      ? 'Edge tool active. Ctrl/Command selects multiple edge centers; Arrow keys nudge them on the pointed viewport. Escape clears handles before leaving.'
-                      : tool === 'rotate'
-                        ? 'Rotate tool active. Drag around the pivot; angles snap to 15°, or hold Shift for 5°. Selected vertex or edge handles take priority over brushes.'
-                        : tool === 'scale'
-                          ? 'Scale tool active. Drag a side, edge, or corner handle. The opposite handle stays fixed; hold Alt to anchor at center or Shift for proportional axes. Selected vertex or edge handles take priority over brushes.'
-                          : tool === 'shear'
-                            ? 'Shear tool active. Drag horizontally to offset the viewport plane by snapped grid units. Selected vertex or edge handles take priority over brushes.'
-                            : 'Default tool active. With nothing selected, drag in any viewport to draw the configured simple shape; click objects to select them. Drag selected objects on XY in 3D; Alt moves vertically and Shift locks an axis. Shift-drag a selected brush face to resize it; add Ctrl/Command to split, Alt to move the face freely, or both to stamp. Ctrl/Command-drag duplicates selected brushes or paint-selects unselected ones. Ctrl/Command-wheel drills through overlapping objects in any view; add Shift to drill through faces. Shift-click selects a face.',
-    );
-    this.inspector.updateInspector(
-      tool === 'sweep' && this.state.sweepCandidate
-        ? this.state.sweepCandidate.document
-        : this.state.session.document,
-      this.state.session.selection,
-    );
+    this.tools.activate(tool);
   }
 }

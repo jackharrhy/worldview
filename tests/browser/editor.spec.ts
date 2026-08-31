@@ -1026,7 +1026,7 @@ test.describe('WebMCP site authoring', () => {
     await rowHandle.press('ArrowDown');
     expect(Number(await rowHandle.getAttribute('aria-valuenow'))).toBeGreaterThan(beforeRow);
 
-    const crossHandle = page.getByRole('button', { name: 'Resize viewport rows and columns' });
+    const crossHandle = page.locator('[data-resize="viewport-cross"]');
     const beforeCrossColumn = Number(await columnHandle.getAttribute('aria-valuenow'));
     const beforeCrossRow = Number(await rowHandle.getAttribute('aria-valuenow'));
     const beforeCrossPerspective = await perspective.boundingBox();

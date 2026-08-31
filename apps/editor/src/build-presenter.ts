@@ -9,9 +9,9 @@ import {
   type MapCompileResult,
 } from '@jackharrhy/worldview-editor';
 
-import type { DocumentPresenter } from './document-presenter.js';
 import type { EditorShellState } from './editor-shell-state.js';
-import type { EditorState } from './editor-state.js';
+import type { CompileAssetEntry } from './editor-application-contracts.js';
+import type { EditorStatePort } from './editor-state-port.js';
 import { resolveEditorRenderTheme } from './render-theme.js';
 
 type BuildUi = Pick<
@@ -24,15 +24,56 @@ type BuildUi = Pick<
   | 'viewportPresentation'
 >;
 
+type BuildState = EditorStatePort<
+  | 'activeCompileProfileId'
+  | 'activeCompileQuality'
+  | 'activeGameProfile'
+  | 'buildHistory'
+  | 'buildOverlays'
+  | 'buildService'
+  | 'buildServiceEnabled'
+  | 'compiledPreviewWarning'
+  | 'compiledRevision'
+  | 'compiledViewer'
+  | 'compilerCoordinator'
+  | 'currentDocumentName'
+  | 'diagnosticQuakePalette'
+  | 'latestBuild'
+  | 'launchProfileId'
+  | 'leakOverlayVisible'
+  | 'loadedWadSources'
+  | 'portalOverlayVisible'
+  | 'projectKey'
+  | 'projectLocalState'
+  | 'projectWorkspace'
+  | 'quakePalette'
+  | 'renderer'
+  | 'session'
+  | 'showingCompiled',
+  | 'activeCompileProfileId'
+  | 'activeCompileQuality'
+  | 'buildOverlays'
+  | 'compiledPreviewWarning'
+  | 'compiledRevision'
+  | 'compiledViewer'
+  | 'latestBuild'
+  | 'launchProfileId'
+  | 'leakOverlayVisible'
+  | 'portalOverlayVisible'
+  | 'showingCompiled'
+>;
+
+interface BuildDocumentCommands {
+  compileAssets(): readonly CompileAssetEntry[];
+  serializeCompileDocument(assets: readonly CompileAssetEntry[]): string;
+}
+
 export class BuildPresenter {
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: BuildState,
     private readonly ui: BuildUi,
     private readonly compiledCanvas: HTMLCanvasElement,
-    private readonly document: Pick<
-      DocumentPresenter,
-      'compileAssets' | 'serializeCompileDocument'
-    >,
+    private readonly document: BuildDocumentCommands,
     private readonly signal: AbortSignal,
   ) {
     this.ui.buildLog.bind({ inspect: (buildId) => void this.inspectHistoricalBuild(buildId) });

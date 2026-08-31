@@ -16,8 +16,9 @@ import {
 import type { EditorElements } from './editor-elements.js';
 import type { EditorShellState, WorkspaceResizeKind } from './editor-shell-state.js';
 import type { ObjectPastePlacement } from './editor-clipboard.js';
-import type { EditorState } from './editor-state.js';
-import type { ViewportWorkspaceLayout } from './viewport-workspace-presenter.js';
+import type { CompileAssetEntry } from './editor-application-contracts.js';
+import type { EditorStatePort } from './editor-state-port.js';
+import type { ViewportWorkspaceLayout } from './viewport-workspace-contracts.js';
 
 type DocumentUi = Pick<
   EditorShellState,
@@ -33,10 +34,23 @@ function isWorkspaceResizeKind(value: string | undefined): value is WorkspaceRes
   );
 }
 
-interface CompileAssetEntry {
-  readonly name: string;
-  readonly data: ArrayBuffer;
-}
+type DocumentState = EditorStatePort<
+  | 'activeGridSize'
+  | 'activeTool'
+  | 'builtInMaterials'
+  | 'currentDocumentName'
+  | 'currentMapSource'
+  | 'diagnosticQuakePalette'
+  | 'documentDirty'
+  | 'duplicateSequence'
+  | 'editorClipboard'
+  | 'lastPointerPosition'
+  | 'loadedWadSources'
+  | 'openGroupId'
+  | 'session'
+  | 'textureLock',
+  'currentDocumentName' | 'documentDirty' | 'duplicateSequence'
+>;
 
 export class DocumentPresenter {
   private viewportColumn = 0.5;
@@ -44,7 +58,7 @@ export class DocumentPresenter {
   private inspectorWidth = 320;
 
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: DocumentState,
     private readonly ui: DocumentUi,
     private readonly elements: Pick<
       EditorElements,

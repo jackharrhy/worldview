@@ -23,13 +23,38 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorShellState } from './editor-shell-state.js';
-import type { EditorState } from './editor-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
 
 type TransformToolUi = Pick<EditorShellState, 'objectTools' | 'pointerContext' | 'statusMessage'>;
 
+type TransformToolState = EditorStatePort<
+  | 'activeGridSize'
+  | 'activeTool'
+  | 'faceTranslationSequence'
+  | 'perspectiveCamera'
+  | 'renderer'
+  | 'session'
+  | 'textureLock'
+  | 'topologyCandidate'
+  | 'topologySelectedVertices'
+  | 'topologySelectionKind'
+  | 'topologySequence'
+  | 'topologyTransformSequence'
+  | 'transformCandidate'
+  | 'transformPivot'
+  | 'transformPivotSelectionKey',
+  | 'faceTranslationSequence'
+  | 'topologyCandidate'
+  | 'topologySequence'
+  | 'topologyTransformSequence'
+  | 'transformCandidate'
+  | 'transformPivot'
+  | 'transformPivotSelectionKey'
+>;
+
 export class TransformToolPresenter {
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: TransformToolState,
     private readonly ui: TransformToolUi,
     private readonly updateInspector: (
       document?: MapDocument,

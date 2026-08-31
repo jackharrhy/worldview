@@ -5,7 +5,11 @@ import {
   type EditorSelection,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorState } from './editor-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
+
+export type WebMcpDocumentState = EditorStatePort<
+  'currentDocumentName' | 'documentDirty' | 'session'
+>;
 
 export function webMcpSelectionSummary(selection: EditorSelection | null) {
   return {
@@ -17,7 +21,7 @@ export function webMcpSelectionSummary(selection: EditorSelection | null) {
   } as const;
 }
 
-export function webMcpDocumentState(state: EditorState) {
+export function webMcpDocumentState(state: WebMcpDocumentState) {
   const document = state.session.document;
   return {
     documentId: document.id,

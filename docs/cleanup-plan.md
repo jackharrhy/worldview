@@ -19,11 +19,12 @@ diaries here.
 
 ## Completed foundations
 
-| ID  | Result                                                                                                                                                                                                                                             |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C0  | One abort-owned editor lifetime disposes renderer, WebMCP, recovery, collaboration, listeners, and interrupted startup safely.                                                                                                                     |
-| C1  | React owns visible editor DOM through typed snapshots and commands. Runtime refs are limited to canvases, overlays, focus, measurement, resize, and native file boundaries. React Aria Components and the semantic Phosphor registry are enforced. |
-| C6  | Zod 4 schemas own project, document, collaboration, ticket, hosted wire, compiler, persistence, walkability, and WebMCP ingress. `@worldview/protocol` is the shared browser/service wire contract.                                                |
+| ID  | Result                                                                                                                                                                                                                                                                                                                                                    |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C0  | One abort-owned editor lifetime disposes renderer, WebMCP, recovery, collaboration, listeners, and interrupted startup safely.                                                                                                                                                                                                                            |
+| C1  | React owns visible editor DOM through typed snapshots and commands. Runtime refs are limited to canvases, overlays, focus, measurement, resize, and native file boundaries. React Aria Components and the semantic Phosphor registry are enforced.                                                                                                        |
+| C2  | Presenters receive readonly-by-default state projections with explicit writable fields and command/query ports. Input adapters and the React route no longer reach through `EditorApplication`; document replacement, tool activation, application launch, and collaboration sessions have singular owners; collaboration uses a discriminated lifecycle. |
+| C6  | Zod 4 schemas own project, document, collaboration, ticket, hosted wire, compiler, persistence, walkability, and WebMCP ingress. `@worldview/protocol` is the shared browser/service wire contract.                                                                                                                                                       |
 
 These are invariants, not future work. Their focused tests and architecture checks must remain green.
 
@@ -31,7 +32,6 @@ These are invariants, not future work. Their focused tests and architecture chec
 
 | ID  | Priority | Status | Workstream                                            | Depends on                    |
 | --- | -------- | ------ | ----------------------------------------------------- | ----------------------------- |
-| C2  | P1       | ready  | Presenter state and command boundaries                | C1                            |
 | C3  | P1       | ready  | `EditorSession` composition                           | C2                            |
 | C4  | P1       | ready  | Retained scene contributions                          | C2                            |
 | C7  | P1       | ready  | IndexedDB infrastructure and bounded hosted reconnect | C6                            |
@@ -40,25 +40,6 @@ These are invariants, not future work. Their focused tests and architecture chec
 | C9  | P2       | ready  | Viewer renderer decomposition                         | C5 decision                   |
 | C10 | P2       | ready  | Hosted service handler boundaries                     | C6                            |
 | C11 | P2       | ready  | Broaden architecture enforcement                      | Established C2–C10 boundaries |
-
-## C2 — Presenter state and command boundaries
-
-**Problem:** Presenter DOM dependencies are narrow, but several presenters still receive broad
-`EditorState` access or coordinate peer presenters directly.
-
-**Direction:**
-
-- Split document/session, selection, tools, project, build, collaboration, and renderer presentation
-  into owned readonly snapshots plus explicit commands.
-- Give collaboration one discriminated lifecycle: `solo`, `connecting`, `live`, `reconnecting`,
-  `detached-local`, `conflict`, and `leaving`.
-- Put cross-domain orchestration in named application commands. Do not replace direct coupling with a
-  generic event bus or dependency-injection framework.
-- Introduce a focused tool-controller registry where global conditional adapters are still growing.
-
-**Done when:** No presenter receives the complete application state or DOM registry; document
-replacement, tool changes, and collaboration join/leave each have one owner; collaboration reconnect
-policy is testable without React or transport; domain tests do not construct the whole application.
 
 ## C3 — `EditorSession` composition
 

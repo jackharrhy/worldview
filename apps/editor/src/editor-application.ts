@@ -5,6 +5,7 @@ import { DocumentPresenter } from './document-presenter.js';
 import type { EditorElements } from './editor-elements.js';
 import type { EditorShellState } from './editor-shell-state.js';
 import { EditorState, type EditorStateHost, type EditorStateOptions } from './editor-state.js';
+import { EditorToolControllerRegistry } from './editor-tool-controller-registry.js';
 import { EntityPresenter } from './entity-presenter.js';
 import { GeometryToolPresenter } from './geometry-tool-presenter.js';
 import { InspectorPresenter } from './inspector-presenter.js';
@@ -17,86 +18,57 @@ import { SessionPresenter } from './session-presenter.js';
 import { ToolEvents } from './tool-events.js';
 import { ThemePresenter } from './theme-presenter.js';
 import { CollaborationPresenter } from './collaboration-presenter.js';
+import { CollaborationLifecycle } from './collaboration-lifecycle.js';
+import { CollaborationSession } from './collaboration-session.js';
 import { TransformToolPresenter } from './transform-tool-presenter.js';
 import { WebMcpPresenter } from './webmcp-presenter.js';
 import { ViewportWorkspacePresenter } from './viewport-workspace-presenter.js';
-import {
-  applyCollaborationOperation,
-  collaborationEditsBetween,
-  COLLABORATION_SCHEMA_VERSION,
-  selectedBrushIds,
-  selectedPointEntityIds,
-  planMapSave,
-  rebaseMapSource,
-  type CollaborationOperation,
-  type MapDocument,
-} from '@jackharrhy/worldview-editor/core';
-import { HostedMapSnapshotSchema } from '@worldview/protocol';
+import type { EditorApplicationLaunch } from './editor-application-contracts.js';
 
-const COLLABORATOR_RENDER_COLORS: Readonly<Record<string, readonly [number, number, number]>> = {
-  red: [0.95, 0.2, 0.18],
-  orange: [0.98, 0.45, 0.12],
-  yellow: [0.95, 0.78, 0.12],
-  green: [0.18, 0.82, 0.35],
-  cyan: [0.12, 0.78, 0.88],
-  blue: [0.2, 0.42, 1],
-  violet: [0.64, 0.3, 1],
-  pink: [0.95, 0.32, 0.68],
-};
-import {
-  CollaborationController,
-  CollaborationSocketClient,
-  EditorCollaborationBridge,
-  reconcilePendingOperations,
-  type CollaborationPresence,
-  type JoinCollaborationOptions,
-} from './collaboration.js';
-
-export class EditorApplication implements EditorStateHost {
-  public readonly state: EditorState;
-  public readonly document: DocumentPresenter;
-  public readonly geometry: GeometryToolPresenter;
-  public readonly transform: TransformToolPresenter;
-  public readonly entity: EntityPresenter;
-  public readonly build: BuildPresenter;
-  public readonly organization: OrganizationPresenter;
-  public readonly inspector: InspectorPresenter;
-  public readonly materials: MaterialsPresenter;
-  public readonly session: SessionPresenter;
-  public readonly contextMenu: ContextMenuPresenter;
-  public readonly project: ProjectPresenter;
-  public readonly renderer: RendererPresenter;
-  public readonly webmcp: WebMcpPresenter;
-  public readonly theme: ThemePresenter;
-  public readonly collaborationUi: CollaborationPresenter;
-  public readonly viewportWorkspace: ViewportWorkspacePresenter;
-  private readonly commandEvents = new CommandEvents(this);
-  private readonly toolEvents = new ToolEvents(this);
-  private readonly keyboardEvents = new KeyboardEvents(this);
+export class EditorApplication {
+  private readonly state: EditorState;
+  private readonly document: DocumentPresenter;
+  private readonly geometry: GeometryToolPresenter;
+  private readonly transform: TransformToolPresenter;
+  private readonly entity: EntityPresenter;
+  private readonly build: BuildPresenter;
+  private readonly organization: OrganizationPresenter;
+  private readonly inspector: InspectorPresenter;
+  private readonly materials: MaterialsPresenter;
+  private readonly session: SessionPresenter;
+  private readonly contextMenu: ContextMenuPresenter;
+  private readonly project: ProjectPresenter;
+  private readonly renderer: RendererPresenter;
+  private readonly webmcp: WebMcpPresenter;
+  private readonly theme: ThemePresenter;
+  private readonly collaborationUi: CollaborationPresenter;
+  private readonly viewportWorkspace: ViewportWorkspacePresenter;
+  private readonly commandEvents: CommandEvents;
+  private readonly toolEvents: ToolEvents;
+  private readonly keyboardEvents: KeyboardEvents;
+  private readonly tools: EditorToolControllerRegistry;
   private readonly lifetime = new AbortController();
+  private readonly collaborationLifecycle = new CollaborationLifecycle();
+  private readonly collaboration: CollaborationSession;
   private startPromise: Promise<void> | null = null;
-  private collaborationAttempt: AbortController | null = null;
-  private collaboration: {
-    readonly mapId: string;
-    readonly bridge: EditorCollaborationBridge;
-    readonly socket: CollaborationSocketClient;
-    readonly presenceTimer: number;
-    readonly unsubscribePresence: () => void;
-    readonly publishPreview: (document: MapDocument) => void;
-    readonly schedulePresence: () => void;
-    readonly cancelPresence: () => void;
-    readonly clearRemotePresence: () => void;
-  } | null = null;
 
   public constructor(
-    public readonly ui: EditorShellState,
-    public readonly elements: EditorElements,
+    private readonly ui: EditorShellState,
+    elements: EditorElements,
     options: EditorStateOptions = {},
   ) {
+    const stateHost: EditorStateHost = {
+      effectiveObjectViewState: (document) => this.organization.effectiveObjectViewState(document),
+      setEditorTool: (tool) => this.session.setEditorTool(tool),
+      updateInspector: (document, selection) => this.inspector.updateInspector(document, selection),
+      updateFaceInspector: (document, selection) =>
+        this.inspector.updateFaceInspector(document, selection),
+      publishCollaborationPreview: (document) => this.collaboration.publishPreview(document),
+    };
     this.state = new EditorState(
       ui,
       elements.uvEditorSvg,
-      () => this,
+      () => stateHost,
       this.lifetime.signal,
       options,
     );
@@ -105,12 +77,6 @@ export class EditorApplication implements EditorStateHost {
       console.error('Viewport workspace persistence failed', error);
     });
     this.theme = new ThemePresenter(this.state, ui);
-    this.collaborationUi = new CollaborationPresenter(
-      ui,
-      (joinOptions) => this.joinCollaboration(joinOptions),
-      () => this.leaveCollaboration(),
-      this.lifetime.signal,
-    );
     this.entity = new EntityPresenter(this.state, ui);
     this.organization = new OrganizationPresenter(this.state, ui);
     this.document = new DocumentPresenter(
@@ -119,6 +85,22 @@ export class EditorApplication implements EditorStateHost {
       elements,
       (tool) => this.session.setEditorTool(tool),
       (layout) => this.viewportWorkspace.setLayout(layout),
+    );
+    this.collaboration = new CollaborationSession(
+      this.state,
+      ui,
+      {
+        replaceDocument: (...args) => this.session.replaceDocument(...args),
+        setDocumentDirty: (dirty) => this.document.setDocumentDirty(dirty),
+      },
+      this.lifetime.signal,
+    );
+    this.collaborationUi = new CollaborationPresenter(
+      ui,
+      (joinOptions) => this.collaboration.join(joinOptions),
+      () => this.collaboration.leave(),
+      this.collaborationLifecycle,
+      this.lifetime.signal,
     );
     this.build = new BuildPresenter(
       this.state,
@@ -150,6 +132,13 @@ export class EditorApplication implements EditorStateHost {
       this.transform,
       (value) => this.build.formatVector(value),
     );
+    this.tools = new EditorToolControllerRegistry(
+      this.state,
+      ui,
+      this.geometry,
+      this.transform,
+      this.inspector,
+    );
     this.materials = new MaterialsPresenter(this.state, ui, (tool) =>
       this.session.setEditorTool(tool),
     );
@@ -158,11 +147,10 @@ export class EditorApplication implements EditorStateHost {
       ui,
       this.build,
       this.document,
-      this.geometry,
       this.inspector,
       this.materials,
       this.organization,
-      this.transform,
+      this.tools,
     );
     this.contextMenu = new ContextMenuPresenter(
       this.state,
@@ -187,8 +175,8 @@ export class EditorApplication implements EditorStateHost {
       organization: this.organization,
       transform: this.transform,
       viewportWorkspace: this.viewportWorkspace,
-      publishCollaborationPreview: (document) => this.publishCollaborationPreview(document),
-      publishCollaborationPointer: () => this.publishCollaborationPointer(),
+      publishCollaborationPreview: (document) => this.collaboration.publishPreview(document),
+      publishCollaborationPointer: () => this.collaboration.publishPointer(),
     });
     this.project = new ProjectPresenter(
       this.state,
@@ -209,42 +197,50 @@ export class EditorApplication implements EditorStateHost {
       (...args) => this.project.openEditorMap(...args),
       this.lifetime.signal,
     );
-  }
-
-  public effectiveObjectViewState(
-    document?: Parameters<OrganizationPresenter['effectiveObjectViewState']>[0],
-  ) {
-    return this.organization.effectiveObjectViewState(document);
-  }
-
-  public setEditorTool(tool: Parameters<SessionPresenter['setEditorTool']>[0]): void {
-    this.session.setEditorTool(tool);
-  }
-
-  public updateInspector(
-    document?: Parameters<InspectorPresenter['updateInspector']>[0],
-    selection?: Parameters<InspectorPresenter['updateInspector']>[1],
-  ): void {
-    this.inspector.updateInspector(document, selection);
-  }
-
-  public updateFaceInspector(
-    document?: Parameters<InspectorPresenter['updateFaceInspector']>[0],
-    selection?: Parameters<InspectorPresenter['updateFaceInspector']>[1],
-  ): void {
-    this.inspector.updateFaceInspector(document, selection);
+    this.commandEvents = new CommandEvents({
+      state: this.state,
+      ui,
+      elements,
+      document: this.document,
+      build: this.build,
+      focusSelection: () => this.contextMenu.focusCurrentSelection(),
+      addReferenceDocument: (label, document) =>
+        this.materials.addReferenceDocument(label, document),
+      setEditorTool: (tool) => this.session.setEditorTool(tool),
+    });
+    this.toolEvents = new ToolEvents({
+      state: this.state,
+      ui,
+      elements,
+      document: this.document,
+      geometry: this.geometry,
+      organization: this.organization,
+      transform: this.transform,
+      renderMaterialCatalog: () => this.materials.renderMaterialCatalog(),
+    });
+    this.keyboardEvents = new KeyboardEvents({
+      state: this.state,
+      ui,
+      elements,
+      document: this.document,
+      tools: this.tools,
+      focusSelection: () => this.contextMenu.focusCurrentSelection(),
+      closeEditorGroup: () => this.organization.closeEditorGroup(),
+      setViewFilterPopoverOpen: (open) => this.organization.setViewFilterPopoverOpen(open),
+      dispose: () => this.dispose(),
+    });
   }
 
   public get signal(): AbortSignal {
     return this.lifetime.signal;
   }
 
-  public start(): Promise<void> {
-    this.startPromise ??= this.startApplication();
+  public start(launch: EditorApplicationLaunch | null = null): Promise<void> {
+    this.startPromise ??= this.startApplication(launch);
     return this.startPromise;
   }
 
-  private async startApplication(): Promise<void> {
+  private async startApplication(launch: EditorApplicationLaunch | null): Promise<void> {
     try {
       this.signal.throwIfAborted();
       this.theme.connect(this.signal);
@@ -267,16 +263,49 @@ export class EditorApplication implements EditorStateHost {
       this.signal.throwIfAborted();
       await this.collaborationUi.connect();
       this.signal.throwIfAborted();
+      await this.openLaunch(launch);
+      this.signal.throwIfAborted();
     } catch (error) {
       this.dispose();
       throw error;
     }
   }
 
+  private async openLaunch(launch: EditorApplicationLaunch | null): Promise<void> {
+    if (!launch) return;
+    switch (launch.kind) {
+      case 'new-map':
+        this.project.createNewMap(launch.profile, launch.format, launch.name, launch.workspaceId);
+        return;
+      case 'hosted-map': {
+        const source = new File([launch.source], launch.name, { type: 'text/plain' });
+        await this.project.openEditorMap(source, null, launch.name, {
+          throwOnError: true,
+          viewportWorkspaceKey: `hosted-map:${launch.id}`,
+        });
+        this.signal.throwIfAborted();
+        this.project.loadHostedResources(launch.resources ?? []);
+        await this.collaborationUi.joinHostedMap(launch.id, launch.actorId, launch.displayName);
+        this.ui.statusMessage.set(
+          `Opened hosted map ${launch.projectName} / ${launch.name} · live at v${launch.mapVersion}`,
+        );
+        return;
+      }
+      case 'project':
+        await this.project.openProjectDirectory(launch.handle);
+        return;
+      case 'recent-project':
+        await this.project.reopenProject(launch.projectKey);
+        return;
+      case 'map':
+        await this.project.openEditorMap(launch.file, null);
+    }
+  }
+
   public dispose(): void {
     if (this.signal.aborted) return;
     this.lifetime.abort();
-    this.closeCollaboration(false);
+    this.collaboration.dispose();
     this.state.compilerCoordinator.cancel();
     this.state.stopSubscription?.();
     this.state.stopSubscription = null;
@@ -297,322 +326,5 @@ export class EditorApplication implements EditorStateHost {
     this.webmcp.dispose();
     this.renderer.dispose();
     this.viewportWorkspace.dispose();
-  }
-
-  public get collaborationMapId(): string | null {
-    return this.collaboration?.mapId ?? null;
-  }
-
-  public publishCollaborationPreview(document: MapDocument): void {
-    this.collaboration?.publishPreview(document);
-  }
-
-  private publishCollaborationPointer(): void {
-    this.collaboration?.schedulePresence();
-  }
-
-  /** Explicitly enters multiplayer; ordinary construction and `start()` remain solo-only. */
-  public async joinCollaboration(options: JoinCollaborationOptions): Promise<void> {
-    this.closeCollaboration(false);
-    const lifetime = new AbortController();
-    this.collaborationAttempt = lifetime;
-    try {
-      await this.openCollaboration(options, lifetime);
-    } catch (error) {
-      if (this.collaborationAttempt === lifetime) this.collaborationAttempt = null;
-      lifetime.abort();
-      throw error;
-    }
-  }
-
-  private async openCollaboration(
-    options: JoinCollaborationOptions,
-    lifetime: AbortController,
-  ): Promise<void> {
-    const signal = AbortSignal.any([this.signal, lifetime.signal]);
-    signal.throwIfAborted();
-    const roomUrl = new URL(
-      `/sync/maps/${encodeURIComponent(options.mapId)}/snapshot`,
-      options.endpoint,
-    );
-    const accessToken = await options.authorize?.(signal);
-    signal.throwIfAborted();
-    const authorizationHeaders = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
-    const snapshotResponse = await fetch(roomUrl, {
-      headers: authorizationHeaders,
-      signal,
-    });
-    if (!snapshotResponse.ok) throw new Error(`Cannot inspect room (${snapshotResponse.status})`);
-    const snapshot = HostedMapSnapshotSchema.parse(await snapshotResponse.json());
-    signal.throwIfAborted();
-    this.state.session.replaceDocument(snapshot.document, `Open hosted map ${options.mapId}`);
-    this.state.currentMapSource = rebaseMapSource(snapshot.document, snapshot.source);
-    this.state.savedDocumentRevision = snapshot.document.revision;
-
-    let bridge: EditorCollaborationBridge;
-    const remotePresences = new Map<string, CollaborationPresence>();
-    let previewDocument: MapDocument | null = null;
-    let interactionId: string | null = null;
-    let previewSequence = 0;
-    let presenceFrame: number | null = null;
-    let lastPresenceSentAt = 0;
-
-    const renderRemotePresence = () => {
-      if (signal.aborted) return;
-      const canonical = this.state.session.document;
-      this.state.renderer?.setRemotePresence(
-        // oxlint-disable-next-line no-map-spread -- renderer overlays are immutable value objects.
-        [...remotePresences.values()].map((presence) => {
-          let document = canonical;
-          const preview = presence.preview;
-          if (preview) {
-            const operation: CollaborationOperation = {
-              schemaVersion: COLLABORATION_SCHEMA_VERSION,
-              operationId: `preview:${presence.actorId}:${preview.interactionId}:${preview.sequence}`,
-              transactionId: preview.interactionId,
-              actorId: presence.actorId,
-              baseMapVersion: preview.baseMapVersion,
-              label: 'Remote preview',
-              edits: preview.edits,
-            };
-            const result = applyCollaborationOperation(canonical, operation);
-            if (result.status === 'applied') document = result.document;
-          }
-          const previewObjectIds: string[] = [];
-          for (const edit of preview?.edits ?? []) {
-            previewObjectIds.push(
-              edit.kind === 'insert-entity'
-                ? edit.entity.id
-                : edit.kind === 'insert-brush'
-                  ? edit.brush.id
-                  : edit.kind === 'replace-entity-properties' || edit.kind === 'delete-entity'
-                    ? edit.entityId
-                    : edit.brushId,
-            );
-          }
-          return {
-            actorId: presence.actorId,
-            color:
-              COLLABORATOR_RENDER_COLORS[presence.color ?? ''] ?? COLLABORATOR_RENDER_COLORS.cyan!,
-            document,
-            selectedObjectIds: presence.selectedObjectIds ?? [],
-            previewObjectIds,
-            ...(presence.pointer ? { pointer: presence.pointer } : {}),
-          };
-        }),
-      );
-    };
-
-    const receivePresence = (presence: CollaborationPresence) => {
-      if (signal.aborted) return;
-      const previous = remotePresences.get(presence.actorId);
-      if (previous && presence.sentAt < previous.sentAt) return;
-      if (
-        previous?.preview &&
-        presence.preview?.interactionId === previous.preview.interactionId &&
-        presence.preview.sequence <= previous.preview.sequence
-      ) {
-        return;
-      }
-      remotePresences.set(presence.actorId, presence);
-      renderRemotePresence();
-      options.onPresence?.(presence);
-    };
-    let controller: CollaborationController;
-    let canonicalMapVersion = snapshot.mapVersion;
-    const refreshSourceState = (status?: string) => {
-      const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
-      if (plan.status === 'blocked') return;
-      this.state.currentMapSource = rebaseMapSource(this.state.session.document, plan.text);
-      void controller.pending().then((pending) => {
-        if (signal.aborted) return;
-        if (pending.length > 0) return;
-        this.state.savedDocumentRevision = this.state.session.document.revision;
-        this.document.setDocumentDirty(false);
-        if (status) this.ui.statusMessage.set(status);
-      });
-    };
-    controller = new CollaborationController({
-      mapId: options.mapId,
-      actorId: options.actorId,
-      onPeerOperation: (operation) => {
-        if (signal.aborted) return;
-        bridge.receive(operation);
-        canonicalMapVersion = controller.getMapVersion();
-        refreshSourceState();
-        const presence = remotePresences.get(operation.actorId);
-        if (presence?.preview) {
-          const { preview: _preview, ...withoutPreview } = presence;
-          remotePresences.set(operation.actorId, withoutPreview);
-          renderRemotePresence();
-        }
-      },
-      onAcknowledged: (_operationId, mapVersion) => {
-        if (signal.aborted) return;
-        canonicalMapVersion = mapVersion;
-        refreshSourceState(`Hosted map saved · v${mapVersion}`);
-      },
-    });
-    controller.setMapVersion(snapshot.mapVersion);
-    bridge = new EditorCollaborationBridge(this.state.session, controller, (error) => {
-      this.ui.statusMessage.set(
-        error instanceof Error ? error.message : 'Collaboration operation failed',
-      );
-    });
-    const socketEndpoint = new URL(options.endpoint);
-    socketEndpoint.protocol = socketEndpoint.protocol === 'https:' ? 'wss:' : 'ws:';
-    let socket: CollaborationSocketClient;
-    const sendPresence = () => {
-      presenceFrame = null;
-      if (signal.aborted) return false;
-      lastPresenceSentAt = performance.now();
-      const edits = previewDocument
-        ? collaborationEditsBetween(this.state.session.document, previewDocument)
-        : [];
-      const presence: CollaborationPresence = {
-        actorId: options.actorId,
-        ...(options.displayName ? { displayName: options.displayName } : {}),
-        ...(options.color ? { color: options.color } : {}),
-        selectedObjectIds: [
-          ...selectedBrushIds(this.state.session.selection),
-          ...selectedPointEntityIds(this.state.session.selection),
-        ],
-        ...(this.state.lastPointerPosition
-          ? {
-              viewport: this.state.lastPointerPosition.viewport,
-              pointer: this.state.lastPointerPosition.point,
-            }
-          : {}),
-        tool: this.state.activeTool,
-        ...(interactionId && edits.length > 0 && edits.length <= 256
-          ? {
-              preview: {
-                interactionId,
-                sequence: previewSequence,
-                baseMapVersion: controller.getMapVersion(),
-                edits,
-              },
-            }
-          : {}),
-        sentAt: Date.now(),
-      };
-      options.onLocalPresence?.(presence);
-      return socket.sendPresence(presence);
-    };
-    const schedulePresence = () => {
-      if (signal.aborted) return;
-      if (presenceFrame !== null) return;
-      const tick = (now: number) => {
-        if (signal.aborted) {
-          presenceFrame = null;
-          return;
-        }
-        if (now - lastPresenceSentAt < 33) {
-          presenceFrame = window.requestAnimationFrame(tick);
-          return;
-        }
-        sendPresence();
-      };
-      presenceFrame = window.requestAnimationFrame(tick);
-    };
-    const publishPreview = (document: MapDocument) => {
-      if (signal.aborted) return;
-      // Pointer previews are local-first and may arrive faster than the display can paint. Keep
-      // only the latest immutable candidate here; sendPresence computes its semantic diff at the
-      // bounded presence cadence instead of repeating that document walk for every pointer event.
-      previewDocument = document === this.state.session.document ? null : document;
-      if (previewDocument) {
-        interactionId ??= crypto.randomUUID();
-        previewSequence += 1;
-      } else {
-        interactionId = null;
-      }
-      schedulePresence();
-    };
-    socket = new CollaborationSocketClient({
-      endpoint: socketEndpoint.toString(),
-      mapId: options.mapId,
-      actorId: options.actorId,
-      ...(options.authorize ? { authorize: () => options.authorize!(signal) } : {}),
-      controller,
-      onPresence: receivePresence,
-      ...(options.onConflict ? { onConflict: options.onConflict } : {}),
-      ...(options.onConnectionChange ? { onConnectionChange: options.onConnectionChange } : {}),
-      onReady: async (ready) => {
-        if (signal.aborted) return;
-        const pending = await controller.pending();
-        if (signal.aborted) return;
-        if (ready.mapVersion > canonicalMapVersion || pending.length > 0) {
-          const reconciliation = reconcilePendingOperations(ready.document, pending);
-          for (const conflict of reconciliation.conflicts) {
-            options.onConflict?.(conflict.operationId, conflict.details);
-          }
-          bridge.synchronize(reconciliation.document, `Synchronize map ${options.mapId}`);
-          this.state.currentMapSource = rebaseMapSource(ready.document, ready.source);
-          refreshSourceState();
-          canonicalMapVersion = ready.mapVersion;
-        }
-        sendPresence();
-      },
-      onError: (error) => {
-        if (signal.aborted) return;
-        this.ui.statusMessage.set(
-          error instanceof Error ? error.message : 'Collaboration connection failed',
-        );
-      },
-    });
-    const presenceTimer = window.setInterval(sendPresence, 2_000);
-    const unsubscribePresence = this.state.session.subscribe((change) => {
-      if (change.kind === 'selection' || change.kind === 'document' || change.kind === 'history') {
-        sendPresence();
-      }
-    });
-    signal.throwIfAborted();
-    if (this.collaborationAttempt !== lifetime) {
-      lifetime.abort();
-      signal.throwIfAborted();
-    }
-    this.collaboration = {
-      mapId: options.mapId,
-      bridge,
-      socket,
-      presenceTimer,
-      unsubscribePresence,
-      publishPreview,
-      schedulePresence,
-      cancelPresence: () => {
-        if (presenceFrame === null) return;
-        window.cancelAnimationFrame(presenceFrame);
-        presenceFrame = null;
-      },
-      clearRemotePresence: () => {
-        remotePresences.clear();
-        this.state.renderer?.setRemotePresence([]);
-      },
-    };
-    socket.connect();
-    this.ui.statusMessage.set(`Joined collaboration room ${options.mapId}.`);
-  }
-
-  public leaveCollaboration(): void {
-    this.closeCollaboration(true);
-  }
-
-  private closeCollaboration(announce: boolean): void {
-    this.collaborationAttempt?.abort();
-    this.collaborationAttempt = null;
-    const collaboration = this.collaboration;
-    if (!collaboration) return;
-    this.collaboration = null;
-    window.clearInterval(collaboration.presenceTimer);
-    collaboration.cancelPresence();
-    collaboration.unsubscribePresence();
-    collaboration.clearRemotePresence();
-    collaboration.socket.close();
-    collaboration.bridge.close();
-    if (announce)
-      this.ui.statusMessage.set(
-        `Left collaboration room ${collaboration.mapId}; editing remains local.`,
-      );
   }
 }

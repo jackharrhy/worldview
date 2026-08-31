@@ -1,14 +1,59 @@
-import { selectedFaceReferences } from '@jackharrhy/worldview-editor';
+import { type EditorTool } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
+
+type KeyboardState = EditorStatePort<
+  | 'activeGridSize'
+  | 'activeTool'
+  | 'openGroupId'
+  | 'recovery'
+  | 'session'
+  | 'uvEditor'
+  | 'viewFilterPopoverOpen'
+>;
+
+type KeyboardUi = Pick<
+  EditorShellState,
+  'objectTools' | 'projectUi' | 'statusMessage' | 'toolSettings'
+>;
+
+interface KeyboardDocumentCommands {
+  copySelection(): Promise<void>;
+  deleteSelection(): void;
+  duplicateSelection(): void;
+  invertEditableObjectSelection(): void;
+  isTextEditingTarget(target: EventTarget | null): boolean;
+  pasteFromClipboard(placement: 'cursor' | 'original'): Promise<void>;
+  repeatRecordedCommands(): void;
+  selectAllEditableObjects(): void;
+}
+
+interface KeyboardToolCommands {
+  activate(tool: EditorTool): void;
+  handleKeyDown(event: KeyboardEvent): boolean;
+}
+
+interface KeyboardPorts {
+  readonly state: KeyboardState;
+  readonly ui: KeyboardUi;
+  readonly elements: Pick<EditorElements, 'viewFilterToggle'>;
+  readonly document: KeyboardDocumentCommands;
+  readonly tools: KeyboardToolCommands;
+  readonly focusSelection: () => void;
+  readonly closeEditorGroup: () => boolean;
+  readonly setViewFilterPopoverOpen: (open: boolean) => void;
+  readonly dispose: () => void;
+}
 
 export class KeyboardEvents {
-  public constructor(private readonly app: EditorApplication) {}
+  public constructor(private readonly ports: KeyboardPorts) {}
   private get state() {
-    return this.app.state;
+    return this.ports.state;
   }
   private get ui() {
-    return this.app.ui;
+    return this.ports.ui;
   }
 
   public connect(signal: AbortSignal): void {
@@ -16,7 +61,7 @@ export class KeyboardEvents {
       'keydown',
       (event) => {
         if (event.defaultPrevented) return;
-        const editingText = this.app.document.isTextEditingTarget(event.target);
+        const editingText = this.ports.document.isTextEditingTarget(event.target);
         if (!editingText && !event.metaKey && !event.ctrlKey && !event.altKey) {
           const directGridIndex = /^Digit([1-9])$/.exec(event.code)?.[1];
           const gridSizes = [1, 2, 4, 8, 16, 32, 64, 128, 256] as const;
@@ -42,13 +87,13 @@ export class KeyboardEvents {
         }
         if (event.key === 'Escape' && this.state.viewFilterPopoverOpen) {
           event.preventDefault();
-          this.app.organization.setViewFilterPopoverOpen(false);
-          this.app.elements.viewFilterToggle.focus();
+          this.ports.setViewFilterPopoverOpen(false);
+          this.ports.elements.viewFilterToggle.focus();
           return;
         }
         if (!editingText && event.key === 'Home') {
           event.preventDefault();
-          this.app.contextMenu.focusCurrentSelection();
+          this.ports.focusSelection();
           return;
         }
         if (!editingText && event.key === 'Escape' && this.state.uvEditor.cancel()) {
@@ -62,8 +107,8 @@ export class KeyboardEvents {
           event.key.toLowerCase() === 'a'
         ) {
           event.preventDefault();
-          if (event.shiftKey) this.app.document.invertEditableObjectSelection();
-          else this.app.document.selectAllEditableObjects();
+          if (event.shiftKey) this.ports.document.invertEditableObjectSelection();
+          else this.ports.document.selectAllEditableObjects();
           return;
         }
         if (
@@ -74,7 +119,7 @@ export class KeyboardEvents {
           event.key.toLowerCase() === 'r'
         ) {
           event.preventDefault();
-          this.app.document.repeatRecordedCommands();
+          this.ports.document.repeatRecordedCommands();
           return;
         }
         if (
@@ -84,7 +129,7 @@ export class KeyboardEvents {
           event.key.toLowerCase() === 'c'
         ) {
           event.preventDefault();
-          void this.app.document.copySelection();
+          void this.ports.document.copySelection();
           return;
         }
         if (
@@ -95,7 +140,7 @@ export class KeyboardEvents {
           event.key.toLowerCase() === 'v'
         ) {
           event.preventDefault();
-          void this.app.document.pasteFromClipboard('cursor');
+          void this.ports.document.pasteFromClipboard('cursor');
           return;
         }
         if (
@@ -106,7 +151,7 @@ export class KeyboardEvents {
           event.key.toLowerCase() === 'v'
         ) {
           event.preventDefault();
-          void this.app.document.pasteFromClipboard('original');
+          void this.ports.document.pasteFromClipboard('original');
           return;
         }
         if (!editingText && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'g') {
@@ -126,204 +171,65 @@ export class KeyboardEvents {
           this.ui.objectTools.dispatch({ type: 'duplicate-linked-group' });
           return;
         }
-        if (this.state.activeTool === 'sweep' && event.key === 'Escape') {
-          event.preventDefault();
-          if (!this.state.sweepEscapeReset) {
-            this.app.geometry.resetSweep(true);
-            this.ui.statusMessage.set(
-              'Sweep destination reset. Press Escape again to leave the tool.',
-            );
-          } else {
-            this.app.session.setEditorTool('select');
-          }
-          return;
-        }
-        if (!editingText && this.state.activeTool === 'sweep' && event.key.startsWith('Arrow')) {
-          event.preventDefault();
-          const translation = [...this.state.sweepTransform.translation] as [
-            number,
-            number,
-            number,
-          ];
-          if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-            translation[2] +=
-              event.key === 'ArrowUp' ? this.state.activeGridSize : -this.state.activeGridSize;
-          } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-            translation[0] +=
-              event.key === 'ArrowRight' ? this.state.activeGridSize : -this.state.activeGridSize;
-          } else {
-            translation[1] +=
-              event.key === 'ArrowUp' ? this.state.activeGridSize : -this.state.activeGridSize;
-          }
-          this.state.sweepTransform = { ...this.state.sweepTransform, translation };
-          this.state.sweepEscapeReset = false;
-          this.app.geometry.syncSweepControls();
-          this.app.geometry.refreshSweepPreview();
-          return;
-        }
-        if (
-          !editingText &&
-          this.app.transform.isTopologyTool(this.state.activeTool) &&
-          this.state.topologySelectedVertices.length > 0 &&
-          event.key.startsWith('Arrow')
-        ) {
-          const viewport = this.state.lastPointerPosition?.viewport ?? 'perspective';
-          const delta = this.app.transform.viewportKeyboardNudge(event.key, viewport, event.altKey);
-          if (delta) {
-            event.preventDefault();
-            this.app.transform.commitTopologyNudge(delta, viewport);
-            return;
-          }
-        }
-        if (
-          !editingText &&
-          this.state.activeTool === 'face' &&
-          selectedFaceReferences(this.state.session.selection).length > 0 &&
-          event.key.startsWith('Arrow')
-        ) {
-          const viewport = this.state.lastPointerPosition?.viewport ?? 'perspective';
-          const delta = this.app.transform.viewportKeyboardNudge(event.key, viewport, event.altKey);
-          if (delta) {
-            event.preventDefault();
-            this.app.transform.commitFaceNudge(delta, viewport);
-            return;
-          }
-        }
-        if (
-          !editingText &&
-          this.state.activeTool === 'sweep' &&
-          (event.key === '[' || event.key === ']')
-        ) {
-          event.preventDefault();
-          const rotationDegrees = [...this.state.sweepTransform.rotationDegrees] as [
-            number,
-            number,
-            number,
-          ];
-          rotationDegrees[2] += event.key === ']' ? 15 : -15;
-          this.state.sweepTransform = { ...this.state.sweepTransform, rotationDegrees };
-          this.state.sweepEscapeReset = false;
-          this.app.geometry.syncSweepControls();
-          this.app.geometry.refreshSweepPreview();
-          return;
-        }
-        if (
-          !editingText &&
-          this.state.activeTool === 'sweep' &&
-          (event.key === '-' || event.key === '=')
-        ) {
-          event.preventDefault();
-          this.state.sweepTransform = {
-            ...this.state.sweepTransform,
-            scale: Math.max(
-              0.05,
-              Math.min(20, this.state.sweepTransform.scale + (event.key === '=' ? 0.05 : -0.05)),
-            ),
-          };
-          this.state.sweepEscapeReset = false;
-          this.app.geometry.syncSweepControls();
-          this.app.geometry.refreshSweepPreview();
-          return;
-        }
+        if (!editingText && this.ports.tools.handleKeyDown(event)) return;
         if (!editingText && event.key.toLowerCase() === 'b' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool('create');
+          this.ports.tools.activate('create');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'n' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'entity' ? 'select' : 'entity');
+          this.ports.tools.activate(this.state.activeTool === 'entity' ? 'select' : 'entity');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'g' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'hull' ? 'select' : 'hull');
+          this.ports.tools.activate(this.state.activeTool === 'hull' ? 'select' : 'hull');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'f' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'face' ? 'select' : 'face');
+          this.ports.tools.activate(this.state.activeTool === 'face' ? 'select' : 'face');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'w' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'sweep' ? 'select' : 'sweep');
+          this.ports.tools.activate(this.state.activeTool === 'sweep' ? 'select' : 'sweep');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'v' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'vertex' ? 'select' : 'vertex');
+          this.ports.tools.activate(this.state.activeTool === 'vertex' ? 'select' : 'vertex');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'e' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'edge' ? 'select' : 'edge');
+          this.ports.tools.activate(this.state.activeTool === 'edge' ? 'select' : 'edge');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'c' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'clip' ? 'select' : 'clip');
+          this.ports.tools.activate(this.state.activeTool === 'clip' ? 'select' : 'clip');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'r' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'rotate' ? 'select' : 'rotate');
+          this.ports.tools.activate(this.state.activeTool === 'rotate' ? 'select' : 'rotate');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 's' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'scale' ? 'select' : 'scale');
+          this.ports.tools.activate(this.state.activeTool === 'scale' ? 'select' : 'scale');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'h' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.app.session.setEditorTool(this.state.activeTool === 'shear' ? 'select' : 'shear');
-          return;
-        }
-        if (!editingText && this.state.activeTool === 'clip' && event.key === 'Enter') {
-          event.preventDefault();
-          this.app.geometry.applyClip();
-          return;
-        }
-        if (!editingText && this.state.activeTool === 'sweep' && event.key === 'Enter') {
-          event.preventDefault();
-          this.app.geometry.applySweep();
-          return;
-        }
-        if (!editingText && this.state.activeTool === 'hull' && event.key === 'Enter') {
-          event.preventDefault();
-          try {
-            if (!this.state.renderer?.commitHullBrush())
-              this.ui.statusMessage.set('Place hull points first.');
-          } catch (error) {
-            this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
-          }
-          return;
-        }
-        if (
-          !editingText &&
-          event.key === 'Escape' &&
-          this.app.geometry.clearActiveHandleSelection()
-        ) {
-          event.preventDefault();
-          return;
-        }
-        if (!editingText && event.key === 'Escape' && this.state.activeTool !== 'select') {
-          event.preventDefault();
-          if (this.state.activeTool === 'clip' && this.state.renderer?.removeLastClipPoint()) {
-            this.ui.statusMessage.set('Removed the most recent clip point.');
-            return;
-          }
-          if (this.state.activeTool === 'hull' && this.state.renderer?.clearHullPoints()) {
-            this.ui.statusMessage.set('Discarded all hull points.');
-            return;
-          }
-          this.app.session.setEditorTool('select');
+          this.ports.tools.activate(this.state.activeTool === 'shear' ? 'select' : 'shear');
           return;
         }
         if (!editingText && event.key === 'Escape' && this.state.openGroupId) {
           event.preventDefault();
-          this.app.organization.closeEditorGroup();
+          this.ports.closeEditorGroup();
           return;
         }
         if (!editingText && event.key === 'Escape' && this.state.session.selection) {
@@ -334,20 +240,12 @@ export class KeyboardEvents {
         }
         if (!editingText && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
           event.preventDefault();
-          this.app.document.duplicateSelection();
+          this.ports.document.duplicateSelection();
           return;
         }
         if (!editingText && (event.key === 'Delete' || event.key === 'Backspace')) {
           event.preventDefault();
-          if (this.state.activeTool === 'clip' && this.state.renderer?.removeLastClipPoint()) {
-            this.ui.statusMessage.set('Removed the most recent clip point.');
-            return;
-          }
-          if (this.app.transform.isTopologyTool(this.state.activeTool)) {
-            this.app.geometry.deleteTopologySelection();
-            return;
-          }
-          this.app.document.deleteSelection();
+          this.ports.document.deleteSelection();
           return;
         }
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'o') {
@@ -373,7 +271,7 @@ export class KeyboardEvents {
       'beforeunload',
       () => {
         void this.state.recovery.flush();
-        this.app.dispose();
+        this.ports.dispose();
       },
       { signal },
     );

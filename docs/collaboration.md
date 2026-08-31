@@ -56,6 +56,12 @@ Presence is lossy, throttled, coalesced, and non-historical. It carries particip
 pointer ray, viewport/tool, selections, camera, advisory occupancy, and sequenced gesture previews.
 It never enters SQLite, source, history, or the outbox and disappears on disconnect.
 
+One transport-independent lifecycle owns `solo`, `connecting`, `live`, `reconnecting`,
+`detached-local`, `conflict`, and `leaving`. React renders that readonly lifecycle snapshot; the
+socket runtime reports events but cannot infer UI state, and late callbacks cannot overwrite a
+conflict or leave transition. A focused collaboration session owns join, leave, room lifetime,
+presence cadence, and remote-preview cleanup outside the application composition root.
+
 The initiating client renders its candidate immediately. Remote transform, face, topology, and
 creation previews use bounded semantic patches and participant-colored overlays. Network delay
 cannot delay local feedback, and a commit/cancel clears the matching preview.

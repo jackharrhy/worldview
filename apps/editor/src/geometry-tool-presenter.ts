@@ -18,16 +18,60 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorShellState } from './editor-shell-state.js';
-import type { EditorState } from './editor-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
 
 type GeometryToolUi = Pick<
   EditorShellState,
   'objectTools' | 'pointerContext' | 'simpleShapeTool' | 'statusMessage' | 'sweepTool'
 >;
 
+type GeometryToolState = EditorStatePort<
+  | 'activeGridSize'
+  | 'activeMaterialName'
+  | 'activeTool'
+  | 'clipCandidate'
+  | 'clipMode'
+  | 'clipPlanePoints'
+  | 'clipSequence'
+  | 'csgSequence'
+  | 'faceSplitSequence'
+  | 'faceStampSequence'
+  | 'renderer'
+  | 'session'
+  | 'simpleShapeOptions'
+  | 'sweepCandidate'
+  | 'sweepDefaultTransform'
+  | 'sweepDragBase'
+  | 'sweepEscapeReset'
+  | 'sweepOptions'
+  | 'sweepSequence'
+  | 'sweepTransform'
+  | 'textureLock'
+  | 'topologyCandidate'
+  | 'topologySelectedVertices'
+  | 'topologySelectionCount'
+  | 'topologySequence',
+  | 'clipCandidate'
+  | 'clipMode'
+  | 'clipPlanePoints'
+  | 'clipSequence'
+  | 'csgSequence'
+  | 'faceSplitSequence'
+  | 'faceStampSequence'
+  | 'simpleShapeOptions'
+  | 'sweepCandidate'
+  | 'sweepDragBase'
+  | 'sweepEscapeReset'
+  | 'sweepOptions'
+  | 'sweepSequence'
+  | 'sweepTransform'
+  | 'topologyCandidate'
+  | 'topologySequence'
+>;
+
 export class GeometryToolPresenter {
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: GeometryToolState,
     private readonly ui: GeometryToolUi,
     private readonly isTopologyTool: (tool: EditorTool) => boolean,
     private readonly updateInspector: (

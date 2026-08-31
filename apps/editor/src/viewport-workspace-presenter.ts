@@ -5,14 +5,13 @@ import {
 } from '@jackharrhy/worldview-editor';
 import { z } from 'zod';
 
+import type {
+  ViewportWorkspaceActions,
+  ViewportWorkspaceLayout,
+} from './viewport-workspace-contracts.js';
+
 const STORAGE_PREFIX = 'worldview.editor.viewport-workspace.';
 export const VIEWPORT_WORKSPACE_DEBOUNCE_MS = 300;
-
-export interface ViewportWorkspaceLayout {
-  readonly viewportColumn: number;
-  readonly viewportTop: number;
-  readonly inspectorWidth: number;
-}
 
 export interface ViewportWorkspaceRecord {
   readonly version: 1;
@@ -81,12 +80,6 @@ export class LocalStorageViewportWorkspaceStorage implements ViewportWorkspaceSt
   private key(documentKey: string): string {
     return `${STORAGE_PREFIX}${encodeURIComponent(documentKey)}`;
   }
-}
-
-interface ViewportWorkspaceActions {
-  applyCameras(cameras: ViewportWorkspaceRecord['cameras']): void;
-  applyLayout(layout: ViewportWorkspaceLayout): void;
-  applyPerspectiveOnly(enabled: boolean): void;
 }
 
 const DEFAULT_LAYOUT: ViewportWorkspaceLayout = {

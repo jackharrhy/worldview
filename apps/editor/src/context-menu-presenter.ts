@@ -15,7 +15,7 @@ import {
 
 import type { EditorShellState } from './editor-shell-state.js';
 import type { ObjectPastePlacement } from './editor-clipboard.js';
-import type { EditorState } from './editor-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
 import type {
   ContextMenuActionSnapshot,
   ContextMenuSectionSnapshot,
@@ -32,12 +32,25 @@ type ContextMenuUi = Pick<
   | 'viewportContextMenu'
 >;
 
+type ContextMenuState = EditorStatePort<
+  | 'activeGridSize'
+  | 'activeMaterialName'
+  | 'entityDefinitions'
+  | 'lastPointerPosition'
+  | 'materialCatalog'
+  | 'openGroupId'
+  | 'renderer'
+  | 'session'
+  | 'viewportContext',
+  'activeMaterialName' | 'lastPointerPosition' | 'viewportContext'
+>;
+
 export class ContextMenuPresenter {
   private readonly commands = new Map<string, ContextMenuCommand>();
   private readonly pendingFrames = new Set<number>();
 
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: ContextMenuState,
     private readonly ui: ContextMenuUi,
     private readonly canvases: EditorViewportCanvases,
     private readonly formatVector: (value: readonly number[]) => string,

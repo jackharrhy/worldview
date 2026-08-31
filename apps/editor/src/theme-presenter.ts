@@ -1,9 +1,10 @@
 import type { EditorShellState, EditorThemePreference } from './editor-shell-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
 import { resolveEditorRenderTheme } from './render-theme.js';
-import type { EditorState } from './editor-state.js';
 
 const STORAGE_KEY = 'worldview.editor.theme';
 type ThemeUi = Pick<EditorShellState, 'theme'>;
+type ThemeState = EditorStatePort<'renderer'>;
 
 function storedPreference(): EditorThemePreference {
   try {
@@ -19,7 +20,7 @@ export class ThemePresenter {
   private readonly systemTheme = window.matchMedia('(prefers-color-scheme: light)');
 
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: ThemeState,
     private readonly ui: ThemeUi,
   ) {}
 

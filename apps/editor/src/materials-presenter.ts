@@ -9,13 +9,22 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorShellState } from './editor-shell-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
 
 type MaterialsUi = Pick<EditorShellState, 'materialBrowser' | 'referenceScenes' | 'statusMessage'>;
-import type { EditorState } from './editor-state.js';
+type MaterialsState = EditorStatePort<
+  | 'activeMaterialName'
+  | 'materialCatalog'
+  | 'referenceScenes'
+  | 'referenceSequence'
+  | 'renderer'
+  | 'session',
+  'activeMaterialName' | 'referenceScenes' | 'referenceSequence'
+>;
 
 export class MaterialsPresenter {
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: MaterialsState,
     private readonly ui: MaterialsUi,
     private readonly setEditorTool: (tool: EditorTool) => void,
   ) {

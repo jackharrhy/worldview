@@ -8,17 +8,22 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorShellState } from './editor-shell-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
 
 type EntityUi = Pick<EditorShellState, 'entityInspector' | 'pointEntityTool' | 'statusMessage'>;
-import type { EditorState } from './editor-state.js';
 import type {
   EntityPropertyControlKind,
   EntityPropertySnapshot,
 } from './entity-inspector-state.js';
 
+type EntityState = EditorStatePort<
+  'activeEntityId' | 'activeTool' | 'entityDefinitions' | 'openGroupId' | 'renderer' | 'session',
+  'activeEntityId'
+>;
+
 export class EntityPresenter {
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: EntityState,
     private readonly ui: EntityUi,
   ) {
     this.ui.entityInspector.bind({

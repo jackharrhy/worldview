@@ -27,21 +27,22 @@ import {
   planMapSave,
   serializeMap,
   rebaseMapSource,
+  type EditorTool,
+  type MapDocument,
   worldviewGameProfile,
   type MapFaceSyntax,
   type WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor';
 
-import type { BuildPresenter } from './build-presenter.js';
-import type { DocumentPresenter } from './document-presenter.js';
 import type { EditorElements } from './editor-elements.js';
+import type {
+  OpenEditorMapOptions,
+  ReplaceDocumentOptions,
+} from './editor-application-contracts.js';
 import type { EditorShellState } from './editor-shell-state.js';
-import type { EditorState } from './editor-state.js';
-import type { MaterialsPresenter } from './materials-presenter.js';
-import type { SessionPresenter } from './session-presenter.js';
+import type { EditorStatePort } from './editor-state-port.js';
 import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
 import type { ProjectActionId } from './project-build-ui-state.js';
-import type { ViewportWorkspacePresenter } from './viewport-workspace-presenter.js';
 
 type ProjectUi = Pick<
   EditorShellState,
@@ -54,25 +55,80 @@ type ProjectUi = Pick<
   | 'workspaceHome'
 >;
 
-interface OpenEditorMapOptions {
-  readonly expectedDocumentId?: string;
-  readonly expectedRevision?: number;
-  readonly throwOnError?: boolean;
-  readonly viewportWorkspaceKey?: string;
+type ProjectState = EditorStatePort<
+  | 'activeGameProfile'
+  | 'assetMountState'
+  | 'builtInMaterials'
+  | 'currentDocumentName'
+  | 'currentFileHandle'
+  | 'currentMapSource'
+  | 'documentKey'
+  | 'entityDefinitions'
+  | 'lastDiskFingerprint'
+  | 'lastRecoveryLabel'
+  | 'loadedWadSources'
+  | 'materialCatalog'
+  | 'projectKey'
+  | 'projectLocalState'
+  | 'projectSprites'
+  | 'projectWorkspace'
+  | 'quakePalette'
+  | 'recovery'
+  | 'renderer'
+  | 'savedDocumentRevision'
+  | 'session'
+  | 'workspaceId',
+  | 'activeGameProfile'
+  | 'currentFileHandle'
+  | 'currentMapSource'
+  | 'documentKey'
+  | 'entityDefinitions'
+  | 'lastDiskFingerprint'
+  | 'lastRecoveryLabel'
+  | 'projectKey'
+  | 'projectSprites'
+  | 'projectWorkspace'
+  | 'quakePalette'
+  | 'savedDocumentRevision'
+  | 'workspaceId'
+>;
+
+interface ProjectBuildCommands {
+  checkCompilerService(): Promise<void>;
+}
+
+interface ProjectDocumentCommands {
+  setDocumentDirty(dirty: boolean): void;
+  updateSourceFromDocument(force?: boolean): void;
+}
+
+interface ProjectMaterialCommands {
+  addReferenceDocument(label: string, document: MapDocument): void;
+  renderMaterialCatalog(): void;
+}
+
+interface ProjectSessionCommands {
+  replaceDocument(document: MapDocument, label: string, options?: ReplaceDocumentOptions): void;
+  setEditorTool(tool: EditorTool): void;
+}
+
+interface ProjectViewportWorkspaceCommands {
+  beginDocumentChange(): void;
+  restore(documentKey: string): boolean;
 }
 
 export class ProjectPresenter {
   private recoverySnapshots = new Map<string, DocumentRecoverySnapshot>();
 
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: ProjectState,
     private readonly ui: ProjectUi,
     private readonly elements: Pick<EditorElements, 'mapFile' | 'referenceFiles'>,
-    private readonly build: BuildPresenter,
-    private readonly document: DocumentPresenter,
-    private readonly materials: MaterialsPresenter,
-    private readonly session: SessionPresenter,
-    private readonly viewportWorkspace: ViewportWorkspacePresenter,
+    private readonly build: ProjectBuildCommands,
+    private readonly document: ProjectDocumentCommands,
+    private readonly materials: ProjectMaterialCommands,
+    private readonly session: ProjectSessionCommands,
+    private readonly viewportWorkspace: ProjectViewportWorkspaceCommands,
     private readonly signal: AbortSignal,
   ) {
     this.ui.projectToolbar.bind({

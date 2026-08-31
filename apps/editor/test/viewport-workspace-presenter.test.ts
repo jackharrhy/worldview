@@ -4,10 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   LocalStorageViewportWorkspaceStorage,
   ViewportWorkspacePresenter,
-  type ViewportWorkspaceLayout,
   type ViewportWorkspaceRecord,
   type ViewportWorkspaceStorage,
 } from '../src/viewport-workspace-presenter.js';
+import type { ViewportWorkspaceLayout } from '../src/viewport-workspace-contracts.js';
 
 class MemoryViewportWorkspaceStorage implements ViewportWorkspaceStorage {
   public readonly records = new Map<string, ViewportWorkspaceRecord>();

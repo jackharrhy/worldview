@@ -22,18 +22,35 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorShellState } from './editor-shell-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
 
 type OrganizationUi = Pick<
   EditorShellState,
   'entityLinks' | 'issueBrowser' | 'layerPanel' | 'statusMessage' | 'viewFilter'
 >;
-import type { EditorState } from './editor-state.js';
+
+type OrganizationState = EditorStatePort<
+  | 'enabledIssueTypes'
+  | 'entityLinkMode'
+  | 'hiddenIssueIds'
+  | 'issueBrowserOpen'
+  | 'openGroupId'
+  | 'renderer'
+  | 'selectedLayerId'
+  | 'session'
+  | 'viewFilterPopoverOpen',
+  | 'entityLinkMode'
+  | 'issueBrowserOpen'
+  | 'openGroupId'
+  | 'selectedLayerId'
+  | 'viewFilterPopoverOpen'
+>;
 
 const DEFAULT_LAYER_TOKEN = '__default__';
 
 export class OrganizationPresenter {
   public constructor(
-    private readonly state: EditorState,
+    private readonly state: OrganizationState,
     private readonly ui: OrganizationUi,
   ) {
     this.ui.layerPanel.bind({

@@ -2,19 +2,108 @@ import {
   createSequentialIdFactory,
   deriveEditorGroups,
   selectedEditorGroup,
+  type BrushClipMode,
   type EditorSelection,
+  type EditorTool,
+  type SelectionBrushQueryMode,
+  type TransformAxis,
+  type Vec3,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorApplication } from './editor-application.js';
+import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
+import type { EditorStatePort } from './editor-state-port.js';
 import type { ObjectToolsCommand } from './object-tools-state.js';
 
+type ToolEventState = EditorStatePort<
+  | 'activeGameProfile'
+  | 'activeGridSize'
+  | 'activeTool'
+  | 'assetMountState'
+  | 'documentKey'
+  | 'duplicateSequence'
+  | 'lastPointerPosition'
+  | 'loadedWadSources'
+  | 'materialCatalog'
+  | 'openGroupId'
+  | 'quakePalette'
+  | 'renderer'
+  | 'session'
+  | 'sweepEscapeReset'
+  | 'sweepOptions'
+  | 'sweepTransform'
+  | 'textureLock',
+  | 'activeGridSize'
+  | 'duplicateSequence'
+  | 'quakePalette'
+  | 'sweepEscapeReset'
+  | 'sweepOptions'
+  | 'sweepTransform'
+  | 'textureLock'
+>;
+
+type ToolEventUi = Pick<
+  EditorShellState,
+  'objectTools' | 'resourceSettings' | 'statusMessage' | 'toolSettings'
+>;
+
+interface ToolDocumentCommands {
+  applySelectionBrushQuery(mode: SelectionBrushQueryMode): void;
+  copySelectionText(): string | null;
+  isTextEditingTarget(target: EventTarget | null): boolean;
+  pasteClipboardText(text: string, placement: 'cursor' | 'original'): void;
+}
+
+interface ToolGeometryCommands {
+  applyClip(): void;
+  applyCsgOperation(operation: 'merge' | 'intersect' | 'subtract' | 'hollow'): void;
+  extrudeSelectedFaceBy(distance: number): void;
+  refreshSweepPreview(announce?: boolean): void;
+  setClipMode(mode: BrushClipMode): void;
+  splitSelectedFaceBy(distance: number): void;
+  stampSelectedFaceBy(distance: number): void;
+  syncSweepControls(): void;
+}
+
+interface ToolOrganizationCommands {
+  closeEditorGroup(selectGroup?: boolean): boolean;
+  openEditorGroup(groupId: string, selection?: EditorSelection | null): boolean;
+}
+
+interface ToolTransformCommands {
+  applyExactTransform(): void;
+  commitFaceNudge(
+    delta: Vec3,
+    viewport: import('@jackharrhy/worldview-editor').EditorViewportKind,
+  ): boolean;
+  commitTopologyNudge(
+    delta: Vec3,
+    viewport: import('@jackharrhy/worldview-editor').EditorViewportKind,
+  ): boolean;
+  flipSelectedObjects(axis: TransformAxis): void;
+  isTopologyTool(tool: EditorTool): tool is 'vertex' | 'edge';
+  resetTransformPivot(): void;
+  setTransformPivot(pivot: Vec3): void;
+}
+
+interface ToolEventPorts {
+  readonly state: ToolEventState;
+  readonly ui: ToolEventUi;
+  readonly elements: Pick<EditorElements, 'paletteFile' | 'wadFiles'>;
+  readonly document: ToolDocumentCommands;
+  readonly geometry: ToolGeometryCommands;
+  readonly organization: ToolOrganizationCommands;
+  readonly transform: ToolTransformCommands;
+  readonly renderMaterialCatalog: () => void;
+}
+
 export class ToolEvents {
-  public constructor(private readonly app: EditorApplication) {}
+  public constructor(private readonly ports: ToolEventPorts) {}
   private get state() {
-    return this.app.state;
+    return this.ports.state;
   }
   private get ui() {
-    return this.app.ui;
+    return this.ports.ui;
   }
 
   public connect(signal: AbortSignal): void {
@@ -24,14 +113,14 @@ export class ToolEvents {
         this.ui.toolSettings.update({ gridSize: size });
         this.state.renderer?.setGridSize(this.state.activeGridSize);
         this.ui.objectTools.updateFaceExtrude({ distance: size, step: size });
-        this.app.geometry.syncSweepControls();
+        this.ports.geometry.syncSweepControls();
         this.ui.statusMessage.set(`Grid size set to ${this.state.activeGridSize}.`);
       },
       setTextureLock: (enabled) => {
         this.state.textureLock = enabled;
         this.ui.toolSettings.update({ textureLock: enabled });
         this.state.sweepOptions = { ...this.state.sweepOptions, textureLock: enabled };
-        this.app.geometry.refreshSweepPreview(false);
+        this.ports.geometry.refreshSweepPreview(false);
       },
     });
     signal.addEventListener('abort', () => this.ui.toolSettings.unbind(), { once: true });
@@ -41,10 +130,10 @@ export class ToolEvents {
     });
     signal.addEventListener('abort', () => this.ui.objectTools.unbind(), { once: true });
 
-    this.app.elements.paletteFile.addEventListener(
+    this.ports.elements.paletteFile.addEventListener(
       'change',
       async () => {
-        const file = this.app.elements.paletteFile.files?.[0];
+        const file = this.ports.elements.paletteFile.files?.[0];
         if (!file) return;
         const bytes = new Uint8Array(await file.arrayBuffer());
         if (bytes.byteLength < 768) {
@@ -57,7 +146,7 @@ export class ToolEvents {
           for (const [name, data] of this.state.loadedWadSources) {
             this.state.materialCatalog.importWad(name, data, this.state.quakePalette);
           }
-          this.app.materials.renderMaterialCatalog();
+          this.ports.renderMaterialCatalog();
           this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
           this.ui.resourceSettings.update({
             message: `Loaded ${file.name}. Existing and future WAD2 imports use this palette.`,
@@ -65,15 +154,15 @@ export class ToolEvents {
             tone: 'normal',
           });
         }
-        this.app.elements.paletteFile.value = '';
+        this.ports.elements.paletteFile.value = '';
       },
       { signal },
     );
 
-    this.app.elements.wadFiles.addEventListener(
+    this.ports.elements.wadFiles.addEventListener(
       'change',
       async () => {
-        const files = [...(this.app.elements.wadFiles.files ?? [])];
+        const files = [...(this.ports.elements.wadFiles.files ?? [])];
         if (files.length === 0) return;
         const summaries: string[] = [];
         let hasErrors = false;
@@ -109,7 +198,7 @@ export class ToolEvents {
             );
           }
         }
-        this.app.materials.renderMaterialCatalog();
+        this.ports.renderMaterialCatalog();
         this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
         this.ui.resourceSettings.update({
           message: summaries.join(' · '),
@@ -119,7 +208,7 @@ export class ToolEvents {
         this.ui.statusMessage.set(
           `Material catalog now contains ${this.state.materialCatalog.size} textures.`,
         );
-        this.app.elements.wadFiles.value = '';
+        this.ports.elements.wadFiles.value = '';
       },
       { signal },
     );
@@ -127,8 +216,8 @@ export class ToolEvents {
     window.addEventListener(
       'copy',
       (event) => {
-        if (this.app.document.isTextEditingTarget(event.target)) return;
-        const text = this.app.document.copySelectionText();
+        if (this.ports.document.isTextEditingTarget(event.target)) return;
+        const text = this.ports.document.copySelectionText();
         if (!text) return;
         event.preventDefault();
         event.clipboardData?.setData('text/plain', text);
@@ -144,11 +233,11 @@ export class ToolEvents {
     window.addEventListener(
       'paste',
       (event) => {
-        if (this.app.document.isTextEditingTarget(event.target)) return;
+        if (this.ports.document.isTextEditingTarget(event.target)) return;
         const text = event.clipboardData?.getData('text/plain');
         if (!text?.trim()) return;
         event.preventDefault();
-        this.app.document.pasteClipboardText(text, 'cursor');
+        this.ports.document.pasteClipboardText(text, 'cursor');
       },
       { signal },
     );
@@ -206,11 +295,11 @@ export class ToolEvents {
             : this.state.session.selection?.entityId
               ? { entityId: this.state.session.selection.entityId }
               : null;
-          this.app.organization.openEditorGroup(group.id, memberSelection);
+          this.ports.organization.openEditorGroup(group.id, memberSelection);
           return;
         }
         case 'close-group':
-          this.app.organization.closeEditorGroup();
+          this.ports.organization.closeEditorGroup();
           return;
         case 'duplicate-linked-group': {
           this.state.duplicateSequence += 1;
@@ -252,49 +341,49 @@ export class ToolEvents {
             this.ui.statusMessage.set('Select a closed group before ungrouping it.');
             return;
           }
-          if (this.state.openGroupId === group.id) this.app.organization.closeEditorGroup(false);
+          if (this.state.openGroupId === group.id) this.ports.organization.closeEditorGroup(false);
           this.ui.statusMessage.set(`Ungrouped ${group.name} without deleting its objects.`);
           return;
         }
         case 'selection-query':
-          this.app.document.applySelectionBrushQuery(command.mode);
+          this.ports.document.applySelectionBrushQuery(command.mode);
           return;
         case 'flip':
-          this.app.transform.flipSelectedObjects(command.axis);
+          this.ports.transform.flipSelectedObjects(command.axis);
           return;
         case 'face-extrude':
           if (command.operation === 'inward') {
-            this.app.geometry.extrudeSelectedFaceBy(-this.state.activeGridSize);
+            this.ports.geometry.extrudeSelectedFaceBy(-this.state.activeGridSize);
           } else if (command.operation === 'outward') {
-            this.app.geometry.extrudeSelectedFaceBy(this.state.activeGridSize);
+            this.ports.geometry.extrudeSelectedFaceBy(this.state.activeGridSize);
           } else if (command.operation === 'exact') {
-            this.app.geometry.extrudeSelectedFaceBy(command.distance);
+            this.ports.geometry.extrudeSelectedFaceBy(command.distance);
           } else if (command.operation === 'split') {
-            this.app.geometry.splitSelectedFaceBy(command.distance);
+            this.ports.geometry.splitSelectedFaceBy(command.distance);
           } else {
-            this.app.geometry.stampSelectedFaceBy(command.distance);
+            this.ports.geometry.stampSelectedFaceBy(command.distance);
           }
           return;
         case 'set-clip-mode':
-          this.app.geometry.setClipMode(command.mode);
+          this.ports.geometry.setClipMode(command.mode);
           return;
         case 'apply-clip':
-          this.app.geometry.applyClip();
+          this.ports.geometry.applyClip();
           return;
         case 'reset-clip':
           this.state.renderer?.clearClipPlane();
           return;
         case 'set-transform-pivot':
-          this.app.transform.setTransformPivot(command.pivot);
+          this.ports.transform.setTransformPivot(command.pivot);
           return;
         case 'reset-transform-pivot':
-          this.app.transform.resetTransformPivot();
+          this.ports.transform.resetTransformPivot();
           return;
         case 'apply-transform':
-          this.app.transform.applyExactTransform();
+          this.ports.transform.applyExactTransform();
           return;
         case 'csg':
-          this.app.geometry.applyCsgOperation(command.operation);
+          this.ports.geometry.applyCsgOperation(command.operation);
           return;
         case 'make-brush-entity': {
           const classname = command.classname.trim();
@@ -328,17 +417,17 @@ export class ToolEvents {
       translation[axis] += delta[axis];
       this.state.sweepTransform = { ...this.state.sweepTransform, translation };
       this.state.sweepEscapeReset = false;
-      this.app.geometry.syncSweepControls();
-      this.app.geometry.refreshSweepPreview();
+      this.ports.geometry.syncSweepControls();
+      this.ports.geometry.refreshSweepPreview();
       return;
     }
     const viewport = this.state.lastPointerPosition?.viewport ?? 'perspective';
-    if (this.state.activeTool === 'face' && this.app.transform.commitFaceNudge(delta, viewport)) {
+    if (this.state.activeTool === 'face' && this.ports.transform.commitFaceNudge(delta, viewport)) {
       return;
     }
     if (
-      this.app.transform.isTopologyTool(this.state.activeTool) &&
-      this.app.transform.commitTopologyNudge(delta, viewport)
+      this.ports.transform.isTopologyTool(this.state.activeTool) &&
+      this.ports.transform.commitTopologyNudge(delta, viewport)
     ) {
       return;
     }

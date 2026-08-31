@@ -26,6 +26,7 @@ import { EditorCommandPort } from './editor-command-state.js';
 import { SelectionInspectorPort } from './selection-inspector-state.js';
 import { SimpleShapeToolPort, SweepToolPort } from './geometry-tool-state.js';
 import { ObjectToolsPort } from './object-tools-state.js';
+import type { CollaborationLifecycleSnapshot } from './collaboration-lifecycle.js';
 
 export interface StatusMessageSnapshot {
   readonly message: string;
@@ -664,8 +665,7 @@ export interface CollaborationUiSnapshot {
   readonly description: string;
   readonly displayName: string;
   readonly shareLink: string;
-  readonly live: boolean;
-  readonly joining: boolean;
+  readonly lifecycle: CollaborationLifecycleSnapshot;
   readonly error: string | null;
   readonly participants: readonly CollaborationParticipantSnapshot[];
 }
@@ -687,8 +687,7 @@ export class CollaborationUiPort {
       'Live collaboration requires a hosted project and a 4orm account. This local map stays offline.',
     displayName: '',
     shareLink: '',
-    live: false,
-    joining: false,
+    lifecycle: { status: 'solo' },
     error: null,
     participants: [],
   });
