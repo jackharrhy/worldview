@@ -955,7 +955,33 @@ test.describe('WebMCP site authoring', () => {
     const beforeRow = Number(await rowHandle.getAttribute('aria-valuenow'));
     await rowHandle.press('ArrowDown');
     expect(Number(await rowHandle.getAttribute('aria-valuenow'))).toBeGreaterThan(beforeRow);
-    await expect(page.locator('[data-resize]')).toHaveCount(3);
+
+    const crossHandle = page.getByRole('button', { name: 'Resize viewport rows and columns' });
+    const beforeCrossColumn = Number(await columnHandle.getAttribute('aria-valuenow'));
+    const beforeCrossRow = Number(await rowHandle.getAttribute('aria-valuenow'));
+    const beforeCrossPerspective = await perspective.boundingBox();
+    const crossBounds = await crossHandle.boundingBox();
+    if (!beforeCrossPerspective || !crossBounds)
+      throw new Error('Viewport junction resize target has no bounds');
+    await page.mouse.move(
+      crossBounds.x + crossBounds.width / 2,
+      crossBounds.y + crossBounds.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(crossBounds.x + 48, crossBounds.y + 38, { steps: 4 });
+    await page.mouse.up();
+    expect(Number(await columnHandle.getAttribute('aria-valuenow'))).toBeGreaterThan(
+      beforeCrossColumn,
+    );
+    expect(Number(await rowHandle.getAttribute('aria-valuenow'))).toBeGreaterThan(beforeCrossRow);
+    const afterCrossPerspective = await perspective.boundingBox();
+    if (!afterCrossPerspective) throw new Error('Resized Perspective viewport has no bounds');
+    expect(afterCrossPerspective.width).toBeGreaterThan(beforeCrossPerspective.width);
+    expect(afterCrossPerspective.height).toBeGreaterThan(beforeCrossPerspective.height);
+    await expect(crossHandle).toHaveAttribute('aria-valuetext', /Column \d+%, row \d+%/);
+    await expect(crossHandle).not.toHaveClass(/dragging/);
+    await expect(crossHandle).not.toBeFocused();
+    await expect(page.locator('[data-resize]')).toHaveCount(4);
 
     const inspectorHandle = page.locator('[data-resize="inspector"]');
     const beforeInspector = Number(await inspectorHandle.getAttribute('aria-valuenow'));

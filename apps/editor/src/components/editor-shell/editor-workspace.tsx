@@ -106,6 +106,13 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
           data-resize="viewport-top"
           hidden={perspectiveOnly}
         />
+        <button
+          type="button"
+          className="viewport-resizer viewport-cross-resizer"
+          aria-label="Resize viewport rows and columns"
+          data-resize="viewport-cross"
+          hidden={perspectiveOnly}
+        />
         <div className="viewport-error" hidden />
       </section>
       <div

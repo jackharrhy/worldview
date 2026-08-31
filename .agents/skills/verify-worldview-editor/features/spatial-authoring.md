@@ -32,8 +32,9 @@ grabbed polygon so only a genuine shared seam participates.
 
 The desktop workspace follows TrenchBroom's default balanced 2×2 layout: Perspective is upper-left,
 XY upper-right, XZ lower-left, and YZ lower-right. Drag the shared row or column separator, or the
-separator immediately left of the inspector, to resize them. Focused separators also respond to
-arrow keys.
+separator immediately left of the inspector, to resize them. Dragging the central row/column
+junction changes both viewport splits in one gesture. Focused separators and the junction also
+respond to arrow keys.
 
 ## Driving it with Playwright
 
@@ -51,9 +52,11 @@ the current power-of-two size. After drawing in an orthographic pane, inspect ev
 created bounds, including the implicit depth axis. For Snap to grid, inspect derived vertices after
 the command and restore the original off-grid bounds with Undo.
 
-For layout verification, assert relative viewport bounds before interacting. Drag every
-`[data-resize]` separator and require its `aria-valuenow` and the corresponding pane bounds to
-change; also exercise an arrow key on a focused separator. Minimum-size clamps are intentional.
+For layout verification, assert relative viewport bounds before interacting. Drag each one-axis
+separator and require its `aria-valuenow` and the corresponding pane bounds to change; also exercise
+an arrow key on a focused separator. Drag the `viewport-cross` junction diagonally and require both
+the row and column values and pane bounds to change from that single gesture; its combined position
+is exposed through `aria-valuetext`. Minimum-size clamps are intentional.
 Toggle `Show Perspective only` and require the Perspective pane to match the viewport-grid bounds,
 all orthographic panes and internal separators to be hidden, and their canvases to publish
 `data-rendering="false"`. Restore the four-view layout before continuing multi-viewport gestures.

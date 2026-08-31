@@ -130,6 +130,13 @@ export class DocumentPresenter {
     this.ui.workspace.style.setProperty('--inspector-width', `${this.inspectorWidth}px`);
     for (const handle of this.ui.workspaceResizeHandles) {
       const kind = handle.dataset.resize;
+      if (kind === 'viewport-cross') {
+        handle.setAttribute(
+          'aria-valuetext',
+          `Column ${Math.round(this.viewportColumn * 100)}%, row ${Math.round(this.viewportTop * 100)}%`,
+        );
+        continue;
+      }
       const value =
         kind === 'viewport-column'
           ? Math.round(this.viewportColumn * 100)
@@ -168,9 +175,9 @@ export class DocumentPresenter {
       );
     } else {
       const bounds = this.ui.viewportGrid.getBoundingClientRect();
-      if (kind === 'viewport-column')
+      if (kind === 'viewport-column' || kind === 'viewport-cross')
         this.viewportColumn = Math.max(0.3, Math.min(0.76, (clientX - bounds.left) / bounds.width));
-      if (kind === 'viewport-top')
+      if (kind === 'viewport-top' || kind === 'viewport-cross')
         this.viewportTop = Math.max(0.2, Math.min(0.8, (clientY - bounds.top) / bounds.height));
     }
     this.applyWorkspaceLayout();
@@ -178,6 +185,19 @@ export class DocumentPresenter {
 
   private resizeWorkspaceWithKeyboard(event: KeyboardEvent, handle: HTMLElement): void {
     const kind = handle.dataset.resize;
+    if (kind === 'viewport-cross') {
+      const columnDirection = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+      const rowDirection = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+      if (!columnDirection && !rowDirection) return;
+      event.preventDefault();
+      this.viewportColumn = Math.max(
+        0.3,
+        Math.min(0.76, this.viewportColumn + columnDirection * 0.02),
+      );
+      this.viewportTop = Math.max(0.2, Math.min(0.8, this.viewportTop + rowDirection * 0.02));
+      this.applyWorkspaceLayout();
+      return;
+    }
     const direction =
       event.key === 'ArrowLeft' || event.key === 'ArrowUp'
         ? -1

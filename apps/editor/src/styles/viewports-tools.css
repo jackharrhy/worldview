@@ -127,6 +127,38 @@
   inset: 4px 0;
 }
 
+.viewport-cross-resizer {
+  top: var(--viewport-top);
+  left: var(--viewport-column);
+  z-index: 13;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  translate: -50% -50%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: move;
+}
+
+.viewport-cross-resizer::before {
+  position: absolute;
+  inset: 0 8px;
+  content: '';
+  background: transparent;
+  transition: background 100ms ease;
+}
+
+.viewport-cross-resizer::after {
+  inset: 8px 0;
+}
+
+.viewport-cross-resizer:hover::before,
+.viewport-cross-resizer:focus-visible::before,
+.viewport-cross-resizer.dragging::before {
+  background: var(--accent);
+}
+
 .workspace-resizer {
   top: 0;
   right: var(--inspector-width);
