@@ -1,14 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
-const localChromiumArguments = [
-  '--enable-unsafe-webgpu',
-  '--enable-features=WebGPU',
-  '--use-angle=swiftshader',
-];
 const performanceChromiumArguments = ['--enable-unsafe-webgpu', '--enable-features=WebGPU'];
 
-// Chromium's own GPU tests use its software Vulkan adapter on GPU-less Linux hosts.
-const ciChromiumArguments = [
+// Chromium's own GPU tests use its software Vulkan adapter on headless Linux hosts. Supplying
+// ANGLE's SwiftShader flag alone exposes navigator.gpu but destroys the device during pipeline
+// creation, so ordinary local and CI browser tests intentionally share this complete flag set.
+const headlessChromiumArguments = [
   '--enable-features=Vulkan',
   '--use-angle=swiftshader',
   '--use-vulkan=swiftshader',
@@ -16,7 +13,6 @@ const ciChromiumArguments = [
   '--disable-vulkan-surface',
   '--enable-unsafe-webgpu',
 ];
-const useHeadlessWebGpu = Boolean(process.env.CI || process.env.WORLDVIEW_HEADLESS_WEBGPU);
 
 export default defineConfig({
   testDir: './tests/browser',
@@ -41,11 +37,10 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:5173',
     viewport: { width: 1440, height: 900 },
     launchOptions: {
-      args: useHeadlessWebGpu
-        ? ciChromiumArguments
-        : process.env.WORLDVIEW_PERF_GATE === '1'
+      args:
+        process.env.WORLDVIEW_PERF_GATE === '1'
           ? performanceChromiumArguments
-          : localChromiumArguments,
+          : headlessChromiumArguments,
     },
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],

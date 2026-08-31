@@ -1,8 +1,9 @@
 # Worldview
 
-Worldview renders static Quake and GoldSrc maps in ordinary web pages.
+Worldview renders static Quake, GoldSrc, and Quake II maps in ordinary web pages.
 
-It supports Quake BSP29 and GoldSrc BSP30 through WebGPU and TypeGPU.
+It supports Quake BSP29 and GoldSrc BSP30 through WebGPU and TypeGPU. Quake II BSP38 static
+preview support is available with the limits described below.
 
 [Open the viewer](https://jackharrhy.github.io/worldview/?fixture=goldsrc) or load your own BSP from
 the **Load → Local files** control.
@@ -21,6 +22,19 @@ npm run check
 ```
 
 Maintainers can find the local npm release process in [docs/releasing.md](docs/releasing.md).
+
+## Viewer format support
+
+- Quake BSP29 and GoldSrc BSP30 include static world and brush-model geometry, textures,
+  lightmaps, visibility, collision, walking and fly navigation, entities, skyboxes, sprites,
+  sounds, and map overviews where the source map provides them.
+- Quake II BSP38 currently includes static world and brush-model geometry, entities, material
+  classification, RGB lightmaps, and fly navigation. The package can decode WAL textures through
+  its core API, but `createWorldview()` does not yet resolve WAL roots. BSP38 collision and PVS are
+  also pending, so missing materials use the fallback texture and walking is unavailable.
+
+The detailed Quake II implementation evidence and remaining acceptance work live in
+[docs/quake2-compatibility.md](docs/quake2-compatibility.md).
 
 ### Editor development
 
