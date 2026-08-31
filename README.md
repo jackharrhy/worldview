@@ -236,6 +236,20 @@ await viewer.playMusic();
 viewer.setMusicVolume(0.7);
 ```
 
+Caller-supplied `wads` and `palette` sources begin loading alongside the BSP. `resolveWad` remains
+parse-dependent because its references come from the BSP entity data. Progress events keep
+`loaded` and `total` scoped to the current transfer and provide stable concurrent item counts when
+`phaseProgress` is present:
+
+```ts
+viewer.addEventListener('progress', ({ detail }) => {
+  if (detail.phase === 'wad' && detail.phaseProgress) {
+    const { completed, total } = detail.phaseProgress;
+    console.log(`${completed}/${total} WAD files complete`);
+  }
+});
+```
+
 ## Map overviews
 
 The viewer can render a deterministic top-down overview without moving the live camera:
@@ -286,11 +300,17 @@ viewer.setWalkabilityVisible(true);
 
 const saved = serializeWalkability(graph);
 viewer.setWalkability(parseWalkability(saved));
+
+// Or fetch, parse, fingerprint-check, and apply an existing sidecar in one operation.
+await viewer.loadWalkability('/maps/c1a0.worldview-walkability.json', { signal });
 ```
 
 The development viewer can generate and inspect the graph from **Map → Walkability**. Downloaded
-JSON is compatible with future sessions. For local fixtures, place
-`<map>.worldview-walkability.json` beside `<map>.bsp` and the viewer loads it automatically.
+JSON can be loaded in later sessions. `loadWalkability()` accepts the same URL, `Blob`,
+`ArrayBuffer`, and typed-array sources as map assets, emits `walkability` progress, rejects a graph
+from a different BSP, and is cancelled by a newer walkability operation or map load. For local
+fixtures, place `<map>.worldview-walkability.json` beside `<map>.bsp` and the viewer loads it
+automatically.
 
 This is a collision-testing graph, not a gameplay navigation mesh. It retains one-way connections,
 blocked probes, connected components, and local ceiling heights. Overview capture uses those

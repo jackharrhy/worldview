@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { parseBsp, type ParsedWorld } from '../src/core/index.js';
 import {
@@ -10,6 +10,7 @@ import {
   WALKABILITY_CUTAWAY_EMPTY,
   walkabilitySeeds,
 } from '../src/walkability/index.js';
+import { loadWalkabilitySource } from '../src/viewer/walkability-source.js';
 import { makeBsp } from './fixtures.js';
 
 const SPAWN_ENTITIES = `{
@@ -138,6 +139,55 @@ describe('walkability', () => {
     };
     malformed.edges[0]!.to = 99_999;
     expect(() => parseWalkability(malformed)).toThrow(/out of range/);
+  });
+
+  it('loads, validates, and reports progress for a persisted sidecar source', async () => {
+    const world = floorWorld();
+    const generated = await generateWalkability(world, {
+      spacing: 8,
+      maximumNodes: 100,
+      yieldEvery: 0,
+    });
+    const progress: Array<{ readonly phase: string; readonly loaded: number }> = [];
+    const fetch = vi.fn(async () => new Response(serializeWalkability(generated)));
+    const loaded = await loadWalkabilitySource(world, 'https://example.test/walkability.json', {
+      fetch,
+      signal: new AbortController().signal,
+      progress: (detail) => progress.push(detail),
+    });
+
+    expect(loaded).toEqual(generated);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(progress.at(-1)).toMatchObject({ phase: 'walkability' });
+  });
+
+  it('rejects incompatible sidecars and respects cancellation before fetching', async () => {
+    const world = floorWorld();
+    const generated = await generateWalkability(world, {
+      spacing: 8,
+      maximumNodes: 100,
+      yieldEvery: 0,
+    });
+    const incompatible = { ...world, bounds: { min: [-1, 0, 0] as const, max: world.bounds.max } };
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const controller = new AbortController();
+    controller.abort(new DOMException('cancelled', 'AbortError'));
+
+    await expect(
+      loadWalkabilitySource(incompatible, new Blob([serializeWalkability(generated)]), {
+        fetch: globalThis.fetch,
+        signal: new AbortController().signal,
+        progress: () => undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-data' });
+    await expect(
+      loadWalkabilitySource(world, 'https://example.test/walkability.json', {
+        fetch,
+        signal: controller.signal,
+        progress: () => undefined,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('builds a bounded local cutaway field from reachable standing heights', async () => {

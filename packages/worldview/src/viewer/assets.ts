@@ -24,7 +24,7 @@ import {
 } from './asset-source.js';
 import { loadSoundAssets, type LoadedMusicAsset, type LoadedSoundAsset } from './sound-assets.js';
 import { loadSpriteAssets } from './sprite-assets.js';
-import type { BinarySource, WarningDetail, WorldSource } from './types.js';
+import type { BinarySource, ProgressDetail, WarningDetail, WorldSource } from './types.js';
 
 export { readBinarySource, resolveWorldSource, type LoadAssetContext } from './asset-source.js';
 export type { LoadedSkybox, LoadedSpriteEntity, SkyboxSuffix } from '../render/assets.js';
@@ -48,32 +48,48 @@ interface AssetStage<T> {
   readonly warnings: readonly WarningDetail[];
 }
 
-async function loadPalette(
-  world: ParsedWorld,
-  source: WorldSource,
-  context: LoadAssetContext,
-): Promise<Uint8Array | undefined> {
-  const paletteSource =
-    source.palette ??
-    (world.version === 29 && source.gameBaseUrl
-      ? sourceBelow(source.gameBaseUrl, 'gfx/palette.lmp')
-      : undefined);
-  if (!paletteSource) {
-    if (world.version === 29) {
-      throw new WorldviewError(
-        'missing-palette',
-        'BSP29 maps require an external 768-byte Quake palette',
-      );
-    }
-    return undefined;
-  }
-  const palette = new Uint8Array(
-    await readBinarySource(paletteSource, 'palette', 'Quake palette', context),
-  );
+interface WadProgressTracker {
+  completed: number;
+  total?: number;
+}
+
+function withWadProgress(detail: ProgressDetail, progress: WadProgressTracker): ProgressDetail {
+  return progress.total === undefined
+    ? detail
+    : {
+        ...detail,
+        phaseProgress: { completed: progress.completed, total: progress.total },
+      };
+}
+
+function parsePalette(bytes: ArrayBuffer): Uint8Array {
+  const palette = new Uint8Array(bytes);
   if (palette.byteLength < 768) {
     throw new WorldviewError('missing-palette', 'Quake palette must contain at least 768 bytes');
   }
   return palette.slice(0, 768);
+}
+
+async function loadPaletteSource(
+  paletteSource: BinarySource,
+  context: LoadAssetContext,
+): Promise<Uint8Array> {
+  return parsePalette(await readBinarySource(paletteSource, 'palette', 'Quake palette', context));
+}
+
+async function loadDerivedPalette(
+  world: ParsedWorld,
+  source: WorldSource,
+  context: LoadAssetContext,
+): Promise<Uint8Array | undefined> {
+  if (world.version !== 29) return undefined;
+  if (!source.gameBaseUrl) {
+    throw new WorldviewError(
+      'missing-palette',
+      'BSP29 maps require an external 768-byte Quake palette',
+    );
+  }
+  return loadPaletteSource(sourceBelow(source.gameBaseUrl, 'gfx/palette.lmp'), context);
 }
 
 async function loadSkybox(
@@ -135,15 +151,18 @@ interface WadCandidate {
   readonly label: string;
 }
 
-async function wadCandidates(
+function explicitWadCandidates(source: WorldSource): readonly WadCandidate[] {
+  return (source.wads ?? []).map((wad, index) => ({
+    source: wad,
+    label: `explicit WAD ${index + 1}`,
+  }));
+}
+
+async function referencedWadCandidates(
   world: ParsedWorld,
   source: WorldSource,
   context: LoadAssetContext,
 ): Promise<AssetStage<readonly WadCandidate[]>> {
-  const explicit = (source.wads ?? []).map((wad, index) => ({
-    source: wad,
-    label: `explicit WAD ${index + 1}`,
-  }));
   const resolved = await Promise.all(
     world.wadReferences.map(async (reference) => {
       let resolverSource: BinarySource | undefined;
@@ -173,21 +192,37 @@ async function wadCandidates(
     }),
   );
   return {
-    value: [...explicit, ...resolved.flatMap((result) => result.candidates)],
+    value: resolved.flatMap((result) => result.candidates),
     warnings: resolved.flatMap((result) => (result.warning ? [result.warning] : [])),
   };
 }
 
-async function loadWads(
-  world: ParsedWorld,
-  source: WorldSource,
+async function loadWadCandidates(
+  candidates: readonly WadCandidate[],
   context: LoadAssetContext,
+  progress: WadProgressTracker,
 ): Promise<AssetStage<readonly ParsedWad[]>> {
-  const candidates = await wadCandidates(world, source, context);
   const results = await Promise.all(
-    candidates.value.map(async (candidate) => {
+    candidates.map(async (candidate) => {
+      let latestProgress: ProgressDetail = {
+        phase: 'wad' as const,
+        label: candidate.label,
+        loaded: 0,
+      };
+      const candidateContext: LoadAssetContext = {
+        ...context,
+        progress(detail) {
+          latestProgress = detail;
+          context.progress(withWadProgress(detail, progress));
+        },
+      };
       try {
-        const bytes = await readBinarySource(candidate.source, 'wad', candidate.label, context);
+        const bytes = await readBinarySource(
+          candidate.source,
+          'wad',
+          candidate.label,
+          candidateContext,
+        );
         return { wad: parseWad(bytes) };
       } catch (error) {
         if (context.signal.aborted) throw error;
@@ -197,15 +232,17 @@ async function loadWads(
             message: `${candidate.label} could not be loaded: ${errorMessage(error)}`,
           } satisfies WarningDetail,
         };
+      } finally {
+        if (!context.signal.aborted) {
+          progress.completed += 1;
+          context.progress(withWadProgress(latestProgress, progress));
+        }
       }
     }),
   );
   return {
     value: results.flatMap((result) => (result.wad ? [result.wad] : [])),
-    warnings: [
-      ...candidates.warnings,
-      ...results.flatMap((result) => (result.warning ? [result.warning] : [])),
-    ],
+    warnings: results.flatMap((result) => (result.warning ? [result.warning] : [])),
   };
 }
 
@@ -255,56 +292,109 @@ export async function loadWorldAssets(
   context: LoadAssetContext,
 ): Promise<LoadedWorld> {
   const resolvedSource = resolveWorldSource(source);
-  const bspBytes = await readBinarySource(resolvedSource.bsp, 'bsp', 'BSP', context);
-  context.progress({ phase: 'parse', label: 'BSP', loaded: 0, total: bspBytes.byteLength });
-  const world = parseBsp(bspBytes);
-  context.progress({
-    phase: 'parse',
-    label: 'BSP',
-    loaded: bspBytes.byteLength,
-    total: bspBytes.byteLength,
-  });
-  const palette = await loadPalette(world, resolvedSource, context);
-  const baseWarnings: WarningDetail[] =
-    world.envSounds.length > 0 && !world.trace
-      ? [
-          {
-            code: 'audio-warning',
-            message:
-              'env_sound entities will use range-only selection because this BSP has no trace tree',
-          },
-        ]
-      : [];
-
-  const [spriteAssets, soundAssets, skybox, wads] = await Promise.all([
-    loadSpriteAssets(world, resolvedSource, context),
-    loadSoundAssets(world, resolvedSource, context),
-    loadSkybox(world, resolvedSource, context),
-    loadWads(world, resolvedSource, context),
-  ]);
-  const textures = resolveTextures(world, wads.value, context);
-  return {
-    world,
-    ...(palette ? { palette } : {}),
-    ...(skybox.value ? { skybox: skybox.value } : {}),
-    sprites: spriteAssets.sprites,
-    missingSprites: spriteAssets.missingSprites,
-    sounds: soundAssets.sounds,
-    music: soundAssets.music,
-    playerSounds: soundAssets.playerSounds,
-    missingSounds: soundAssets.missingSounds,
-    missingMusic: soundAssets.missingMusic,
-    textureData: textures.value.textureData,
-    missingTextures: textures.value.missingTextures,
-    warnings: [
-      ...baseWarnings,
-      ...spriteAssets.warnings,
-      ...soundAssets.warnings,
-      ...skybox.warnings,
-      ...wads.warnings,
-      ...textures.warnings,
-    ],
+  const operation = new AbortController();
+  const loadContext: LoadAssetContext = {
+    ...context,
+    signal: AbortSignal.any([context.signal, operation.signal]),
   };
+  const explicitWadSources = explicitWadCandidates(resolvedSource);
+  const hasReferencedWadSource = Boolean(resolvedSource.resolveWad || resolvedSource.wadBaseUrl);
+  const wadProgress: WadProgressTracker = {
+    completed: 0,
+    ...(hasReferencedWadSource ? {} : { total: explicitWadSources.length }),
+  };
+  const bspPromise = readBinarySource(resolvedSource.bsp, 'bsp', 'BSP', loadContext);
+  const explicitWadsPromise = loadWadCandidates(explicitWadSources, loadContext, wadProgress);
+  void explicitWadsPromise.catch(() => undefined);
+  const explicitPalettePromise = resolvedSource.palette
+    ? loadPaletteSource(resolvedSource.palette, loadContext)
+    : null;
+  void explicitPalettePromise?.catch((error: unknown) => operation.abort(error));
+
+  try {
+    const bspBytes = await bspPromise;
+    loadContext.progress({
+      phase: 'parse',
+      label: 'BSP',
+      loaded: 0,
+      total: bspBytes.byteLength,
+    });
+    const world = parseBsp(bspBytes);
+    loadContext.progress({
+      phase: 'parse',
+      label: 'BSP',
+      loaded: bspBytes.byteLength,
+      total: bspBytes.byteLength,
+    });
+    const referencedWadsPromise = referencedWadCandidates(world, resolvedSource, loadContext).then(
+      async (candidates) => {
+        wadProgress.total = explicitWadSources.length + candidates.value.length;
+        loadContext.progress({
+          phase: 'wad',
+          label: 'WAD files',
+          loaded: wadProgress.completed,
+          total: wadProgress.total,
+          phaseProgress: { completed: wadProgress.completed, total: wadProgress.total },
+        });
+        const loaded = await loadWadCandidates(candidates.value, loadContext, wadProgress);
+        return {
+          value: loaded.value,
+          warnings: [...candidates.warnings, ...loaded.warnings],
+        } satisfies AssetStage<readonly ParsedWad[]>;
+      },
+    );
+    const palettePromise =
+      explicitPalettePromise ?? loadDerivedPalette(world, resolvedSource, loadContext);
+    const [palette, spriteAssets, soundAssets, skybox, explicitWads, referencedWads] =
+      await Promise.all([
+        palettePromise,
+        loadSpriteAssets(world, resolvedSource, loadContext),
+        loadSoundAssets(world, resolvedSource, loadContext),
+        loadSkybox(world, resolvedSource, loadContext),
+        explicitWadsPromise,
+        referencedWadsPromise,
+      ]);
+    const wads: AssetStage<readonly ParsedWad[]> = {
+      value: [...explicitWads.value, ...referencedWads.value],
+      warnings: [...explicitWads.warnings, ...referencedWads.warnings],
+    };
+    const textures = resolveTextures(world, wads.value, loadContext);
+    const baseWarnings: WarningDetail[] =
+      world.envSounds.length > 0 && !world.trace
+        ? [
+            {
+              code: 'audio-warning',
+              message:
+                'env_sound entities will use range-only selection because this BSP has no trace tree',
+            },
+          ]
+        : [];
+    return {
+      world,
+      ...(palette ? { palette } : {}),
+      ...(skybox.value ? { skybox: skybox.value } : {}),
+      sprites: spriteAssets.sprites,
+      missingSprites: spriteAssets.missingSprites,
+      sounds: soundAssets.sounds,
+      music: soundAssets.music,
+      playerSounds: soundAssets.playerSounds,
+      missingSounds: soundAssets.missingSounds,
+      missingMusic: soundAssets.missingMusic,
+      textureData: textures.value.textureData,
+      missingTextures: textures.value.missingTextures,
+      warnings: [
+        ...baseWarnings,
+        ...spriteAssets.warnings,
+        ...soundAssets.warnings,
+        ...skybox.warnings,
+        ...wads.warnings,
+        ...textures.warnings,
+      ],
+    };
+  } catch (error) {
+    operation.abort(error);
+    throw error;
+  }
 }
 
 function errorMessage(error: unknown): string {

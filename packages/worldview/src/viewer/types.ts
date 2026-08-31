@@ -170,12 +170,19 @@ export interface ProgressDetail {
     | 'skybox'
     | 'sprite'
     | 'sound'
+    | 'walkability'
     | 'parse'
     | 'textures'
     | 'gpu';
+  /** Progress for the current transfer. This is normally measured in bytes. */
   readonly loaded: number;
   readonly total?: number;
   readonly label?: string;
+  /** Stable item counts for concurrent work within this phase. */
+  readonly phaseProgress?: {
+    readonly completed: number;
+    readonly total: number;
+  };
 }
 
 export interface ReadyDetail {
@@ -256,6 +263,7 @@ export interface WorldviewViewer extends EventTarget {
   setMovementMode(mode: Exclude<WorldviewMovementMode, 'none'>): void;
   setMovement(update: WorldviewMovementUpdate): void;
   generateWalkability(options?: GenerateWalkabilityOptions): Promise<WalkabilityMap>;
+  loadWalkability(source: BinarySource, options?: LoadOptions): Promise<WalkabilityMap>;
   setWalkability(walkability: WalkabilityMap | null): void;
   setWalkabilityVisible(visible: boolean): void;
   enableAudio(): Promise<void>;

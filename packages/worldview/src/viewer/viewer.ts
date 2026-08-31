@@ -16,7 +16,9 @@ import { WorldCamera } from './camera.js';
 import { DEFAULT_WORLDVIEW_MOVEMENT, WorldControls } from './controls.js';
 import { overviewBlob, overviewCamera, overviewProjectionView } from './overview.js';
 import { WorldSurfaceIndex } from './surface.js';
+import { loadWalkabilitySource } from './walkability-source.js';
 import type {
+  BinarySource,
   CameraState,
   CameraUpdate,
   CreateWorldviewOptions,
@@ -467,7 +469,38 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
       if (this.disposed || generation !== this.loadGeneration) {
         throw new DOMException('Map changed during walkability generation', 'AbortError');
       }
-      this.setWalkability(walkability);
+      this.applyWalkability(walkability);
+      return walkability;
+    } finally {
+      if (this.walkabilityController === controller) this.walkabilityController = null;
+    }
+  }
+
+  public async loadWalkability(
+    source: BinarySource,
+    options: LoadOptions = {},
+  ): Promise<WalkabilityMap> {
+    this.assertUsable();
+    const world = this.parsedWorld;
+    if (!world) throw new Error('Worldview has no loaded map');
+    this.walkabilityController?.abort(
+      new DOMException('Superseded by newer walkability loading', 'AbortError'),
+    );
+    const controller = new AbortController();
+    this.walkabilityController = controller;
+    const generation = this.loadGeneration;
+    const signal = combinedSignal(controller.signal, options.signal, this.creationSignal);
+    try {
+      const walkability = await loadWalkabilitySource(world, source, {
+        fetch: this.fetchImplementation,
+        signal,
+        progress: (detail) => this.emit<ProgressDetail>('progress', detail),
+      });
+      signal.throwIfAborted();
+      if (this.disposed || generation !== this.loadGeneration) {
+        throw new DOMException('Map changed during walkability loading', 'AbortError');
+      }
+      this.applyWalkability(walkability);
       return walkability;
     } finally {
       if (this.walkabilityController === controller) this.walkabilityController = null;
@@ -476,6 +509,14 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
 
   public setWalkability(walkability: WalkabilityMap | null): void {
     this.assertUsable();
+    this.walkabilityController?.abort(
+      new DOMException('Superseded by direct walkability assignment', 'AbortError'),
+    );
+    this.walkabilityController = null;
+    this.applyWalkability(walkability);
+  }
+
+  private applyWalkability(walkability: WalkabilityMap | null): void {
     if (walkability) {
       if (!this.parsedWorld) throw new Error('Worldview has no loaded map');
       assertWalkabilityCompatible(this.parsedWorld, walkability);

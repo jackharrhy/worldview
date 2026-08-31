@@ -43,7 +43,9 @@ void viewerFactory;
 void parsedWorld;
 void overviewOptions;
 const walkability: WalkabilityMap | null = null;
+const loadWalkability: WorldviewViewer['loadWalkability'] | null = null;
 void walkability;
+void loadWalkability;
 
 document.body.dataset.main = String(typeof createWorldview === 'function');
 document.body.dataset.overview = String(typeof planOverview === 'function');

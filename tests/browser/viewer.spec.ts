@@ -130,6 +130,12 @@ test('development viewer generates, visualizes, and persists walkability', async
   expect(saved.format).toBe('worldview-walkability');
   expect(saved.nodes.length).toBeGreaterThan(0);
 
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page.locator('[data-walkability-nodes]')).toHaveValue('0');
+  await page.locator('[data-walkability-file]').setInputFiles(path!);
+  await expect(page.locator('[data-walkability-status]')).toHaveValue(/nodes/);
+  await expect(page.locator('[data-walkability-nodes]')).not.toHaveValue('0');
+
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   const overviewDownloadPromise = page.waitForEvent('download');
   await page.locator('[data-overview-download]').click();

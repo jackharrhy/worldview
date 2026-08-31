@@ -190,6 +190,22 @@ groups. Raw WebGPU remains only at the deliberate command-encoding and bulk immu
 upload boundary. The editor architecture gate rejects reintroduction of raw WGSL strings, shader
 modules, pipeline layouts, bind-group layouts, or raw render-pipeline construction.
 
+## Public viewer contracts
+
+`WorldSource` starts caller-declared WAD and palette sources concurrently with the BSP. WADs found
+through `resolveWad` or a WAD base URL remain parse-dependent because their names come from the BSP.
+Per-transfer progress retains byte-oriented `loaded` and `total` values; WAD events also expose
+`phaseProgress` once the complete candidate count is known, so concurrent transfers have one stable
+completed/total item count.
+
+Persisted walkability remains an optional sidecar rather than part of `WorldSource` or overview
+capture. `WorldviewViewer.loadWalkability(source, options)` reads any `BinarySource`, parses and
+fingerprint-validates it against the currently loaded BSP, applies it, emits `walkability` progress,
+and participates in the viewer's cancellation generation. Loading, generating, or directly setting
+walkability supersedes the previous walkability operation; loading another BSP supersedes it as
+well. The lower-level parse, compatibility, serialization, and direct assignment APIs remain
+available.
+
 ## Editor architecture
 
 The ordered structural remediation work is tracked in

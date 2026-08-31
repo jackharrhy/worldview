@@ -10,11 +10,7 @@ import {
   type WorldviewMovementUpdate,
   type WorldviewViewer,
 } from '@jackharrhy/worldview';
-import {
-  parseWalkability,
-  serializeWalkability,
-  type WalkabilityMap,
-} from '@jackharrhy/worldview/walkability';
+import { serializeWalkability, type WalkabilityMap } from '@jackharrhy/worldview/walkability';
 
 import { fixtureById } from './fixture-catalog.js';
 import { requestFromUrl } from './url-request.js';
@@ -218,9 +214,10 @@ export class ViewerController {
   }
 
   public async loadWalkabilityFile(file: File | undefined): Promise<void> {
-    if (!file) return;
+    const viewer = this.viewer;
+    if (!file || !viewer) return;
     try {
-      this.applyWalkability(parseWalkability(await file.text()));
+      this.revealWalkability(await viewer.loadWalkability(file));
     } catch (error) {
       this.patch({ walkabilityStatus: error instanceof Error ? error.message : String(error) });
     }
@@ -405,9 +402,8 @@ export class ViewerController {
     });
   }
 
-  private applyWalkability(walkability: WalkabilityMap): void {
+  private revealWalkability(walkability: WalkabilityMap): void {
     if (!this.viewer) return;
-    this.viewer.setWalkability(walkability);
     this.viewer.setWalkabilityVisible(true);
     this.patch({
       walkabilityStatus: `${walkability.statistics.nodes.toLocaleString()} nodes · ${walkability.statistics.components.toLocaleString()} components`,
@@ -454,13 +450,12 @@ export class ViewerController {
   }
 
   private async loadWalkabilityUrl(url: string, sequence: number): Promise<void> {
-    if (!this.viewer?.world) return;
+    const viewer = this.viewer;
+    if (!viewer?.world) return;
     this.patch({ walkabilityStatus: 'Loading sidecar' });
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`walkability request returned ${response.status}`);
-    const walkability = parseWalkability(await response.text());
+    const walkability = await viewer.loadWalkability(url);
     if (sequence !== this.mapLoadSequence) return;
-    this.applyWalkability(walkability);
+    this.revealWalkability(walkability);
     this.patch({
       walkabilityStatus: `Loaded ${walkability.statistics.nodes.toLocaleString()} nodes`,
     });

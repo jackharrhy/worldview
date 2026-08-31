@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { loadWorldAssets, resolveWorldSource } from '../src/viewer/assets.js';
-import { makeBsp, makeMipTexture, makeSprite, makeTga, makeWad, makeWave } from './fixtures.js';
+import type { ProgressDetail } from '../src/viewer/types.js';
+import {
+  makeBsp,
+  makeMipTexture,
+  makePalette,
+  makeSprite,
+  makeTga,
+  makeWad,
+  makeWave,
+} from './fixtures.js';
 
 function assetContext() {
   return {
@@ -49,6 +58,135 @@ describe('asset resolution', () => {
     const loaded = await loading;
     expect(loaded.sprites).toHaveLength(1);
     expect(loaded.sounds.size).toBe(1);
+  });
+
+  it('starts explicit WAD and palette requests without waiting for the BSP', async () => {
+    const started = new Set<string>();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const payloads = new Map<string, Uint8Array>([
+      ['https://example.test/map.bsp', makeBsp({ embeddedTexture: false })],
+      ['https://example.test/palette.lmp', makePalette()],
+      ['https://example.test/textures.wad', makeWad(3, makeMipTexture(30, 'brick'), 'brick')],
+    ]);
+    const loading = loadWorldAssets(
+      {
+        bsp: 'https://example.test/map.bsp',
+        palette: 'https://example.test/palette.lmp',
+        wads: ['https://example.test/textures.wad'],
+      },
+      {
+        ...assetContext(),
+        async fetch(input) {
+          const url = String(input);
+          started.add(url);
+          await gate;
+          return new Response(payloads.get(url)!.buffer as ArrayBuffer);
+        },
+      },
+    );
+
+    await vi.waitFor(() => expect(started).toEqual(new Set(payloads.keys())));
+    release();
+    const loaded = await loading;
+    expect(loaded.palette).toHaveLength(768);
+    expect(loaded.missingTextures).toEqual([]);
+  });
+
+  it('cancels the BSP request when a concurrent explicit palette fails', async () => {
+    let bspAborted = false;
+    const loading = loadWorldAssets(
+      {
+        bsp: 'https://example.test/map.bsp',
+        palette: 'https://example.test/palette.lmp',
+      },
+      {
+        ...assetContext(),
+        fetch(input, init) {
+          if (String(input).endsWith('palette.lmp')) {
+            return Promise.resolve(new Response(new Uint8Array(1)));
+          }
+          const signal = init?.signal;
+          return new Promise<Response>((_resolve, reject) => {
+            signal?.addEventListener(
+              'abort',
+              () => {
+                bspAborted = true;
+                reject(signal.reason);
+              },
+              { once: true },
+            );
+          });
+        },
+      },
+    );
+
+    await expect(loading).rejects.toMatchObject({ code: 'missing-palette' });
+    expect(bspAborted).toBe(true);
+  });
+
+  it('keeps resolver WAD discovery parse-dependent', async () => {
+    let releaseBsp!: () => void;
+    const bspGate = new Promise<void>((resolve) => {
+      releaseBsp = resolve;
+    });
+    const resolver = vi.fn(async () => makeWad(3));
+    const loading = loadWorldAssets(
+      {
+        bsp: 'https://example.test/map.bsp',
+        resolveWad: resolver,
+      },
+      {
+        ...assetContext(),
+        async fetch() {
+          await bspGate;
+          return new Response(makeBsp({ embeddedTexture: false }).buffer as ArrayBuffer);
+        },
+      },
+    );
+
+    await Promise.resolve();
+    expect(resolver).not.toHaveBeenCalled();
+    releaseBsp();
+    await loading;
+    expect(resolver).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports stable aggregate completion for concurrent WAD transfers', async () => {
+    const progress: ProgressDetail[] = [];
+    await loadWorldAssets(
+      {
+        bsp: makeBsp(),
+        wads: [makeWad(3), makeWad(3)],
+      },
+      { ...assetContext(), progress: (detail) => progress.push(detail) },
+    );
+
+    expect(
+      progress
+        .filter((detail) => detail.phase === 'wad' && detail.phaseProgress)
+        .map((detail) => detail.phaseProgress),
+    ).toContainEqual({ completed: 2, total: 2 });
+  });
+
+  it('does not publish an aggregate total until parse-dependent WAD candidates are known', async () => {
+    const progress: ProgressDetail[] = [];
+    await loadWorldAssets(
+      {
+        bsp: makeBsp(),
+        wads: [makeWad(3)],
+        resolveWad: async () => makeWad(3),
+      },
+      { ...assetContext(), progress: (detail) => progress.push(detail) },
+    );
+
+    const aggregate = progress.flatMap((detail) =>
+      detail.phase === 'wad' && detail.phaseProgress ? [detail.phaseProgress] : [],
+    );
+    expect(new Set(aggregate.map(({ total }) => total))).toEqual(new Set([3]));
+    expect(aggregate).toContainEqual({ completed: 3, total: 3 });
   });
 
   it('prefers embedded textures over explicit WADs', async () => {

@@ -6,8 +6,10 @@ Quake II BSP38 previews.
 Documentation, examples, the custom-element setup, and development notes live in the
 [Worldview monorepo](https://github.com/jackharrhy/worldview#readme).
 
-Version 0.2 adds BSP38 static geometry and RGB lightmaps, WAL decoding primitives, GoldSrc
-scrolling textures, stricter walkability serialization, and visibility-aware frame scheduling.
+Version 0.3 starts caller-supplied WAD and palette requests concurrently with the BSP, exposes
+aggregate WAD progress, and can load and validate persisted walkability through the viewer. Version
+0.2 added BSP38 static geometry and RGB lightmaps, WAL decoding primitives, GoldSrc scrolling
+textures, stricter walkability serialization, and visibility-aware frame scheduling.
 Packaged BSP38 previews do not yet resolve WAL roots or provide collision and PVS; see the
 [format support notes](https://github.com/jackharrhy/worldview#viewer-format-support) before using
 Quake II maps.
