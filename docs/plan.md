@@ -133,8 +133,8 @@ priority unless measurement shows a user-facing loading regression. Home loaders
 workspaces; future remote workspace providers can join that loader boundary without changing editor
 document ownership.
 
-Hosted projects are the next delivery slice and remain peers of local projects rather than a
-replacement. Their identity, persistence, asset, realtime, and build boundaries are specified in
+Hosted projects remain peers of local projects rather than a replacement. Their identity,
+persistence, asset, realtime, and build boundaries are specified in
 [`4orm-oauth.md`](./4orm-oauth.md), [`server-side-projects.md`](./server-side-projects.md), and
 [`artbin-integration.md`](./artbin-integration.md).
 
@@ -215,14 +215,15 @@ bringing the implementation into conformance.
 
 The application entrypoint is composition-only. The Vanilla-to-React shell translation is
 complete: React shell components are split into chrome, dialogs, workspace, status, and focused
-inspector panels. React renders all visible controls and presentation from narrow immutable stores;
-presenters publish snapshots and receive typed commands instead of creating nodes, querying
-controls, or mutating wrapper state. `EditorElements` is limited to explicit canvas, renderer
-overlay, focus, measurement, resize, and native-file refs. Focused adapters retain direct ownership
-only where a browser or renderer runtime requires it: canvas input and pixels, high-frequency lasso
-and transform-readout geometry within React-created overlay roots, pointer capture, measurement,
-file-input reset, document metadata, and WebMCP registration. Those seams are controller boundaries
-beneath the React shell, not a second UI framework.
+inspector panels. React renders all visible controls from typed snapshots and commands rather than
+presenters creating nodes, querying controls, or mutating wrapper state. `EditorElements` is limited
+to explicit canvas, renderer overlay, focus, measurement, resize, and native-file refs. Focused
+adapters retain direct ownership only where a browser or renderer runtime requires it: canvas input
+and pixels, high-frequency lasso and transform-readout geometry within React-created overlay roots,
+pointer capture, measurement, file-input reset, document metadata, and WebMCP registration. Those
+seams are controller boundaries beneath the React shell, not a second UI framework. Several
+presenters still receive broader application state than their domain requires; cleanup C2 owns that
+remaining dependency work.
 The resizable right inspector uses a compact Map, Entity, Face hierarchy: editable key/value data
 and face projection controls lead each view, while operation groups and asset browsers remain flat,
 dense, and separated by functional dividers instead of nested cards. The Face tab is a React-owned,
@@ -230,8 +231,7 @@ split workspace: a persistent tiled UV plane and always-visible projection contr
 virtualized material browser, while WAD and palette sources live under Map resources. UV camera
 movement is machine-local view state; projection gestures update locally on the next frame, publish
 bounded collaboration previews independently, and commit exactly one `EditorSession` transaction.
-The delivered behavior, ownership contract, and product-wide icon system are recorded in
-[`face-inspector-plan.md`](./face-inspector-plan.md).
+The stable UI and ownership contract lives in [`interface-system.md`](./interface-system.md).
 
 `EditorSession` is the singular transaction and history coordinator. Focused DOM-free domains own
 selection/view state, object transforms, topology, geometry/CSG, entities/materials, and
@@ -243,9 +243,9 @@ Document mutations, validation, derived queries, source parsing, and serializati
 DOM-free modules.
 
 Scene construction will become an assembler over focused solid, object-line, tool, entity, and
-diagnostic contributions so invalidation can rebuild only affected buffers. Presenters already
-receive narrow state, UI, collaborator, and callback dependencies from `EditorApplication`; an
-architecture check prevents a presenter from importing that composition container again. Physical
+diagnostic contributions so invalidation can rebuild only affected buffers. Presenter construction
+is centralized in `EditorApplication`, and an architecture check prevents presenters from importing
+that composition container; cleanup C2 will narrow the remaining state and command ports. Physical
 `viewport`, `scene`, `materials`, project/persistence, and core-domain subdirectories follow those
 ownership changes. The pinned behavior and architecture comparison is recorded in
 [`trenchbroom-conformance.md`](./trenchbroom-conformance.md).
@@ -606,7 +606,7 @@ implies the other.
 
 | Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | --------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Architecture hardening         | In progress | The Vanilla-to-React shell translation, Strict Mode roots, effect-free callback-ref lifetimes, React Query command state, narrow shell stores/ports, presenter dependency injection, composed viewport gesture routing, shared frame/camera runtime, domain modules, declarative runtime schemas, split document/CSS/TSX, and architecture gates are delivered; focused scene contributions remain                                                                                                                                                                                                                                              |
+| 1. Architecture hardening         | In progress | The Vanilla-to-React shell translation, Strict Mode roots, effect-free callback-ref lifetimes, React Query command state, typed shell snapshots/commands, centralized presenter composition, composed viewport gesture routing, shared frame/camera runtime, domain modules, declarative runtime schemas, split document/CSS/TSX, and architecture gates are delivered; presenter port narrowing, `EditorSession` composition, and focused scene contributions remain                                                                                                                                                                           |
 | 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -623,8 +623,7 @@ condition has not been met.
 ## Acceptance and regression gates
 
 `npm run check` is the required static, architecture, formatting, lint, type, unit, build, consumer,
-and package gate. Editor behavior is exercised by 71 Chromium scenarios in
-`tests/browser/editor.spec.ts`.
+and package gate. Browser behavior is exercised by the focused suites under `tests/browser`.
 
 Focused suites cover:
 

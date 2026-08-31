@@ -1,285 +1,141 @@
-# Collaboration architecture research
+# Collaboration contract
 
-Worldview remains a local-first solo editor. Collaboration is an optional mode around committed
-`EditorSession` transactions; it does not replace `.map` as the portable authoring format, require
-a network for ordinary editing, or move pointer, camera, preview, renderer, or asset state into a
-remote service.
+Worldview is a local-first solo editor with optional multiplayer. Collaboration wraps committed
+`EditorSession` transactions; it does not replace `.map`, make local editing network-dependent, or
+move pointer, preview, renderer, camera, or asset state into a remote service.
 
-This note records the current collaboration direction and implemented foundation. The editor ships
-the semantic operation layer, convergence buffer, offline outbox, multi-tab transport, and portable
-`MapCell` service. Public deployments expose rooms only for hosted maps authorized by short-lived
-tickets issued to 4orm-backed Worldview sessions. Game-inspired aliases and colored badges make
-each participant's active viewport and selection state visible.
+Public rooms belong only to authorized hosted maps. Local projects never contact the collaboration
+service. The broader hosted-project and permission model lives in
+[`server-side-projects.md`](./server-side-projects.md).
 
-## Reference systems
+## Authority and data flow
 
-- [Figma multiplayer](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/) informs
-  stable object IDs, property-granular conflicts, offline-generated identities, authoritative room
-  ordering, and personalized undo.
-- [Local-First Software](https://martin.kleppmann.com/papers/local-first.pdf) supplies the product
-  principle: the local copy remains primary and useful without the service.
-- [Yjs updates](https://docs.yjs.dev/api/document-updates),
-  [offline persistence](https://docs.yjs.dev/getting-started/allowing-offline-editing),
-  [awareness](https://docs.yjs.dev/getting-started/adding-awareness), and
-  [selective undo](https://docs.yjs.dev/api/undo-manager) are the first CRDT comparison target.
-- [Automerge](https://automerge.org/docs/reference/concepts/) is the second comparison target for
-  immutable snapshots, explicit conflicts, history, branching, and transport-independent offline
-  synchronization.
-- [WAD Together](https://github.com/Donitzo/wad-together) is the closest game-map-editor reference:
-  authoritative rooms, primitive operations and inverses, per-user undo, locally derived geometry,
-  and resources that remain local to each participant.
-- [tldraw sync-core](https://github.com/tldraw/tldraw/blob/main/packages/sync-core/DOCS.md) informs
-  optimistic record diffs, server validation, room/session separation, and distinct durable and
-  presence channels.
-- [celld](https://celld.dev/docs/) is the preferred room-runtime experiment: self-hosted Workers and
-  Durable Objects semantics, one named cell and private SQLite database per room, hibernating
-  WebSockets, and state replicated to an operator-owned object-storage bucket.
-
-These are behavior and architecture references. No implementation enters this MIT repository
-without a separate license review and provenance record. celld is Apache-2.0 licensed.
-
-## Runtime direction: portable Durable Object rooms
-
-The collaboration service will target the Cloudflare Workers and Durable Objects programming
-model, with celld as the preferred self-hosted runtime and workerd/Cloudflare as compatibility
-oracles and optional deployment targets. Client and package APIs must not expose celld-specific
-types or assume a particular hosting vendor.
-
-One hosted map is one named Durable Object/cell:
-
-```text
-map ID
-  └─ MapCell cell / Durable Object
-       ├─ private SQLite
-       │    ├─ canonical document, source, hash, and map version
-       │    ├─ named source checkpoints
-       │    ├─ operation receipts and a bounded operation ledger
-       │    └─ schema migrations
-       ├─ hibernatable client WebSockets
-       └─ in-memory derived document and connection cache
-```
-
-The MapCell is the hosted map's only document and source authority. It atomically persists an
-accepted operation, resulting document, source text, source hash, receipt, and next map version
-before acknowledging or broadcasting it. In-memory state is only
-a cache and must be reconstructible after hibernation, eviction, process restart, or node loss.
-
-Hosted source is bounded to 2 MiB and stored in SQLite with its parsed document and hash.
-Commercial/shareware resources,
-WADs, PAKs, palettes, sprites, sounds, compiled BSPs, and browser file handles never enter room
-storage. Participants resolve the project resource stack locally.
-
-celld uses an S3-compatible, Google Cloud Storage, or Azure Blob bucket as fleet authority and
-durability storage. Its current alpha has no local-filesystem mode, managed ingress, public TLS,
-user authentication, or hostile multi-tenant security boundary. Therefore:
-
-- local development uses an explicit test bucket or a local object store proven to implement the
-  required conditional writes;
-- public TLS, authentication, authorization, rate limits, and room-token validation live at the
-  application ingress;
-- the internal celld listener stays on a private network or encrypted overlay;
-- bucket credentials are fleet-root credentials and receive one narrowly scoped bucket/prefix;
-- production use waits for fault, upgrade, backup/restore, and security drills rather than relying
-  on alpha status or benchmark claims;
-- every room conformance fixture runs against workerd/Cloudflare-compatible local execution and
-  celld, with equivalent observable results.
-
-## Client and transaction boundary
-
-`EditorSession` remains the only local mutation coordinator. Solo mode has no collaboration
-dependency. Multiplayer mode adds a collaboration adapter after validation and at atomic commit:
+One hosted map has one named SQLite-backed `MapCell`. It is the only hosted source/document
+authority and atomically persists the accepted semantic operation, resulting source and document,
+hash, receipt, and next map version before acknowledgement or broadcast. In-memory state is a
+reconstructible cache.
 
 ```text
 visible control / WebMCP
-  → EditorSession command and preview
-  → validated local commit
-  → CollaborationOperation in local IndexedDB outbox
+  → EditorSession preview and validated local commit
+  → IndexedDB outbox
   → optimistic local presentation
-  → optional MapCell WebSocket
-  → persist, validate, order, acknowledge, broadcast
+  → ticketed MapCell WebSocket
+  → validate, persist, order, acknowledge, broadcast
 ```
 
-The durable unit is a semantic operation, not a `PointerEvent`, drag preview, React store update,
-GPU buffer, full replacement document, or raw canvas state. Each operation carries a globally
-unique operation/transaction ID, actor ID, base map version, target object revisions, schema
-version, label, and typed semantic edits. Application of an operation is deterministic and
-idempotent.
+Operations—not pointer events or replacement snapshots—are the durable unit. Each has globally
+unique operation/transaction and actor IDs, base map version, target object revisions, schema
+version, label, and typed edits. Application is deterministic and idempotent.
 
-Local maps and projects support an unbounded single-player offline workflow and never require a
-room. A hosted team map tolerates a short interruption without pausing editing: committed local
-operations enter the IndexedDB outbox and automatically reconcile against a fresh authoritative
-snapshot when connectivity returns inside a bounded grace window. The initial product window is 15
-minutes and is also bounded by encoded outbox bytes and operation count; the exact safety caps are
-configuration with tests, not protocol guarantees.
+Hosted source is bounded to 2 MiB. Commercial resources, WADs, PAKs, palettes, sprites, sounds,
+compiled BSPs, and browser handles never enter room storage. Participants resolve the project
+resource stack through the ordinary project services.
 
-A disconnected hosted tab with no local commits may reconnect at any time by adopting the latest
-room snapshot. A dirty hosted tab that exceeds any reconnect bound becomes an explicit local working
-copy. Its document and source remain editable and recoverable, while its stale outbox is quarantined
-from automatic room replay. Rejoining the hosted map is then an intentional action that first adopts
-the MapCell snapshot; the local copy can be retained or exported, but V0 does not promise an
-indefinite multi-master merge. Leaving multiplayer likewise produces an ordinary local `.map`
-working copy. There is never an independent hosted-source authority alongside the MapCell.
+## Durable edits, conflicts, and undo
 
-## Durable state versus presence
+Validated brush geometry is atomic for V0:
 
-Durable state contains only canonical semantic edits, ordering, acknowledgements, checkpoints, and
-conflict/audit records. Presence is an independent, lossy, non-historical channel for participant
-identity/color, cursor or pointer ray, active viewport/tool, selection IDs, camera pose, advisory
-object occupancy, drag previews, and follow/present state.
+- independent objects/properties merge normally;
+- same-brush geometry edits are accepted, rebased, rejected, or recorded as an explicit conflict
+  against the target revision rather than merged plane-by-plane;
+- delete/edit, clip/transform, ownership, and group restructuring use named domain rules;
+- every accepted result passes the same document and convex-brush checks as a solo commit.
 
-Presence is throttled and coalesced, does not enter SQLite, does not dirty `.map`, and disappears on
-disconnect. Durable operation frames may be batched for transport but retain transaction boundaries.
+Undo authors a conditional inverse operation for the participant's latest still-applicable
+transaction. It never rewinds the global room or restores a whole historical document over remote
+work. Partial or conflicting inversion is explicit.
 
-## Geometry and conflict policy
+`@jackharrhy/worldview-editor/core` owns semantic edits, validation/application, before/after diff,
+inverse derivation, and the ordered idempotent replica buffer. `@worldview/protocol` owns bounded
+wire schemas shared by the browser and service.
 
-Replica convergence alone does not guarantee valid convex geometry. For the first collaboration
-version, validated brush geometry is an atomic object-level value:
+## Presence and local responsiveness
 
-- independent edits to different brushes or properties merge normally;
-- concurrent edits to the same brush geometry do not merge plane-by-plane;
-- the room accepts, rebases, rejects, or records a same-brush conflict using base object revisions;
-- deletion versus edit, clip versus transform, and group restructuring have explicit domain rules;
-- every accepted result passes the same document and brush validation as a local commit.
+Presence is lossy, throttled, coalesced, and non-historical. It carries participant identity/color,
+pointer ray, viewport/tool, selections, camera, advisory occupancy, and sequenced gesture previews.
+It never enters SQLite, source, history, or the outbox and disappears on disconnect.
 
-Advisory presence can warn that another participant is editing a brush, but it is not a correctness
-lock. Later experiments may add leases or more granular geometry operations only with convergence,
-validity, and undo evidence.
+The initiating client renders its candidate immediately. Remote transform, face, topology, and
+creation previews use bounded semantic patches and participant-colored overlays. Network delay
+cannot delay local feedback, and a commit/cancel clears the matching preview.
 
-## Personalized undo
+## Offline policy
 
-Undo in a room commits a new inverse operation for the latest still-applicable transaction authored
-by that participant. It never rewinds the global room snapshot or blindly restores a historical
-whole document over remote work. Redo is derived from the state observed when undo occurred.
+- Local maps and projects remain fully editable offline for an unbounded duration.
+- A clean hosted tab may reconnect at any time by adopting the latest room snapshot.
+- A dirty hosted tab may reconcile only inside bounded elapsed-time, operation-count, and encoded-byte
+  limits. The intended initial time bound is 15 minutes.
+- Exceeding a bound creates a durable, editable local working copy and quarantines the stale outbox.
+  Rejoining intentionally adopts the authoritative MapCell snapshot; V0 does not promise indefinite
+  multi-master merge.
+- Leaving multiplayer retains an ordinary local `.map` working copy.
 
-Existing `HistoryEntry` before/after values and insertions are the starting material, but room undo
-also needs author/transaction IDs, stable target revisions, conditional inversion, and explicit
-partial/conflict results. Yjs selective origins and WAD Together's primitive inverses are research
-references; neither replaces Worldview's domain-aware rules.
+The operation/outbox foundation exists. Durable enforcement of every disconnect bound and the
+automatic quarantined-copy transition remain cleanup C7.
 
-## CRDT decision gate
+## Replication decision
 
-celld is not a CRDT and does not decide offline merge semantics. Before selecting Yjs, Automerge,
-or a custom operation/rebase layer, implement the same collaboration schema behind a replaceable
-port and measure it with the generated 8,000-brush fixture.
+The V0 engine is Worldview's semantic operation ledger. Yjs and Automerge were evaluated behind the
+same 8,000-brush/1,000-operation harness; celld is a room runtime, not a CRDT.
 
-The comparison must cover initial and incremental encoded size, IndexedDB/storage size, hydration,
-heap/Wasm memory, 1,000 committed operations, reconnect traffic, checkpoint/compaction cost,
-selective undo, explicit conflict inspection, and invalid-geometry prevention. Yjs is the first
-prototype because it supplies awareness, IndexedDB providers, transaction origins, and selective
-undo; Automerge remains a required comparison for offline history and inspectable conflicts.
+| Engine          | Initial bytes | Increment bytes | Initial encode | 1,000 edits |    Hydrate |
+| --------------- | ------------: | --------------: | -------------: | ----------: | ---------: |
+| Semantic ledger |    12,932,897 |       1,854,439 |        38.7 ms |      4.8 ms |    33.9 ms |
+| Yjs 13.6        |    11,716,868 |       1,674,510 |        61.7 ms |     16.5 ms |   100.5 ms |
+| Automerge 3.4   |       696,456 |       1,850,682 |    15,156.3 ms |  1,862.6 ms | 9,171.1 ms |
 
-## Bake-off result
+These are directional measurements from the development host, not general benchmarks. The semantic
+ledger won because it is cheap, inspectable, and validates domain conflicts before acceptance. Yjs
+remains the leading option if decentralized merge becomes a real product requirement; Automerge's
+cost did not fit this fixture.
 
-`npm run test:collaboration-bakeoff` runs the same generated 8,000-brush baseline and 1,000-operation
-ledger through plain semantic JSON, Yjs 13.6, and Automerge 3.4. The first checked run on the
-headless development host produced this directional result (timings vary by machine):
+Reference systems informing behavior are Figma multiplayer, Local-First Software, Yjs, Automerge,
+WAD Together, and tldraw sync-core. Their implementation does not enter this MIT repository without
+a separate license review.
 
-| Engine                    | Initial bytes | Increment bytes | Initial encode | 1,000 edits |    Hydrate |
-| ------------------------- | ------------: | --------------: | -------------: | ----------: | ---------: |
-| semantic operation ledger |    12,932,897 |       1,854,439 |        38.7 ms |      4.8 ms |    33.9 ms |
-| Yjs                       |    11,716,868 |       1,674,510 |        61.7 ms |     16.5 ms |   100.5 ms |
-| Automerge                 |       696,456 |       1,850,682 |    15,156.3 ms |  1,862.6 ms | 9,171.1 ms |
+## Runtime and deployment
 
-The fixture uses the editor's real six-face box brushes and encodes each complete brush as the atomic
-geometry value required by the conflict policy. The custom semantic ledger is the V0 collaboration
-engine. It is substantially easier to validate before acceptance, produces inspectable domain
-conflicts, and wins this workload's CPU envelope. Yjs remains the leading future option if
-decentralized peer merge becomes more important; its wire size is competitive. Automerge's compact
-baseline and inspectable conflicts are useful, but its current edit and hydration costs do not fit
-the editor's 8,000-brush target.
+`apps/collaboration-service` targets Workers/Durable Objects semantics and runs on Wrangler/workerd
+or celld 0.4.0. It provides one `MapCell` per map, private SQLite, RPC initialization/snapshot/submit,
+hibernating WebSockets, actor-bound sockets, persist-before-ack operations, and non-durable presence.
+Clients see no celld-specific types.
 
-## Implemented foundation
+Local celld development persists beneath `apps/collaboration-service/.celld/dev`:
 
-- `@jackharrhy/worldview-editor/core` exports typed semantic edits, atomic validation/application,
-  semantic before/after diffing, inverse edit derivation, and an ordered idempotent replica buffer.
-  The operation schema covers brush geometry, point-entity creation/deletion and properties, brush
-  entity creation/deletion, and brush ownership moves.
-- The seeded three-replica test covers delay, reverse ordering, and duplicate delivery. A geometry
-  policy test proves stale same-brush edits conflict atomically.
-- The editor app contains an opt-in `CollaborationController`: IndexedDB is written before
-  `BroadcastChannel` announcement, and server acknowledgement clears only its matching outbox row.
-  Its WebSocket client replays the outbox after room readiness, applies acknowledgements and remote
-  commits, keeps presence lossy, and reconnects with bounded exponential backoff.
-- Personalized undo is a new conditional inverse operation authored by the original participant;
-  applying it through the session bridge does not rewind remote history or create a second local
-  collaboration transaction.
-- `EditorApplication.joinCollaboration()` deliberately adopts the authoritative MapCell snapshot and
-  owns the bridge/socket lifetime; `leaveCollaboration()` disconnects them while retaining the
-  ordinary local document. Neither the constructor nor `start()` enables multiplayer implicitly.
-- Hosted maps join their assigned room with a short-lived signed ticket. Local maps do not contact
-  the map service and remain ordinary offline working copies. Presence carries colored selections, world-space
-  pointers, viewport/tool state, and sequenced gesture previews. Candidate documents are reduced to
-  bounded semantic edit patches and rendered as remote solid-and-wireframe overlays; they never enter room
-  history, source serialization, hit testing, SQLite, or the offline outbox. A durable commit or
-  cancellation clears its matching preview.
-- `apps/collaboration-service` is a Wrangler and celld-compatible Worker with one SQLite-backed
-  `MapCell` per map, generated binding types, RPC initialize/snapshot/submit methods, hibernating
-  WebSockets, persist-before-ack operations, actor-bound sockets, and non-durable presence.
-- Workers-runtime tests verify SQLite recovery after Durable Object eviction. `wrangler deploy
---dry-run` verifies the executable bundle without making a remote deployment.
+```sh
+npm run dev:collaboration:celld
+```
 
-Local development is pinned to celld 0.4.0. Run `npm run dev:collaboration:celld`; celld's local
-development mode rebuilds the Worker and persists its object store beneath
-`apps/collaboration-service/.celld/dev`, without Cloudflare credentials, Docker, or a remote bucket.
-The editor's unconfigured localhost endpoint is `http://127.0.0.1:8787`, matching this command.
-`npm run dev:collaboration` remains the workerd compatibility path through Wrangler.
+Newport runs one celld node with persistent loopback-only Azurite, an idempotent deployer bootstrap,
+and Traefik routing only for `/sync/maps/*`. The Worldview service mints short-lived signed map
+tickets after 4orm session and project-role authorization; the cell trusts the ticket principal and
+never client-supplied identity.
 
-The hosted-project layer protects public ingress without changing the semantic operation engine.
-4orm-backed Worldview sessions mint short-lived map tickets; the Worker rejects every non-hosted
-map and validates a ticket before routing a hosted connection to the cell. Hosted membership,
-personal folders, resources, and build metadata live outside the cell as
-described in [`server-side-projects.md`](./server-side-projects.md).
-`npm run test:collaboration-celld-compat` enforces celld's supported Wrangler-key and binding
-boundary locally. `npm run test:collaboration-celld-live` is the opt-in, infrastructure-backed gate:
-it starts or reuses loopback-only Azurite with a persistent Docker volume, creates an isolated test
-container, runs celld's conditional-write diagnostics, deploys the real Worker, submits a real
-WebSocket operation, kills celld with `SIGKILL`, deletes its local replica, and requires a clean
-node to recover the exact map version and brush from Azure Blob state. It requires Docker, celld,
-and the pinned Azurite image and intentionally remains outside the ordinary hermetic `check` gate.
-The supported self-hosted baseline is celld 0.4.0. Upgrades from a 0.3.x fleet require a complete
-fleet stop before starting 0.4.0 because their peer tunnel and large-value protocols cannot mix.
+This is a suitable small single-host deployment, not a qualified fleet. Remaining deployment work:
 
-Newport's initial public deployment deliberately uses a single celld 0.4.0 node and persistent
-Azurite on the same host. This is an availability tradeoff for a small, non-critical service, not a
-qualified production fleet: losing the host or its data volume can lose collaboration rooms.
-Traefik sends only `https://worldview.harrhy.xyz/sync/maps/*` to celld; its operator listener remains on
-loopback. The Worldview service and celld read the same realtime-ticket secret, and all routed room
-requests require a valid hosted-map ticket.
+- multi-node ownership handoff and split/failure behavior;
+- bucket throttling/outage and conditional-write drills;
+- backup/restore verification and documented recovery objectives;
+- upgrade drills and a qualified object store outside the same host failure domain;
+- ingress/security review for a hostile multi-tenant deployment.
 
-Newport's Compose stack runs the published `worldview-celld-deployer:main` target as a one-shot
-bootstrap after Azurite becomes healthy. It creates the fixed `worldview-celld` blob container when
-absent, runs celld's storage diagnostic, and commits the real collaboration Worker deployment before
-the long-running node starts. The same operation remains available from a clean Worldview checkout
-as `npm run deploy:collaboration:celld-azurite`. Back up both `worldview_azurite` and
-`worldview_celld`; moving to a qualified object store replaces the bootstrap storage environment
-without changing the Worker or browser protocol.
+Back up both `worldview_azurite` and `worldview_celld`. A future object-store adapter must not change
+the Worker or browser protocol.
 
-## Delivery experiments and gates
+## Verification
 
-1. **Done:** Define typed, deterministic, idempotent collaboration operations and domain conflict rules.
-2. **Foundation done:** Build a seeded three-replica simulator with delayed, duplicated, reordered, and disconnected
-   delivery; assert convergence, brush validity, unique IDs, personalized undo, and parseable save
-   output.
-3. **Done:** Add a local multi-tab `BroadcastChannel` transport and IndexedDB outbox with no server.
-4. **Foundation done:** Implement one `MapCell` Worker/Durable Object with SQLite, hibernatable WebSockets,
-   canonical source/document/hash transactions, checkpoints, schema migration, acknowledgements,
-   and ephemeral presence.
-5. **Done for the portable contract:** Run the room contract against local workerd/Cloudflare tooling and live celld with Azurite.
-6. **Single-node kill/restore done; fleet hardening pending:** Exercise multi-node ownership handoff, bucket
-   throttling/outage, kill -9, restore, rolling/stop-the-world upgrade policy, and backup recovery.
-7. **Authenticated hosted mode done:** Add automatic hosted-map join, leave-with-local-copy,
-   4orm-backed identity and roles, connection state, participant names, colored selections and
-   pointers, live transform/face/topology/creation previews, and conflict feedback. Local maps stay
-   accountless and never contact the service.
-8. **Done for V0:** Select the replication engine only after the Yjs/Automerge/custom-operation bake-off and fixed
-   real-map performance gates pass.
-9. **Pending product hardening:** Bound dirty hosted reconnection by elapsed time, encoded outbox
-   bytes, and operation count; transition exceeded sessions into an explicit local working copy and
-   provide deterministic conflict/rejoin UI. Unbounded single-player local editing remains
-   unaffected.
+```sh
+npm run test:collaboration-bakeoff
+npm run test:collaboration-celld-compat
+npm run test:collaboration-celld-live
+```
 
-Collaboration is not delivered until ordinary solo editing remains fully functional with the
-collaboration service absent, short-disconnect hosted commits survive a restart and reconcile within
-their documented bounds, detached dirty work survives as a local copy, connected replicas converge,
-accepted geometry is valid, personalized undo preserves remote work, and room state can be exported
-to a portable source-safe `.map`.
+The live gate starts/reuses loopback Azurite, deploys the real Worker through celld, submits a real
+WebSocket operation, kills celld, deletes local replica state, and requires recovery from blob
+storage. It remains opt-in because it needs Docker and host infrastructure.
+
+Collaboration is dependable only while solo editing works with the service absent, short dirty
+disconnects survive restart and reconcile within their bounds, detached work survives locally,
+connected replicas converge, accepted geometry stays valid, personalized undo preserves remote
+work, and room state exports to source-safe `.map`.

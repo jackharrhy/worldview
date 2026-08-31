@@ -1,223 +1,120 @@
-# TrenchBroom source-view conformance notes
+# TrenchBroom source-view conformance
 
-This note records behavior and architecture research against TrenchBroom commit
+This is a behavior and architecture comparison against TrenchBroom commit
 [`a4ec188`](https://github.com/TrenchBroom/TrenchBroom/tree/a4ec1886bf997ff73a18b2bf3d54e32c2020ce2a).
-TrenchBroom is GPL software: it is a behavior and ownership oracle only. No implementation code is
-adapted into Worldview's MIT sources.
+TrenchBroom is GPL software: it is an oracle only. No implementation code or artwork is adapted into
+Worldview's MIT sources.
 
-## Rendering policy
+[`editor-capabilities.md`](./editor-capabilities.md) describes all current behavior. This file keeps
+only the TrenchBroom-derived defaults, intentional differences, and open conformance work.
 
-TrenchBroom separates render policy from brush drawing. Its 2D map views select a 2D render mode,
-its perspective view selects a 3D render mode, and the render context resolves those modes to the
-following defaults:
+## Rendering defaults
 
-| View        | Material faces | Brush edges | Grid and tool overlays |
-| ----------- | -------------- | ----------- | ---------------------- |
-| Perspective | Yes            | Yes         | Yes                    |
-| XY, XZ, YZ  | No             | Yes         | Yes                    |
+| View             | Faces    | Edges | Grid/tools |
+| ---------------- | -------- | ----- | ---------- |
+| Perspective      | Textured | Yes   | Yes        |
+| Top, Front, Side | No fill  | Yes   | Yes        |
 
-Worldview now follows that default. Solid material batches are submitted only in the perspective
-viewport; orthographic panes draw the shared projected edge buffer and their own grid/tool overlays.
-A future view preference may make faces configurable, but the default stays wireframe.
+Worldview matches TrenchBroom's default balanced 2×2 layout: Perspective upper-left, Top upper-right,
+Front lower-left, and Side lower-right. Row, column, inspector, and intersection splitters are
+resizable; Perspective can expand alone and hidden panes stop encoding passes.
 
-The editable renderer now shares the viewer's native TypeGPU architecture: authored TypeScript GPU
-functions and typed schemas own shaders, layouts, pipelines, uniforms, textures, samplers, and bind
-groups. Command encoding and large retained vertex uploads intentionally remain at the raw WebGPU
-boundary. The first visual-quality pass on that foundation now uses four-sample render targets,
-screen-space triangle strips for consistent editor edges, and a derivative-antialiased orthographic
-grid generated in the fragment shader. Grid, ordinary geometry, and interaction overlays use
-separate screen-space widths: perspective grid lines remain fine at every camera distance while
-selection feedback stays prominent. Segments are clipped against the near plane before expansion so
-crossing the perspective grid cannot turn a sub-pixel line into a viewport-sized quad. The grid
-preserves the selected snap interval and promotes its visible interval by powers of two when zoomed
-out, keeping geometry aligned while preventing dense-grid shimmer.
+Native TypeGPU implements the equivalent browser renderer boundary: typed shaders/resources and
+pipelines, with raw WebGPU limited to command encoding and bulk buffer upload. Rendering is
+invalidation-driven and continues frame-to-frame only while fly input or animated materials require
+it. World, overlay, and viewport work is submitted once per editor frame.
 
-### Visual selection audit
+| Visual behavior                                                            | Status                       |
+| -------------------------------------------------------------------------- | ---------------------------- |
+| Fine perspective grid at every camera distance                             | Matched                      |
+| Major/minor 2D grid hierarchy                                              | Matched                      |
+| X/Y/Z origin axes in perspective and visible 2D pairs                      | Matched                      |
+| Red selected-object tint and always-visible occluded outline               | Matched                      |
+| Amber active-face border while the rest of the object remains selected     | Matched                      |
+| Participant-colored remote tint, outline, cursor, camera, and live preview | Matched, Worldview extension |
+| Infinite selected/hovered face grid guides                                 | Matched                      |
+| Entity-definition colors and reference geometry                            | Matched in purpose           |
 
-| TrenchBroom convention                                 | Worldview status |
-| ------------------------------------------------------ | ---------------- |
-| Selected object edges remain red                       | Matched          |
-| Prospective face perimeter overlays the red brush edge | Matched          |
-| Selected 3D faces receive a subtle tint                | Open             |
-| Locked objects use blue edges and tint                 | Matched          |
-| Hovered selection bounds show corner spikes            | Matched          |
-| Selected bounds show viewport dimensions               | Partial          |
-| World coordinate axes span each viewport               | Matched          |
-| XYZ compass appears in each viewport                   | Open             |
+Worldview's source renderer retains world solids and structural edges separately from selection,
+hover, face, group, entity-link, diagnostic, tool, and collaboration overlays. Its implementation is
+original; TrenchBroom's allocation tracker is not copied.
 
-The prospective face overlay does not replace or recolor its material or projected grid. It is
-submitted after the selected brush wireframe so its amber perimeter wins on coincident edges while
-all other edges remain red.
+## Camera and layout
 
-In the perspective viewport, hovering any object in the current object selection adds the combined
-selection bounds and 24 outward axis guides: three from each corner. The guides remain at full
-selection color for most of their length and then fade into the active viewport background. They
-are omitted from orthographic panes, whose continuous construction grid already provides the same
-spatial reference. This behavior was reconfirmed against TrenchBroom commit
-[`b19dad0`](https://github.com/TrenchBroom/TrenchBroom/tree/b19dad059dc6db517c8505ddfffc8f7e24fa1d36).
+| Interaction                                        | Status  |
+| -------------------------------------------------- | ------- |
+| Orthographic pointer-centered wheel zoom           | Matched |
+| Linked 2D pan and zoom                             | Matched |
+| Perspective right-drag look                        | Matched |
+| Alt-right orbit around hit/fallback pivot          | Matched |
+| Perspective middle-drag pan                        | Matched |
+| Perspective wheel travel                           | Matched |
+| Shift-wheel field of view                          | Matched |
+| Wheel during look changes fly speed                | Matched |
+| First fly key prevents a large delta-time jump     | Matched |
+| Pointer transfer between already-focused viewports | Matched |
+| Fast/slow fly modifiers                            | Open    |
+| Alternate vertical middle-drag mode                | Open    |
 
-The default dark wireframe palette follows the same contrast hierarchy as TrenchBroom's current
-preferences: a 38/255 neutral background, 0.9 ordinary brush edges, red selected edges, blue locked
-edges, and subordinate minor/major grids. Worldview retains entity-definition colors, cyan
-reference geometry, and yellow hover feedback so different semantic object kinds remain legible.
-TrenchBroom spans its configured world bounds with X, Y, and Z coordinate lines and limits 2D views
-to their visible pair. Worldview matches that behavior with an original static TypeGPU line buffer:
-Perspective renders all three axes, while Top, Front, and Side render XY, XZ, and YZ respectively.
-The axis colors come from the same theme roles used by transform affordances.
+Open camera behavior belongs in the focused camera controller, not in a global viewport event
+branch. Viewport cameras and expanded-pane state persist per map as machine-local preferences.
 
-TrenchBroom's render views request repaints after input, resource, document, and view changes. They
-do not run a permanent idle frame loop. Its perspective view requests the next frame only while fly
-keys remain down. Worldview now uses the same scheduling contract: invalidations coalesce into one
-animation frame, and the renderer reports whether active fly input requires another.
+## Selection and manipulation
 
-TrenchBroom's `BrushRenderer` keeps per-brush allocation records, invalidates individual brushes or
-materials, and prepares shared vertex/index arrays through dirty-range-tracked VBO holders before a
-render batch draws them. Worldview does not copy that GPL implementation. Its WebGPU analogue keeps
-immutable brush derivations, material-and-spatial-cell solid batches, structural signatures, and
-unchanged GPU buffers across document revisions. Scene updates encode every invalidated viewport
-pass into one command buffer and submit once. This retains the simple per-viewport render policy
-while avoiding four queue submissions for an ordinary shared-scene update.
+| Interaction                                     | Status                        |
+| ----------------------------------------------- | ----------------------------- |
+| Click object; click void to clear               | Matched                       |
+| Orthographic smallest-visible-face picking      | Matched                       |
+| Empty drag creates a brush in the default tool  | Matched                       |
+| Add/toggle, paint, lasso, and face selection    | Matched                       |
+| Object and face candidate drilling              | Matched with wheel vocabulary |
+| Brush-entity sibling expansion                  | Matched                       |
+| Selected-object movement and duplicate movement | Matched                       |
+| Selected-brush face priority for resize/extrude | Matched                       |
+| Multi-brush face extrusion                      | Matched                       |
+| Creation and manipulation snap to active grid   | Matched                       |
+| Number keys/brackets select grid size           | Matched                       |
+| Snap selected brushes or face vertices          | Matched                       |
+| Duplicate-and-move completion flash             | Partial                       |
+| User-configurable shortcuts                     | Deferred                      |
 
-Worldview also follows the static/dynamic distinction without adopting TrenchBroom's allocation
-tracker: ordinary, locked, and reference world edges live in a retained buffer, while selection,
-hover, active-face, group, entity-link, diagnostic, and tool feedback use a compact overlay buffer
-drawn afterward. Immutable document identity memoizes entity-link anchors. Selection-only changes
-therefore neither regenerate world-edge vertices nor walk every brush to rediscover entity links;
-document edits still rebuild edges but preserve unchanged spatial solid batches.
+Perspective object picking remains depth-ordered. Orthographic picking collects editable candidates
+under the pointer and prefers the smallest projected face or point-entity bounds, using depth only
+as a tie-breaker. This makes a small brush behind a wall directly selectable without changing the
+geometric hit policy of clip, hull, face, or topology tools.
 
-## Camera behavior
+Modifier-wheel cycles the ordered object candidates in either direction; an additional modifier
+cycles depth-ordered faces. This combines TrenchBroom's reversible object drilling with Radiant's
+explicit face/orthographic cycling into one browser-safe vocabulary.
 
-The current camera interactions conform closely:
+Resize and extrusion resolve faces from the current brush selection before considering unrelated
+geometry. A direct selected face wins first, followed by a near-silhouette selected face. A closer
+unselected brush cannot steal the gesture.
 
-| Interaction                | TrenchBroom behavior                             | Worldview status |
-| -------------------------- | ------------------------------------------------ | ---------------- |
-| Orthographic wheel         | Zoom around the cursor's world point             | Matched          |
-| Orthographic linked zoom   | Keep the same zoom across visible 2D panes       | Matched          |
-| Orthographic linked pan    | Share the axes common to visible 2D panes        | Matched          |
-| Perspective right drag     | Look while preserving the camera eye             | Matched          |
-| Perspective Alt-right drag | Orbit around a hit point, with a fallback pivot  | Matched          |
-| Perspective middle drag    | Pan on the camera plane                          | Matched          |
-| Perspective wheel          | Move forward/back                                | Matched          |
-| Perspective Shift-wheel    | Change field of view                             | Matched          |
-| Wheel while looking        | Change fly speed                                 | Matched          |
-| First fly key              | Reset the frame timer to prevent a movement jump | Matched          |
-| Focus follows pointer      | Transfer focus after a viewport was focused      | Matched          |
+## Controller translation
 
-TrenchBroom also applies fast/slow modifiers to keyboard fly motion and offers an alternate vertical
-middle-drag behavior. Those are useful follow-ups, but they should enter through the focused camera
-controller rather than adding more branches to the inherited viewport implementation.
+TrenchBroom's useful architectural lesson is singular gesture ownership, not its desktop class
+layout. Worldview implements an original ordered `ViewportGestureRouter`:
 
-Viewport focus also follows TrenchBroom's pointer policy: after any source viewport receives focus,
-crossing into another source viewport transfers keyboard focus there. Merely hovering the editor
-from an inspector or dialog does not steal focus.
+1. The viewport surface owns canvas, camera, projection, GPU targets, and render policy.
+2. The router owns at most one pointer/modifier tracker.
+3. Focused camera, selection, transform, topology, face, clip, hull, sweep, creation, and placement
+   controllers accept typed input in priority order.
+4. The accepting tracker exclusively owns update, commit, and cancel.
+5. `EditorSession` remains the only document/history commit authority; render resources remain
+   outside gesture controllers.
 
-The four-view workspace matches TrenchBroom's default balanced 2×2 arrangement: Perspective is
-upper-left, Top upper-right, Front lower-left, and Side lower-right. The shared row and column
-boundaries and the inspector boundary have visible-on-interaction drag targets, keyboard arrow
-support, and minimum-size constraints.
+## Remaining conformance and structural work
 
-### Selection and manipulation audit
+| Work                                                                                                 | Owner                            |
+| ---------------------------------------------------------------------------------------------------- | -------------------------------- |
+| Fast/slow fly modifiers and optional vertical pan                                                    | Camera controller                |
+| Duplicate-move completion feedback                                                                   | Selection/transform presentation |
+| Context-aware shortcut preferences                                                                   | Future input preference system   |
+| Replace viewport-host inheritance and mode-specific forwarding with focused composition              | Cleanup C2/C3                    |
+| Turn `scene-buffers.ts` into retained world/selection/tool/diagnostic/remote contributions           | Cleanup C4                       |
+| Separate `source-renderer.ts` lifecycle, spatial queries, viewport hosting, and interaction adapters | Cleanup C4/C11                   |
 
-| Interaction                                    | Worldview status |
-| ---------------------------------------------- | ---------------- |
-| Click object; click void to clear              | Matched          |
-| 2D smallest-visible-face object picking        | Matched          |
-| Drag with an empty selection to create a shape | Matched          |
-| Modifier-click adds or removes objects         | Matched          |
-| Modifier-click selects a face in perspective   | Matched          |
-| Modifier-double-click selects all brush faces  | Matched          |
-| Paint/lasso object and face selection          | Matched          |
-| Selection drilling beneath the pointer         | Matched          |
-| Drag selected objects on the viewport plane    | Matched          |
-| Vertical modifier-drag in perspective          | Matched          |
-| Near-silhouette selected-face acquisition      | Matched          |
-| Selected-brush face priority during resize     | Matched          |
-| Creation bounds align to the active grid       | Matched          |
-| Number keys select power-of-two grid sizes     | Matched          |
-| Brackets step the active grid size             | Matched          |
-| Snap selected brush/face vertices to grid      | Matched          |
-| Duplicate-and-move feedback flash              | Partial          |
-| Configurable keyboard shortcut preferences     | Deferred         |
-
-Worldview keeps browser-safe fixed shortcuts for now. A future shortcut preference surface must
-resolve conflicts by viewport/tool context rather than adding global window handlers.
-
-Grid input follows Radiant's established construction cadence: number keys 1 through 9 select
-1 through 256 unit power-of-two grids, and `[` / `]` step down or up. TrenchBroom's current grid
-model uses the same power-of-two sizes and snaps brush drawing to the active grid. Worldview snaps
-both visible drag endpoints and the orthographic view's implicit depth, including depth inherited
-from an existing selection. Its explicit Snap to grid command applies to every vertex of selected
-brushes, or only the selected face vertices in face mode; convex validation runs before one
-undoable transaction is committed.
-
-The permanent resize gesture resolves faces only from the current brush selection before it
-considers unrelated geometry under the pointer. A directly hit face on a selected brush wins first;
-near a selected silhouette, the inferred front/back face wins next. A neighboring unselected brush
-cannot steal that resize merely because its surface is closer to the camera. This follows
-TrenchBroom's resize contract and Radiant's older wording: the face nearest the cursor belongs to
-the currently selected brush.
-
-Ordinary object picking intentionally differs by viewport. Perspective keeps ray-depth ordering,
-so the frontmost object wins. XY, XZ, and YZ first
-collect every editable object under the pointer, then choose the object whose hit face has the
-smallest projected area; point entities fall back to projected bounds. Equal areas retain depth as
-the tie-breaker. This makes a small brush behind a wall selectable from an orthographic view without
-changing geometric hit rules for clip, hull, face, or topology tools.
-
-Ctrl/Command-wheel drills through the complete object candidate order in either direction and wraps
-in every viewport; Shift+Ctrl/Command-wheel drills through depth-ordered face candidates. TrenchBroom
-provides reversible object drilling with Ctrl+wheel and its 2D smallest-area heuristic. GtkRadiant's
-Shift+Alt click cycling confirms the value of an explicit orthographic drill gesture. Worldview uses
-one wheel-based vocabulary for objects and faces rather than stateful repeated clicks. These GPL
-projects informed behavior only; their implementations were not adapted.
-
-## Controller ownership
-
-TrenchBroom builds an ordered chain of focused tool controllers for each view. A controller may
-accept an input and return a gesture tracker. One toolbox owns the active tracker and routes its
-update, end, cancel, scroll, and modifier lifecycle. GPU scene ownership and gesture ownership do
-not overlap.
-
-Worldview now has an ordered `ViewportGestureRouter` and focused camera, clip, hull, face-transfer,
-topology, transform, sweep, face, creation, entity-placement, and selection controllers. The first
-accepting controller owns the live `PointerDrag` tracker through update, commit, or cancel, and the
-router rejects a second pointer while that tracker is active. GPU scene ownership remains outside
-the controller chain.
-
-The delivered routing boundary is composition:
-
-1. The viewport surface layer owns the canvas, camera state, projection, GPU targets, and render
-   policy.
-2. `ViewportGestureRouter` owns at most one active tracker and the pointer/modifier lifecycle.
-3. An ordered controller chain accepts typed input: camera, selection/move, transforms, topology,
-   face/material, clipping, hull/shape, and sweep.
-4. Each accepted tracker owns its mode classification and mutable drag state and implements the
-   routed update, commit, and cancel lifecycle.
-5. Scene and material resources remain outside those controllers.
-
-The existing viewport host files still separate hit testing and mode-specific movement math through
-an inheritance chain. That is physical source-layout debt, not gesture ownership: new routing modes
-must enter through the ordered controller factory, and the architecture tests cover ordering,
-single-pointer ownership, and lifecycle behavior. Extracting those host calculations can proceed
-without changing the public gesture boundary.
-
-## Renderer and application debt
-
-The 2026-08-26 thermonuclear pass found four related structural issues:
-
-- `source-renderer.ts` still combines scene state, spatial queries, viewport interaction adapters,
-  and viewport construction. Material GPU ownership has moved to `SourceMaterialResources`; the
-  next extraction must own interaction policy rather than merely forward methods.
-- `scene-buffers.ts` combines solids, object lines, tool overlays, entity overlays, links, bounds,
-  and diagnostics. It should become an assembler over independent scene contributions so a change
-  invalidates only the affected buffers, like TrenchBroom's focused renderer invalidation.
-- Presenter service-locator coupling is removed. `EditorApplication` is the composition root and
-  injects state, UI, focused collaborators, and callbacks; presenter imports of the container are
-  rejected by the architecture gate.
-- `apps/editor/src`, `core`, and `render` have 36, 45, and 18 top-level source files respectively.
-  Subdirectories should follow the ownership changes above (`viewport`, `scene`, `materials`,
-  project/persistence, and focused core domains), not serve as cosmetic buckets around the same
-  coupling.
-
-The architecture gate now covers the per-file ceiling and presenter/container boundary. It should
-grow with scene ownership work to reject dependency cycles and renewed top-level fanout.
+New conformance work must record the reference behavior and commit, implement an original
+license-compatible design, and add focused tests. A matching screenshot alone is not evidence of a
+sound ownership boundary.

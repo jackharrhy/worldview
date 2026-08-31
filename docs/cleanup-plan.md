@@ -1,649 +1,206 @@
-# Worldview cleanup plan
+# Worldview cleanup backlog
 
-This is the canonical execution plan for structural cleanup identified by the August 2026
-architecture review. [`plan.md`](./plan.md) remains the authority for product scope and intended
-architecture; this document records the ordered work needed to make the implementation match that
-architecture. If the two disagree, stop and update both documents as part of the same change.
+This is the canonical backlog for structural cleanup. [`plan.md`](./plan.md) owns product scope and
+architecture; this file contains only unfinished cleanup, ordering, and acceptance criteria. Current
+editor behavior belongs in [`editor-capabilities.md`](./editor-capabilities.md), not in completion
+diaries here.
 
-The cleanup is not a rewrite. Worldview's package boundaries, editor/viewer split, source-authoring
-model, transaction ownership, and native TypeGPU direction are sound. The work below tightens
-lifetime, UI, state, and rendering ownership before more features make those seams harder to
-recover.
+## Rules
 
-## How to use this plan
+- Select the first `ready` item unless the user chooses another.
+- Keep one structural workstream `in progress` at a time.
+- Preserve the editor/viewer split, DOM-free core packages, `EditorSession` as the sole document and
+  history authority, React-owned application DOM, and native TypeGPU boundaries.
+- Prefer focused domain interfaces over event buses, service locators, universal caches, or cosmetic
+  file moves.
+- This project is pre-release. Change internal contracts atomically instead of adding legacy shims.
+- Mark work complete only when its acceptance criteria and focused verification pass. Git history
+  records the implementation narrative; this file records the resulting state.
 
-An agent taking cleanup work must:
+## Completed foundations
 
-1. Read `AGENTS.md`, [`plan.md`](./plan.md), and this document before editing.
-2. Select the first `ready` workstream unless the user explicitly chooses another.
-3. Change its status to `in progress` before a substantial implementation begins.
-4. Keep the slice behavior-preserving unless its acceptance criteria explicitly say otherwise.
-5. Run the focused tests for the changed domain and the architecture checks before marking it
-   `complete`.
-6. Record the verification commands and any intentionally deferred follow-up in this document.
+| ID  | Result                                                                                                                                                                                                                                             |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C0  | One abort-owned editor lifetime disposes renderer, WebMCP, recovery, collaboration, listeners, and interrupted startup safely.                                                                                                                     |
+| C1  | React owns visible editor DOM through typed snapshots and commands. Runtime refs are limited to canvases, overlays, focus, measurement, resize, and native file boundaries. React Aria Components and the semantic Phosphor registry are enforced. |
+| C6  | Zod 4 schemas own project, document, collaboration, ticket, hosted wire, compiler, persistence, walkability, and WebMCP ingress. `@worldview/protocol` is the shared browser/service wire contract.                                                |
 
-Statuses are `ready`, `blocked`, `in progress`, and `complete`. Only one structural workstream should
-normally be `in progress`; narrowly independent test or documentation work may proceed alongside it.
+These are invariants, not future work. Their focused tests and architecture checks must remain green.
 
-## Invariants
+## Active order
 
-- Do not merge the editable-source renderer with the compiled BSP viewer renderer. They have
-  different data lifetimes, interaction requirements, and frame inputs.
-- Preserve the DOM-free core boundaries and public package entrypoints described in `AGENTS.md` and
-  [`plan.md`](./plan.md#workspace-and-dependency-boundaries).
-- Keep `EditorSession` as the singular transaction and history authority. Composition may replace
-  inheritance, but competing mutation or undo authorities must not be introduced.
-- Keep React out of the editor and viewer packages. React owns application DOM; package renderers and
-  controllers expose typed state and imperative canvas/runtime ports.
-- Keep native TypeGPU as the GPU resource and pipeline boundary. Raw WebGPU remains limited to the
-  deliberate command-encoding and bulk-upload seams documented in the product plan.
-- Treat route isolation and startup work as the bundle-performance boundary. The public home route
-  must not load the editor, renderer, WebMCP, compiler, collaboration, or editor asset graph. Once a
-  person chooses the editor, a substantial authoring bundle is expected; track its size and startup
-  cost, but do not trade clarity or useful capability for an arbitrary small-chunk target.
-- Prefer explicit domain interfaces and data structures over generic event buses, service locators,
-  dependency-injection frameworks, or universal caches.
-- Do not introduce compatibility shims for the pre-cleanup internal architecture. This is an
-  unstable new project, so callers and tests may change atomically.
-- A workstream is not complete merely because code moved into more files. Ownership, dependencies,
-  and acceptance criteria must improve measurably.
-
-## Current assessment
-
-The strongest foundations are:
-
-- The viewer and editor use public package boundaries for genuinely shared runtime and core code.
-- GPU-independent core directories remain free of DOM, WebGPU, and TypeGPU imports.
-- Editable source rendering and compiled BSP rendering are correctly separate.
-- The TypeGPU hot path already uses typed resources, retained batches, frustum rejection, on-demand
-  scheduling, and one editor command encoder/submission per frame.
-- Singular transaction/history ownership is the right semantic model.
-- Existing architecture checks prevent several important regressions.
-
-The primary liabilities are:
-
-- The editor route creates a long-lived application without a complete teardown path.
-- Presenter files are smaller than the old application entrypoint and now have narrow React/runtime
-  dependencies, but they still share broad mutable `EditorState` access.
-- `EditorSession` behaves as one large inherited class spread over several files.
-- Editor scene invalidation is expressed through positional inputs and reuse booleans rather than
-  independently cached scene contributions.
-- The compiled-preview dynamic import is defeated by static imports from the same package root.
-- Project manifests, collaboration frames, persisted browser records, WebMCP inputs, and hosted API
-  payloads repeat handwritten `isRecord`/primitive narrowing instead of sharing declarative runtime
-  schemas.
-- IndexedDB mechanics, hosted service routing, and large test suites need smaller explicit
-  boundaries.
-
-## Workstream order
-
-| ID  | Priority | Status   | Workstream                             | Depends on                  |
-| --- | -------- | -------- | -------------------------------------- | --------------------------- |
-| C0  | P0       | complete | Editor lifetime and teardown           | —                           |
-| C1  | P0       | complete | React DOM ownership boundary           | C0 cleanup conventions      |
-| C2  | P1       | ready    | Presenter state and command boundaries | C1 snapshot conventions     |
-| C3  | P1       | ready    | `EditorSession` composition            | C2 command boundaries       |
-| C4  | P1       | ready    | Retained scene contributions           | C2 state boundaries         |
-| C5  | P2       | ready    | Route isolation and optional loading   | —                           |
-| C6  | P1       | complete | Declarative runtime schemas            | —                           |
-| C7  | P2       | ready    | IndexedDB infrastructure with `idb`    | C6 persisted-record schemas |
-| C8  | P2       | ready    | Test-suite decomposition               | Follow changed domains      |
-| C9  | P2       | ready    | Viewer renderer decomposition          | C5 shared-runtime decision  |
-| C10 | P2       | ready    | Hosted service handler boundaries      | C6 hosted wire schemas      |
-| C11 | P2       | ready    | Broaden architecture enforcement       | C0–C10 conventions          |
-
-Dependencies describe the preferred design order, not a reason to create giant pull requests. C0,
-C5, and C6 can be delivered as independent, reviewable changes.
-
-## Initial focus — collaboration consistency
-
-The first cleanup program applies the workstreams to multiplayer before broad editor decomposition.
-This keeps the Figma-like experience coherent while making solo editing strictly independent of the
-network:
-
-1. Complete C0 so route teardown, interrupted startup, and leave/rejoin release every collaboration
-   and GPU lifetime.
-2. Apply C6 to project, collaboration, ticket, and hosted wire boundaries using shared Zod schemas.
-3. Apply C7 to the collaboration outbox first, including durable reconnect timing/size metadata and
-   quarantined local-copy recovery.
-4. Apply the collaboration slice of C2: one owner for the explicit `solo`/connect/live/reconnect/
-   detach/conflict/leave state machine, with transport and UI depending on its snapshots and
-   commands.
-5. Apply C4 to remote presence and gesture previews as independently retained, lossy renderer
-   contributions that never enter document or history state.
-6. Apply C1 with React Aria to participant, connection, conflict, and rejoin UI while keeping the
-   collaboration domain outside React.
-7. Apply C8's generated convergence, reordering, hibernation, bounded reconnect, and detachment
-   properties before continuing the broad presenter/session cleanup.
-
-Completing one focused slice does not mark its entire parent workstream complete. Record partial
-delivery in the completion log until every acceptance criterion for that workstream is satisfied.
-
-## C0 — Editor lifetime and teardown
-
-**Problem:** [`editor-route.tsx`](../apps/editor/src/routes/editor-route.tsx) starts an
-`EditorApplication` from a React callback ref but does not release it when the ref detaches. Global
-input handlers, document recovery listeners, collaboration subscriptions/timers, asynchronous
-startup, and renderer resources can outlive the route. The viewer controller already has a useful
-generation-and-cleanup model.
-
-**Target:** Mounting and unmounting an editor creates and destroys exactly one isolated application
-lifetime. Late asynchronous completion cannot revive or mutate a disposed instance.
-
-**Implementation direction:**
-
-- Add an idempotent `EditorApplication.dispose()`.
-- Give startup a generation token or shared `AbortSignal` so a detached route invalidates unfinished
-  work.
-- Make every subsystem connection return a cleanup function or register with the application-owned
-  abort signal.
-- Dispose collaboration subscriptions, intervals, animation frames, document/page listeners,
-  recovery hooks, presenter listeners, and renderer resources.
-- Have the editor callback ref return cleanup, following the viewer controller's established shape.
-- Remove the document-level ready marker on teardown if the disposed application owns it.
-
-**Acceptance criteria:**
-
-- Repeated route mount/unmount cycles do not increase registered listeners, active timers, live
-  collaboration connections, or GPU runtimes.
-- Unmounting during asynchronous startup causes no late UI, document, or readiness mutation.
-- `dispose()` is safe before, during, and after successful startup and is safe to call twice.
-- Browser coverage exercises at least two editor mount/unmount cycles and a teardown during startup.
-- Existing editor loading, local map, hosted map, and collaboration tests continue to pass.
-
-## C1 — React DOM ownership boundary
-
-**Problem:** [`plan.md`](./plan.md#editor-architecture) says visible DOM is React-owned while focused
-presenters still construct and mutate materials, entity, organization, tool, context-menu, and
-dialog UI. `EditorElements` is therefore both a stable-ref boundary and a broad DOM service locator.
-The architecture gate rejects HTML-string injection but does not reject most imperative UI.
-
-**Target:** React owns every user-visible node and property. Imperative code owns canvas/runtime
-behavior and communicates through typed commands and immutable snapshots.
-
-**Dependency decision:** Adopt
-[`react-aria-components`](https://react-spectrum.adobe.com/react-aria/) for
-conventional interactive mechanics such as menus, dialogs, tabs, listboxes, tooltips, and keyboard
-navigation. It supplies behavior and accessibility, not Worldview's visual design. Keep the existing
-theme variables, component styling, dense editor layout, canvas input, and domain state; do not
-adopt React Spectrum styling or wrap every native element without a behavioral reason.
-
-**Design direction:** Treat the editor as a dense desktop instrument with geometric two-pixel
-controls, cool neutral surfaces, one restrained accent, crisp focus treatment, inset fields, and
-compact menus with stable icon/label/shortcut columns. Worldview owns this appearance in native CSS;
-React Aria owns semantics and interaction behavior. The exact variants, states, density rules, and
-rollout live in [`interface-system.md`](./interface-system.md).
-
-The Face inspector and material browser are a named C1/C2 implementation program. Their full
-behavior, typed ownership boundaries, application-wide icon migration, delivery slices, and
-verification gates live in [`face-inspector-plan.md`](./face-inspector-plan.md). Do not treat the
-Face tab as an isolated cosmetic rewrite: it is complete only after the imperative material DOM and
-broad pointer-move presentation path are removed and the shared icon contract has converged across
-the browser product.
-
-**Implementation direction:**
-
-- Inventory each `document.createElement`, visible `textContent`, `classList`, style, attribute, and
-  ARIA mutation under `apps/editor/src`.
-- Classify the use as visible UI, canvas/runtime integration, focus/pointer capture, measurement,
-  native file input, or dialog lifetime.
-- Move visible materials, entities, organization, context menus, tool controls, build UI, and project
-  UI into React components fed by narrow snapshot stores.
-- Use portals for menus and dialogs that must escape clipped layout.
-- Reduce `EditorElements` to stable canvas and native browser refs; do not replace it with a React
-  service locator.
-- Reconcile the contradictory ownership language in [`plan.md`](./plan.md) and
-  [`react-ui-ownership.md`](./react-ui-ownership.md) as the migration lands.
-- Keep `/design` as the visual contract for every primitive in dark and light themes, including
-  focus-visible, disabled, invalid, selected/open, pressed, busy, and long-label states.
-
-**First implementation slice:**
-
-- Add the editor-app `react-aria-components` dependency and establish reusable button, field, menu,
-  menu-item, section, and shortcut presentation primitives without importing Spectrum styling.
-- Replace the viewport context menu's `createElement`, `replaceChildren`, manual roving focus,
-  submenu `<details>`, outside-click, and escape handling with a React-owned React Aria menu/overlay.
-- Keep context resolution and editor commands framework-neutral. Publish a menu snapshot containing
-  position, heading/detail, sections, disabled state, nested actions, and stable command IDs; React
-  invokes commands through a narrow port.
-- Preserve cursor anchoring, viewport-edge collision handling, initial focus, arrow/home/end/escape
-  behavior, focus restoration, disabled actions, submenus, async error reporting, and both themes.
-- Add the resulting primitives and context-menu states to `/design`; do not attempt a global raw
-  button/input rewrite in this first change.
-
-**Delivered 2026-08-30:** The editor app now has Worldview-styled React Aria button, text-field,
-menu, section, popover, and submenu primitives. Pre-editor action buttons use the shared button,
-`/design` covers the first-slice states in both themes, and the viewport context menu is React-owned
-through an immutable snapshot and opaque command port. Its React lifetime also owns narrowly scoped
-native-menu suppression, including the Windows event order where `contextmenu` arrives after the
-popover has made the canvas inert. C1 remains in progress: raw editor controls, inspectors,
-catalogs, dialogs, and the imperative-UI architecture gate are intentionally separate slices.
-
-**Delivered 2026-08-30 (second slice):** Worldview-styled React Aria tabs, select/listbox, number
-field, checkbox, modal, and dialog primitives now join the initial set. The live inspector page and
-theme preference use typed snapshot ports instead of imperative class, hidden, ARIA, value, and
-change-listener mutation. Quake II surface flags/value use the shared checkbox and number field, and
-collaboration uses a portal-backed modal with React Aria focus containment and dismissal instead of
-`showModal()` synchronization. `/design` exercises every new primitive in both themes and exposes an
-interactive dialog. C1 remains in progress for the remaining raw tool controls, catalogs, build and
-project dialogs, and imperative-UI architecture gate.
-
-**Delivered 2026-08-31 (Face inspector slice):** React now owns the Face inspector, dense projection
-controls, UV surface composition, material cells, filters, menus, replacement dialog, and resource
-navigation through typed snapshot/command ports. The UV camera is independent from projection
-history, direct manipulation is locally immediate and frame-coalesced, collaboration preview is
-separately bounded, and large catalogs are virtualized. Face/material references have left
-`EditorElements` except for the explicit SVG and native-file boundaries. A shared semantic Phosphor
-registry now covers Worldview-authored browser UI and is enforced by the architecture check. The
-complete behavior and evidence are recorded in [`face-inspector-plan.md`](./face-inspector-plan.md).
-C1 remains in progress only for unrelated imperative editor surfaces.
-
-**Delivered 2026-08-31 (dynamic inspector and catalog slice):** React now owns entity-property
-controls, point-entity presets, layers, entity links, viewport filters, the issue browser, reference
-scenes, project map/build-profile selection, recovery versions, and build-history diagnostics.
-Presenters publish immutable descriptions and receive typed commands; the obsolete organization
-event adapter and the corresponding broad `EditorElements` entries are gone. Production presenter
-code no longer constructs visible DOM. The architecture gate now rejects `createElement`,
-`createElementNS`, and `new Option` outside the explicit UV renderer, non-visible theme probe, and
-ephemeral download boundaries. C1 remains in progress for visible state still mutated through raw
-tool and toolbar element refs.
-
-**Delivered 2026-08-31 (completion slice):** React now owns the remaining selection, group, hull,
-clip, transform, topology, CSG, brush-entity, nudge, simple-shape, sweep, project-source, checkpoint,
-build-log, viewport-presentation, inspector-layout, and workspace-layout projections. Toolbar
-buttons and overflow menus use the shared React Aria primitives, while keyboard shortcuts invoke
-typed commands instead of clicking DOM nodes. `EditorElements` now contains only explicit canvas,
-runtime-overlay, focus, measurement, resize, and native-file refs; presenter port dependencies are
-narrow `Pick` contracts rather than the DOM registry. The renderer package no longer constructs
-lasso/readout nodes or walks into React viewport wrappers: React supplies explicit overlay roots,
-and the high-frequency renderer runtime controls only those roots and its canvases. The architecture
-gate rejects DOM construction across both the app and renderer package, DOM-shaped `textContent`
-ports, presenter document queries, wrapper mutation, and visible presenter mutation outside the
-documented native/runtime allowlist. Viewport input listeners share an abort-owned lifetime, so
-React Strict Mode remounts cannot leave a stale renderer competing for pointer gestures. GPU
-runtime construction also checks that lifetime before configuring React-owned canvases, preventing
-an aborted device from racing the replacement renderer.
-
-**Acceptance criteria:**
-
-- Presenters do not create or mutate user-visible DOM.
-- All visible values, selected states, disabled states, labels, classes, and ARIA properties derive
-  from React props or subscribed snapshots.
-- Canvas pointer capture, focus, measurement, file input, and native dialog behavior remain explicit
-  typed refs.
-- The architecture gate rejects new imperative visible UI outside a short documented allowlist.
-- Material, entity, face, organization, project, build, and context-menu interactions retain browser
-  coverage.
-- The first slice contains no imperative creation or visible mutation of viewport context-menu DOM,
-  and its React tests query roles, names, and states rather than implementation class names.
+| ID  | Priority | Status | Workstream                                            | Depends on                    |
+| --- | -------- | ------ | ----------------------------------------------------- | ----------------------------- |
+| C2  | P1       | ready  | Presenter state and command boundaries                | C1                            |
+| C3  | P1       | ready  | `EditorSession` composition                           | C2                            |
+| C4  | P1       | ready  | Retained scene contributions                          | C2                            |
+| C7  | P1       | ready  | IndexedDB infrastructure and bounded hosted reconnect | C6                            |
+| C5  | P2       | ready  | Route isolation and optional loading                  | —                             |
+| C8  | P2       | ready  | Test-suite decomposition                              | Follow changed domains        |
+| C9  | P2       | ready  | Viewer renderer decomposition                         | C5 decision                   |
+| C10 | P2       | ready  | Hosted service handler boundaries                     | C6                            |
+| C11 | P2       | ready  | Broaden architecture enforcement                      | Established C2–C10 boundaries |
 
 ## C2 — Presenter state and command boundaries
 
-**Problem:** Most presenters still receive broad `EditorState` access even though their React-port
-and runtime-element dependencies are now narrow. Some event adapters can reach the entire
-application, and multi-step operations manually coordinate peer presenters.
+**Problem:** Presenter DOM dependencies are narrow, but several presenters still receive broad
+`EditorState` access or coordinate peer presenters directly.
 
-**Target:** Each domain exposes a small immutable snapshot and explicit command interface. The
-composition root wires domains together without allowing arbitrary cross-domain mutation.
+**Direction:**
 
-**Implementation direction:**
+- Split document/session, selection, tools, project, build, collaboration, and renderer presentation
+  into owned readonly snapshots plus explicit commands.
+- Give collaboration one discriminated lifecycle: `solo`, `connecting`, `live`, `reconnecting`,
+  `detached-local`, `conflict`, and `leaving`.
+- Put cross-domain orchestration in named application commands. Do not replace direct coupling with a
+  generic event bus or dependency-injection framework.
+- Introduce a focused tool-controller registry where global conditional adapters are still growing.
 
-- Divide application state into document/session, selection, tools, project, build, collaboration,
-  and renderer-presentation slices.
-- Give collaboration an explicit discriminated lifecycle such as `solo`, `connecting`, `live`,
-  `reconnecting`, `detached-local`, `conflict`, and `leaving`; do not encode these transitions as a
-  loose collection of booleans.
-- Make state private to its owning domain and publish readonly snapshots.
-- Replace presenter-to-presenter calls with atomic commands on the owning domain.
-- Replace whole-application event adapters with the smallest command interface needed by each input
-  surface.
-- Introduce a focused tool-controller registry rather than conditional growth in global adapters.
-- Keep cross-domain orchestration in named application commands with clear transaction boundaries.
-
-**Acceptance criteria:**
-
-- No presenter receives the complete application state or complete DOM registry.
-- Replacing/opening a document, changing tools, and joining/leaving collaboration are atomic named
-  operations with one owner each.
-- Dirty hosted reconnect bounds and the transition to a detached local copy have one testable owner;
-  transport, React, and renderer code do not independently infer that policy.
-- Dependencies for a presenter or React bridge are understandable from its constructor/type alone.
-- Domain tests can instantiate the relevant slice without constructing the entire editor app.
+**Done when:** No presenter receives the complete application state or DOM registry; document
+replacement, tool changes, and collaboration join/leave each have one owner; collaboration reconnect
+policy is testable without React or transport; domain tests do not construct the whole application.
 
 ## C3 — `EditorSession` composition
 
-**Problem:** `EditorSession` is one large inherited implementation distributed across state,
-selection, transforms, geometry, entities, objects, and history modules. Later layers depend on
-abstract operations supplied by subclasses, and history/replay reconstructs dynamic subclass state.
+**Problem:** `EditorSession` is a large inherited implementation spread across state, selection,
+transforms, geometry, entities, objects, and history. Replay reconstructs dynamic subclass state.
 
-**Target:** One public session coordinator composes small DOM-free domains around an explicit kernel.
-History and replay use the same command model as ordinary editing.
+**Direction:**
 
-**Implementation direction:**
+- Define a small `SessionKernel` for document, selection, history, and commit mechanics.
+- Compose topology, transforms, entities/materials, organization, clipboard, and object commands from
+  explicit kernel capabilities.
+- Use the same explicit command/state model for direct execution and history replay.
+- Keep one commit point, undo/redo stack, source-identity policy, and collaboration-operation emitter.
 
-- Define a minimal `SessionKernel` containing authoritative document, selection, history, and commit
-  mechanics.
-- Move topology, transforms, entities/materials, organization, and object commands into composed
-  modules with explicit kernel capabilities.
-- Group the public facade by domain; do not expose every internal helper as another session method.
-- Express history entries and replay through explicit commands and state snapshots rather than
-  `this.constructor` reconstruction.
-- Preserve one commit point, one undo/redo stack, source identity behavior, and collaboration
-  operation emission.
-
-**Acceptance criteria:**
-
-- Session behavior no longer depends on inheritance order or dynamic subclass construction.
-- Domain modules depend only on declared kernel capabilities.
-- A command produces the same document, selection, history, serialization, and collaboration result
-  in direct execution and replay.
-- Existing source-preservation, undo/redo, geometry, entity, organization, clipboard, and
-  collaboration tests remain authoritative.
+**Done when:** Behavior no longer depends on inheritance order or `this.constructor`; domain modules
+declare their dependencies; direct and replayed commands produce identical document, selection,
+history, serialization, and collaboration results.
 
 ## C4 — Retained scene contributions
 
-**Problem:** The editable-source renderer holds a broad mutable state bag, builds scene buffers from a
-large positional input list, and uses `reuseWorldBuffers`/`reuseSolidBuffers` booleans at many call
-sites. A document-size threshold creates a performance cliff instead of expressing actual changes.
+**Problem:** Source scene assembly still uses broad positional inputs and reuse booleans. This makes
+invalidation hard to reason about and leaves document-size special paths in performance-sensitive
+code.
 
-**Target:** Scene updates rebuild only the contributions whose dependency keys changed, with retained
-GPU buffers and explicit lifetime ownership.
+**Direction:**
 
-**Initial contribution model:**
+- Assemble immutable scene input from named contributions: world solids, object lines, local
+  selection, tool/face previews, grids/references, diagnostics, and remote presence/previews.
+- Give each contribution a dependency key, retained buffers, and explicit disposal.
+- Preserve one command encoder/submission per frame and the on-demand scheduler.
+- Measure camera-only, selection-only, local drag, remote preview, and document changes before and
+  after the cutover.
 
-- World solid geometry and material batches
-- Object/wireframe lines
-- Local selection tint and always-visible outline
-- Active face/tool previews and handles
-- Grid and reference images
-- Diagnostics
-- Remote selections, cursors, cameras, and live edit previews
+**Done when:** Camera changes rebuild no document geometry; local and remote previews touch only
+their contribution; selection does not reconstruct world lines; the 8,000-brush stress fixture has
+no count-based behavior cliff; all four viewports retain selection, active-face, grid, reference,
+and multiplayer visuals.
 
-**Implementation direction:**
+## C7 — IndexedDB and hosted reconnect
 
-- Introduce an immutable `SceneInput` assembled from named domain snapshots.
-- Give each contribution a typed input, dependency key/version, retained buffers, and disposer.
-- Replace positional buffer construction and reuse booleans with contribution-level invalidation.
-- Keep one command encoder/submission per editor frame and the current on-demand scheduler.
-- Measure local drag, remote preview, selection-only, camera-only, and full-document changes before
-  and after the cutover.
-- Remove document-size special paths once retained invalidation makes them unnecessary.
+**Problem:** Recovery, project-local state, asset mounts, build history, and collaboration repeat
+native IndexedDB lifecycle code. Hosted offline policy also needs one bounded, durable owner.
 
-**Acceptance criteria:**
+**Decision:** Adopt `idb` in the editor app for typed requests, transactions, and upgrades. Keep
+domain schemas, store layouts, retention, and errors in their owning services; do not add an ORM or
+generic repository layer. Small non-authoritative display and per-map viewport preferences may stay
+in validated, debounced `localStorage`.
 
-- Camera-only frames do not rebuild document geometry.
-- Local or remote drag previews update only the affected overlay/geometry contribution.
-- Selection changes do not reconstruct unrelated world line data.
-- Visual verification covers all four viewports, occluded selection outlines, active-face styling,
-  remote selection tint, grids, and reference images.
-- Stress fixtures show smooth scaling without a hard document-count behavior cliff.
+**Direction:**
+
+- Define typed `DBSchema` contracts and migrate services in focused slices.
+- Start with the collaboration outbox and record elapsed disconnect time, operation count, encoded
+  bytes, map version, and recovery metadata.
+- A clean hosted map may reconnect after a long absence. Dirty replay is bounded; exceeding the
+  elapsed/count/byte window creates a durable, editable quarantined local copy instead of pretending
+  to merge indefinitely.
+
+**Done when:** Native request/transaction boilerplate is gone; upgrades, aborts, quota failures, and
+retention are covered; crash/reload tests prove bounded replay and durable detachment; solo/local
+projects remain fully offline without time limits.
 
 ## C5 — Route isolation and optional loading
 
-**Problem:** The compiled-preview presenter dynamically imports the viewer package root, but editor
-shell/runtime code statically imports `SnapshotStore` and `AnimationFrameScheduler` from that same
-root. The bundler therefore keeps the package in the main editor route and reports the dynamic import
-as ineffective. This is worth correcting where the boundary remains simple, but the important
-performance boundary is the public home route—not an arbitrary maximum size for the editor someone
-has explicitly chosen to open.
+**Problem:** The public home route is already cheap, but shared runtime imports can defeat the
+compiled-preview dynamic import inside the editor route.
 
-**Target:** `/` remains a cheap workspace shell that does not download or initialize the editor
-runtime. `/editor` may load the substantial parser, tool, and GPU graph it needs. Optional systems
-such as compiled BSP preview should remain lazy when a clean public module boundary supports it.
+**Direction:**
 
-**Implementation direction:**
+- Keep `/` isolated from editor packages, TypeGPU/WebGPU, WebMCP, compiler, collaboration, and editor
+  assets.
+- If it remains a clean boundary, expose snapshot/scheduler primitives from a small public runtime
+  subpath so BSP parsing/rendering stays behind preview intent.
+- Preserve `/new-map` idle/intent prewarming without initializing presenters or WebGPU.
+- Measure route transfer and initialization. Do not impose an arbitrary editor chunk-size target.
 
-- Add a small public runtime subpath for framework-neutral snapshot and scheduling primitives, or
-  move those primitives to a deliberately shared runtime package.
-- Keep BSP parsing/rendering and `createWorldview` behind the compiled-preview dynamic import.
-- Do not expose package internals or create a second copy of shared runtime state.
-- Measure transferred code, parse/evaluation work, and initialization by route. Do not use a single
-  bundle-size number as a proxy for perceived performance.
-- Preserve `/new-map` prewarming as an intentional optimization because its successful action always
-  enters the editor; prewarming must still not initialize presenters or WebGPU.
-
-**Acceptance criteria:**
-
-- The production `/` route does not fetch or initialize editor packages, TypeGPU/WebGPU code,
-  presenters, WebMCP, compiler probes, collaboration UI, or editor-only assets.
-- Navigating to an editor loads and initializes the complete authoring runtime reliably without an
-  artificial chunk-size gate.
-- If the compiled-preview split remains clean, the editor production build no longer reports its
-  viewer-root dynamic import as ineffective and compiled BSP code loads on preview intent.
-- Viewer, editor compiled preview, and public package entrypoint tests pass.
-- Record before/after route graphs and initialization measurements in the completion note; editor
-  size growth alone is not a failure when it represents intentional capability.
-
-## C6 — Declarative runtime schemas
-
-**Problem:** Untrusted data is repeatedly decoded with local `isRecord`, `string`, array, primitive,
-and `unknown as` checks. [`worldview-project.ts`](../packages/worldview-editor/src/core/worldview-project.ts)
-is the clearest example, but the pattern also appears in collaboration frames, document recovery,
-build history, project-local state, WebMCP inputs, and hosted API responses. These decoders are
-verbose, easy to make inconsistent, and duplicate their TypeScript interfaces.
-
-**Target:** Boundary data has one declarative runtime schema that also supplies or verifies its
-TypeScript type. Internal trusted calls remain ordinarily typed and do not pay repeated validation
-cost.
-
-**Dependency decision:** Adopt regular [Zod 4](https://zod.dev/packages/zod) as an explicit
-production dependency rather than relying on the copy currently present transitively through
-Cloudflare tooling. Its readable schema API is the default for this substantial browser application.
-Consider the tree-shakable [`zod/mini`](https://zod.dev/packages/mini) entrypoint only if measurement
-shows validation code materially harming the public route or a published consumer. Declare the
-dependency in every published/runtime workspace that imports it. Do not import it from a root-only
-development dependency.
-
-**Schema ownership:**
-
-- Public project manifests, map operations, and other authoring-domain inputs belong with the
-  DOM-free `worldview-editor` core contract that owns their meaning.
-- Collaboration frame schemas must be imported by both the browser client and collaboration
-  service; they must not be independently reconstructed on either side.
-- Hosted account/project/map/build wire schemas belong in a small DOM-free shared protocol package,
-  not in either private application and not in the general editor core.
-- Browser-local recovery, build-history, and workspace schemas remain next to their owning service
-  unless another runtime truly consumes the same record.
-- WebMCP schemas remain at the public tool boundary and reuse domain schemas for nested values.
-
-**Implementation direction:**
-
-- Start with `WorldviewProjectManifest`, preserving contained POSIX-path checks, uniqueness,
-  per-game definition-format validation, defaults, normalization, and stable
-  `WorldviewProjectParseError` messages.
-- Define types from schemas with `z.infer` when the schema is authoritative; otherwise make the
-  schema statically satisfy the existing domain contract so the two cannot silently drift.
-- Replace collaboration frame narrowing while retaining the pre-parse byte limit, bounded array and
-  string lengths, finite-number checks, strict discriminated unions, and semantic operation checks.
-- Replace unchecked hosted JSON casts with shared request/response schemas and structured protocol
-  errors.
-- Migrate persisted browser records and WebMCP inputs in focused slices with their existing invalid
-  data behavior covered first.
-- Convert schema issue paths into domain-specific errors at the boundary. Do not leak raw Zod errors
-  into UI copy or public HTTP responses.
-- Validate once at ingress. Do not scatter `.parse()` calls through render, gesture, document, or
-  transaction hot paths.
-- Do not use Zod to replace resource limits, authorization, transaction invariants, geometry
-  validity, or other semantic checks that require domain context.
-
-**Acceptance criteria:**
-
-- Production boundary decoders contain no repeated generic `isRecord`/primitive validation helpers
-  unless a documented performance measurement requires one.
-- Project manifest, collaboration, hosted wire, persisted-record, and WebMCP schemas have focused
-  valid/invalid/oversized fixtures.
-- Unknown fields, normalization, optional/default values, and error paths have an explicit policy
-  per external format.
-- Collaboration and HTTP tests prove malformed values cannot reach domain operations.
-- The package lock and importing workspace manifests declare the chosen Zod version directly.
-- Completion records meaningful changes to public-route and published-package bundles for
-  visibility. Schema readability and correctness take precedence unless measurement demonstrates a
-  user-facing regression.
-
-**Delivered 2026-08-30:** Zod 4 now owns strict project, map document, collaboration, realtime
-ticket, hosted wire, compiler, walkability, browser persistence, and WebMCP boundary schemas. A
-private DOM-free `@worldview/protocol` workspace is the single collaboration/hosted contract shared
-by browser and services. Owned payloads reject unknown fields; OAuth and Artbin provider responses
-strip additions. Parsing remains at ingress and preserves separate byte, authorization,
-transaction, geometry, and expiry checks. Current shapes are the baseline, with no migration or
-compatibility layer. The public application gained a 20.14 kB-gzip shared schema chunk while its
-home route stayed 1.46 kB gzip and remained isolated from the editor/WebGPU graph. The editor route
-moved from 235.59 to 235.89 kB gzip, and the published editor core from 69.21 to 70.78 kB gzip.
-
-## C7 — IndexedDB infrastructure with `idb`
-
-**Problem:** Request-to-promise, transaction completion, version/open handling, and error translation
-are duplicated across build history, document recovery, project-local state, asset mounts, and parts
-of collaboration state.
-
-**Target:** The established [`idb`](https://github.com/jakearchibald/idb) package handles IndexedDB
-promise, transaction, upgrade, and schema typing mechanics while each service retains its own schema
-and domain policy.
-
-**Dependency decision:** Adopt `idb` as an explicit editor-app production dependency. Do not build a
-parallel generic promise wrapper around the native API, and do not turn `idb` into a repository/ORM
-abstraction.
-
-Small synchronous display preferences and per-map viewport snapshots may remain in validated,
-debounced `localStorage`; they are non-authoritative UI state and do not justify another native
-IndexedDB request/transaction implementation before this workstream lands.
-
-**Implementation direction:**
-
-- Define typed `DBSchema` contracts and migrate services to `openDB`, enhanced requests, and
-  `transaction.done`.
-- Keep store names, records, retention policy, and recovery semantics in their domain services.
-- Avoid a generic repository/ORM layer and avoid combining unrelated data merely to remove lines.
-- Model collaboration outbox metadata needed for bounded hosted reconnect and quarantined local-copy
-  recovery explicitly.
-
-**Acceptance criteria:**
-
-- Handwritten IndexedDB request/transaction lifecycle boilerplate is removed.
-- Domain schemas and failure messages remain explicit.
-- Recovery, recent-project, asset mount, collaboration outbox, and build-history tests cover upgrade,
-  abort, quota/error, and successful persistence paths.
-- Hosted outbox tests cover clean long disconnects, dirty in-window replay, time/count/byte limits,
-  crash/reload across the reconnect bound, and durable transition to a quarantined local copy.
+**Done when:** The home route remains isolated; the editor initializes reliably; the production
+build no longer reports an ineffective viewer dynamic import if the split is retained; route graphs
+and before/after measurements are recorded.
 
 ## C8 — Test-suite decomposition
 
-**Problem:** The editor core and browser tests have grown into multi-thousand-line files. They contain
-valuable coverage but make ownership, fixture cost, and focused execution difficult to understand.
+**Problem:** Core and browser suites contain valuable coverage but several files are too large for
+clear ownership and focused execution.
 
-**Target:** Tests follow production domains and share only intentional fixtures/helpers. A small
-end-to-end suite retains cross-domain confidence.
+**Decision:** Use `fast-check` and `@fast-check/vitest` only where generated sequences and shrinking
+add value: session commands, collaboration ordering/reconnect, inverses, schema boundaries, and
+persistence state machines.
 
-**Dependency decision:** Add `fast-check` and `@fast-check/vitest` as development dependencies for
-seeded property-based tests. Use them where generated sequences and shrinking provide value—session
-commands, collaboration ordering/reconnect, undo/inverses, schema decoding, and persistence state
-machines—not as a mechanical replacement for readable example and browser tests.
+**Direction:**
 
-**Implementation direction:**
+- Split tests by production domain and keep a small cross-domain browser suite.
+- Extract deterministic builders and interaction helpers without hiding relevant state or actions.
+- Add seeded properties for idempotence, ordering, convergence, conflict safety, personalized undo,
+  persist-before-ack, and bounded reconnect/detachment.
+- Keep GPU, visual, and performance suites explicitly runnable on capable hosts rather than diluting
+  them for lightweight CI.
 
-- Split core tests by document/source, history, selection, transforms, geometry/CSG, entities,
-  organization, clipboard, gestures, and collaboration operations.
-- Split browser tests by shell/routes, project persistence, editor interaction, materials/entities,
-  collaboration, builds, and compiled preview.
-- Extract deterministic map builders and interaction helpers; avoid a universal mutable fixture.
-- Add properties for collaboration idempotence, deterministic ordering, non-conflicting convergence,
-  same-brush conflict safety, personalized undo, persist-before-ack behavior, and the bounded
-  reconnect/detach state machine.
-- Keep expensive GPU/browser stress and visual suites separately invokable for capable hosts rather
-  than weakening them to fit lightweight CI.
-
-**Delivered 2026-08-30 (first hygiene slice):** Functional browser tests no longer use fixed sleeps
-for perspective flight or footstep audio. They poll the observable camera/audio state with bounded
-timeouts and always release held keys, so slow hosts get time to satisfy the behavior while fast
-hosts stop waiting immediately. The hosted compiler's browser-fetch receiver regression check was
-folded into its capabilities case, removing duplicate service setup without dropping the production
-regression guarantee. The opt-in performance gate retains its deliberate frame-pacing delay.
-
-**Acceptance criteria:**
-
-- A domain change has an obvious focused test command and file.
-- Shared helpers do not hide the document state or user actions relevant to an assertion.
-- Existing behavioral coverage is retained or strengthened, not silently discarded during moves.
-- CI remains bounded while local/full verification remains documented and runnable.
+**Done when:** A domain change has an obvious focused command/file, coverage is retained or improved,
+and ordinary CI remains bounded. The initial fixed-sleep and duplicate-service-test cleanup is
+already complete; it does not complete this workstream.
 
 ## C9 — Viewer renderer decomposition
 
 **Problem:** The compiled-world renderer owns pipelines, materials, lightstyles, sprites,
-walkability, resize/capture, visibility, lifecycle, and draw encoding in one large class.
+walkability, capture, visibility, and lifecycle in one class.
 
-**Target:** A small renderer facade owns lifecycle while focused runtime objects own resources and
-frame planning.
+**Direction:** Extract resource/pipeline creation, material resources, pure frame planning,
+world-pass encoding, and capture targets behind a small lifecycle facade. Share only low-level
+runtime primitives with the editor; do not create a universal renderer abstraction.
 
-**Implementation direction:**
-
-- Extract pipeline/resource creation, material resources, pure frame planning, world-pass encoding,
-  and overview/capture targets.
-- Keep draw ordering and TypeGPU resource schemas explicit.
-- Share only low-level runtime primitives with the editor; do not build a universal renderer
-  abstraction.
-
-**Acceptance criteria:**
-
-- The public viewer API and custom element behavior remain unchanged unless the product plan is
-  intentionally updated.
-- Resource ownership and disposal are visible from the facade.
-- Frame planning can be tested without a GPU device.
-- BSP29/BSP30, lightstyle, sprite, transparency, overview, and capture coverage remains intact.
+**Done when:** Resource ownership/disposal is obvious, frame planning is GPU-independent and tested,
+and BSP29/BSP30, lightstyle, sprite, transparency, overview, capture, custom-element, and public API
+coverage remains intact.
 
 ## C10 — Hosted service handler boundaries
 
-**Problem:** The hosted service keeps a large regex/method route chain and anonymous response
-assembly in its main server module. Runtime payload correctness is addressed by C6; route and
-transaction ownership still need their own boundary.
+**Problem:** The hosted service has a large regex/method route chain despite C6 now providing shared
+runtime contracts.
 
-**Target:** Focused route handlers consume and produce C6's shared contracts while keeping security
-and transaction policy visible.
+**Direction:** Split focused route handlers without adopting a heavyweight framework. Keep auth,
+authorization, version checks, and database transactions visible at each route boundary; use shared
+protocol schemas and typed response constructors.
 
-**Implementation direction:**
+**Done when:** Route matching and handlers have focused tests; unauthorized, stale, and server-error
+behavior remains deterministic; browser and service compile against the same contracts; container
+and integration tests pass.
 
-- Break the service's regex/method chain into focused route handlers without adding a heavyweight
-  framework solely for routing.
-- Use the shared schema response types or typed response constructors on the service side.
-- Keep authentication, authorization, version checks, and database transactions visible at each
-  route boundary rather than hiding them in generic middleware.
+## C11 — Architecture enforcement
 
-**Acceptance criteria:**
+**Problem:** Existing checks protect editor DOM, TypeGPU, package entrypoints, and file ceilings, but
+the boundaries established by C2–C10 are not yet encoded.
 
-- Route matching and handler modules have focused tests.
-- Authentication, stale-version, unauthorized, and server-error behavior remains deterministic.
-- Service handlers and editor callers compile against C6's same contract definitions.
-- Root build, typecheck, service integration tests, and production container build continue to cover
-  the service.
+**Direction:** Extend checks only after each target boundary exists. Cover renderer packages, the
+viewer app, hosted service, route isolation, dependency cycles, and coordination-file complexity.
+Keep exceptions narrow, documented, and actionable; do not encode implementation trivia.
 
-## C11 — Broaden architecture enforcement
+**Done when:** Each invariant above is enforced automatically or has a documented review reason, and
+violations fail with a useful message naming the governing contract.
 
-**Problem:** Current checks focus on `apps/editor` and `packages/worldview-editor`, enforce a generous
-file-size ceiling, and reject only a subset of DOM and GPU ownership regressions. The viewer,
-services, visible imperative UI, broad state access, and route/build boundaries are under-enforced.
+## Verification
 
-**Target:** Automated checks protect the boundaries established by completed cleanup work without
-encoding fragile implementation trivia.
-
-**Implementation direction:**
-
-- Cover both rendering packages, viewer app, hosted service, and shared wire/runtime entrypoints.
-- Reject imperative visible UI outside the documented ref allowlist.
-- Reject core DOM/WebGPU/TypeGPU imports and app imports of package internals.
-- Assert the public home/editor route separation in a build-level check.
-- Introduce focused size/complexity budgets for coordination files rather than treating line count as
-  the only quality signal.
-- Keep exceptions documented, narrow, and owned next to the check.
-
-**Acceptance criteria:**
-
-- Each invariant in this document has either a test/check or a documented reason it requires review.
-- A deliberate violation fails with an actionable message and a link to the governing document.
-- Checks run from the root scripts used locally and in CI.
-
-## Verification baseline
-
-Every cleanup slice should choose the smallest sufficient subset first, followed by the relevant
-root gates before completion:
+Use the smallest focused tests while iterating, then the applicable root gates:
 
 ```sh
 npm run format:check
@@ -654,18 +211,6 @@ npm test
 npm run build
 ```
 
-Editor interaction or rendering changes must also use the repository's
-`verify-worldview-editor` skill and the focused browser/WebMCP workflow it documents. GPU stress and
-visual checks should run on a capable host when lightweight CI cannot provide meaningful WebGPU
-evidence.
-
-## Completion log
-
-Add one concise entry per completed workstream. Do not use this as a chronological development
-journal; retain only verification and remaining intentional exceptions.
-
-| Date       | ID  | Result                                                               | Verification                                                                                                                                                                                                                                                        | Remaining exceptions                                                                                                   |
-| ---------- | --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 2026-08-30 | C0  | One abort-owned editor, renderer, WebMCP, and collaboration lifetime | `npm run check`; `npm run test:browser:ci`; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs --no-build`                                                                                                                                      | None                                                                                                                   |
-| 2026-08-30 | C6  | One strict declarative schema per untrusted runtime boundary         | `npm run check`; focused WebMCP browser suite; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs`                                                                                                                                              | None                                                                                                                   |
-| 2026-08-31 | C1  | React-owned editor UI with typed snapshots and explicit runtime refs | package/editor unit suites; editor typecheck and production build; architecture/theme/lint/format gates; focused Strict Mode, pivot, topology, and `@ci-smoke` browser coverage; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs --no-build` | UV SVG drawing, canvas/overlay runtime geometry, native file reset, metadata/color probes, and download transport only |
+Editor interaction or rendering changes also use the repository's `verify-worldview-editor` skill.
+GPU stress and visual checks run on a capable host when lightweight CI cannot provide meaningful
+WebGPU evidence.

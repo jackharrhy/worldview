@@ -66,25 +66,41 @@ optical size, color, focus, pressed, selected, disabled, tooltip, and accessible
 
 An original MIT-compatible map-editor icon may be added only when Phosphor has no suitable symbol or
 composition. It must use the shared view box and optical rules and have its provenance recorded;
-GPL editor artwork is a behavior reference, not an asset source. The application-wide migration and
-acceptance checklist is part of [`face-inspector-plan.md`](./face-inspector-plan.md), because the
-Face toolbar is the first substantial consumer and must not create a local icon dialect.
+GPL editor artwork is a behavior reference, not an asset source. The application-wide migration is
+complete and the architecture check rejects raw Phosphor classes, action SVGs, and competing icon
+dialects outside the documented renderer allowlist.
 
-## Primitive rollout
+## Implemented primitives
 
-The initial primitive set is button, icon button, text field, number field, select, checkbox, menu,
-popover, dialog, tabs, and tooltip. Adoption is incremental but one-way: once a primitive exists,
-new raw equivalents require a documented native-browser reason.
+The shared set includes button, icon button, text field, number field, select/listbox, checkbox,
+menu/submenu, popover, modal dialog, tabs, tooltip, splitter, compact field groups, and virtualized
+catalog cells. New raw equivalents require a documented native-browser reason.
 
-The first slice establishes button/field/menu styling and converts the viewport context menu from
-imperative DOM construction to a React-owned React Aria surface. `/design` must show this slice in
-both themes with ordinary, hover/pressed reference, focus-visible, disabled, invalid, selected/open,
-busy, and long-label cases before broader replacement begins.
+Viewport menus, inspectors, catalogs, collaboration/project dialogs, toolbar overflow, and
+pre-editor routes use these primitives. `/design` shows their dark/light states, including ordinary,
+hover, pressed, focus-visible, disabled, invalid, selected/open, busy, and long-label cases.
 
-The second slice adds tabs, select/listbox, number field, checkbox, modal, and dialog primitives.
-The live inspector tabs, editor theme selector, Quake II surface flags and value, and collaboration
-dialog use those primitives through narrow snapshot/command ports. Inactive inspector panels remain
-mounted and inert because presenters still bind stable native refs inside them; React owns which
-panel is selected and visible. React Aria's focus-scope sentinels and visually hidden native inputs
-may carry library-generated inline clipping styles, but application-authored visible layout remains
-class- and token-driven.
+React Aria's focus-scope sentinels and visually hidden native inputs may carry library-generated
+inline clipping styles; application-authored visible layout remains class- and token-driven.
+
+## Face inspector
+
+The Face tab is one dense editing workspace rather than a stack of cards:
+
+```text
+Face
+├── persistent tiled UV plane and direct manipulation
+├── compact projection values and always-visible alignment commands
+├── draggable split
+└── virtualized material browser with fixed sort/filter/search controls
+```
+
+The UV camera is machine-local view state and changes neither document revision nor projection.
+Offset, pivot, rotation, and scale gestures update locally on the next frame, publish collaboration
+preview independently, and commit or cancel exactly once through `EditorSession`. Multi-face edits
+use mixed values and relative batch commands; the graphical plane represents only the primary face.
+
+React owns controls, material cells, state, and overlays. A focused SVG/canvas renderer owns only
+pixels and high-frequency geometry inside its React-provided root. WADs, palettes, directories, and
+remote mounts belong to project/map resources, not to routine face editing. The complete current
+behavior is summarized in [`editor-capabilities.md`](./editor-capabilities.md#faces-and-materials).
