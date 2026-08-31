@@ -42,6 +42,7 @@ out, keeping geometry aligned while preventing dense-grid shimmer.
 | Locked objects use blue edges and tint                 | Matched          |
 | Hovered selection bounds show corner spikes            | Matched          |
 | Selected bounds show viewport dimensions               | Partial          |
+| World coordinate axes span each viewport               | Matched          |
 | XYZ compass appears in each viewport                   | Open             |
 
 The prospective face overlay does not replace or recolor its material or projected grid. It is
@@ -59,6 +60,10 @@ The default dark wireframe palette follows the same contrast hierarchy as Trench
 preferences: a 38/255 neutral background, 0.9 ordinary brush edges, red selected edges, blue locked
 edges, and subordinate minor/major grids. Worldview retains entity-definition colors, cyan
 reference geometry, and yellow hover feedback so different semantic object kinds remain legible.
+TrenchBroom spans its configured world bounds with X, Y, and Z coordinate lines and limits 2D views
+to their visible pair. Worldview matches that behavior with an original static TypeGPU line buffer:
+Perspective renders all three axes, while Top, Front, and Side render XY, XZ, and YZ respectively.
+The axis colors come from the same theme roles used by transform affordances.
 
 TrenchBroom's render views request repaints after input, resource, document, and view changes. They
 do not run a permanent idle frame loop. Its perspective view requests the next frame only while fly

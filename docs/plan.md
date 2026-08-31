@@ -252,6 +252,9 @@ Orthographic and perspective construction bounds align component-wise to the act
 grid. Radiant-compatible number keys 1–9 select 1–256 unit grids, brackets step the grid, and an
 undoable Snap to grid command repairs all selected brush vertices or the vertices of selected faces
 while rejecting degenerate convex results.
+All four source viewports render the world coordinate system through the shared theme: X is red, Y
+is green, and Z is blue. Perspective shows all three origin axes, while each orthographic viewport
+shows the two axes in its visible plane above the ordinary construction grid.
 Brush drawing is not exposed as a separate modal toolbar mode. Shift-resize can acquire the hidden
 adjacent face from a narrow screen-space band outside a selected brush's silhouette, while direct
 face hits and ordinary internal edges retain their normal priority.

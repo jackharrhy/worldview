@@ -16,7 +16,7 @@ import type {
 } from './types.js';
 import { scaleOverlayVertices, type SceneBuffers } from './scene-buffers.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
-import { adaptiveGridSpacing, gridVertices } from './scene-grid.js';
+import { adaptiveGridSpacing, coordinateSystemVertices, gridVertices } from './scene-grid.js';
 import { boundsVisible } from './scene-visibility.js';
 import {
   addScaled,
@@ -62,6 +62,8 @@ export abstract class ViewportBase {
   protected readonly overlayBindGroup: TgpuBindGroup;
   protected grid: GPUBuffer;
   protected gridCount: number;
+  protected coordinateSystem: GPUBuffer;
+  protected coordinateSystemCount: number;
   protected readonly state: ViewportState;
   protected depth: GPUTexture | null = null;
   protected color: GPUTexture | null = null;
@@ -205,6 +207,9 @@ export abstract class ViewportBase {
     const grid = gridVertices(kind, gridSize, theme);
     this.grid = uploadFloatBuffer(root.device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
+    const coordinateSystem = coordinateSystemVertices(kind, theme);
+    this.coordinateSystem = uploadFloatBuffer(root.device, coordinateSystem, GPUBufferUsage.VERTEX);
+    this.coordinateSystemCount = coordinateSystem.length / 6;
     this.state = initialState(kind);
     this.flyCamera = new FlyCameraController({
       kind,
@@ -332,6 +337,14 @@ export abstract class ViewportBase {
     const grid = gridVertices(this.kind, this.gridSize, theme);
     this.grid = uploadFloatBuffer(this.root.device, grid, GPUBufferUsage.VERTEX);
     this.gridCount = grid.length / 6;
+    this.coordinateSystem.destroy();
+    const coordinateSystem = coordinateSystemVertices(this.kind, theme);
+    this.coordinateSystem = uploadFloatBuffer(
+      this.root.device,
+      coordinateSystem,
+      GPUBufferUsage.VERTEX,
+    );
+    this.coordinateSystemCount = coordinateSystem.length / 6;
     this.renderRequested = true;
   }
 
@@ -444,6 +457,8 @@ export abstract class ViewportBase {
       pass.draw(6, scene.perspectiveGridCount / 2);
     }
     pass.setBindGroup(0, this.root.unwrap(this.bindGroup));
+    pass.setVertexBuffer(0, this.coordinateSystem);
+    pass.draw(6, this.coordinateSystemCount / 2);
     for (const batch of scene.lineBatches) {
       if (!boundsVisible(matrix, batch.bounds)) continue;
       pass.setVertexBuffer(0, batch.buffer);
@@ -508,6 +523,7 @@ export abstract class ViewportBase {
     this.gridUniform.buffer.destroy();
     this.overlayUniform.buffer.destroy();
     this.grid.destroy();
+    this.coordinateSystem.destroy();
     if (this.pendingFaceTransferClick !== null) window.clearTimeout(this.pendingFaceTransferClick);
     if (this.faceTransferSequenceReset !== null)
       window.clearTimeout(this.faceTransferSequenceReset);

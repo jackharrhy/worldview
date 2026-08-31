@@ -7,6 +7,8 @@ selection, resize, clip, sweep, hull, shape, UV, and contextual 3D actions.
 Construction-grid coverage includes number-key selection, bracket stepping, snapped creation bounds,
 undoable selected-brush or selected-face vertex snapping, and a fine screen-space perspective grid
 that remains visually subordinate to ordinary and selected brush edges while zooming.
+The world coordinate system spans the source viewports in theme-owned colors: red X, green Y, and
+blue Z. Perspective shows all three axes; XY, XZ, and YZ show only the axes in their visible plane.
 Hovering an object in the current selection shows its combined bounds and outward, fading corner
 guides in the perspective viewport only.
 Selection drilling uses Ctrl/Command+wheel for objects in every viewport and adds Shift for faces;
@@ -97,6 +99,12 @@ Viewport color evidence must be interpreted through the active CSS theme. Inspec
 `--renderer-*` custom properties and capture both ordinary and selected/hovered states. Renderer
 colors are resolved from those properties at startup; hard-coded RGB expectations belong only in a
 purpose-built theme fixture, not in general visual checks.
+
+Coordinate-axis verification should open an empty map so geometry cannot hide the lines, then
+capture the full four-pane workspace. Require the Perspective viewport to contain the X, Y, and Z
+theme colors and each orthographic viewport to contain only its plane's pair (XY, XZ, or YZ). Check
+the generated coordinate-system vertices separately so screenshots are visual evidence rather than
+the sole proof of axis mapping.
 
 Perspective-grid width verification must dolly the camera through the grid's near-plane crossing,
 not merely frame a brush at a comfortable distance. Sample several vertical pixel columns in the
