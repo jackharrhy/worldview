@@ -57,6 +57,19 @@ React Aria supplies semantics, focus management, keyboard behavior, overlay dism
 modality. Worldview owns the DOM composition, labels, iconography, density, theme tokens, and visual
 states. React Spectrum styling is not used.
 
+## Iconography
+
+Phosphor is the single icon family for Worldview-authored browser UI. Product components consume a
+typed semantic `Icon` registry instead of embedding raw `ph-*` names, Unicode action glyphs, copied
+SVGs, or icons from another family. Phosphor Regular is the default weight; shared components own
+optical size, color, focus, pressed, selected, disabled, tooltip, and accessible-name behavior.
+
+An original MIT-compatible map-editor icon may be added only when Phosphor has no suitable symbol or
+composition. It must use the shared view box and optical rules and have its provenance recorded;
+GPL editor artwork is a behavior reference, not an asset source. The application-wide migration and
+acceptance checklist is part of [`face-inspector-plan.md`](./face-inspector-plan.md), because the
+Face toolbar is the first substantial consumer and must not create a local icon dialect.
+
 ## Primitive rollout
 
 The initial primitive set is button, icon button, text field, number field, select, checkbox, menu,

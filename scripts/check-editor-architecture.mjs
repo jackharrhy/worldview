@@ -5,6 +5,11 @@ import process from 'node:process';
 const MAX_PRODUCTION_LINES = 1_000;
 const MAX_COMPOSITION_ROOT_LINES = 100;
 const roots = ['apps/editor/src', 'packages/worldview-editor/src'];
+const svgOwnershipAllowlist = new Set([
+  // React owns the element; the focused UV renderer owns only this SVG's drawing children.
+  'apps/editor/src/components/editor-shell/texture-inspector.tsx',
+  'apps/editor/src/uv-editor.ts',
+]);
 
 async function sourceFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -50,6 +55,22 @@ for (const file of files) {
     /\.innerHTML\b|\.outerHTML\b|insertAdjacentHTML\s*\(/.test(source)
   ) {
     violations.push(`${file}: HTML string injection is forbidden; render editor UI with React`);
+  }
+  if (
+    file !== 'apps/editor/src/components/ui/icon.tsx' &&
+    file.startsWith('apps/editor/src/') &&
+    /\bph ph-[a-z]/.test(source)
+  ) {
+    violations.push(`${file}: use the shared semantic Icon component instead of raw icon classes`);
+  }
+  if (
+    file.startsWith('apps/editor/src/') &&
+    !svgOwnershipAllowlist.has(file) &&
+    /<svg\b|createElementNS\s*\(/.test(source)
+  ) {
+    violations.push(
+      `${file}: product action icons use the shared Icon registry; add focused renderer surfaces to the explicit SVG allowlist`,
+    );
   }
   if (/\bMapFormat\b/.test(source)) {
     violations.push(

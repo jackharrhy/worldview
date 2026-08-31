@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { Button } from '../ui/button.js';
+import { Icon } from '../ui/icon.js';
 import { Tab, TabList, TabPanel, Tabs } from '../ui/tabs.js';
 import { MapInspector } from './map-inspector.js';
 import { ObjectInspector } from './object-inspector.js';
@@ -45,7 +46,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
               isDisabled={!rendererReady}
               onPress={() => shellState.viewportLayout.togglePerspectiveOnly()}
             >
-              <i className={`ph ${perspectiveOnly ? 'ph-corners-in' : 'ph-corners-out'}`} />
+              <Icon name={perspectiveOnly ? 'restore' : 'expand'} />
             </Button>
           </header>
           <canvas

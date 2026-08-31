@@ -27,6 +27,9 @@ export function bindEditorElements(shellState: EditorShellState) {
   const cameraPointerContext = shellState.pointerContext;
   const documentSummary = shellState.documentSummary;
   const surfaceInspector = shellState.surfaceInspector;
+  const faceInspector = shellState.faceInspector;
+  const materialBrowser = shellState.materialBrowser;
+  const resourceSettings = shellState.resourceSettings;
   const editorShell = required<HTMLElement>('.editor-shell');
   const issueBrowser = required<HTMLElement>('#issue-browser');
   const issueSummary = required<HTMLElement>('#issue-summary');
@@ -204,44 +207,7 @@ export function bindEditorElements(shellState: EditorShellState) {
   const brushEntityClassname = required<HTMLInputElement>('#brush-entity-classname');
   const makeBrushEntityButton = required<HTMLButtonElement>('[data-action="make-brush-entity"]');
   const makeStructuralButton = required<HTMLButtonElement>('[data-action="make-structural"]');
-  const textureShiftU = required<HTMLInputElement>('#texture-shift-u');
-  const textureShiftV = required<HTMLInputElement>('#texture-shift-v');
-  const textureScaleU = required<HTMLInputElement>('#texture-scale-u');
-  const textureScaleV = required<HTMLInputElement>('#texture-scale-v');
-  const textureRotation = required<HTMLInputElement>('#texture-rotation');
-  const textureUAxis = required<HTMLElement>('#texture-u-axis');
-  const textureVAxis = required<HTMLElement>('#texture-v-axis');
   const uvEditorSvg = required<SVGSVGElement>('#uv-editor');
-  const uvEditorStatus = required<HTMLElement>('#uv-editor-status');
-  const uvResetPivot = required<HTMLButtonElement>('#uv-reset-pivot');
-  const applyTextureTransformButton = required<HTMLButtonElement>(
-    '[data-action="apply-texture-transform"]',
-  );
-  const materialCount = required<HTMLElement>('#material-count');
-  const materialCoverage = required<HTMLParagraphElement>('#material-coverage');
-  const materialGrid = required<HTMLDivElement>('#material-grid');
-  const materialFilter = required<HTMLInputElement>('#material-filter');
-  const materialSort = required<HTMLSelectElement>('#material-sort');
-  const materialUsedOnly = required<HTMLInputElement>('#material-used-only');
-  const materialName = required<HTMLInputElement>('#material-name');
-  const materialMessage = required<HTMLParagraphElement>('#material-message');
-  const applyMaterialButton = required<HTMLButtonElement>('[data-action="apply-material"]');
-  const selectMaterialFacesButton = required<HTMLButtonElement>(
-    '[data-action="select-material-faces"]',
-  );
-  const selectMaterialBrushesButton = required<HTMLButtonElement>(
-    '[data-action="select-material-brushes"]',
-  );
-  const setMaterialReplaceSourceButton = required<HTMLButtonElement>(
-    '[data-action="set-material-replace-source"]',
-  );
-  const setMaterialReplaceTargetButton = required<HTMLButtonElement>(
-    '[data-action="set-material-replace-target"]',
-  );
-  const materialReplaceSource = required<HTMLInputElement>('#material-replace-source');
-  const materialReplaceTarget = required<HTMLInputElement>('#material-replace-target');
-  const materialReplaceButton = required<HTMLButtonElement>('[data-action="replace-material"]');
-  const materialReplaceScope = required<HTMLParagraphElement>('#material-replace-scope');
   const wadFiles = required<HTMLInputElement>('#wad-files');
   const paletteFile = required<HTMLInputElement>('#palette-file');
   const mapFile = required<HTMLInputElement>('#map-file');
@@ -438,38 +404,14 @@ export function bindEditorElements(shellState: EditorShellState) {
     brushEntityClassname,
     makeBrushEntityButton,
     makeStructuralButton,
-    textureShiftU,
-    textureShiftV,
-    textureScaleU,
-    textureScaleV,
-    textureRotation,
-    textureUAxis,
-    textureVAxis,
     uvEditorSvg,
-    uvEditorStatus,
-    uvResetPivot,
-    applyTextureTransformButton,
     documentSummary,
     surfaceInspector,
+    faceInspector,
+    materialBrowser,
+    resourceSettings,
     workspaceHome: shellState.workspaceHome,
     collaborationUi: shellState.collaborationUi,
-    materialCount,
-    materialCoverage,
-    materialGrid,
-    materialFilter,
-    materialSort,
-    materialUsedOnly,
-    materialName,
-    materialMessage,
-    applyMaterialButton,
-    selectMaterialFacesButton,
-    selectMaterialBrushesButton,
-    setMaterialReplaceSourceButton,
-    setMaterialReplaceTargetButton,
-    materialReplaceSource,
-    materialReplaceTarget,
-    materialReplaceButton,
-    materialReplaceScope,
     wadFiles,
     paletteFile,
     mapFile,

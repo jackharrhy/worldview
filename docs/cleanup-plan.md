@@ -79,20 +79,20 @@ The primary liabilities are:
 
 ## Workstream order
 
-| ID  | Priority | Status   | Workstream                             | Depends on                  |
-| --- | -------- | -------- | -------------------------------------- | --------------------------- |
-| C0  | P0       | complete | Editor lifetime and teardown           | —                           |
-| C1  | P0       | ready    | React DOM ownership boundary           | C0 cleanup conventions      |
-| C2  | P1       | ready    | Presenter state and command boundaries | C1 snapshot conventions     |
-| C3  | P1       | ready    | `EditorSession` composition            | C2 command boundaries       |
-| C4  | P1       | ready    | Retained scene contributions           | C2 state boundaries         |
-| C5  | P2       | ready    | Route isolation and optional loading   | —                           |
-| C6  | P1       | complete | Declarative runtime schemas            | —                           |
-| C7  | P2       | ready    | IndexedDB infrastructure with `idb`    | C6 persisted-record schemas |
-| C8  | P2       | ready    | Test-suite decomposition               | Follow changed domains      |
-| C9  | P2       | ready    | Viewer renderer decomposition          | C5 shared-runtime decision  |
-| C10 | P2       | ready    | Hosted service handler boundaries      | C6 hosted wire schemas      |
-| C11 | P2       | ready    | Broaden architecture enforcement       | C0–C10 conventions          |
+| ID  | Priority | Status      | Workstream                             | Depends on                  |
+| --- | -------- | ----------- | -------------------------------------- | --------------------------- |
+| C0  | P0       | complete    | Editor lifetime and teardown           | —                           |
+| C1  | P0       | in progress | React DOM ownership boundary           | C0 cleanup conventions      |
+| C2  | P1       | ready       | Presenter state and command boundaries | C1 snapshot conventions     |
+| C3  | P1       | ready       | `EditorSession` composition            | C2 command boundaries       |
+| C4  | P1       | ready       | Retained scene contributions           | C2 state boundaries         |
+| C5  | P2       | ready       | Route isolation and optional loading   | —                           |
+| C6  | P1       | complete    | Declarative runtime schemas            | —                           |
+| C7  | P2       | ready       | IndexedDB infrastructure with `idb`    | C6 persisted-record schemas |
+| C8  | P2       | ready       | Test-suite decomposition               | Follow changed domains      |
+| C9  | P2       | ready       | Viewer renderer decomposition          | C5 shared-runtime decision  |
+| C10 | P2       | ready       | Hosted service handler boundaries      | C6 hosted wire schemas      |
+| C11 | P2       | ready       | Broaden architecture enforcement       | C0–C10 conventions          |
 
 Dependencies describe the preferred design order, not a reason to create giant pull requests. C0,
 C5, and C6 can be delivered as independent, reviewable changes.
@@ -176,6 +176,13 @@ compact menus with stable icon/label/shortcut columns. Worldview owns this appea
 React Aria owns semantics and interaction behavior. The exact variants, states, density rules, and
 rollout live in [`interface-system.md`](./interface-system.md).
 
+The Face inspector and material browser are a named C1/C2 implementation program. Their full
+behavior, typed ownership boundaries, application-wide icon migration, delivery slices, and
+verification gates live in [`face-inspector-plan.md`](./face-inspector-plan.md). Do not treat the
+Face tab as an isolated cosmetic rewrite: it is complete only after the imperative material DOM and
+broad pointer-move presentation path are removed and the shared icon contract has converged across
+the browser product.
+
 **Implementation direction:**
 
 - Inventory each `document.createElement`, visible `textContent`, `classList`, style, attribute, and
@@ -222,6 +229,16 @@ collaboration uses a portal-backed modal with React Aria focus containment and d
 `showModal()` synchronization. `/design` exercises every new primitive in both themes and exposes an
 interactive dialog. C1 remains in progress for the remaining raw tool controls, catalogs, build and
 project dialogs, and imperative-UI architecture gate.
+
+**Delivered 2026-08-31 (Face inspector slice):** React now owns the Face inspector, dense projection
+controls, UV surface composition, material cells, filters, menus, replacement dialog, and resource
+navigation through typed snapshot/command ports. The UV camera is independent from projection
+history, direct manipulation is locally immediate and frame-coalesced, collaboration preview is
+separately bounded, and large catalogs are virtualized. Face/material references have left
+`EditorElements` except for the explicit SVG and native-file boundaries. A shared semantic Phosphor
+registry now covers Worldview-authored browser UI and is enforced by the architecture check. The
+complete behavior and evidence are recorded in [`face-inspector-plan.md`](./face-inspector-plan.md).
+C1 remains in progress only for unrelated imperative editor surfaces.
 
 **Acceptance criteria:**
 

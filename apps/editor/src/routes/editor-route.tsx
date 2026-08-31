@@ -10,7 +10,6 @@ import { readNewMapLaunch } from './editor-navigation-state.js';
 import type { HostedMapLaunch } from './hosted-project-api.js';
 import { HostedMapBuildService } from '../hosted-map-build-service.js';
 
-import '@phosphor-icons/web/regular/style.css';
 import '../style.css';
 
 interface EditorRouteProps {

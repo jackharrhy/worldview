@@ -14,6 +14,8 @@ import { NumberField } from '../components/ui/number-field.js';
 import { Select } from '../components/ui/select.js';
 import { Tab, TabList, TabPanel, Tabs } from '../components/ui/tabs.js';
 import { TextField } from '../components/ui/text-field.js';
+import { ICON_NAMES, type IconName } from '../components/ui/icon-registry.js';
+import { Icon } from '../components/ui/icon.js';
 
 const colorTokens = [
   'bg',
@@ -32,6 +34,13 @@ const colorTokens = [
   'reference',
   'special',
 ] as const;
+
+const specimenTools: readonly { readonly id: string; readonly icon: IconName }[] = [
+  { id: 'select', icon: 'select' },
+  { id: 'viewport-3d', icon: 'viewport-3d' },
+  { id: 'clip', icon: 'clip' },
+  { id: 'scale', icon: 'scale' },
+];
 
 function ThemeSpecimen({ theme }: { readonly theme: 'dark' | 'light' }) {
   return (
@@ -137,6 +146,17 @@ function ThemeSpecimen({ theme }: { readonly theme: 'dark' | 'light' }) {
             <TabPanel id="entity">Entity properties</TabPanel>
             <TabPanel id="face">Face properties</TabPanel>
           </Tabs>
+        </div>
+        <div className="design-state-group design-icon-states">
+          <strong>Semantic icons</strong>
+          <div className="design-icon-grid">
+            {ICON_NAMES.map((name) => (
+              <div key={name} className="design-icon-cell">
+                <Icon name={name} />
+                <code>{name}</code>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -255,8 +275,7 @@ export function Component() {
           </header>
           <div className="specimen-editor-body">
             <nav className="specimen-toolrail" aria-label="Example tools">
-              {['cursor', 'cube', 'scissors', 'arrows-out'].map((icon, index) => {
-                const id = index === 0 ? 'select' : icon;
+              {specimenTools.map(({ id, icon }) => {
                 return (
                   <button
                     key={icon}
@@ -264,7 +283,7 @@ export function Component() {
                     onClick={() => setSelectedTool(id)}
                     aria-label={id}
                   >
-                    <i className={`ph ph-${icon}`} />
+                    <Icon name={icon} />
                   </button>
                 );
               })}

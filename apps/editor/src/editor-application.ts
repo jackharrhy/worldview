@@ -212,6 +212,13 @@ export class EditorApplication implements EditorStateHost {
     this.inspector.updateInspector(document, selection);
   }
 
+  public updateFaceInspector(
+    document?: Parameters<InspectorPresenter['updateFaceInspector']>[0],
+    selection?: Parameters<InspectorPresenter['updateFaceInspector']>[1],
+  ): void {
+    this.inspector.updateFaceInspector(document, selection);
+  }
+
   public get signal(): AbortSignal {
     return this.lifetime.signal;
   }
@@ -264,6 +271,7 @@ export class EditorApplication implements EditorStateHost {
     this.state.compiledViewer = null;
     this.contextMenu.dispose();
     this.inspector.dispose();
+    this.materials.dispose();
     this.collaborationUi.dispose();
     this.theme.dispose();
     this.webmcp.dispose();
@@ -275,7 +283,7 @@ export class EditorApplication implements EditorStateHost {
     return this.collaboration?.mapId ?? null;
   }
 
-  private publishCollaborationPreview(document: MapDocument): void {
+  public publishCollaborationPreview(document: MapDocument): void {
     this.collaboration?.publishPreview(document);
   }
 

@@ -75,3 +75,12 @@ Worldview uses [`zod`](https://github.com/colinhacks/zod) 4.4.3 for declarative 
 browser, persistence, package, and service trust boundaries. Zod is distributed under the MIT
 License; its package distribution retains the license text. Copyright Colin McDonnell and
 contributors.
+
+## Editor interface dependencies
+
+Worldview's editor uses the following MIT-licensed packages for its shared icon language and
+virtualized material catalog. Their package distributions retain their license texts.
+
+- [`@phosphor-icons/web`](https://github.com/phosphor-icons/web) 2.1.2, copyright Phosphor Icons.
+- [`@tanstack/react-virtual`](https://github.com/TanStack/virtual) 3.14.10 and its
+  `@tanstack/virtual-core` dependency, copyright Tanner Linsley and contributors.

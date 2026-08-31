@@ -12,11 +12,42 @@ import {
   findBrush,
   deriveEditorGroups,
   deriveEditorLayers,
+  encodeQuakeWad2,
   parseMap,
   parseEntityOrigin,
   setBrushFaceMaterials,
   serializeMap,
+  type EditorMaterial,
 } from '../../packages/worldview-editor/src/core/index.js';
+
+function largeMaterialWad(count: number): { readonly palette: Buffer; readonly wad: Buffer } {
+  const palette = new Uint8Array(768);
+  for (let index = 0; index < 256; index += 1) {
+    palette[index * 3] = index;
+    palette[index * 3 + 1] = index;
+    palette[index * 3 + 2] = index;
+  }
+  const materials: EditorMaterial[] = Array.from({ length: count }, (_, index) => {
+    const rgba = new Uint8Array(16 * 16 * 4);
+    const value = 32 + (index % 192);
+    for (let pixel = 0; pixel < 16 * 16; pixel += 1) {
+      const offset = pixel * 4;
+      rgba[offset] = value;
+      rgba[offset + 1] = value;
+      rgba[offset + 2] = value;
+      rgba[offset + 3] = 255;
+    }
+    return {
+      name: `MAT_${String(index).padStart(3, '0')}`,
+      sourceName: 'large-test.wad',
+      width: 16,
+      height: 16,
+      rgba,
+      alphaTest: false,
+    };
+  });
+  return { palette: Buffer.from(palette), wad: Buffer.from(encodeQuakeWad2(materials, palette)) };
+}
 
 function adjacentBrushSource(): string {
   const ids = createSequentialIdFactory('browser-shared-face');
@@ -28,6 +59,30 @@ function adjacentBrushSource(): string {
   return serializeMap({
     ...starter,
     entities: [{ ...worldspawn, primitives: [left, right] }, ...starter.entities.slice(1)],
+  });
+}
+
+function mixedProjectionBrushSource(): string {
+  const ids = createSequentialIdFactory('browser-mixed-projection');
+  const starter = createStarterDocument();
+  const worldspawn = starter.entities[0]!;
+  const left = createBoxBrush([-48, -24, 0], [-8, 24, 32], 'MIXED', ids);
+  const right = createBoxBrush([8, -24, 0], [48, 24, 32], 'MIXED', ids);
+  const translatedRight = Object.assign({}, right, {
+    faces: right.faces.map((face) =>
+      Object.assign({}, face, {
+        projection: Object.assign({}, face.projection, {
+          offset: [48, face.projection.offset[1]] as const,
+        }),
+      }),
+    ),
+  });
+  return serializeMap({
+    ...starter,
+    entities: [
+      { ...worldspawn, primitives: [left, translatedRight] },
+      ...starter.entities.slice(1),
+    ],
   });
 }
 
@@ -339,6 +394,11 @@ async function openEditor(page: Page, options: { empty?: boolean } = {}): Promis
 
 async function openToolbarMenu(page: Page, name: string): Promise<void> {
   await page.getByTitle(name, { exact: true }).click();
+}
+
+async function chooseMaterialAction(page: Page, name: string): Promise<void> {
+  await page.getByRole('button', { name: 'Material actions', exact: true }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
 }
 
 interface BrowserSiteToolResult {
@@ -3300,6 +3360,9 @@ test.describe('3D source authoring', () => {
   test('material browser reports usage, selects consumers, and replaces globally or in selection', async ({
     page,
   }) => {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+      origin: 'http://127.0.0.1:5174',
+    });
     await openEditor(page);
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await page.locator('#map-source').fill(materialUsageSource());
@@ -3309,19 +3372,23 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#material-count')).toHaveText('4 loaded · 2 in use');
     await expect(page.locator('#material-coverage')).toBeHidden();
     await expect(page.locator('.material-tile.in-use')).toHaveCount(2);
-    await page.locator('#material-sort').selectOption('usage');
+    await page.getByRole('button', { name: /Sort materials/ }).click();
+    await page.getByRole('option', { name: 'Usage', exact: true }).click();
     await expect(page.locator('.material-tile').first().locator('span')).toHaveText('DEV_FLOOR');
-    await page.locator('#material-used-only').check();
+    await page.getByRole('checkbox', { name: 'Used', exact: true }).press('Space');
     await expect(page.locator('.material-tile')).toHaveCount(2);
     await page.getByRole('button', { name: 'DEV_FLOOR', exact: true }).click();
 
-    await page.locator('[data-action="select-material-faces"]').click();
+    await chooseMaterialAction(page, 'Copy material name');
+    await expect(page.locator('#status-message')).toContainText('Copied material name DEV_FLOOR');
+
+    await chooseMaterialAction(page, 'Select using faces');
     await expect(page.locator('#selection-kind')).toHaveText('10 Faces');
     await expect(page.getByRole('button', { name: 'Face', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
-    await page.locator('[data-action="select-material-brushes"]').click();
+    await chooseMaterialAction(page, 'Select using brushes');
     await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
     await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
       'aria-pressed',
@@ -3329,6 +3396,7 @@ test.describe('3D source authoring', () => {
     );
 
     await page.keyboard.press('Escape');
+    await chooseMaterialAction(page, 'Replace material uses…');
     await expect(page.locator('#material-replace-scope')).toContainText('whole map');
     await page.locator('#material-replace-source').fill('DEV_FLOOR');
     await page.locator('#material-replace-target').fill('REPLACED');
@@ -3349,10 +3417,11 @@ test.describe('3D source authoring', () => {
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await page.getByRole('tab', { name: 'Face', exact: true }).click();
     await page.getByRole('button', { name: 'DEV_FLOOR', exact: true }).click();
-    await page.locator('[data-action="select-material-brushes"]').click();
+    await chooseMaterialAction(page, 'Select using brushes');
     const first = await topWorldPoint(page, -64, 0);
     await page.mouse.click(first.x, first.y);
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await chooseMaterialAction(page, 'Replace material uses…');
     await expect(page.locator('#material-replace-scope')).toContainText('1 selected brush');
     await page.locator('#material-replace-source').fill('DEV_FLOOR');
     await page.locator('#material-replace-target').fill('SCOPED');
@@ -3365,6 +3434,38 @@ test.describe('3D source authoring', () => {
         brush.faces.filter((face) => face.material === 'SCOPED'),
       ),
     ).toHaveLength(4);
+  });
+
+  test('material browser virtualizes large catalogs without recycling the focused tile', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const resources = largeMaterialWad(150);
+    await page.locator('#palette-file').setInputFiles({
+      name: 'palette.lmp',
+      mimeType: 'application/octet-stream',
+      buffer: resources.palette,
+    });
+    await page.locator('#wad-files').setInputFiles({
+      name: 'large-test.wad',
+      mimeType: 'application/octet-stream',
+      buffer: resources.wad,
+    });
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
+
+    await expect(page.locator('#material-count')).toHaveText('154 loaded · 2 in use');
+    const tiles = page.locator('.material-tile');
+    expect(await tiles.count()).toBeLessThan(40);
+    const first = page.getByRole('button', { name: 'DEV_FLOOR', exact: true });
+    await first.focus();
+    await expect(first).toBeFocused();
+    await page.locator('#material-grid').evaluate((grid) => {
+      grid.scrollTop = grid.scrollHeight;
+      grid.dispatchEvent(new Event('scroll'));
+    });
+    await expect(page.getByRole('button', { name: 'MAT_149', exact: true })).toBeVisible();
+    await expect(first).toBeFocused();
+    expect(await tiles.count()).toBeLessThan(45);
   });
 
   test('Face tool lassos projected handles in orthographic and perspective views', async ({
@@ -3481,13 +3582,13 @@ test.describe('3D source authoring', () => {
     await page.locator('#texture-scale-u').fill('0.5');
     await page.locator('#texture-scale-v').fill('2');
     await page.locator('#texture-rotation').fill('30');
-    await page.locator('[data-action="apply-texture-transform"]').click();
-    await expect(page.locator('#document-revision')).toHaveText('2');
+    await page.locator('#texture-rotation').press('Enter');
+    await expect(page.locator('#document-revision')).toHaveText('6');
 
     await page.keyboard.down('Alt');
     await page.mouse.click(targetPoint.x, targetPoint.y);
     await page.keyboard.up('Alt');
-    await expect(page.locator('#document-revision')).toHaveText('3');
+    await expect(page.locator('#document-revision')).toHaveText('7');
     let document = await readEditorDocument(page);
     let brushes = brushesInDocument(document);
     const sourceFace = brushes[0]!.faces.find((face) => face.material === 'TRANSFER_SOURCE')!;
@@ -3496,13 +3597,13 @@ test.describe('3D source authoring', () => {
     expect(targetFaces[0]!.projection).toEqual(sourceFace.projection);
 
     await page.getByRole('button', { name: 'Undo' }).click();
-    await expect(page.locator('#document-revision')).toHaveText('4');
+    await expect(page.locator('#document-revision')).toHaveText('8');
     await page.keyboard.down('Alt');
     await page.keyboard.down('Control');
     await page.mouse.click(targetPoint.x, targetPoint.y);
     await page.keyboard.up('Control');
     await page.keyboard.up('Alt');
-    await expect(page.locator('#document-revision')).toHaveText('5');
+    await expect(page.locator('#document-revision')).toHaveText('9');
     document = await readEditorDocument(page);
     brushes = brushesInDocument(document);
     targetFaces = brushes[2]!.faces.filter((face) => face.material === 'TRANSFER_SOURCE');
@@ -3510,11 +3611,11 @@ test.describe('3D source authoring', () => {
     expect(targetFaces[0]!.projection).not.toEqual(sourceFace.projection);
 
     await page.getByRole('button', { name: 'Undo' }).click();
-    await expect(page.locator('#document-revision')).toHaveText('6');
+    await expect(page.locator('#document-revision')).toHaveText('10');
     await page.keyboard.down('Alt');
     await page.mouse.dblclick(targetPoint.x, targetPoint.y);
     await page.keyboard.up('Alt');
-    await expect(page.locator('#document-revision')).toHaveText('7');
+    await expect(page.locator('#document-revision')).toHaveText('11');
     document = await readEditorDocument(page);
     brushes = brushesInDocument(document);
     expect(brushes[2]!.faces.every((face) => face.material === 'TRANSFER_SOURCE')).toBe(true);
@@ -3554,7 +3655,7 @@ test.describe('3D source authoring', () => {
     await page.keyboard.up('Shift');
     await expect(page.locator('#selection-kind')).toHaveText('Face');
     await page.getByRole('tab', { name: 'Face', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Quake II surface' })).toBeVisible();
+    await page.getByText('Quake II surface', { exact: true }).click();
     await expect(page.getByText('Unknown bits: 0x100')).toBeVisible();
 
     await page.getByRole('checkbox', { name: 'Sky', exact: true }).press('Space');
@@ -3570,9 +3671,9 @@ test.describe('3D source authoring', () => {
       ),
     ).toBe(true);
 
-    const surfaceValueForm = page.locator('.surface-value-form');
-    await surfaceValueForm.getByRole('textbox', { name: /value$/i }).fill('512');
-    await surfaceValueForm.getByRole('button', { name: 'Apply', exact: true }).click();
+    const surfaceValue = page.getByRole('textbox', { name: /value$/i });
+    await surfaceValue.fill('512');
+    await surfaceValue.press('Enter');
     expect(
       brushesInDocument(await readEditorDocument(page)).some((brush) =>
         brush.faces.some(({ surface }) => surface.value === 512),
@@ -3635,7 +3736,7 @@ test.describe('3D source authoring', () => {
     await page.locator('#texture-scale-u').fill('0.5');
     await page.locator('#texture-scale-v').fill('1.5');
     await page.locator('#texture-rotation').fill('45');
-    await page.locator('[data-action="apply-texture-transform"]').click();
+    await page.locator('#texture-rotation').press('Enter');
 
     const copy = page.getByRole('button', { name: 'Copy', exact: true });
     await expect(copy).toBeEnabled();
@@ -3654,7 +3755,7 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#status-message')).toContainText(
       'Pasted CLIPBOARD_SOURCE and its attributes onto 1 face',
     );
-    await expect(page.locator('#document-revision')).toHaveText('3');
+    await expect(page.locator('#document-revision')).toHaveText('7');
 
     let document = await readEditorDocument(page);
     const source = brushesInDocument(document)[0]!.faces.find(
@@ -3687,49 +3788,48 @@ test.describe('3D source authoring', () => {
     await page.mouse.click(point.x, point.y);
     await page.keyboard.up('Shift');
     await page.getByRole('tab', { name: 'Face' }).click();
-    await page.getByText('Alignment tools', { exact: true }).click();
 
-    await page.getByRole('button', { name: 'Flip U' }).click();
+    await page.getByRole('button', { name: 'Flip horizontally' }).click();
     await expect(page.locator('#texture-scale-u')).toHaveValue('-1');
     await expect(page.locator('#status-message')).toContainText('Flip texture horizontally');
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(page.locator('#texture-scale-u')).toHaveValue('1');
 
-    await page.getByRole('button', { name: 'Rotate +90°' }).click();
+    await page.locator('[data-texture-operation="rotate-ccw"]').click();
     await expect(page.locator('#texture-rotation')).toHaveValue('90');
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(page.locator('#texture-rotation')).toHaveValue('0');
 
-    await page.locator('[data-texture-layout="auto-fit"]').click();
+    await page.locator('[data-texture-operation="auto-fit"]').click();
     await expect(page.locator('#texture-scale-u')).toHaveValue('4');
     await expect(page.locator('#texture-scale-v')).toHaveValue('4');
     await expect(page.locator('#texture-shift-u')).toHaveValue('32');
     await expect(page.locator('#texture-shift-v')).toHaveValue('32');
     await page.getByRole('button', { name: 'Undo' }).click();
 
-    await page.locator('[data-texture-layout="justify-u-min"]').click();
+    await page.locator('[data-texture-operation="justify-u-min"]').click();
     await expect(page.locator('#texture-shift-u')).toHaveValue('128');
     await expect(page.locator('#status-message')).toContainText('Justify texture left');
     await page.getByRole('button', { name: 'Undo' }).click();
 
-    await page.locator('[data-texture-layout="fit-u"]').click();
+    await page.locator('[data-texture-operation="fit-u"]').click();
     await expect(page.locator('#texture-scale-u')).toHaveValue('0.8');
     await page.getByRole('button', { name: 'Undo' }).click();
-    await page.locator('[data-texture-layout="fit-u"]').click({ modifiers: ['Meta'] });
+    await page.locator('[data-texture-operation="fit-u"]').click({ modifiers: ['Meta'] });
     await expect(page.locator('#texture-scale-u')).toHaveValue('4');
-    await page.locator('[data-texture-layout="fit-u"]').click({ modifiers: ['Meta'] });
+    await page.locator('[data-texture-operation="fit-u"]').click({ modifiers: ['Meta'] });
     await expect(page.locator('#texture-scale-u')).toHaveValue('8');
     await page.getByRole('button', { name: 'Undo' }).click();
     await page.getByRole('button', { name: 'Undo' }).click();
 
-    await page.locator('[data-texture-layout="align-edge"]').click();
+    await page.locator('[data-texture-operation="align-edge"]').click();
     expect(Number(await page.locator('#texture-rotation').inputValue())).not.toBeCloseTo(0);
-    await page.locator('[data-texture-layout="align-edge"]').click({ modifiers: ['Shift'] });
+    await page.locator('[data-texture-operation="align-edge"]').click({ modifiers: ['Shift'] });
     expect(Number(await page.locator('#texture-rotation').inputValue())).toBeCloseTo(0);
 
     await page.mouse.click(point.x, point.y);
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
-    await page.locator('[data-texture-layout="auto-fit"]').click();
+    await page.locator('[data-texture-operation="auto-fit"]').click();
     let document = await readEditorDocument(page);
     expect(
       brushesInDocument(document)[0]!.faces.every((face) =>
@@ -3737,12 +3837,52 @@ test.describe('3D source authoring', () => {
       ),
     ).toBe(true);
     await page.getByRole('button', { name: 'Undo' }).click();
-    await page.getByRole('button', { name: 'Flip V' }).click();
+    await page.getByRole('button', { name: 'Flip vertically' }).click();
     document = await readEditorDocument(page);
     expect(
       brushesInDocument(document)[0]!.faces.every((face) => face.projection.scale[1] === -1),
     ).toBe(true);
     await page.getByRole('button', { name: 'Undo' }).click();
+  });
+
+  test('mixed face projection fields batch one attribute without flattening the selection', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(mixedProjectionBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    await page.getByRole('button', { name: 'Face', exact: true }).click();
+    const left = await topWorldPoint(page, -28, 0);
+    const right = await topWorldPoint(page, 28, 0);
+    await page.mouse.click(left.x, left.y);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(right.x, right.y);
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#selection-kind')).toHaveText('2 Faces');
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
+
+    const offset = page.locator('#texture-shift-u');
+    await expect(offset).toHaveAttribute('placeholder', 'Mixed');
+    await offset.fill('12');
+    await offset.press('Enter');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(offset).toHaveValue('12');
+    let document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document)
+        .flatMap((brush) => brush.faces)
+        .filter((face) => face.projection.offset[0] === 12),
+    ).toHaveLength(2);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    document = await readEditorDocument(page);
+    expect(
+      brushesInDocument(document)
+        .flatMap((brush) => brush.faces)
+        .filter((face) => face.projection.offset[0] === 12),
+    ).toHaveLength(0);
+    await expect(offset).toHaveAttribute('placeholder', 'Mixed');
   });
 
   test('graphical UV editor pans, rotates, and scales the selected face with live history', async ({
@@ -3792,6 +3932,125 @@ test.describe('3D source authoring', () => {
     await expect(page.locator('#geometry-state')).toHaveText('valid');
   });
 
+  test('missing face materials keep an editable, explicit UV fallback', async ({ page }) => {
+    await openEditor(page);
+    const face = await perspectivePoint(page, 0.5, 0.58);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(face.x, face.y);
+    await page.keyboard.up('Shift');
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
+    await page.locator('#material-name').fill('NOT_LOADED');
+    await page.locator('[data-action="apply-material"]').click();
+
+    await expect(page.locator('#material-coverage')).toContainText('NOT_LOADED');
+    await expect(page.locator('.face-summary strong')).toHaveText('NOT_LOADED');
+    await expect(page.locator('#uv-material-pattern image')).toHaveCount(0);
+    await expect(page.locator('#uv-material-pattern path')).toHaveCount(1);
+    await expect(page.locator('#texture-shift-u')).toBeEnabled();
+  });
+
+  test('UV camera, tiled material, and grid remain view state while projection previews stay narrow', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const face = await perspectivePoint(page, 0.5, 0.58);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(face.x, face.y);
+    await page.keyboard.up('Shift');
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
+
+    const editor = page.locator('#uv-editor');
+    const bounds = await editor.boundingBox();
+    if (!bounds) throw new Error('The UV editor has no bounds');
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const pattern = editor.locator('#uv-material-pattern');
+    await expect(pattern.locator('image')).toHaveCount(1);
+    await expect(editor.locator('.uv-background')).toHaveAttribute(
+      'fill',
+      'url(#uv-material-pattern)',
+    );
+    const originalPatternX = await pattern.getAttribute('x');
+    const originalPatternWidth = await pattern.getAttribute('width');
+
+    await page.mouse.move(center.x - 70, center.y - 50);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(center.x - 25, center.y - 20, { steps: 8 });
+    await page.mouse.up({ button: 'right' });
+    await expect(page.locator('#document-revision')).toHaveText('0');
+    expect(await pattern.getAttribute('x')).not.toBe(originalPatternX);
+
+    await page.mouse.move(center.x + 30, center.y + 15);
+    await page.mouse.wheel(0, -240);
+    await expect(page.locator('#document-revision')).toHaveText('0');
+    const zoomedPatternX = await pattern.getAttribute('x');
+    const zoomedPatternWidth = await pattern.getAttribute('width');
+    expect(zoomedPatternWidth).not.toBe(originalPatternWidth);
+
+    const lineCount = await editor.locator('.uv-grid line').count();
+    const gridX = page.locator('#uv-grid-x');
+    await gridX.fill('4');
+    await gridX.press('Enter');
+    expect(await editor.locator('.uv-grid line').count()).toBeGreaterThan(lineCount);
+    await expect(page.locator('#document-revision')).toHaveText('0');
+
+    await page.locator('#texture-shift-u').fill('16');
+    await page.locator('#texture-shift-u').press('Enter');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    expect(await pattern.getAttribute('x')).toBe(zoomedPatternX);
+    expect(await pattern.getAttribute('width')).toBe(zoomedPatternWidth);
+
+    await page.evaluate(() => performance.clearMeasures());
+    await page.mouse.move(center.x - 25, center.y - 15);
+    await page.mouse.down();
+    await page.mouse.move(center.x + 45, center.y - 15, { steps: 24 });
+    await page.waitForTimeout(32);
+    expect(
+      await page.evaluate(
+        () => performance.getEntriesByName('worldview.editor.material-catalog').length,
+      ),
+    ).toBe(0);
+    await page.mouse.up();
+    await expect(page.locator('#document-revision')).toHaveText('2');
+
+    await page.getByRole('button', { name: 'Frame selected face', exact: true }).click();
+    await expect(page.locator('#document-revision')).toHaveText('2');
+  });
+
+  test('face and material splitter is keyboard operable and persists its local layout', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
+    const separator = page.getByRole('separator', {
+      name: 'Resize face attributes and material browser',
+    });
+    const initial = Number(await separator.getAttribute('aria-valuenow'));
+    await separator.focus();
+    await page.keyboard.press('ArrowUp');
+    await expect(separator).toHaveAttribute('aria-valuenow', String(initial - 16));
+    await expect
+      .poll(() =>
+        page.evaluate(() => localStorage.getItem('worldview.face-inspector.upper-height')),
+      )
+      .toBe(String(initial - 16));
+
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
+    await expect(
+      page.getByRole('separator', { name: 'Resize face attributes and material browser' }),
+    ).toHaveAttribute('aria-valuenow', String(initial - 16));
+
+    await page.setViewportSize({ width: 1024, height: 650 });
+    const compactSeparator = page.getByRole('separator', {
+      name: 'Resize face attributes and material browser',
+    });
+    await expect
+      .poll(async () => Number(await compactSeparator.getAttribute('aria-valuenow')))
+      .toBeLessThan(initial - 16);
+    await expect(page.locator('.material-browser-controls')).toBeInViewport();
+  });
+
   test('UV editor pivot snaps without dirtying the map and Escape cancels a live preview', async ({
     page,
   }) => {
@@ -3816,7 +4075,7 @@ test.describe('3D source authoring', () => {
     await page.mouse.up();
     await expect(page.locator('#status-message')).toContainText('UV transform origin moved');
     await expect(page.locator('#document-revision')).toHaveText('0');
-    await page.getByRole('button', { name: 'Center origin', exact: true }).click();
+    await page.getByRole('button', { name: 'Reset UV origin', exact: true }).click();
     await expect(page.locator('#status-message')).toContainText('origin reset');
 
     await page.mouse.move(center.x - 30, center.y - 20);

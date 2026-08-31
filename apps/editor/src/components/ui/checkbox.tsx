@@ -6,6 +6,7 @@ import {
   Text,
   type CheckboxFieldProps,
 } from 'react-aria-components/Checkbox';
+import { Icon } from './icon.js';
 
 export interface CheckboxProps extends Omit<CheckboxFieldProps, 'children' | 'className'> {
   readonly children: ReactNode;
@@ -29,7 +30,7 @@ export function Checkbox({
         {({ isIndeterminate }) => (
           <>
             <span className="wv-checkbox-indicator" aria-hidden="true">
-              <i className={`ph ${isIndeterminate ? 'ph-minus' : 'ph-check'}`} />
+              <Icon name={isIndeterminate ? 'indeterminate' : 'check'} />
             </span>
             <span className="wv-checkbox-label">{children}</span>
           </>

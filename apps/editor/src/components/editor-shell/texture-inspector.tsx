@@ -1,8 +1,220 @@
-import { useSyncExternalStore, type FormEvent } from 'react';
-import type { EditorShellState, SurfaceFlagControl } from '../../editor-shell-state.js';
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { MenuTrigger } from 'react-aria-components/Menu';
+import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
+import type {
+  EditorMaterial,
+  FaceTextureAlignmentOperation,
+  FaceTextureProjectionField,
+} from '@jackharrhy/worldview-editor/core';
+
+import type {
+  EditorShellState,
+  FaceInspectorSnapshot,
+  MaterialBrowserSnapshot,
+  SurfaceFlagControl,
+} from '../../editor-shell-state.js';
 import { Button } from '../ui/button.js';
 import { Checkbox } from '../ui/checkbox.js';
+import { Dialog } from '../ui/dialog.js';
+import { Icon, IconButton, type IconName } from '../ui/icon.js';
+import { Menu, MenuItem, Popover } from '../ui/menu.js';
 import { NumberField } from '../ui/number-field.js';
+import { Select } from '../ui/select.js';
+import { TextField } from '../ui/text-field.js';
+
+const FACE_SPLIT_STORAGE_KEY = 'worldview.face-inspector.upper-height';
+const DEFAULT_FACE_UPPER_HEIGHT = 590;
+const MINIMUM_FACE_UPPER_HEIGHT = 300;
+const MINIMUM_MATERIAL_HEIGHT = 190;
+const FACE_SPLITTER_HEIGHT = 5;
+const PROJECTION_FIELD_INPUT_IDS: Record<FaceTextureProjectionField, string> = {
+  'offset-u': 'texture-shift-u',
+  'offset-v': 'texture-shift-v',
+  'scale-u': 'texture-scale-u',
+  'scale-v': 'texture-scale-v',
+  rotation: 'texture-rotation',
+};
+
+function storedFaceUpperHeight(): number {
+  try {
+    const stored = localStorage.getItem(FACE_SPLIT_STORAGE_KEY);
+    if (stored === null) return DEFAULT_FACE_UPPER_HEIGHT;
+    const parsed = Number(stored);
+    return Number.isFinite(parsed)
+      ? Math.max(MINIMUM_FACE_UPPER_HEIGHT, Math.min(1200, parsed))
+      : DEFAULT_FACE_UPPER_HEIGHT;
+  } catch {
+    return DEFAULT_FACE_UPPER_HEIGHT;
+  }
+}
+
+function persistFaceUpperHeight(height: number): void {
+  try {
+    localStorage.setItem(FACE_SPLIT_STORAGE_KEY, String(height));
+  } catch {
+    // The splitter remains functional when machine-local storage is unavailable.
+  }
+}
+
+interface ProjectionFieldProps {
+  readonly label: string;
+  readonly field: FaceTextureProjectionField;
+  readonly value: number | null;
+  readonly step: number;
+  readonly disabled: boolean;
+  readonly shellState: EditorShellState;
+}
+
+function ProjectionField({
+  label,
+  field,
+  value,
+  step,
+  disabled,
+  shellState,
+}: ProjectionFieldProps) {
+  const draft = useRef(value);
+  useEffect(() => {
+    draft.current = value;
+  }, [value]);
+  const commit = () => {
+    const next = draft.current;
+    if (next === null || !Number.isFinite(next) || next === value) return;
+    shellState.faceInspector.invoke('setProjectionField', field, next);
+  };
+  return (
+    <NumberField
+      key={`${field}:${value ?? 'mixed'}`}
+      className="face-projection-field"
+      label={label}
+      step={step}
+      isDisabled={disabled}
+      {...(value === null ? {} : { defaultValue: value })}
+      input={{
+        id: PROJECTION_FIELD_INPUT_IDS[field],
+        ...(value === null ? { placeholder: 'Mixed' } : {}),
+        onChange: (event) => {
+          const next = Number(event.currentTarget.value);
+          draft.current = Number.isFinite(next) ? next : null;
+        },
+      }}
+      onChange={(next) => {
+        draft.current = next;
+      }}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter') return;
+        commit();
+        (event.currentTarget as HTMLElement).querySelector('input')?.blur();
+      }}
+    />
+  );
+}
+
+interface FaceCommand {
+  readonly operation: FaceTextureAlignmentOperation;
+  readonly icon: IconName;
+  readonly label: string;
+}
+
+const projectionCommands: readonly FaceCommand[] = [
+  { operation: 'reset', icon: 'reset-face', label: 'Reset face projection' },
+  { operation: 'world', icon: 'reset-world', label: 'Align projection to world axes' },
+  { operation: 'flip-u', icon: 'flip-horizontal', label: 'Flip horizontally' },
+  { operation: 'flip-v', icon: 'flip-vertical', label: 'Flip vertically' },
+  { operation: 'rotate-ccw', icon: 'rotate-counter-clockwise', label: 'Rotate 90° left' },
+  { operation: 'rotate-cw', icon: 'rotate-clockwise', label: 'Rotate 90° right' },
+];
+
+const boundsCommands: readonly FaceCommand[] = [
+  { operation: 'justify-v-min', icon: 'align-top', label: 'Align to top edge' },
+  { operation: 'justify-u-min', icon: 'align-left', label: 'Align to left edge' },
+  { operation: 'auto-fit', icon: 'align-center', label: 'Fit to face' },
+  { operation: 'justify-u-max', icon: 'align-right', label: 'Align to right edge' },
+  { operation: 'justify-v-max', icon: 'align-bottom', label: 'Align to bottom edge' },
+  { operation: 'align-edge', icon: 'align-edge', label: 'Align to selected edge' },
+  { operation: 'fit-u', icon: 'fit-horizontal', label: 'Fit horizontally' },
+  { operation: 'fit-v', icon: 'fit-vertical', label: 'Fit vertically' },
+];
+
+function FaceCommandGroup({
+  label,
+  commands,
+  disabled,
+  shellState,
+}: {
+  readonly label: string;
+  readonly commands: readonly FaceCommand[];
+  readonly disabled: boolean;
+  readonly shellState: EditorShellState;
+}) {
+  return (
+    <div className="face-icon-group" role="group" aria-label={label}>
+      {commands.map((command) => (
+        <IconButton
+          key={command.operation}
+          icon={command.icon}
+          label={command.label}
+          isDisabled={disabled}
+          data-texture-operation={command.operation}
+          onPress={(event) =>
+            shellState.faceInspector.invoke('align', command.operation, {
+              reverse: event.shiftKey,
+              subdivide: event.ctrlKey || event.metaKey,
+            })
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function UvToolbar({
+  snapshot,
+  shellState,
+}: {
+  readonly snapshot: FaceInspectorSnapshot;
+  readonly shellState: EditorShellState;
+}) {
+  return (
+    <div className="uv-toolbar">
+      <div className="face-icon-group" role="group" aria-label="UV view">
+        <IconButton
+          icon="frame-uv"
+          label="Frame selected face"
+          isDisabled={snapshot.mode !== 'single'}
+          onPress={() => shellState.faceInspector.invoke('frameUvSelection')}
+        />
+        <IconButton
+          icon="align-center"
+          label="Reset UV origin"
+          isDisabled={snapshot.mode !== 'single'}
+          onPress={() => shellState.faceInspector.invoke('resetUvPivot')}
+        />
+      </div>
+      <div className="uv-grid-fields" aria-label="UV grid subdivisions">
+        <NumberField
+          label="Grid X"
+          value={snapshot.uvGrid[0]}
+          minValue={1}
+          maxValue={16}
+          step={1}
+          onChange={(value) => shellState.faceInspector.invoke('setUvGrid', 0, value)}
+          input={{ id: 'uv-grid-x', 'aria-label': 'UV grid X subdivisions' }}
+        />
+        <NumberField
+          label="Y"
+          value={snapshot.uvGrid[1]}
+          minValue={1}
+          maxValue={16}
+          step={1}
+          onChange={(value) => shellState.faceInspector.invoke('setUvGrid', 1, value)}
+          input={{ id: 'uv-grid-y', 'aria-label': 'UV grid Y subdivisions' }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function FlagCheckbox({
   field,
@@ -26,6 +238,51 @@ function FlagCheckbox({
   );
 }
 
+function SurfaceValueField({
+  value,
+  mixed,
+  label,
+  shellState,
+}: {
+  readonly value: string;
+  readonly mixed: boolean;
+  readonly label: string;
+  readonly shellState: EditorShellState;
+}) {
+  const parsed = Number(value);
+  const initialValue = value.trim() && Number.isFinite(parsed) ? parsed : null;
+  const draft = useRef(initialValue);
+  const commit = () => {
+    const next = draft.current;
+    if (next === null || !Number.isFinite(next) || next === initialValue) return;
+    shellState.surfaceInspector.invoke('setValue', next);
+  };
+  return (
+    <NumberField
+      key={`${value}:${mixed}`}
+      label={label}
+      step={1}
+      {...(initialValue === null ? {} : { defaultValue: initialValue })}
+      input={{
+        ...(mixed ? { placeholder: 'Mixed' } : {}),
+        onChange: (event) => {
+          const next = Number(event.currentTarget.value);
+          draft.current = Number.isFinite(next) ? next : null;
+        },
+      }}
+      onChange={(next) => {
+        draft.current = next;
+      }}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter') return;
+        commit();
+        (event.currentTarget as HTMLElement).querySelector('input')?.blur();
+      }}
+    />
+  );
+}
+
 function SurfaceInspector({ shellState }: { readonly shellState: EditorShellState }) {
   const snapshot = useSyncExternalStore(
     shellState.surfaceInspector.subscribe,
@@ -33,16 +290,9 @@ function SurfaceInspector({ shellState }: { readonly shellState: EditorShellStat
     shellState.surfaceInspector.getSnapshot,
   );
   if (!snapshot.visible) return null;
-  const submitValue = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const value = Number(data.get('surface-value'));
-    if (Number.isInteger(value)) shellState.surfaceInspector.invoke('setValue', value);
-  };
-  const surfaceValue = Number(snapshot.value);
   return (
-    <div className="surface-attributes inspector-section">
-      <h3>Quake II surface</h3>
+    <details className="surface-attributes">
+      <summary>Quake II surface</summary>
       <fieldset>
         <legend>Contents</legend>
         <div className="surface-flag-grid">
@@ -61,239 +311,486 @@ function SurfaceInspector({ shellState }: { readonly shellState: EditorShellStat
         </div>
         {snapshot.unknownFlags ? <p>Unknown bits: {snapshot.unknownFlags}</p> : null}
       </fieldset>
-      <form onSubmit={submitValue} className="surface-value-form">
-        <NumberField
-          key={`${snapshot.value}:${snapshot.valueMixed}`}
-          label={snapshot.valueLabel}
-          name="surface-value"
-          step={1}
-          {...(snapshot.value.trim() && Number.isFinite(surfaceValue)
-            ? { defaultValue: surfaceValue }
-            : {})}
-          input={snapshot.valueMixed ? { placeholder: 'Mixed' } : {}}
+      <SurfaceValueField
+        label={snapshot.valueLabel}
+        value={snapshot.value}
+        mixed={snapshot.valueMixed}
+        shellState={shellState}
+      />
+    </details>
+  );
+}
+
+function FaceAttributes({ shellState }: { readonly shellState: EditorShellState }) {
+  const snapshot = useSyncExternalStore(
+    shellState.faceInspector.subscribe,
+    shellState.faceInspector.getSnapshot,
+    shellState.faceInspector.getSnapshot,
+  );
+  const selectionLabel = snapshot.mode === 'none' ? 'No face selected' : snapshot.material;
+  const materialSize = snapshot.materialSize
+    ? `${snapshot.materialSize[0]} × ${snapshot.materialSize[1]}`
+    : '';
+  const detailLabel =
+    snapshot.mode === 'multiple'
+      ? `${snapshot.selectedFaceCount} faces${materialSize ? ` · ${materialSize}` : ''}`
+      : materialSize;
+  return (
+    <div className="face-attributes-pane">
+      <header className="face-summary" data-mixed={snapshot.materialMixed || undefined}>
+        <strong>{selectionLabel}</strong>
+        {detailLabel ? <span>{detailLabel}</span> : null}
+      </header>
+      <div className="uv-editor-frame">
+        <svg
+          id="uv-editor"
+          viewBox="0 0 320 220"
+          role="application"
+          aria-label="Selected face UV editor"
+          tabIndex={0}
         />
-        <Button type="submit" size="compact">
-          Apply
-        </Button>
-      </form>
+      </div>
+      <div className="uv-editor-status" aria-live="polite">
+        <span id="uv-editor-status">{snapshot.uvStatus}</span>
+        <span>Drag changes offset. Middle or right drag pans. Wheel zooms.</span>
+      </div>
+      <UvToolbar snapshot={snapshot} shellState={shellState} />
+      <div className="face-projection-grid">
+        <ProjectionField
+          label="X offset"
+          field="offset-u"
+          value={snapshot.offset[0]}
+          step={1}
+          disabled={!snapshot.canEditProjection}
+          shellState={shellState}
+        />
+        <ProjectionField
+          label="Y offset"
+          field="offset-v"
+          value={snapshot.offset[1]}
+          step={1}
+          disabled={!snapshot.canEditProjection}
+          shellState={shellState}
+        />
+        <ProjectionField
+          label="X scale"
+          field="scale-u"
+          value={snapshot.scale[0]}
+          step={0.05}
+          disabled={!snapshot.canEditProjection}
+          shellState={shellState}
+        />
+        <ProjectionField
+          label="Y scale"
+          field="scale-v"
+          value={snapshot.scale[1]}
+          step={0.05}
+          disabled={!snapshot.canEditProjection}
+          shellState={shellState}
+        />
+        <ProjectionField
+          label="Angle"
+          field="rotation"
+          value={snapshot.rotationDegrees}
+          step={1}
+          disabled={!snapshot.canEditProjection}
+          shellState={shellState}
+        />
+      </div>
+      <div className="face-command-row">
+        <FaceCommandGroup
+          label="Projection alignment"
+          commands={projectionCommands}
+          disabled={!snapshot.canAlign}
+          shellState={shellState}
+        />
+        <FaceCommandGroup
+          label="Face bounds alignment"
+          commands={boundsCommands}
+          disabled={!snapshot.canAlign}
+          shellState={shellState}
+        />
+      </div>
+      <details className="face-axis-details">
+        <summary>Projection axes</summary>
+        <dl className="texture-axes">
+          <div>
+            <dt>U axis</dt>
+            <dd>{snapshot.uAxis || 'No face selected'}</dd>
+          </div>
+          <div>
+            <dt>V axis</dt>
+            <dd>{snapshot.vAxis || 'No face selected'}</dd>
+          </div>
+        </dl>
+      </details>
+      <SurfaceInspector shellState={shellState} />
     </div>
   );
 }
 
-export function TextureInspector({ shellState }: { readonly shellState: EditorShellState }) {
+function MaterialThumbnail({ material }: { readonly material: EditorMaterial }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const context = canvas.current?.getContext('2d');
+    context?.putImageData(
+      new ImageData(new Uint8ClampedArray(material.rgba), material.width, material.height),
+      0,
+      0,
+    );
+  }, [material]);
+  return <canvas ref={canvas} width={material.width} height={material.height} aria-hidden="true" />;
+}
+
+function MaterialGrid({
+  snapshot,
+  shellState,
+}: {
+  readonly snapshot: MaterialBrowserSnapshot;
+  readonly shellState: EditorShellState;
+}) {
+  const scroll = useRef<HTMLDivElement>(null);
+  const [focusedMaterial, setFocusedMaterial] = useState<string | null>(null);
+  const columns = 3;
+  const focusedIndex =
+    focusedMaterial === null
+      ? -1
+      : snapshot.cells.findIndex((cell) => cell.material.name === focusedMaterial);
+  const focusedRow = focusedIndex < 0 ? -1 : Math.floor(focusedIndex / columns);
+  const virtualizer = useVirtualizer({
+    count: Math.ceil(snapshot.cells.length / columns),
+    getScrollElement: () => scroll.current,
+    estimateSize: () => 104,
+    overscan: 3,
+    rangeExtractor: (range) => {
+      const rows = defaultRangeExtractor(range);
+      return focusedRow < 0 || rows.includes(focusedRow)
+        ? rows
+        : [...rows, focusedRow].toSorted((left, right) => left - right);
+    },
+  });
   return (
-    <section>
-      <div className="panel-heading">
-        <h2>Selected face</h2>
-        <span>Valve 220</span>
-      </div>
-      <div className="texture-section inspector-section">
-        <div className="uv-editor-heading">
-          <h3>UV editor</h3>
-          <button id="uv-reset-pivot" type="button">
-            Center origin
-          </button>
+    <div ref={scroll} id="material-grid" className="material-grid" aria-label="Loaded materials">
+      {snapshot.cells.length === 0 ? (
+        <p className="material-empty">No materials match this view.</p>
+      ) : (
+        <div className="material-virtual-space" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((virtualRow) => (
+            <div
+              key={virtualRow.key}
+              className="material-virtual-row"
+              style={{ transform: `translateY(${virtualRow.start}px)` }}
+            >
+              {snapshot.cells
+                .slice(virtualRow.index * columns, virtualRow.index * columns + columns)
+                .map((cell) => {
+                  const { material } = cell;
+                  const usage = cell.inUse
+                    ? `${cell.faceCount} ${cell.faceCount === 1 ? 'face' : 'faces'} in ${cell.brushCount} ${cell.brushCount === 1 ? 'brush' : 'brushes'}`
+                    : 'Unused';
+                  return (
+                    <Button
+                      key={material.name.toLowerCase()}
+                      className={`material-tile${cell.active ? ' active' : ''}${cell.inUse ? ' in-use' : ''}`}
+                      data-material-name={material.name}
+                      aria-pressed={cell.active}
+                      aria-label={material.name}
+                      aria-description={`${material.width}×${material.height}, ${usage}, ${material.sourceName}`}
+                      onFocus={() => setFocusedMaterial(material.name)}
+                      onPress={() =>
+                        shellState.materialBrowser.invoke('activateMaterial', material.name)
+                      }
+                    >
+                      <MaterialThumbnail material={material} />
+                      <span>{material.name}</span>
+                    </Button>
+                  );
+                })}
+            </div>
+          ))}
         </div>
-        <div className="uv-editor-frame">
-          <svg
-            id="uv-editor"
-            viewBox="0 0 320 220"
-            role="application"
-            aria-label="Selected face UV editor"
-            tabIndex={0}
-          />
-        </div>
-        <div className="uv-editor-status">
-          <span id="uv-editor-status">No editable UV projection</span>
-          <span>
-            U <b>red</b> · V <b>green</b>
-          </span>
-        </div>
-        <h3 className="texture-projection-title">Projection</h3>
-        <div className="texture-fields">
-          <label>
-            Shift U<input id="texture-shift-u" type="number" step={1} />
-          </label>
-          <label>
-            Shift V<input id="texture-shift-v" type="number" step={1} />
-          </label>
-          <label>
-            Scale U<input id="texture-scale-u" type="number" step="0.05" />
-          </label>
-          <label>
-            Scale V<input id="texture-scale-v" type="number" step="0.05" />
-          </label>
-          <label>
-            Rotation
-            <input id="texture-rotation" type="number" step={1} />
-          </label>
-          <button type="button" data-action="apply-texture-transform">
-            Apply
-          </button>
-        </div>
-        <dl className="texture-axes">
-          <div>
-            <dt>U axis</dt>
-            <dd id="texture-u-axis" />
-          </div>
-          <div>
-            <dt>V axis</dt>
-            <dd id="texture-v-axis" />
-          </div>
-        </dl>
-        <details className="texture-advanced-tools">
-          <summary>Alignment tools</summary>
-          <div className="texture-alignment-controls" role="group" aria-label="Texture alignment">
-            <button type="button" data-texture-align="reset">
-              Reset face
-            </button>
-            <button type="button" data-texture-align="world">
-              Reset world
-            </button>
-            <button type="button" data-texture-align="flip-u">
-              Flip U
-            </button>
-            <button type="button" data-texture-align="flip-v">
-              Flip V
-            </button>
-            <button type="button" data-texture-align="rotate-ccw">
-              Rotate +90°
-            </button>
-            <button type="button" data-texture-align="rotate-cw">
-              Rotate −90°
-            </button>
-          </div>
-          <h4 className="texture-layout-title">Face bounds</h4>
-          <div className="texture-justify-controls" role="group" aria-label="Texture justification">
-            <button type="button" data-texture-layout="justify-v-min">
-              Top
-            </button>
-            <button type="button" data-texture-layout="justify-u-min">
-              Left
-            </button>
-            <button type="button" data-texture-layout="auto-fit">
-              Auto fit
-            </button>
-            <button type="button" data-texture-layout="justify-u-max">
-              Right
-            </button>
-            <button type="button" data-texture-layout="justify-v-max">
-              Bottom
-            </button>
-          </div>
-          <div
-            className="texture-fit-controls"
-            role="group"
-            aria-label="Texture edge alignment and fit"
-          >
-            <button type="button" data-texture-layout="align-edge">
-              Align edge
-            </button>
-            <button type="button" data-texture-layout="fit-u">
-              Fit U
-            </button>
-            <button type="button" data-texture-layout="fit-v">
-              Fit V
-            </button>
-          </div>
-        </details>
-      </div>
-      <SurfaceInspector shellState={shellState} />
-      <div className="material-section inspector-section">
-        <div className="section-heading">
-          <h3>Material browser</h3>
-          <span id="material-count">0 loaded</span>
-        </div>
-        <div className="material-actions">
-          <button type="button" data-action="load-wad">
-            Load WAD
-          </button>
-          <button type="button" data-action="load-palette">
-            Palette
-          </button>
-          <input id="wad-files" type="file" accept=".wad" multiple hidden />
-          <input id="palette-file" type="file" accept=".lmp,.pal,.dat" hidden />
-        </div>
-        <input
-          id="material-filter"
-          className="tool-input"
-          type="search"
-          placeholder="Filter materials"
-          autoComplete="off"
+      )}
+    </div>
+  );
+}
+
+function MaterialActionsMenu({
+  disabled,
+  onReplace,
+  shellState,
+}: {
+  readonly disabled: boolean;
+  readonly onReplace: () => void;
+  readonly shellState: EditorShellState;
+}) {
+  return (
+    <MenuTrigger>
+      <Button
+        className="material-menu-trigger"
+        tone="quiet"
+        size="compact"
+        aria-label="Material actions"
+        isDisabled={disabled}
+      >
+        <Icon name="more-actions" />
+      </Button>
+      <Popover placement="bottom end" offset={2}>
+        <Menu
+          aria-label="Material actions"
+          onAction={(key) => {
+            if (key === 'faces') shellState.materialBrowser.invoke('selectFaces');
+            if (key === 'brushes') shellState.materialBrowser.invoke('selectBrushes');
+            if (key === 'copy') shellState.materialBrowser.invoke('copyMaterialName');
+            if (key === 'replace') onReplace();
+          }}
+        >
+          <MenuItem id="faces" label="Select using faces" />
+          <MenuItem id="brushes" label="Select using brushes" />
+          <MenuItem id="copy" label="Copy material name" />
+          <MenuItem id="replace" label="Replace material uses…" />
+        </Menu>
+      </Popover>
+    </MenuTrigger>
+  );
+}
+
+function MaterialBrowser({ shellState }: { readonly shellState: EditorShellState }) {
+  const snapshot = useSyncExternalStore(
+    shellState.materialBrowser.subscribe,
+    shellState.materialBrowser.getSnapshot,
+    shellState.materialBrowser.getSnapshot,
+  );
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const hasMaterial = snapshot.activeMaterial.trim().length > 0;
+  const replaceDisabled =
+    !snapshot.replaceSource.trim() ||
+    !snapshot.replaceTarget.trim() ||
+    snapshot.replaceSource.trim().toLowerCase() === snapshot.replaceTarget.trim().toLowerCase();
+  return (
+    <section className="material-browser-pane">
+      <header className="material-browser-heading">
+        <strong>Material Browser</strong>
+        <span id="material-count">
+          {snapshot.loadedCount} loaded · {snapshot.usedCount} in use
+        </span>
+        <Button
+          tone="quiet"
+          size="compact"
+          onPress={() => {
+            shellState.inspectorLayout.setActive('map');
+            window.requestAnimationFrame(() =>
+              document.querySelector('#resource-settings')?.scrollIntoView({ block: 'nearest' }),
+            );
+          }}
+        >
+          <Icon name="settings" />
+          Settings
+        </Button>
+      </header>
+      {snapshot.coverageMessage ? (
+        <p id="material-coverage" className="material-coverage">
+          {snapshot.coverageMessage}
+        </p>
+      ) : null}
+      <MaterialGrid snapshot={snapshot} shellState={shellState} />
+      <div className="material-current-row">
+        <TextField
+          label="Current material"
+          hideLabel
+          value={snapshot.activeMaterial}
+          onChange={(value) => shellState.materialBrowser.invoke('setActiveMaterial', value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') shellState.materialBrowser.invoke('applyActiveMaterial');
+          }}
+          input={{ id: 'material-name', placeholder: 'Material name', spellCheck: false }}
         />
-        <div className="material-browser-options">
-          <label>
-            Sort
-            <select id="material-sort">
-              <option value="name">Name</option>
-              <option value="usage">Usage</option>
-            </select>
-          </label>
-          <label className="material-used-only">
-            <input id="material-used-only" type="checkbox" /> In use
-          </label>
-        </div>
-        <div id="material-grid" className="material-grid" aria-label="Loaded materials" />
-        <div className="material-apply">
-          <input
-            id="material-name"
-            className="tool-input"
-            type="text"
-            placeholder="Material token"
-            autoComplete="off"
-          />
-          <button type="button" data-action="sample-material">
-            Sample
-          </button>
-          <button type="button" data-action="apply-material">
-            Apply
-          </button>
-        </div>
-        <div className="material-usage-actions" role="group" aria-label="Material usage selection">
-          <button type="button" data-action="select-material-faces">
-            Select faces
-          </button>
-          <button type="button" data-action="select-material-brushes">
-            Select brushes
-          </button>
-          <button type="button" data-action="set-material-replace-source">
-            Use as find
-          </button>
-          <button type="button" data-action="set-material-replace-target">
-            Use as replacement
-          </button>
-        </div>
-        <div className="material-replace">
-          <label>
-            Find
-            <input
-              id="material-replace-source"
-              className="tool-input"
-              type="text"
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            Replace
-            <input
-              id="material-replace-target"
-              className="tool-input"
-              type="text"
-              autoComplete="off"
-            />
-          </label>
-          <button type="button" data-action="replace-material">
-            Replace
-          </button>
-        </div>
-        <p id="material-replace-scope" className="material-replace-scope">
-          No selection: replace across the whole map.
-        </p>
-        <p id="material-coverage" className="material-coverage" hidden />
-        <p id="material-message" className="material-message">
-          WAD assets stay in memory and are not embedded in map source.
-        </p>
+        <IconButton
+          icon="apply-material"
+          label="Apply current material"
+          data-action="apply-material"
+          isDisabled={!hasMaterial}
+          onPress={() => shellState.materialBrowser.invoke('applyActiveMaterial')}
+        />
+        <IconButton
+          icon="sample-material"
+          label="Sample selected face material"
+          onPress={() => shellState.materialBrowser.invoke('sampleSelection')}
+        />
+        <MaterialActionsMenu
+          disabled={!hasMaterial}
+          onReplace={() => {
+            shellState.materialBrowser.invoke('setReplaceSource', snapshot.activeMaterial);
+            setReplaceOpen(true);
+          }}
+          shellState={shellState}
+        />
       </div>
+      <div className="material-browser-controls">
+        <Select
+          id="material-sort"
+          label="Sort materials"
+          hideLabel
+          selectedKey={snapshot.sort}
+          options={[
+            { id: 'name', label: 'Name' },
+            { id: 'usage', label: 'Usage' },
+          ]}
+          onSelectionChange={(key) => {
+            if (key === 'name' || key === 'usage')
+              shellState.materialBrowser.invoke('setSort', key);
+          }}
+        />
+        <Select
+          id="material-source"
+          label="Material group"
+          hideLabel
+          selectedKey={snapshot.source}
+          options={[
+            { id: 'all', label: 'All groups' },
+            ...snapshot.sources.map((source) => ({ id: source, label: source })),
+          ]}
+          onSelectionChange={(key) => shellState.materialBrowser.invoke('setSource', String(key))}
+        />
+        <Checkbox
+          id="material-used-only"
+          className="material-used-only"
+          isSelected={snapshot.usedOnly}
+          onChange={(value) => shellState.materialBrowser.invoke('setUsedOnly', value)}
+        >
+          Used
+        </Checkbox>
+        <TextField
+          label="Search materials"
+          hideLabel
+          value={snapshot.filter}
+          onChange={(value) => shellState.materialBrowser.invoke('setFilter', value)}
+          input={{ id: 'material-filter', type: 'search', placeholder: 'Search…' }}
+        />
+      </div>
+      <Dialog
+        id="material-replace-dialog"
+        title="Replace material"
+        detail={snapshot.replaceScope}
+        isOpen={replaceOpen}
+        isDismissable
+        onOpenChange={setReplaceOpen}
+      >
+        <div className="material-replace-dialog-body">
+          <TextField
+            label="Find"
+            value={snapshot.replaceSource}
+            onChange={(value) => shellState.materialBrowser.invoke('setReplaceSource', value)}
+            input={{ id: 'material-replace-source', spellCheck: false }}
+          />
+          <TextField
+            label="Replace with"
+            value={snapshot.replaceTarget}
+            onChange={(value) => shellState.materialBrowser.invoke('setReplaceTarget', value)}
+            input={{ id: 'material-replace-target', spellCheck: false }}
+          />
+          <p id="material-replace-scope">{snapshot.replaceScope}</p>
+          <Button
+            tone="primary"
+            isDisabled={replaceDisabled}
+            data-action="replace-material"
+            onPress={() => {
+              shellState.materialBrowser.invoke('replace');
+              setReplaceOpen(false);
+            }}
+          >
+            Replace
+          </Button>
+        </div>
+      </Dialog>
+    </section>
+  );
+}
+
+export function TextureInspector({ shellState }: { readonly shellState: EditorShellState }) {
+  const [upperHeight, setUpperHeight] = useState(storedFaceUpperHeight);
+  const [containerHeight, setContainerHeight] = useState(0);
+  const root = useRef<HTMLElement>(null);
+  const dragStart = useRef<{ readonly y: number; readonly height: number } | null>(null);
+  const maximumUpperHeight =
+    containerHeight > 0
+      ? Math.max(
+          MINIMUM_FACE_UPPER_HEIGHT,
+          Math.floor(containerHeight - MINIMUM_MATERIAL_HEIGHT - FACE_SPLITTER_HEIGHT),
+        )
+      : 1200;
+  const visibleUpperHeight = Math.min(upperHeight, maximumUpperHeight);
+  useEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setContainerHeight(entry.contentRect.height);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const setLiveHeight = (height: number) => {
+    const next = Math.max(MINIMUM_FACE_UPPER_HEIGHT, Math.min(maximumUpperHeight, height));
+    root.current?.style.setProperty('--face-upper-height', `${next}px`);
+  };
+  const commitHeight = (height: number) => {
+    const maximum = Math.max(
+      MINIMUM_FACE_UPPER_HEIGHT,
+      Math.floor(
+        (root.current?.getBoundingClientRect().height ?? 700) -
+          MINIMUM_MATERIAL_HEIGHT -
+          FACE_SPLITTER_HEIGHT,
+      ),
+    );
+    const next = Math.max(MINIMUM_FACE_UPPER_HEIGHT, Math.min(maximum, Math.round(height)));
+    setLiveHeight(next);
+    setUpperHeight(next);
+    persistFaceUpperHeight(next);
+  };
+  return (
+    <section
+      ref={root}
+      className="face-inspector-layout"
+      style={{ '--face-upper-height': `${visibleUpperHeight}px` } as CSSProperties}
+    >
+      <div className="face-upper-scroll">
+        <FaceAttributes shellState={shellState} />
+      </div>
+      <div
+        className="face-inspector-resizer"
+        role="separator"
+        aria-label="Resize face attributes and material browser"
+        aria-orientation="horizontal"
+        aria-valuemin={MINIMUM_FACE_UPPER_HEIGHT}
+        aria-valuemax={maximumUpperHeight}
+        aria-valuenow={visibleUpperHeight}
+        tabIndex={0}
+        onPointerDown={(event) => {
+          dragStart.current = { y: event.clientY, height: visibleUpperHeight };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const start = dragStart.current;
+          if (start && event.currentTarget.hasPointerCapture(event.pointerId))
+            setLiveHeight(start.height + event.clientY - start.y);
+        }}
+        onPointerUp={(event) => {
+          const start = dragStart.current;
+          dragStart.current = null;
+          if (!start) return;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+          commitHeight(start.height + event.clientY - start.y);
+        }}
+        onPointerCancel={() => {
+          dragStart.current = null;
+          setLiveHeight(visibleUpperHeight);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+          event.preventDefault();
+          commitHeight(visibleUpperHeight + (event.key === 'ArrowUp' ? -16 : 16));
+        }}
+      />
+      <MaterialBrowser shellState={shellState} />
     </section>
   );
 }

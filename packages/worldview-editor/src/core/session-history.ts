@@ -52,6 +52,50 @@ import {
   type EditorSessionChange,
 } from './session-common.js';
 import { EditorSessionObjects } from './session-objects.js';
+
+export type FaceTextureProjectionField =
+  | 'offset-u'
+  | 'offset-v'
+  | 'scale-u'
+  | 'scale-v'
+  | 'rotation';
+
+function projectionFieldValue(
+  projection: FaceTextureTransform,
+  field: FaceTextureProjectionField,
+): number {
+  switch (field) {
+    case 'offset-u':
+      return projection.offset[0];
+    case 'offset-v':
+      return projection.offset[1];
+    case 'scale-u':
+      return projection.scale[0];
+    case 'scale-v':
+      return projection.scale[1];
+    case 'rotation':
+      return projection.rotationDegrees;
+  }
+}
+
+function projectionWithField(
+  projection: FaceTextureTransform,
+  field: FaceTextureProjectionField,
+  value: number,
+): FaceTextureTransform {
+  return {
+    offset: [
+      field === 'offset-u' ? value : projection.offset[0],
+      field === 'offset-v' ? value : projection.offset[1],
+    ],
+    scale: [
+      field === 'scale-u' ? value : projection.scale[0],
+      field === 'scale-v' ? value : projection.scale[1],
+    ],
+    rotationDegrees: field === 'rotation' ? value : projection.rotationDegrees,
+  };
+}
+
 export class EditorSession extends EditorSessionObjects {
   /** Applies an already sequenced remote commit without adding it to this actor's undo stack. */
   public applyRemoteCollaborationOperation(
@@ -201,6 +245,72 @@ export class EditorSession extends EditorSessionObjects {
   ): boolean {
     const candidate = this.createTextureTransformCandidate(transform, selection);
     if (!candidate) return false;
+    this.commitCandidate(candidate);
+    return true;
+  }
+
+  public setSelectedTextureProjectionField(
+    field: FaceTextureProjectionField,
+    value: number,
+  ): boolean {
+    if (!Number.isFinite(value)) throw new Error('Texture projection value must be finite');
+    if ((field === 'scale-u' || field === 'scale-v') && Math.abs(value) <= 1e-6) {
+      throw new Error('Texture scale cannot be zero');
+    }
+    const faces = selectedFaceReferences(this.currentSelection);
+    if (faces.length === 0) return false;
+    const byBrush = new Map<BrushId, FaceSelection[]>();
+    for (const face of faces) {
+      const entries = byBrush.get(face.brushId) ?? [];
+      entries.push(face);
+      byBrush.set(face.brushId, entries);
+    }
+    const edits: BrushEdit[] = [];
+    for (const [brushId, faceSelections] of byBrush) {
+      const before = findBrush(this.currentDocument, brushId);
+      if (!before) continue;
+      let after = before;
+      for (const selection of faceSelections) {
+        const face = after.faces.find((candidate) => candidate.id === selection.faceId);
+        if (!face) continue;
+        if (projectionFieldValue(face.projection, field) === value) continue;
+        after = setFaceTextureTransform(
+          after,
+          selection.faceId,
+          projectionWithField(face.projection, field, value),
+        );
+      }
+      if (after !== before) {
+        edits.push({
+          brushId,
+          baseBrushRevision: before.revision,
+          before,
+          after,
+        });
+      }
+    }
+    if (edits.length === 0) return false;
+    const document = replaceBrushes(
+      this.currentDocument,
+      edits.map(({ after }) => after),
+    );
+    const candidate: BrushEditCandidate | BrushBatchEditCandidate =
+      edits.length > 1
+        ? {
+            label: 'Adjust texture',
+            baseDocumentRevision: this.currentDocument.revision,
+            edits,
+            document,
+          }
+        : {
+            label: 'Adjust texture',
+            brushId: edits[0]!.brushId,
+            baseDocumentRevision: this.currentDocument.revision,
+            baseBrushRevision: edits[0]!.baseBrushRevision,
+            before: edits[0]!.before,
+            after: edits[0]!.after,
+            document,
+          };
     this.commitCandidate(candidate);
     return true;
   }

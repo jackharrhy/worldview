@@ -12,7 +12,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const VIEW_WIDTH = 320;
 const VIEW_HEIGHT = 220;
 
-type UvControl = 'pan' | 'rotate' | 'scale-u' | 'scale-v' | 'pivot';
+type UvControl = 'offset' | 'view-pan' | 'rotate' | 'scale-u' | 'scale-v' | 'pivot';
 type UvGesturePhase = 'preview' | 'commit' | 'cancel';
 
 export interface UvEditorFaceState {
@@ -32,11 +32,10 @@ export interface UvEditorTransformEvent {
 
 export interface TextureUvEditorOptions {
   readonly svg: SVGSVGElement;
-  readonly status: HTMLElement;
-  readonly resetPivotButton: HTMLButtonElement;
   readonly signal: AbortSignal;
   readonly onTransform: (event: UvEditorTransformEvent) => void;
   readonly onStatus: (message: string) => void;
+  readonly onAnnounce: (message: string) => void;
 }
 
 interface UvView {
@@ -50,6 +49,7 @@ interface UvGesture {
   readonly state: UvEditorFaceState;
   readonly pivot: Vec3;
   readonly view: UvView;
+  readonly startScreen: Vec2;
   readonly startUv: Vec2;
   readonly pivotScreen: Vec2;
   readonly startAngle: number;
@@ -100,22 +100,22 @@ function transformChanged(transform: FaceTextureTransformDelta): boolean {
 
 export class TextureUvEditor {
   private readonly svg: SVGSVGElement;
-  private readonly status: HTMLElement;
-  private readonly resetPivotButton: HTMLButtonElement;
   private readonly onTransform: (event: UvEditorTransformEvent) => void;
   private readonly onStatus: (message: string) => void;
+  private readonly onAnnounce: (message: string) => void;
   private readonly materialUrls = new WeakMap<EditorMaterial, string>();
   private state: UvEditorFaceState | null = null;
   private pivot: Vec3 | null = null;
   private selectionKey: string | null = null;
   private gesture: UvGesture | null = null;
+  private view: UvView | null = null;
+  private gridSubdivisions: [number, number] = [1, 1];
 
   public constructor(options: TextureUvEditorOptions) {
     this.svg = options.svg;
-    this.status = options.status;
-    this.resetPivotButton = options.resetPivotButton;
     this.onTransform = options.onTransform;
     this.onStatus = options.onStatus;
+    this.onAnnounce = options.onAnnounce;
     this.svg.addEventListener('pointerdown', (event) => this.pointerDown(event), {
       signal: options.signal,
     });
@@ -126,16 +126,13 @@ export class TextureUvEditor {
       signal: options.signal,
     });
     this.svg.addEventListener('pointercancel', () => this.cancel(), { signal: options.signal });
-    this.resetPivotButton.addEventListener(
-      'click',
-      () => {
-        if (!this.state) return;
-        this.pivot = faceCenter(this.state.vertices);
-        this.render();
-        this.onStatus('UV transform origin reset to the face center.');
-      },
-      { signal: options.signal },
-    );
+    this.svg.addEventListener('wheel', (event) => this.wheel(event), {
+      signal: options.signal,
+      passive: false,
+    });
+    this.svg.addEventListener('contextmenu', (event) => event.preventDefault(), {
+      signal: options.signal,
+    });
     this.render();
   }
 
@@ -144,10 +141,40 @@ export class TextureUvEditor {
     if (nextKey !== this.selectionKey) {
       this.pivot = state && state.vertices.length > 0 ? faceCenter(state.vertices) : null;
       this.selectionKey = nextKey;
+      this.view = state && this.pivot ? this.computeView(state, this.pivot) : null;
     }
     this.state = state;
-    this.resetPivotButton.disabled = !state;
+    if (state && this.pivot && !this.view) this.view = this.computeView(state, this.pivot);
     this.render();
+  }
+
+  public resetPivot(): void {
+    if (!this.state) return;
+    this.pivot = faceCenter(this.state.vertices);
+    this.render();
+    this.onStatus('UV origin reset to the face center.');
+    this.onAnnounce('UV origin reset to the face center.');
+  }
+
+  public frameSelection(): void {
+    if (!this.state || !this.pivot) return;
+    this.view = this.computeView(this.state, this.pivot);
+    this.render();
+    this.onStatus('Framed the selected face in the UV plane.');
+    this.onAnnounce('Framed the selected face in the UV plane.');
+  }
+
+  public setGridSubdivisions(axis: 0 | 1, subdivisions: number): void {
+    const next = Math.max(1, Math.min(16, Math.round(subdivisions)));
+    this.gridSubdivisions[axis] = next;
+    this.render();
+    const message = `UV grid ${this.gridSubdivisions[0]} × ${this.gridSubdivisions[1]}.`;
+    this.onStatus(message);
+    this.onAnnounce(message);
+  }
+
+  public getGridSubdivisions(): readonly [number, number] {
+    return this.gridSubdivisions;
   }
 
   public cancel(): boolean {
@@ -158,7 +185,8 @@ export class TextureUvEditor {
       this.svg.releasePointerCapture(gesture.pointerId);
     }
     if (gesture.control === 'pivot') this.pivot = gesture.pivot;
-    if (gesture.control !== 'pivot' && gesture.previewActive) {
+    if (gesture.control === 'view-pan') this.view = gesture.view;
+    if (gesture.control !== 'pivot' && gesture.control !== 'view-pan' && gesture.previewActive) {
       this.onTransform({
         phase: 'cancel',
         transform: gesture.lastTransform,
@@ -212,7 +240,7 @@ export class TextureUvEditor {
     ];
   }
 
-  private pointerScreen(event: PointerEvent): Vec2 {
+  private pointerScreen(event: MouseEvent): Vec2 {
     const bounds = this.svg.getBoundingClientRect();
     return [
       ((event.clientX - bounds.left) / bounds.width) * VIEW_WIDTH,
@@ -271,11 +299,11 @@ export class TextureUvEditor {
     const textureSize = this.textureSize(state);
     const snapped: [number, number] = [Math.round(offset[0]), Math.round(offset[1])];
     for (const axis of [0, 1] as const) {
+      const stripeSize = textureSize[axis] / this.gridSubdivisions[axis];
       let bestCorrection = Number.POSITIVE_INFINITY;
       for (const vertex of state.vertices) {
         const coordinate = textureCoordinates(state.face, vertex)[axis] + snapped[axis];
-        const correction =
-          Math.round(coordinate / textureSize[axis]) * textureSize[axis] - coordinate;
+        const correction = Math.round(coordinate / stripeSize) * stripeSize - coordinate;
         if (
           Math.abs(correction * view.pixelsPerTexel) <= 6 &&
           Math.abs(correction) < Math.abs(bestCorrection)
@@ -289,10 +317,19 @@ export class TextureUvEditor {
   }
 
   private pointerDown(event: PointerEvent): void {
-    if (event.button !== 0 || !this.state || !this.pivot || this.state.vertices.length < 3) return;
+    if (
+      ![0, 1, 2].includes(event.button) ||
+      !this.state ||
+      !this.pivot ||
+      !this.view ||
+      this.state.vertices.length < 3
+    )
+      return;
     const target = (event.target as Element | null)?.closest<SVGElement>('[data-uv-control]');
-    const control = (target?.dataset.uvControl ?? 'pan') as UvControl;
-    const view = this.computeView(this.state, this.pivot);
+    const control = (
+      event.button === 0 ? (target?.dataset.uvControl ?? 'offset') : 'view-pan'
+    ) as UvControl;
+    const view = this.view;
     const screen = this.pointerScreen(event);
     const pivotScreen = this.uvToScreen(textureCoordinates(this.state.face, this.pivot), view);
     this.gesture = {
@@ -301,6 +338,7 @@ export class TextureUvEditor {
       state: this.state,
       pivot: this.pivot,
       view,
+      startScreen: screen,
       startUv: this.screenToUv(screen, view),
       pivotScreen,
       startAngle: Math.atan2(screen[1] - pivotScreen[1], screen[0] - pivotScreen[0]),
@@ -315,22 +353,43 @@ export class TextureUvEditor {
     const gesture = this.gesture;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const screen = this.pointerScreen(event);
+    if (gesture.control === 'view-pan') {
+      this.view = {
+        center: [
+          gesture.view.center[0] -
+            (screen[0] - gesture.startScreen[0]) / gesture.view.pixelsPerTexel,
+          gesture.view.center[1] +
+            (screen[1] - gesture.startScreen[1]) / gesture.view.pixelsPerTexel,
+        ],
+        pixelsPerTexel: gesture.view.pixelsPerTexel,
+      };
+      this.onStatus('Panning UV view.');
+      this.render();
+      return;
+    }
     if (gesture.control === 'pivot') {
-      this.pivot = this.snappedPivot(gesture.state, screen, gesture.view);
-      this.status.textContent = 'Origin · snaps to face center and vertices';
+      this.pivot =
+        event.ctrlKey || event.metaKey
+          ? this.uvToWorld(gesture.state, this.screenToUv(screen, gesture.view))
+          : this.snappedPivot(gesture.state, screen, gesture.view);
+      this.onStatus(
+        event.ctrlKey || event.metaKey
+          ? 'Moving the UV origin without snapping.'
+          : 'Origin snaps to the face center and vertices.',
+      );
       this.render();
       return;
     }
     const currentUv = this.screenToUv(screen, gesture.view);
     let transform = identityTransform();
-    if (gesture.control === 'pan') {
+    if (gesture.control === 'offset') {
+      const offset: Vec2 = [gesture.startUv[0] - currentUv[0], gesture.startUv[1] - currentUv[1]];
       transform = {
         ...transform,
-        offset: this.snappedPanOffset(
-          gesture.state,
-          [gesture.startUv[0] - currentUv[0], gesture.startUv[1] - currentUv[1]],
-          gesture.view,
-        ),
+        offset:
+          event.ctrlKey || event.metaKey
+            ? offset
+            : this.snappedPanOffset(gesture.state, offset, gesture.view),
       };
     } else if (gesture.control === 'rotate') {
       const currentAngle = Math.atan2(
@@ -338,14 +397,21 @@ export class TextureUvEditor {
         screen[0] - gesture.pivotScreen[0],
       );
       const degrees = ((gesture.startAngle - currentAngle) * 180) / Math.PI;
-      const snap = event.shiftKey ? 1 : 15;
-      transform = { ...transform, rotationDegrees: Math.round(degrees / snap) * snap };
+      const snap = event.ctrlKey || event.metaKey ? null : event.shiftKey ? 1 : 15;
+      transform = {
+        ...transform,
+        rotationDegrees: snap === null ? degrees : Math.round(degrees / snap) * snap,
+      };
     } else {
       const ratio =
         gesture.control === 'scale-u'
           ? clamp((screen[0] - gesture.pivotScreen[0]) / 52, 0.05, 20)
           : clamp((gesture.pivotScreen[1] - screen[1]) / 52, 0.05, 20);
-      const factor = 1 / ratio;
+      const rawFactor = 1 / ratio;
+      const factor =
+        event.ctrlKey || event.metaKey
+          ? rawFactor
+          : Math.max(0.05, Math.round(rawFactor * 20) / 20);
       transform = {
         ...transform,
         scale:
@@ -356,12 +422,13 @@ export class TextureUvEditor {
     }
     const previousTransform = gesture.lastTransform;
     gesture.lastTransform = transform;
-    this.status.textContent =
-      gesture.control === 'pan'
-        ? `Pan ${transform.offset[0].toFixed(0)} ${transform.offset[1].toFixed(0)} texels`
+    this.onStatus(
+      gesture.control === 'offset'
+        ? `Offset ${transform.offset[0].toFixed(0)} ${transform.offset[1].toFixed(0)} texels${event.ctrlKey || event.metaKey ? ' · free' : ''}`
         : gesture.control === 'rotate'
-          ? `Rotate ${transform.rotationDegrees.toFixed(0)}°${event.shiftKey ? ' · fine' : ' · 15° snap'}`
-          : `Scale ${transform.scale[0].toFixed(3)} ${transform.scale[1].toFixed(3)}${event.shiftKey ? ' · uniform' : ''}`;
+          ? `Rotate ${transform.rotationDegrees.toFixed(0)}°${event.ctrlKey || event.metaKey ? ' · free' : event.shiftKey ? ' · fine' : ' · 15° snap'}`
+          : `Scale ${transform.scale[0].toFixed(3)} ${transform.scale[1].toFixed(3)}${event.shiftKey ? ' · uniform' : ''}${event.ctrlKey || event.metaKey ? ' · free' : ' · 0.05 snap'}`,
+    );
     if (transformChanged(transform)) {
       gesture.previewActive = true;
       this.onTransform({
@@ -388,7 +455,12 @@ export class TextureUvEditor {
     if (this.svg.hasPointerCapture(event.pointerId))
       this.svg.releasePointerCapture(event.pointerId);
     if (gesture.control === 'pivot') {
+      this.render();
       this.onStatus('UV transform origin moved.');
+      this.onAnnounce('UV transform origin moved.');
+      return;
+    }
+    if (gesture.control === 'view-pan') {
       this.render();
       return;
     }
@@ -402,6 +474,27 @@ export class TextureUvEditor {
     } else {
       this.render();
     }
+  }
+
+  private wheel(event: WheelEvent): void {
+    if (!this.state || !this.view) return;
+    event.preventDefault();
+    const screen = this.pointerScreen(event);
+    const anchor = this.screenToUv(screen, this.view);
+    const pixelsPerTexel = clamp(
+      this.view.pixelsPerTexel * Math.exp(-event.deltaY * 0.0015),
+      0.02,
+      16,
+    );
+    this.view = {
+      center: [
+        anchor[0] - (screen[0] - VIEW_WIDTH / 2) / pixelsPerTexel,
+        anchor[1] + (screen[1] - VIEW_HEIGHT / 2) / pixelsPerTexel,
+      ],
+      pixelsPerTexel,
+    };
+    this.render();
+    this.onStatus(`UV zoom ${Math.round(pixelsPerTexel * 100)}%.`);
   }
 
   private materialUrl(material: EditorMaterial): string {
@@ -430,11 +523,14 @@ export class TextureUvEditor {
       const text = rawSvgElement('text', { x: VIEW_WIDTH / 2, y: VIEW_HEIGHT / 2 });
       text.textContent = 'SELECT A BRUSH FACE';
       this.svg.append(text);
-      this.status.textContent = 'No editable UV projection';
+      this.onStatus('No editable UV projection');
       return;
     }
     this.svg.classList.remove('empty');
-    const view = this.gesture?.view ?? this.computeView(state, pivot);
+    const view =
+      this.gesture?.control === 'view-pan'
+        ? (this.view ?? this.gesture.view)
+        : (this.view ?? this.computeView(state, pivot));
     const textureSize = this.textureSize(state);
     const viewMinimum: Vec2 = [
       view.center[0] - VIEW_WIDTH / 2 / view.pixelsPerTexel,
@@ -487,13 +583,15 @@ export class TextureUvEditor {
       class: 'uv-background',
       width: VIEW_WIDTH,
       height: VIEW_HEIGHT,
-      'data-uv-control': 'pan',
+      fill: 'url(#uv-material-pattern)',
+      'data-uv-control': 'offset',
     });
     this.svg.append(background);
 
     const grid = rawSvgElement('g', { class: 'uv-grid', 'pointer-events': 'none' });
     for (const axis of [0, 1] as const) {
-      const size = textureSize[axis];
+      const subdivisions = this.gridSubdivisions[axis];
+      const size = textureSize[axis] / subdivisions;
       const count = Math.ceil((viewMaximum[axis] - viewMinimum[axis]) / size);
       const stride = Math.max(1, Math.ceil(count / 72));
       const start = Math.floor(viewMinimum[axis] / size / stride) * stride;
@@ -508,8 +606,20 @@ export class TextureUvEditor {
           rawSvgElement(
             'line',
             axis === 0
-              ? { x1: screen[0], y1: 0, x2: screen[0], y2: VIEW_HEIGHT }
-              : { x1: 0, y1: screen[1], x2: VIEW_WIDTH, y2: screen[1] },
+              ? {
+                  x1: screen[0],
+                  y1: 0,
+                  x2: screen[0],
+                  y2: VIEW_HEIGHT,
+                  class: index % subdivisions === 0 ? 'major' : 'minor',
+                }
+              : {
+                  x1: 0,
+                  y1: screen[1],
+                  x2: VIEW_WIDTH,
+                  y2: screen[1],
+                  class: index % subdivisions === 0 ? 'major' : 'minor',
+                },
           ),
         );
       }
@@ -523,8 +633,7 @@ export class TextureUvEditor {
       rawSvgElement('polygon', {
         class: 'uv-face',
         points: facePoints,
-        fill: 'url(#uv-material-pattern)',
-        'data-uv-control': 'pan',
+        'data-uv-control': 'offset',
       }),
     );
     const vertices = rawSvgElement('g', { class: 'uv-vertices', 'pointer-events': 'none' });
@@ -592,8 +701,9 @@ export class TextureUvEditor {
         'pointer-events': 'none',
       }),
     );
-    if (!this.gesture) {
-      this.status.textContent = `${state.face.material} · ${textureSize[0]}×${textureSize[1]} · ${state.selectedFaceCount} ${state.selectedFaceCount === 1 ? 'face' : 'faces'}`;
-    }
+    if (!this.gesture)
+      this.onStatus(
+        `${state.face.material} · ${textureSize[0]}×${textureSize[1]} · ${state.selectedFaceCount} ${state.selectedFaceCount === 1 ? 'face' : 'faces'}`,
+      );
   }
 }

@@ -61,6 +61,8 @@ export interface EditorStateHost {
   ): Parameters<EditorSourceRenderer['setDocument']>[2];
   setEditorTool(tool: EditorTool): void;
   updateInspector(document?: MapDocument, selection?: MapDocumentSelection): void;
+  updateFaceInspector(document?: MapDocument, selection?: MapDocumentSelection): void;
+  publishCollaborationPreview(document: MapDocument): void;
 }
 
 export interface EditorStateOptions {
@@ -104,6 +106,7 @@ export class EditorState {
     | null = null;
   public faceTransferCandidate: BrushEditCandidate | BrushBatchEditCandidate | null = null;
   public uvTextureCandidate: BrushEditCandidate | BrushBatchEditCandidate | null = null;
+  private uvPreviewFrame: number | null = null;
   public faceSplitSequence = 0;
   public faceStampSequence = 0;
   public faceTranslationSequence = 0;
@@ -227,23 +230,47 @@ export class EditorState {
       );
     });
     for (const material of this.builtInMaterials) this.materialCatalog.set(material);
+    const cancelUvPreviewFrame = () => {
+      if (this.uvPreviewFrame === null) return;
+      window.cancelAnimationFrame(this.uvPreviewFrame);
+      this.uvPreviewFrame = null;
+    };
+    const scheduleUvPreview = () => {
+      if (this.uvPreviewFrame !== null) return;
+      this.uvPreviewFrame = window.requestAnimationFrame(() => {
+        this.uvPreviewFrame = null;
+        const candidate = this.uvTextureCandidate;
+        if (!candidate || signal.aborted) return;
+        this.renderer?.setDocument(
+          candidate.document,
+          this.session.selection,
+          host().effectiveObjectViewState(candidate.document),
+        );
+        host().updateFaceInspector(candidate.document, this.session.selection);
+        host().publishCollaborationPreview(candidate.document);
+      });
+    };
+    signal.addEventListener('abort', cancelUvPreviewFrame, { once: true });
     this.uvEditor = new TextureUvEditor({
       svg: ui.uvEditorSvg,
-      status: ui.uvEditorStatus,
-      resetPivotButton: ui.uvResetPivot,
       signal,
       onStatus(message) {
+        ui.faceInspector.update({ uvStatus: message });
+      },
+      onAnnounce(message) {
         ui.statusMessage.textContent = message;
       },
       onTransform: (event) => {
         if (event.phase === 'cancel') {
+          cancelUvPreviewFrame();
           this.uvTextureCandidate = null;
           this.renderer?.setDocument(
             this.session.document,
             this.session.selection,
             host().effectiveObjectViewState(),
           );
-          host().updateInspector();
+          host().updateFaceInspector();
+          host().publishCollaborationPreview(this.session.document);
           ui.statusMessage.textContent = 'UV transform cancelled.';
           return;
         }
@@ -256,25 +283,24 @@ export class EditorState {
           if (!candidate) return;
           if (event.phase === 'preview') {
             this.uvTextureCandidate = candidate;
-            this.renderer?.setDocument(
-              candidate.document,
-              this.session.selection,
-              host().effectiveObjectViewState(candidate.document),
-            );
-            host().updateInspector(candidate.document, this.session.selection);
+            scheduleUvPreview();
             ui.statusMessage.textContent = `${candidate.label} preview. Release to commit.`;
             return;
           }
+          cancelUvPreviewFrame();
           this.session.commitCandidate(this.uvTextureCandidate ?? candidate);
           this.uvTextureCandidate = null;
+          host().publishCollaborationPreview(this.session.document);
         } catch (error) {
+          cancelUvPreviewFrame();
           this.uvTextureCandidate = null;
           this.renderer?.setDocument(
             this.session.document,
             this.session.selection,
             host().effectiveObjectViewState(),
           );
-          host().updateInspector();
+          host().updateFaceInspector();
+          host().publishCollaborationPreview(this.session.document);
           ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
         }
       },

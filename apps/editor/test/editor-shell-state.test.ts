@@ -149,12 +149,37 @@ describe('editor shell state ports', () => {
     const invoke = vi.fn();
     const setFlag = vi.fn();
     const setValue = vi.fn();
+    const setProjectionField = vi.fn();
+    const copyMaterialName = vi.fn();
     const open = vi.fn();
 
     shell.viewportLayout.bind({ setPerspectiveOnly });
     shell.theme.bind({ setPreference }, 'dark');
     shell.viewportContextMenu.bind({ dismiss, invoke });
     shell.surfaceInspector.bind({ setFlag, setValue });
+    shell.faceInspector.bind({
+      setProjectionField,
+      align: vi.fn(),
+      resetUvPivot: vi.fn(),
+      frameUvSelection: vi.fn(),
+      setUvGrid: vi.fn(),
+    });
+    shell.materialBrowser.bind({
+      setFilter: vi.fn(),
+      setSort: vi.fn(),
+      setUsedOnly: vi.fn(),
+      setSource: vi.fn(),
+      setActiveMaterial: vi.fn(),
+      activateMaterial: vi.fn(),
+      sampleSelection: vi.fn(),
+      applyActiveMaterial: vi.fn(),
+      selectFaces: vi.fn(),
+      selectBrushes: vi.fn(),
+      copyMaterialName,
+      setReplaceSource: vi.fn(),
+      setReplaceTarget: vi.fn(),
+      replace: vi.fn(),
+    });
     shell.collaborationUi.bind({
       open,
       close: vi.fn(),
@@ -175,12 +200,16 @@ describe('editor shell state ports', () => {
     shell.theme.unbind();
     shell.viewportContextMenu.unbind();
     shell.surfaceInspector.unbind();
+    shell.faceInspector.unbind();
+    shell.materialBrowser.unbind();
     shell.collaborationUi.unbind();
     shell.viewportLayout.togglePerspectiveOnly();
     shell.theme.select('light');
     shell.viewportContextMenu.dismiss();
     shell.viewportContextMenu.invoke('selection:focus');
     shell.surfaceInspector.invoke('setValue', 7);
+    shell.faceInspector.invoke('setProjectionField', 'offset-u', 32);
+    shell.materialBrowser.invoke('copyMaterialName');
     shell.collaborationUi.invoke('open');
 
     expect(shell.viewportLayout.getSnapshot()).toEqual({
@@ -195,6 +224,8 @@ describe('editor shell state ports', () => {
       invoke,
       setFlag,
       setValue,
+      setProjectionField,
+      copyMaterialName,
       open,
     ]) {
       expect(action).not.toHaveBeenCalled();

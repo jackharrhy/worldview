@@ -10,6 +10,7 @@ import {
   type MenuProps as AriaMenuProps,
   type PopoverProps as AriaPopoverProps,
 } from 'react-aria-components/Menu';
+import { Icon } from './icon.js';
 
 export function Menu<T extends object>({ className = '', ...props }: AriaMenuProps<T>) {
   return <AriaMenu className={`wv-menu ${className}`.trim()} {...props} />;
@@ -47,7 +48,7 @@ export function MenuItem({
           {shortcut}
         </kbd>
       ) : null}
-      {submenu ? <i className="ph ph-caret-right wv-menu-submenu-mark" aria-hidden="true" /> : null}
+      {submenu ? <Icon name="caret-right" className="wv-menu-submenu-mark" /> : null}
     </AriaMenuItem>
   );
 }

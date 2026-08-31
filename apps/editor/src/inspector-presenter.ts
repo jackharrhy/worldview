@@ -60,10 +60,116 @@ export class InspectorPresenter {
         }
       },
     });
+    this.ui.faceInspector.bind({
+      setProjectionField: (field, value) => {
+        try {
+          if (!this.state.session.setSelectedTextureProjectionField(field, value)) {
+            this.ui.statusMessage.textContent =
+              'Select one or more faces before editing projection.';
+          }
+        } catch (error) {
+          this.ui.statusMessage.setError(error instanceof Error ? error.message : String(error));
+        }
+      },
+      align: (operation, options) => {
+        try {
+          if (
+            !this.state.session.alignTexture(operation, {
+              direction: options?.reverse ? -1 : 1,
+              fitMode: options?.subdivide ? 'subdivide' : 'repeat',
+              textureSizeForMaterial: (materialToken) => {
+                const material = this.state.materialCatalog.find(materialToken);
+                return material ? [material.width, material.height] : null;
+              },
+            })
+          ) {
+            this.ui.statusMessage.textContent =
+              'Select a brush or face before aligning its texture.';
+          }
+        } catch (error) {
+          this.ui.statusMessage.setError(error instanceof Error ? error.message : String(error));
+        }
+      },
+      resetUvPivot: () => this.state.uvEditor.resetPivot(),
+      frameUvSelection: () => this.state.uvEditor.frameSelection(),
+      setUvGrid: (axis, subdivisions) => {
+        this.state.uvEditor.setGridSubdivisions(axis, subdivisions);
+        this.ui.faceInspector.update({ uvGrid: this.state.uvEditor.getGridSubdivisions() });
+      },
+    });
   }
 
   public dispose(): void {
     this.ui.surfaceInspector.unbind();
+    this.ui.faceInspector.unbind();
+  }
+
+  private commonNumber(values: readonly number[]): number | null {
+    const first = values[0];
+    return first !== undefined && values.every((value) => value === first) ? first : null;
+  }
+
+  public updateFaceInspector(
+    document: MapDocument = this.state.session.document,
+    selection = this.state.session.selection,
+  ): void {
+    const selectedFaces = selectedFaceReferences(selection).flatMap((reference) => {
+      const owner = findBrush(document, reference.brushId);
+      const face = owner?.faces.find((candidate) => candidate.id === reference.faceId);
+      return owner && face ? [{ reference, face, owner }] : [];
+    });
+    const primary =
+      selectedFaces.find(
+        ({ reference }) =>
+          reference.brushId === selection?.brushId && reference.faceId === selection?.faceId,
+      ) ?? selectedFaces[0];
+    const selectedBrush = selection?.brushId ? findBrush(document, selection.brushId) : null;
+    const materialNames = new Set(selectedFaces.map(({ face }) => face.material));
+    const primaryMaterial = primary ? this.state.materialCatalog.find(primary.face.material) : null;
+    const offsetU = this.commonNumber(selectedFaces.map(({ face }) => face.projection.offset[0]));
+    const offsetV = this.commonNumber(selectedFaces.map(({ face }) => face.projection.offset[1]));
+    const scaleU = this.commonNumber(selectedFaces.map(({ face }) => face.projection.scale[0]));
+    const scaleV = this.commonNumber(selectedFaces.map(({ face }) => face.projection.scale[1]));
+    const rotation = this.commonNumber(
+      selectedFaces.map(({ face }) => face.projection.rotationDegrees),
+    );
+    const previousStatus = this.ui.faceInspector.getSnapshot().uvStatus;
+    this.ui.faceInspector.set({
+      mode:
+        selectedFaces.length === 0 ? 'none' : selectedFaces.length === 1 ? 'single' : 'multiple',
+      selectedFaceCount: selectedFaces.length,
+      material:
+        materialNames.size === 1 ? (selectedFaces[0]?.face.material ?? '') : 'Mixed materials',
+      materialMixed: materialNames.size > 1,
+      materialSize: primaryMaterial ? [primaryMaterial.width, primaryMaterial.height] : null,
+      offset: [offsetU, offsetV],
+      scale: [scaleU, scaleV],
+      rotationDegrees: rotation,
+      uAxis: primary ? this.formatVector(primary.face.projection.uAxis) : '',
+      vAxis: primary ? this.formatVector(primary.face.projection.vAxis) : '',
+      canEditProjection: selectedFaces.length > 0,
+      canAlign: Boolean(selectedBrush),
+      uvStatus: previousStatus,
+      uvGrid: this.state.uvEditor.getGridSubdivisions(),
+    });
+    if (selectedFaces.length !== 1 || !primary) {
+      this.state.uvEditor.setFace(null);
+      return;
+    }
+    const derivedFace = deriveBrush(primary.owner).faces.find(
+      (candidate) => candidate.faceId === primary.face.id,
+    );
+    this.state.uvEditor.setFace(
+      derivedFace
+        ? {
+            selection: primary.reference,
+            face: primary.face,
+            vertices: derivedFace.vertices,
+            selectedFaceCount: 1,
+            material: primaryMaterial,
+          }
+        : null,
+    );
   }
 
   private surfaceFlagControls(
@@ -176,6 +282,7 @@ export class InspectorPresenter {
       const face = owner?.faces.find((candidate) => candidate.id === reference.faceId);
       return face ? [{ reference, face }] : [];
     });
+    this.updateFaceInspector(document, selection);
     const surfaceSemantics = worldviewGameProfile(this.state.activeGameProfile).surfaceSemantics;
     if (!surfaceSemantics || selectedFaces.length === 0) {
       this.ui.surfaceInspector.set({
@@ -280,7 +387,6 @@ export class InspectorPresenter {
     this.ui.unlockAllButton.disabled = !this.state.session.canUnlockAll;
     this.ui.selectionEmpty.hidden = Boolean(brush || pointEntity);
     this.ui.selectionInspector.hidden = !brush && !pointEntity;
-    this.ui.applyMaterialButton.disabled = !brush || this.ui.materialName.value.trim().length === 0;
     const face =
       brush && selection?.faceId
         ? brush.faces.find((candidate) => candidate.id === selection.faceId)
@@ -419,25 +525,7 @@ export class InspectorPresenter {
     }
     this.ui.faceExtrudeDistance.step = String(this.state.activeGridSize);
     this.ui.shearOffset.step = String(this.state.activeGridSize);
-    for (const input of [
-      this.ui.textureShiftU,
-      this.ui.textureShiftV,
-      this.ui.textureScaleU,
-      this.ui.textureScaleV,
-      this.ui.textureRotation,
-    ]) {
-      input.disabled = !face;
-    }
-    this.ui.applyTextureTransformButton.disabled = !face;
-    for (const button of window.document.querySelectorAll<HTMLButtonElement>(
-      '[data-texture-align], [data-texture-layout]',
-    )) {
-      button.disabled = !brush;
-    }
     if (!brush) {
-      this.state.uvEditor.setFace(null);
-      this.ui.textureUAxis.textContent = 'Select a face';
-      this.ui.textureVAxis.textContent = 'Select a face';
       if (pointEntity) {
         this.ui.selectionIdLabel.textContent = 'Entity';
         this.ui.selectionRevisionLabel.textContent = 'Type';
@@ -465,17 +553,6 @@ export class InspectorPresenter {
     const derivedFace = face
       ? derived.faces.find((candidate) => candidate.faceId === face.id)
       : undefined;
-    this.state.uvEditor.setFace(
-      face && derivedFace
-        ? {
-            selection: { brushId: brush.id, faceId: face.id },
-            face,
-            vertices: derivedFace.vertices,
-            selectedFaceCount: selectedFaces.length,
-            material: this.state.materialCatalog.find(face.material),
-          }
-        : null,
-    );
     const objectBounds = brushObjectSelected
       ? this.transform.selectedObjectBounds(document)
       : derived.bounds;
@@ -506,14 +583,5 @@ export class InspectorPresenter {
     this.ui.faceNormal.textContent = derivedFace
       ? `N ${this.formatVector(derivedFace.normal)}`
       : '';
-    if (face) {
-      this.ui.textureShiftU.value = String(face.projection.offset[0]);
-      this.ui.textureShiftV.value = String(face.projection.offset[1]);
-      this.ui.textureScaleU.value = String(face.projection.scale[0]);
-      this.ui.textureScaleV.value = String(face.projection.scale[1]);
-      this.ui.textureRotation.value = String(face.projection.rotationDegrees);
-      this.ui.textureUAxis.textContent = this.formatVector(face.projection.uAxis);
-      this.ui.textureVAxis.textContent = this.formatVector(face.projection.vAxis);
-    }
   }
 }

@@ -137,7 +137,7 @@ export class BuildPresenter {
       ...records.map((record) => {
         const option = document.createElement('option');
         option.value = record.buildId;
-        option.textContent = `${record.result.status === 'succeeded' ? '✓' : '×'} ${new Date(record.createdAt).toLocaleString()} · r${record.result.sourceDocumentRevision}`;
+        option.textContent = `${record.result.status === 'succeeded' ? 'Succeeded' : 'Failed'} · ${new Date(record.createdAt).toLocaleString()} · r${record.result.sourceDocumentRevision}`;
         return option;
       }),
     );

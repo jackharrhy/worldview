@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import type { EditorShellState } from '../../editor-shell-state.js';
+import { Icon, type IconName } from '../ui/icon.js';
 import { Select } from '../ui/select.js';
 import { CollaborationPresence } from './collaboration-ui.js';
 
@@ -10,7 +11,7 @@ interface EditorChromeProps {
 
 interface ActionSpec {
   readonly action: string;
-  readonly icon: string;
+  readonly icon: IconName;
   readonly label: string;
   readonly title: string;
   readonly disabled?: boolean;
@@ -18,27 +19,27 @@ interface ActionSpec {
 
 interface ToolSpec {
   readonly tool: string;
-  readonly icon: string;
+  readonly icon: IconName;
   readonly label: string;
   readonly title: string;
 }
 
 const fileActions: readonly ActionSpec[] = [
-  { action: 'home', icon: 'house', label: 'Home', title: 'Worldview Editor' },
-  { action: 'new', icon: 'file-plus', label: 'New', title: 'New map' },
+  { action: 'home', icon: 'home', label: 'Home', title: 'Worldview Editor' },
+  { action: 'new', icon: 'new-map', label: 'New', title: 'New map' },
   {
     action: 'open-file',
-    icon: 'folder-open',
+    icon: 'open-map',
     label: 'Open',
     title: 'Open map',
   },
   {
     action: 'open-project',
-    icon: 'folders',
+    icon: 'open-project',
     label: 'Project',
     title: 'Open project directory',
   },
-  { action: 'download', icon: 'floppy-disk', label: 'Save', title: 'Save map' },
+  { action: 'download', icon: 'save', label: 'Save', title: 'Save map' },
 ];
 
 const historyActions: readonly ActionSpec[] = [
@@ -50,19 +51,19 @@ const historyActions: readonly ActionSpec[] = [
   },
   {
     action: 'checkpoint',
-    icon: 'bookmark-simple',
+    icon: 'checkpoint',
     label: 'Checkpoint',
     title: 'Create recovery checkpoint',
   },
   {
     action: 'versions',
-    icon: 'clock-counter-clockwise',
+    icon: 'versions',
     label: 'Versions',
     title: 'Recovery versions',
   },
   {
     action: 'show-source',
-    icon: 'code',
+    icon: 'source',
     label: 'Source',
     title: 'Edit map source',
   },
@@ -78,10 +79,10 @@ const fileMenuActions = fileActions.filter(
 );
 
 const buildActions: readonly ActionSpec[] = [
-  { action: 'compile', icon: 'hammer', label: 'Compile', title: 'Compile map' },
+  { action: 'compile', icon: 'compile', label: 'Compile', title: 'Compile map' },
   {
     action: 'toggle-preview',
-    icon: 'monitor-play',
+    icon: 'preview',
     label: 'Preview',
     title: 'Toggle compiled preview',
     disabled: true,
@@ -95,21 +96,21 @@ const buildActions: readonly ActionSpec[] = [
   },
   {
     action: 'toggle-portals',
-    icon: 'intersect-three',
+    icon: 'portals',
     label: 'Portals',
     title: 'Toggle portals',
     disabled: true,
   },
   {
     action: 'build-log',
-    icon: 'terminal-window',
+    icon: 'build-log',
     label: 'Log',
     title: 'Build diagnostics',
     disabled: true,
   },
   {
     action: 'launch',
-    icon: 'rocket-launch',
+    icon: 'launch',
     label: 'Launch',
     title: 'Launch external game',
     disabled: true,
@@ -119,47 +120,47 @@ const buildActions: readonly ActionSpec[] = [
 const editorTools: readonly ToolSpec[] = [
   {
     tool: 'select',
-    icon: 'cursor',
+    icon: 'select',
     label: 'Select',
     title: 'Select, move, resize, or draw brushes',
   },
   {
     tool: 'entity',
-    icon: 'user-square',
+    icon: 'entity',
     label: 'Entity',
     title: 'Place entity',
   },
-  { tool: 'hull', icon: 'polygon', label: 'Hull', title: 'Build convex hull' },
-  { tool: 'face', icon: 'square', label: 'Face', title: 'Edit faces' },
+  { tool: 'hull', icon: 'hull', label: 'Hull', title: 'Build convex hull' },
+  { tool: 'face', icon: 'face', label: 'Face', title: 'Edit faces' },
   {
     tool: 'sweep',
-    icon: 'flow-arrow',
+    icon: 'sweep',
     label: 'Sweep',
     title: 'Sweep selection',
   },
-  { tool: 'clip', icon: 'scissors', label: 'Clip', title: 'Clip brushes' },
+  { tool: 'clip', icon: 'clip', label: 'Clip', title: 'Clip brushes' },
   {
     tool: 'vertex',
-    icon: 'vector-three',
+    icon: 'vertex',
     label: 'Vertex',
     title: 'Edit vertices',
   },
-  { tool: 'edge', icon: 'line-segment', label: 'Edge', title: 'Edit edges' },
+  { tool: 'edge', icon: 'edge', label: 'Edge', title: 'Edit edges' },
   {
     tool: 'rotate',
-    icon: 'arrow-clockwise',
+    icon: 'rotate',
     label: 'Rotate',
     title: 'Rotate selection',
   },
   {
     tool: 'scale',
-    icon: 'arrows-out',
+    icon: 'scale',
     label: 'Scale',
     title: 'Scale selection',
   },
   {
     tool: 'shear',
-    icon: 'perspective',
+    icon: 'shear',
     label: 'Shear',
     title: 'Shear selection',
   },
@@ -168,40 +169,40 @@ const editorTools: readonly ToolSpec[] = [
 const selectionActions: readonly ActionSpec[] = [
   {
     action: 'focus-selection',
-    icon: 'crosshair',
+    icon: 'focus',
     label: 'Focus',
     title: 'Frame selection (Home)',
     disabled: true,
   },
   {
     action: 'select-all',
-    icon: 'selection-all',
+    icon: 'select-all',
     label: 'All',
     title: 'Select all (Ctrl/Command+A)',
   },
   {
     action: 'invert-selection',
-    icon: 'selection-inverse',
+    icon: 'selection-invert',
     label: 'Invert',
     title: 'Invert selection (Ctrl/Command+Shift+A)',
   },
   {
     action: 'snap-selection-to-grid',
-    icon: 'grid-four',
+    icon: 'snap-grid',
     label: 'Snap to grid',
     title: 'Snap selected brush or face vertices to the current grid',
     disabled: true,
   },
   {
     action: 'undo',
-    icon: 'arrow-counter-clockwise',
+    icon: 'undo',
     label: 'Undo',
     title: 'Undo',
     disabled: true,
   },
   {
     action: 'redo',
-    icon: 'arrow-clockwise',
+    icon: 'redo',
     label: 'Redo',
     title: 'Redo',
     disabled: true,
@@ -215,40 +216,40 @@ const selectionActions: readonly ActionSpec[] = [
   },
   {
     action: 'clear-repeat-commands',
-    icon: 'prohibit',
+    icon: 'clear',
     label: 'Clear repeat',
     title: 'Clear repeat sequence',
     disabled: true,
   },
   {
     action: 'duplicate',
-    icon: 'copy-simple',
+    icon: 'duplicate',
     label: 'Duplicate',
     title: 'Duplicate',
     disabled: true,
   },
   {
     action: 'copy',
-    icon: 'clipboard',
+    icon: 'copy',
     label: 'Copy',
     title: 'Copy (Ctrl/Command+C)',
     disabled: true,
   },
   {
     action: 'paste',
-    icon: 'clipboard-text',
+    icon: 'paste',
     label: 'Paste',
     title: 'Paste (Ctrl/Command+V)',
   },
   {
     action: 'paste-original',
-    icon: 'push-pin',
+    icon: 'paste-original',
     label: 'Paste at original position',
     title: 'Paste at original position (Ctrl/Command+Alt+V)',
   },
   {
     action: 'delete',
-    icon: 'trash',
+    icon: 'delete',
     label: 'Delete',
     title: 'Delete',
     disabled: true,
@@ -258,21 +259,21 @@ const selectionActions: readonly ActionSpec[] = [
 const visibilityActions: readonly ActionSpec[] = [
   {
     action: 'hide-selection',
-    icon: 'eye-slash',
+    icon: 'hide',
     label: 'Hide',
     title: 'Hide selection',
     disabled: true,
   },
   {
     action: 'isolate-selection',
-    icon: 'target',
+    icon: 'isolate',
     label: 'Isolate',
     title: 'Isolate selection',
     disabled: true,
   },
   {
     action: 'show-all',
-    icon: 'eye',
+    icon: 'show',
     label: 'Show all',
     title: 'Show all hidden objects',
     disabled: true,
@@ -286,7 +287,7 @@ const visibilityActions: readonly ActionSpec[] = [
   },
   {
     action: 'unlock-all',
-    icon: 'lock-open',
+    icon: 'unlock',
     label: 'Unlock all',
     title: 'Unlock all objects',
     disabled: true,
@@ -335,7 +336,7 @@ function ActionButton({
       disabled={disabled}
       onClick={onClick}
     >
-      <i className={`ph ph-${icon}`} aria-hidden="true" />
+      <Icon name={icon} />
       <span className="toolbar-label">{label}</span>
     </button>
   );
@@ -372,7 +373,7 @@ function ActionMenu({
   className = '',
 }: {
   readonly label: string;
-  readonly icon: string;
+  readonly icon: IconName;
   readonly actions: readonly ActionSpec[];
   readonly className?: string;
 }) {
@@ -391,7 +392,7 @@ function ActionMenu({
       }}
     >
       <summary className="icon-button" title={label}>
-        <i className={`ph ph-${icon}`} aria-hidden="true" />
+        <Icon name={icon} />
         <span className="toolbar-label">{label}</span>
       </summary>
       <div
@@ -406,7 +407,7 @@ function ActionMenu({
       >
         {actions.map(({ action, icon: actionIcon, label: actionLabel, title, disabled }) => (
           <button key={action} type="button" data-action={action} title={title} disabled={disabled}>
-            <i className={`ph ph-${actionIcon}`} aria-hidden="true" />
+            <Icon name={actionIcon} />
             <span className="toolbar-label">{actionLabel}</span>
           </button>
         ))}
@@ -431,26 +432,22 @@ function TopBar({ shellState }: EditorChromeProps) {
             if (action === 'home') shellState.workspaceHome.invoke('showHome');
           }}
         />
-        <ActionMenu label="Open and create" icon="folder-open" actions={fileMenuActions} />
+        <ActionMenu label="Open and create" icon="open-map" actions={fileMenuActions} />
         <select id="project-map" aria-label="Project map" hidden />
         <ActionGroup label="History" actions={primaryEditActions} />
         <ActionGroup label="Source" actions={primaryHistoryActions} />
-        <ActionMenu
-          label="More document actions"
-          icon="clock-counter-clockwise"
-          actions={documentMenuActions}
-        />
+        <ActionMenu label="More document actions" icon="versions" actions={documentMenuActions} />
         <div className="toolbar-group build-actions" aria-label="Build">
           <select id="build-profile" aria-label="Build profile" hidden />
           {primaryBuildActions.map((action) => (
             <ActionButton key={action.action} {...action} />
           ))}
-          <ActionMenu label="Build results" icon="caret-down" actions={buildMenuActions} />
+          <ActionMenu label="Build results" icon="build-results" actions={buildMenuActions} />
         </div>
       </nav>
       <CollaborationPresence port={shellState.collaborationUi} />
       <div className="theme-control" title="Editor theme">
-        <i className="ph ph-circle-half" aria-hidden="true" />
+        <Icon name="theme" />
         <Select
           id="editor-theme"
           className="theme-select"
@@ -474,7 +471,7 @@ function TopBar({ shellState }: EditorChromeProps) {
         aria-pressed="true"
         title="Toggle inspector"
       >
-        <i className="ph ph-sidebar" aria-hidden="true" />
+        <Icon name="inspector" />
         <span className="toolbar-label">Inspector</span>
       </button>
       <input id="map-file" type="file" accept=".map,.txt" aria-label="Open map file" hidden />
@@ -503,7 +500,7 @@ function ToolRail() {
             aria-pressed={index === 0 ? 'true' : 'false'}
             title={title}
           >
-            <i className={`ph ph-${icon}`} aria-hidden="true" />
+            <Icon name={icon} />
             <span className="toolbar-label">{label}</span>
           </button>
         ))}
@@ -513,9 +510,9 @@ function ToolRail() {
         actions={contextualEditActions}
         className="selection-actions"
       />
-      <ActionMenu label="More edit actions" icon="dots-three" actions={editMenuActions} />
+      <ActionMenu label="More edit actions" icon="more-actions" actions={editMenuActions} />
       <span className="toolrail-spacer" />
-      <ActionMenu label="Visibility and locking" icon="eye" actions={visibilityActions} />
+      <ActionMenu label="Visibility and locking" icon="show" actions={visibilityActions} />
       <label className="tool-select" title="Grid size">
         <select id="grid-size" aria-label="Grid size" defaultValue={16}>
           {[1, 2, 4, 8, 16, 32, 64, 128, 256].map((size) => (
@@ -527,7 +524,7 @@ function ToolRail() {
       </label>
       <label className="tool-toggle" title="Texture lock">
         <input id="texture-lock" type="checkbox" defaultChecked />
-        <i className="ph ph-lock-key" aria-hidden="true" />
+        <Icon name="texture-lock" />
       </label>
       <button
         className="view-filter-toggle icon-button"
@@ -536,7 +533,7 @@ function ToolRail() {
         aria-expanded="false"
         title="Viewport filters"
       >
-        <i className="ph ph-funnel" aria-hidden="true" />
+        <Icon name="filter" />
         <span className="toolbar-label">View</span>
         <span id="view-filter-count">0</span>
       </button>
