@@ -57,7 +57,11 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
             buildServiceEnabled: true,
           }
         : {};
-      const application = new EditorApplication(bindEditorElements(shellState), applicationOptions);
+      const application = new EditorApplication(
+        shellState,
+        bindEditorElements(),
+        applicationOptions,
+      );
       editor.current = application;
       delete document.documentElement.dataset.worldviewEditorReady;
       void (async () => {
@@ -84,7 +88,9 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
             hostedMap.displayName,
           );
           application.signal.throwIfAborted();
-          shellState.statusMessage.textContent = `Opened hosted map ${hostedMap.projectName} / ${hostedMap.name} · live at v${hostedMap.mapVersion}`;
+          shellState.statusMessage.set(
+            `Opened hosted map ${hostedMap.projectName} / ${hostedMap.name} · live at v${hostedMap.mapVersion}`,
+          );
         } else {
           const launch = takePendingEditorLaunch();
           if (launch?.kind === 'project')

@@ -14,9 +14,24 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState, WorkspaceResizeKind } from './editor-shell-state.js';
 import type { ObjectPastePlacement } from './editor-clipboard.js';
 import type { EditorState } from './editor-state.js';
 import type { ViewportWorkspaceLayout } from './viewport-workspace-presenter.js';
+
+type DocumentUi = Pick<
+  EditorShellState,
+  'documentName' | 'inspectorLayout' | 'projectUi' | 'statusMessage' | 'workspaceLayout'
+>;
+
+function isWorkspaceResizeKind(value: string | undefined): value is WorkspaceResizeKind {
+  return (
+    value === 'viewport-column' ||
+    value === 'viewport-top' ||
+    value === 'viewport-cross' ||
+    value === 'inspector'
+  );
+}
 
 interface CompileAssetEntry {
   readonly name: string;
@@ -30,7 +45,11 @@ export class DocumentPresenter {
 
   public constructor(
     private readonly state: EditorState,
-    private readonly ui: EditorElements,
+    private readonly ui: DocumentUi,
+    private readonly elements: Pick<
+      EditorElements,
+      'viewportGrid' | 'workspace' | 'workspaceResizeHandles'
+    >,
     private readonly setEditorTool: (tool: EditorTool) => void,
     private readonly onWorkspaceLayoutChange: (layout: ViewportWorkspaceLayout) => void,
   ) {}
@@ -83,14 +102,16 @@ export class DocumentPresenter {
   }
 
   public updateSourceFromDocument(force = false): void {
-    if (!force && !this.ui.sourceDialog.open) return;
+    if (!force && !this.ui.projectUi.getSnapshot().source.open) return;
     const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
-    this.ui.source.value = plan.status === 'safe' ? plan.text : plan.normalizedText;
-    this.ui.sourceMessage.textContent =
-      plan.status === 'safe'
-        ? 'Source preview preserves the opened map structure.'
-        : plan.diagnostics.map(({ message }) => message).join(' ');
-    this.ui.sourceMessage.classList.toggle('error-text', plan.status === 'blocked');
+    this.ui.projectUi.updateSource({
+      value: plan.status === 'safe' ? plan.text : plan.normalizedText,
+      message:
+        plan.status === 'safe'
+          ? 'Source preview preserves the opened map structure.'
+          : plan.diagnostics.map(({ message }) => message).join(' '),
+      tone: plan.status === 'blocked' ? 'error' : 'normal',
+    });
   }
 
   public setDocumentName(name: string): void {
@@ -107,14 +128,12 @@ export class DocumentPresenter {
   }
 
   public setInspectorOpen(open: boolean): void {
-    this.ui.inspector.classList.toggle('closed', !open);
-    this.ui.inspector.parentElement?.classList.toggle('inspector-closed', !open);
-    this.ui.inspectorToggle.setAttribute('aria-pressed', String(open));
+    this.ui.inspectorLayout.setOpen(open);
   }
 
   public connectWorkspaceResizers(signal: AbortSignal): void {
     this.applyWorkspaceLayout();
-    for (const handle of this.ui.workspaceResizeHandles) {
+    for (const handle of this.elements.workspaceResizeHandles) {
       handle.addEventListener('pointerdown', (event) => this.beginWorkspaceResize(event, handle), {
         signal,
       });
@@ -127,7 +146,7 @@ export class DocumentPresenter {
   }
 
   public restoreWorkspaceLayout(layout: ViewportWorkspaceLayout): void {
-    const workspaceWidth = this.ui.workspace.getBoundingClientRect().width;
+    const workspaceWidth = this.elements.workspace.getBoundingClientRect().width;
     const maximumInspectorWidth = Math.max(240, Math.min(520, workspaceWidth * 0.48));
     this.viewportColumn = Math.max(0.3, Math.min(0.76, layout.viewportColumn));
     this.viewportTop = Math.max(0.2, Math.min(0.8, layout.viewportTop));
@@ -138,26 +157,11 @@ export class DocumentPresenter {
   }
 
   private applyWorkspaceLayout(): void {
-    this.ui.viewportGrid.style.setProperty('--viewport-column', `${this.viewportColumn * 100}%`);
-    this.ui.viewportGrid.style.setProperty('--viewport-top', `${this.viewportTop * 100}%`);
-    this.ui.workspace.style.setProperty('--inspector-width', `${this.inspectorWidth}px`);
-    for (const handle of this.ui.workspaceResizeHandles) {
-      const kind = handle.dataset.resize;
-      if (kind === 'viewport-cross') {
-        handle.setAttribute(
-          'aria-valuetext',
-          `Column ${Math.round(this.viewportColumn * 100)}%, row ${Math.round(this.viewportTop * 100)}%`,
-        );
-        continue;
-      }
-      const value =
-        kind === 'viewport-column'
-          ? Math.round(this.viewportColumn * 100)
-          : kind === 'viewport-top'
-            ? Math.round(this.viewportTop * 100)
-            : this.inspectorWidth;
-      handle.setAttribute('aria-valuenow', String(value));
-    }
+    this.ui.workspaceLayout.update({
+      viewportColumn: this.viewportColumn,
+      viewportTop: this.viewportTop,
+      inspectorWidth: this.inspectorWidth,
+    });
     this.onWorkspaceLayoutChange({
       viewportColumn: this.viewportColumn,
       viewportTop: this.viewportTop,
@@ -167,14 +171,16 @@ export class DocumentPresenter {
 
   private beginWorkspaceResize(event: PointerEvent, handle: HTMLElement): void {
     if (event.button !== 0) return;
+    const kind = handle.dataset.resize;
+    if (!isWorkspaceResizeKind(kind)) return;
     event.preventDefault();
     handle.setPointerCapture(event.pointerId);
-    handle.classList.add('dragging');
+    this.ui.workspaceLayout.update({ dragging: kind });
     const move = (moveEvent: PointerEvent) => {
-      this.resizeWorkspaceAt(handle.dataset.resize, moveEvent.clientX, moveEvent.clientY);
+      this.resizeWorkspaceAt(kind, moveEvent.clientX, moveEvent.clientY);
     };
     const finish = () => {
-      handle.classList.remove('dragging');
+      this.ui.workspaceLayout.update({ dragging: null });
       handle.blur();
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', finish);
@@ -187,12 +193,12 @@ export class DocumentPresenter {
 
   private resizeWorkspaceAt(kind: string | undefined, clientX: number, clientY: number): void {
     if (kind === 'inspector') {
-      const bounds = this.ui.workspace.getBoundingClientRect();
+      const bounds = this.elements.workspace.getBoundingClientRect();
       this.inspectorWidth = Math.round(
         Math.max(240, Math.min(Math.min(520, bounds.width * 0.48), bounds.right - clientX)),
       );
     } else {
-      const bounds = this.ui.viewportGrid.getBoundingClientRect();
+      const bounds = this.elements.viewportGrid.getBoundingClientRect();
       if (kind === 'viewport-column' || kind === 'viewport-cross')
         this.viewportColumn = Math.max(0.3, Math.min(0.76, (clientX - bounds.left) / bounds.width));
       if (kind === 'viewport-top' || kind === 'viewport-cross')
@@ -239,22 +245,22 @@ export class DocumentPresenter {
       const duplicated = this.state.session.duplicateSelected(
         createSequentialIdFactory(`duplicate-${this.state.duplicateSequence}`),
         [this.state.activeGridSize, this.state.activeGridSize, 0],
-        this.ui.textureLock.checked,
+        this.state.textureLock,
         this.state.openGroupId,
       );
-      if (!duplicated) this.ui.statusMessage.textContent = 'Select a brush before duplicating.';
+      if (!duplicated) this.ui.statusMessage.set('Select a brush before duplicating.');
     } catch (error) {
-      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
     }
   }
 
   public repeatRecordedCommands(): void {
     try {
       if (!this.state.session.repeatLastCommands()) {
-        this.ui.statusMessage.textContent = 'Record object commands before repeating them.';
+        this.ui.statusMessage.set('Record object commands before repeating them.');
       }
     } catch (error) {
-      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -295,27 +301,29 @@ export class DocumentPresenter {
 
   public deleteSelection(): void {
     if (!this.state.session.deleteSelected())
-      this.ui.statusMessage.textContent = 'Select a brush before deleting.';
+      this.ui.statusMessage.set('Select a brush before deleting.');
   }
 
   public selectAllEditableObjects(): void {
     if (this.state.activeTool !== 'select') this.setEditorTool('select');
     const selection = this.state.session.selectAllEditable();
     const count = selectedBrushIds(selection).length + selectedPointEntityIds(selection).length;
-    this.ui.statusMessage.textContent =
+    this.ui.statusMessage.set(
       count > 0
         ? `Selected all ${count} visible, unlocked ${count === 1 ? 'object' : 'objects'}.`
-        : 'There are no editable objects to select.';
+        : 'There are no editable objects to select.',
+    );
   }
 
   public invertEditableObjectSelection(): void {
     if (this.state.activeTool !== 'select') this.setEditorTool('select');
     const selection = this.state.session.invertObjectSelection();
     const count = selectedBrushIds(selection).length + selectedPointEntityIds(selection).length;
-    this.ui.statusMessage.textContent =
+    this.ui.statusMessage.set(
       count > 0
         ? `Inverted the selection to ${count} ${count === 1 ? 'object' : 'objects'}.`
-        : 'Inverting the selection cleared it.';
+        : 'Inverting the selection cleared it.',
+    );
   }
 
   public applySelectionBrushQuery(mode: SelectionBrushQueryMode): void {
@@ -331,7 +339,7 @@ export class DocumentPresenter {
       if (this.state.activeTool !== 'select') this.setEditorTool('select');
       const result = this.state.session.selectWithSelectionBrushes(mode, projection);
       if (!result) {
-        this.ui.statusMessage.textContent = 'Select one or more ordinary structural brushes first.';
+        this.ui.statusMessage.set('Select one or more ordinary structural brushes first.');
         return;
       }
       const selected = result.selectedBrushCount + result.selectedEntityCount;
@@ -341,9 +349,11 @@ export class DocumentPresenter {
           : mode === 'inside'
             ? 'enclosed'
             : `${projection} enclosed`;
-      this.ui.statusMessage.textContent = `Consumed ${result.removedBrushCount} selection ${result.removedBrushCount === 1 ? 'brush' : 'brushes'} and selected ${selected} ${relationship} ${selected === 1 ? 'object' : 'objects'}.`;
+      this.ui.statusMessage.set(
+        `Consumed ${result.removedBrushCount} selection ${result.removedBrushCount === 1 ? 'brush' : 'brushes'} and selected ${selected} ${relationship} ${selected === 1 ? 'object' : 'objects'}.`,
+      );
     } catch (error) {
-      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
     }
   }
 

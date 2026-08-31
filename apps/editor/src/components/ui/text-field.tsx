@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import {
   FieldError,
   Input,
@@ -14,6 +14,7 @@ export interface TextFieldProps extends Omit<AriaTextFieldProps, 'children' | 'c
   readonly description?: string;
   readonly errorMessage?: ReactNode;
   readonly input?: InputProps;
+  readonly inputRef?: Ref<HTMLInputElement>;
   readonly className?: string;
   readonly hideLabel?: boolean;
   readonly referenceState?: 'hover' | 'focus' | 'invalid';
@@ -24,6 +25,7 @@ export function TextField({
   description,
   errorMessage,
   input,
+  inputRef,
   className = '',
   hideLabel = false,
   referenceState,
@@ -37,7 +39,7 @@ export function TextField({
       {...props}
     >
       {hideLabel ? null : <Label className="wv-field-label">{label}</Label>}
-      <Input className="wv-input" {...input} />
+      <Input ref={inputRef} className="wv-input" {...input} />
       {description ? (
         <Text className="wv-field-description" slot="description">
           {description}

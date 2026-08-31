@@ -13,6 +13,7 @@ import type {
   EditorTopologyKind,
   EditorViewportCameraState,
   EditorViewportKind,
+  EditorViewportOverlayElements,
 } from './types.js';
 import { scaleOverlayVertices, type SceneBuffers } from './scene-buffers.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
@@ -82,16 +83,27 @@ export abstract class ViewportBase {
   protected pendingFaceTransferClick: number | null = null;
   protected faceTransferSequenceSource: FaceSelection | null | undefined;
   protected faceTransferSequenceReset: number | null = null;
-  protected lassoElement: HTMLDivElement | null = null;
-  protected transformReadout: HTMLDivElement | null = null;
   protected transformReadoutPivot: Vec3 | null = null;
   private readonly flyCamera: FlyCameraController;
+  private readonly inputLifetime = new AbortController();
   private renderRequested = true;
   private lastRenderedVersion = -1;
   private readonly resizeObserver: ResizeObserver;
 
   protected get dragState(): PointerDrag | null {
     return this.gestures.activeTracker?.drag ?? null;
+  }
+
+  protected get inputSignal(): AbortSignal {
+    return this.inputLifetime.signal;
+  }
+
+  protected setInteractionState(state: string): void {
+    this.canvas.dataset.viewportInteraction = state;
+  }
+
+  protected clearInteractionState(): void {
+    delete this.canvas.dataset.viewportInteraction;
   }
 
   protected selectionHitsAt(clientX: number, clientY: number): readonly EditorObjectRayHit[] {
@@ -166,6 +178,7 @@ export abstract class ViewportBase {
     protected gridSize: number,
     private readonly requestRender: () => void,
     private theme: EditorRenderTheme,
+    private readonly overlay?: EditorViewportOverlayElements,
   ) {
     const context = root.configureContext({
       canvas,
@@ -221,9 +234,10 @@ export abstract class ViewportBase {
       requestFrame: () => this.requestRender(),
     });
     this.connectInput();
-    this.canvas.addEventListener('pointerenter', this.followFocusedViewport);
-    window.addEventListener('keydown', this.cancelOnEscape);
-    window.addEventListener('keyup', this.clearInsertionOnModifierRelease);
+    const inputOptions = { signal: this.inputLifetime.signal };
+    this.canvas.addEventListener('pointerenter', this.followFocusedViewport, inputOptions);
+    window.addEventListener('keydown', this.cancelOnEscape, inputOptions);
+    window.addEventListener('keyup', this.clearInsertionOnModifierRelease, inputOptions);
     this.resizeObserver = new ResizeObserver(() => this.requestRender());
     this.resizeObserver.observe(this.canvas);
   }
@@ -526,6 +540,7 @@ export abstract class ViewportBase {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.inputLifetime.abort();
     this.removeHandleLasso();
     this.hideTransformReadout();
     this.depth?.destroy();
@@ -540,10 +555,7 @@ export abstract class ViewportBase {
     if (this.faceTransferSequenceReset !== null)
       window.clearTimeout(this.faceTransferSequenceReset);
     this.flyCamera.dispose();
-    this.canvas.removeEventListener('pointerenter', this.followFocusedViewport);
     this.resizeObserver.disconnect();
-    window.removeEventListener('keydown', this.cancelOnEscape);
-    window.removeEventListener('keyup', this.clearInsertionOnModifierRelease);
   }
 
   private readonly followFocusedViewport = () => {
@@ -899,19 +911,14 @@ export abstract class ViewportBase {
   }
 
   protected updateHandleLasso(startX: number, startY: number, endX: number, endY: number): void {
-    const pane = this.canvas.closest<HTMLElement>('.viewport-pane');
-    if (!pane) return;
-    const paneBounds = pane.getBoundingClientRect();
+    if (!this.overlay) return;
+    const paneBounds = this.overlay.container.getBoundingClientRect();
     const minimumX = Math.min(startX, endX) - paneBounds.left;
     const maximumX = Math.max(startX, endX) - paneBounds.left;
     const minimumY = Math.min(startY, endY) - paneBounds.top;
     const maximumY = Math.max(startY, endY) - paneBounds.top;
-    if (!this.lassoElement) {
-      this.lassoElement = document.createElement('div');
-      this.lassoElement.className = 'handle-lasso';
-      pane.append(this.lassoElement);
-    }
-    Object.assign(this.lassoElement.style, {
+    this.overlay.handleLasso.dataset.runtimeVisible = 'true';
+    Object.assign(this.overlay.handleLasso.style, {
       left: `${minimumX}px`,
       top: `${minimumY}px`,
       width: `${maximumX - minimumX}px`,
@@ -920,19 +927,12 @@ export abstract class ViewportBase {
   }
 
   protected removeHandleLasso(): void {
-    this.lassoElement?.remove();
-    this.lassoElement = null;
+    if (this.overlay) delete this.overlay.handleLasso.dataset.runtimeVisible;
   }
 
   protected showTransformReadout(text: string, pivot: Vec3): void {
-    const pane = this.canvas.closest<HTMLElement>('.viewport-pane');
-    if (!pane) return;
-    if (!this.transformReadout) {
-      this.transformReadout = document.createElement('div');
-      this.transformReadout.className = 'transform-readout';
-      pane.append(this.transformReadout);
-    }
-    this.transformReadout.textContent = text;
+    if (!this.overlay) return;
+    this.overlay.transformReadout.textContent = text;
     this.transformReadoutPivot = [...pivot] as Vec3;
     this.positionTransformReadout();
   }
@@ -949,23 +949,21 @@ export abstract class ViewportBase {
   }
 
   protected positionTransformReadout(): void {
-    if (!this.transformReadout || !this.transformReadoutPivot) return;
-    const pane = this.canvas.closest<HTMLElement>('.viewport-pane');
+    if (!this.overlay || !this.transformReadoutPivot) return;
     const projected = this.projectToCanvas(this.transformReadoutPivot);
-    if (!pane || !projected) {
-      this.transformReadout.hidden = true;
+    if (!projected) {
+      delete this.overlay.transformReadout.dataset.runtimeVisible;
       return;
     }
-    const paneBounds = pane.getBoundingClientRect();
+    const paneBounds = this.overlay.container.getBoundingClientRect();
     const canvasBounds = this.canvas.getBoundingClientRect();
-    this.transformReadout.hidden = false;
-    this.transformReadout.style.left = `${canvasBounds.left - paneBounds.left + projected[0]}px`;
-    this.transformReadout.style.top = `${canvasBounds.top - paneBounds.top + projected[1]}px`;
+    this.overlay.transformReadout.dataset.runtimeVisible = 'true';
+    this.overlay.transformReadout.style.left = `${canvasBounds.left - paneBounds.left + projected[0]}px`;
+    this.overlay.transformReadout.style.top = `${canvasBounds.top - paneBounds.top + projected[1]}px`;
   }
 
   protected hideTransformReadout(): void {
-    this.transformReadout?.remove();
-    this.transformReadout = null;
+    if (this.overlay) delete this.overlay.transformReadout.dataset.runtimeVisible;
     this.transformReadoutPivot = null;
   }
 }

@@ -10,13 +10,18 @@ import {
 
 import type { BuildPresenter } from './build-presenter.js';
 import type { DocumentPresenter } from './document-presenter.js';
-import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
 import type { EditorState } from './editor-state.js';
 import type { GeometryToolPresenter } from './geometry-tool-presenter.js';
 import type { InspectorPresenter } from './inspector-presenter.js';
 import type { MaterialsPresenter } from './materials-presenter.js';
 import type { OrganizationPresenter } from './organization-presenter.js';
 import type { TransformToolPresenter } from './transform-tool-presenter.js';
+
+type SessionUi = Pick<
+  EditorShellState,
+  'editorCommands' | 'pointEntityTool' | 'pointerContext' | 'projectUi' | 'statusMessage'
+>;
 
 interface ReplaceDocumentOptions {
   readonly name?: string;
@@ -31,7 +36,7 @@ interface ReplaceDocumentOptions {
 export class SessionPresenter {
   public constructor(
     private readonly state: EditorState,
-    private readonly ui: EditorElements,
+    private readonly ui: SessionUi,
     private readonly build: BuildPresenter,
     private readonly document: DocumentPresenter,
     private readonly geometry: GeometryToolPresenter,
@@ -71,8 +76,8 @@ export class SessionPresenter {
         this.build.setCompileState(`PREVIEW R${this.state.compiledRevision} STALE`, 'stale');
       }
       if (change.kind !== 'selection' && change.kind !== 'view')
-        this.ui.launchButton.disabled = true;
-      this.ui.statusMessage.textContent = `${change.label}. Document revision ${change.documentRevision}.`;
+        this.ui.editorCommands.updateActions({ launch: { disabled: true } });
+      this.ui.statusMessage.set(`${change.label}. Document revision ${change.documentRevision}.`);
       performance.measure('worldview.editor.change-presentation', {
         start: started,
         end: performance.now(),
@@ -87,7 +92,6 @@ export class SessionPresenter {
   ): void {
     this.state.openGroupId = null;
     this.state.selectedLayerId = null;
-    this.state.layerPanelSignature = '';
     this.state.hiddenIssueIds.clear();
     this.state.renderer?.setOpenGroupId(null);
     this.state.moveCandidate = null;
@@ -102,6 +106,7 @@ export class SessionPresenter {
     this.state.sweepEscapeReset = false;
     this.state.transformCandidate = null;
     this.state.topologyCandidate = null;
+    this.state.topologySelectionCount = 0;
     this.state.topologySelectedVertices = [];
     this.state.topologySelectionKind = null;
     this.state.transformPivot = null;
@@ -113,7 +118,7 @@ export class SessionPresenter {
     this.state.hullCandidate = null;
     this.state.hullBuildPoints = [];
     this.state.lastPointerPosition = null;
-    this.ui.pasteButton.disabled = true;
+    this.ui.editorCommands.updateActions({ paste: { disabled: true } });
     this.state.renderer?.clearClipPlane();
     this.state.renderer?.clearHullPoints();
     this.state.renderer?.setSweepCaps([]);
@@ -133,8 +138,10 @@ export class SessionPresenter {
     this.state.lastRecoveryLabel = label;
     this.document.setDocumentDirty(options.dirty ?? false);
     if (options.name) this.document.setDocumentName(options.name);
-    this.ui.sourceMessage.textContent = 'Source parsed successfully.';
-    this.ui.sourceMessage.classList.remove('error-text');
+    this.ui.projectUi.updateSource({
+      message: 'Source parsed successfully.',
+      tone: 'normal',
+    });
   }
 
   public setEditorTool(tool: EditorTool): void {
@@ -169,17 +176,15 @@ export class SessionPresenter {
       this.geometry.resetSweep(false);
     }
     if (tool === 'create') this.geometry.updateSimpleShapeFields();
-    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tool]')) {
-      const active = button.dataset.tool === tool;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', String(active));
-    }
-    this.ui.cameraPointerContext.textContent = `${tool === 'create' ? 'CREATE' : tool === 'entity' ? 'ENTITY' : tool === 'hull' ? 'HULL' : tool === 'face' ? 'FACE' : tool === 'sweep' ? 'SWEEP' : tool === 'clip' ? 'CLIP' : this.transform.isTopologyTool(tool) || this.transform.isTransformTool(tool) ? tool.toUpperCase() : 'PERSPECTIVE'} / edit`;
-    this.ui.statusMessage.textContent =
+    this.ui.editorCommands.setActiveTool(tool);
+    this.ui.pointerContext.set(
+      `${tool === 'create' ? 'CREATE' : tool === 'entity' ? 'ENTITY' : tool === 'hull' ? 'HULL' : tool === 'face' ? 'FACE' : tool === 'sweep' ? 'SWEEP' : tool === 'clip' ? 'CLIP' : this.transform.isTopologyTool(tool) || this.transform.isTransformTool(tool) ? tool.toUpperCase() : 'PERSPECTIVE'} / edit`,
+    );
+    this.ui.statusMessage.set(
       tool === 'create'
         ? `Simple Shape tool active. Drag in any viewport to draw a ${this.geometry.simpleShapeLabel(this.state.simpleShapeOptions.kind)}; use the Object inspector for shape options.`
         : tool === 'entity'
-          ? `Entity tool active. Click a surface or 2D viewport to place ${this.ui.pointEntityClassname.value.trim() || 'a point entity'}.`
+          ? `Entity tool active. Click a surface or 2D viewport to place ${this.ui.pointEntityTool.getSnapshot().classname.trim() || 'a point entity'}.`
           : tool === 'hull'
             ? 'Hull tool active in perspective. Place points on reference faces; Enter creates their convex hull and Escape discards the point set.'
             : tool === 'face'
@@ -200,7 +205,8 @@ export class SessionPresenter {
                           ? 'Scale tool active. Drag a side, edge, or corner handle. The opposite handle stays fixed; hold Alt to anchor at center or Shift for proportional axes. Selected vertex or edge handles take priority over brushes.'
                           : tool === 'shear'
                             ? 'Shear tool active. Drag horizontally to offset the viewport plane by snapped grid units. Selected vertex or edge handles take priority over brushes.'
-                            : 'Default tool active. With nothing selected, drag in any viewport to draw the configured simple shape; click objects to select them. Drag selected objects on XY in 3D; Alt moves vertically and Shift locks an axis. Shift-drag a selected brush face to resize it; add Ctrl/Command to split, Alt to move the face freely, or both to stamp. Ctrl/Command-drag duplicates selected brushes or paint-selects unselected ones. Ctrl/Command-wheel drills through overlapping objects in any view; add Shift to drill through faces. Shift-click selects a face.';
+                            : 'Default tool active. With nothing selected, drag in any viewport to draw the configured simple shape; click objects to select them. Drag selected objects on XY in 3D; Alt moves vertically and Shift locks an axis. Shift-drag a selected brush face to resize it; add Ctrl/Command to split, Alt to move the face freely, or both to stamp. Ctrl/Command-drag duplicates selected brushes or paint-selects unselected ones. Ctrl/Command-wheel drills through overlapping objects in any view; add Shift to drill through faces. Shift-click selects a face.',
+    );
     this.inspector.updateInspector(
       tool === 'sweep' && this.state.sweepCandidate
         ? this.state.sweepCandidate.document

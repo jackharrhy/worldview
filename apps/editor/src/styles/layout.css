@@ -298,77 +298,8 @@ textarea:focus-visible {
   line-height: 1;
 }
 
-.toolbar-menu {
-  position: relative;
-  flex: none;
-}
-
-.toolbar-menu > summary {
-  list-style: none;
-  cursor: pointer;
-}
-
-.toolbar-menu > summary::-webkit-details-marker {
-  display: none;
-}
-
-.toolbar-menu[open] > summary {
-  border-color: var(--line);
-  background: var(--surface-raised);
-  color: var(--text);
-}
-
-.toolbar-menu-items {
-  position: absolute;
-  z-index: 60;
-  top: calc(100% + 4px);
-  left: 0;
-  display: grid;
+.toolbar-menu-popover {
   min-width: 190px;
-  padding: 4px;
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  box-shadow: 0 12px 28px var(--shadow-strong);
-  background: var(--surface-raised);
-}
-
-.toolbar-menu-items button {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 7px;
-  align-items: center;
-  min-height: 28px;
-  padding: 4px 8px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 11px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.toolbar-menu-items button:hover:not(:disabled),
-.toolbar-menu-items button:focus-visible {
-  background: var(--surface);
-  color: var(--text);
-}
-
-.toolbar-menu-items button:disabled {
-  color: var(--quiet);
-}
-
-.toolbar-menu-items .toolbar-label {
-  position: static;
-  width: auto;
-  height: auto;
-  overflow: visible;
-  clip: auto;
-}
-
-.top-actions:has(.toolbar-menu[open]),
-.toolrail:has(.toolbar-menu[open]) {
-  overflow: visible;
 }
 
 .top-actions button:hover:not(:disabled),
@@ -573,7 +504,7 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-.tool-select select {
+.tool-select .wv-select-trigger {
   width: 30px;
   height: 30px;
   min-width: 30px;
@@ -582,19 +513,13 @@ textarea:focus-visible {
   font-size: 10px;
 }
 
-.tool-toggle input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
 .tool-toggle {
   border: 1px solid transparent;
   color: var(--muted);
   cursor: pointer;
 }
 
-.tool-toggle:has(input:checked) {
+.tool-toggle[data-selected] {
   border-color: var(--line);
   color: var(--accent-text);
 }
@@ -603,10 +528,15 @@ textarea:focus-visible {
   font-size: 15px;
 }
 
-.tool-toggle input {
-  width: 13px;
-  height: 13px;
-  accent-color: var(--accent);
+.tool-toggle .wv-checkbox {
+  width: 30px;
+  min-height: 30px;
+  justify-content: center;
+  padding: 0;
+}
+
+.tool-toggle .wv-checkbox-indicator {
+  display: none;
 }
 
 .toolrail-spacer {
@@ -614,12 +544,6 @@ textarea:focus-visible {
 }
 .tool-help {
   display: none;
-}
-
-.toolrail .toolbar-menu-items {
-  top: auto;
-  bottom: 0;
-  left: calc(100% + 5px);
 }
 
 @media (max-width: 1500px) {
@@ -709,6 +633,10 @@ textarea:focus-visible {
 }
 
 .view-filter-row {
+  min-width: 0;
+}
+
+.view-filter-row .wv-checkbox {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
   gap: 7px;
@@ -719,18 +647,15 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
-.view-filter-row:hover {
+.view-filter-row .wv-checkbox:hover {
   background: var(--surface-raised);
 }
 
-.view-filter-row input {
-  width: 13px;
-  height: 13px;
-  margin: 1px 0 0;
-  accent-color: var(--accent);
+.view-filter-row .wv-checkbox-indicator {
+  margin-top: 1px;
 }
 
-.view-filter-row > span {
+.view-filter-row .wv-checkbox-label > span {
   display: grid;
   gap: 2px;
   min-width: 0;

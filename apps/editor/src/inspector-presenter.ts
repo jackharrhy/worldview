@@ -18,12 +18,25 @@ import {
   type MapDocument,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorElements } from './editor-elements.js';
-import { setToolbarButtonLabel } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
 import type { EditorState } from './editor-state.js';
 import type { EntityPresenter } from './entity-presenter.js';
 import type { OrganizationPresenter } from './organization-presenter.js';
 import type { TransformToolPresenter } from './transform-tool-presenter.js';
+
+type InspectorUi = Pick<
+  EditorShellState,
+  | 'documentSummary'
+  | 'editorCommands'
+  | 'faceInspector'
+  | 'objectTools'
+  | 'pointEntityTool'
+  | 'selectionInspector'
+  | 'simpleShapeTool'
+  | 'statusMessage'
+  | 'surfaceInspector'
+  | 'sweepTool'
+>;
 
 function unknownSurfaceBitsLabel(
   values: readonly number[],
@@ -40,7 +53,7 @@ function unknownSurfaceBitsLabel(
 export class InspectorPresenter {
   public constructor(
     private readonly state: EditorState,
-    private readonly ui: EditorElements,
+    private readonly ui: InspectorUi,
     private readonly organization: OrganizationPresenter,
     private readonly entity: EntityPresenter,
     private readonly transform: TransformToolPresenter,
@@ -64,8 +77,7 @@ export class InspectorPresenter {
       setProjectionField: (field, value) => {
         try {
           if (!this.state.session.setSelectedTextureProjectionField(field, value)) {
-            this.ui.statusMessage.textContent =
-              'Select one or more faces before editing projection.';
+            this.ui.statusMessage.set('Select one or more faces before editing projection.');
           }
         } catch (error) {
           this.ui.statusMessage.setError(error instanceof Error ? error.message : String(error));
@@ -83,8 +95,7 @@ export class InspectorPresenter {
               },
             })
           ) {
-            this.ui.statusMessage.textContent =
-              'Select a brush or face before aligning its texture.';
+            this.ui.statusMessage.set('Select a brush or face before aligning its texture.');
           }
         } catch (error) {
           this.ui.statusMessage.setError(error instanceof Error ? error.message : String(error));
@@ -232,38 +243,41 @@ export class InspectorPresenter {
     this.organization.renderLayers(document, selection);
     this.organization.updateEntityLinkSummary(document, selection);
     measurePresentationStep('organization');
-    this.ui.undoButton.disabled = !this.state.session.canUndo;
-    this.ui.undoButton.title = this.state.session.undoLabel
-      ? `Undo ${this.state.session.undoLabel}`
-      : 'Nothing to undo';
-    this.ui.redoButton.disabled = !this.state.session.canRedo;
-    this.ui.redoButton.title = this.state.session.redoLabel
-      ? `Redo ${this.state.session.redoLabel}`
-      : 'Nothing to redo';
     const repeatLabels = this.state.session.repeatCommandLabels;
-    this.ui.repeatCommandsButton.disabled = !this.state.session.canRepeatCommands;
-    setToolbarButtonLabel(
-      this.ui.repeatCommandsButton,
-      repeatLabels.length > 0 ? `Repeat ${repeatLabels.length}` : 'Repeat',
-    );
-    this.ui.repeatCommandsButton.title =
-      repeatLabels.length > 0
-        ? `Repeat ${repeatLabels.join(' → ')} (Ctrl/Command+Shift+R)`
-        : 'Record duplicate, move, rotate, flip, scale, or shear commands first';
-    this.ui.clearRepeatCommandsButton.disabled = repeatLabels.length === 0;
-    this.ui.clearRepeatCommandsButton.title =
-      repeatLabels.length > 0
-        ? `Clear ${repeatLabels.join(' → ')} and start a new sequence`
-        : 'No recorded command sequence';
-    this.ui.simpleShapeToolSection.hidden = !(
-      this.state.activeTool === 'create' ||
-      (this.state.activeTool === 'select' && !selection)
-    );
-    this.ui.pointEntityToolSection.hidden = this.state.activeTool !== 'entity';
-    this.ui.hullToolSection.hidden = this.state.activeTool !== 'hull';
-    this.ui.hullPointCount.textContent = `${this.state.hullBuildPoints.length} ${this.state.hullBuildPoints.length === 1 ? 'point' : 'points'}`;
-    this.ui.createHullButton.disabled = !this.state.hullCandidate;
-    this.ui.discardHullButton.disabled = this.state.hullBuildPoints.length === 0;
+    this.ui.editorCommands.updateActions({
+      undo: {
+        disabled: !this.state.session.canUndo,
+        title: this.state.session.undoLabel
+          ? `Undo ${this.state.session.undoLabel}`
+          : 'Nothing to undo',
+      },
+      redo: {
+        disabled: !this.state.session.canRedo,
+        title: this.state.session.redoLabel
+          ? `Redo ${this.state.session.redoLabel}`
+          : 'Nothing to redo',
+      },
+      'repeat-commands': {
+        disabled: !this.state.session.canRepeatCommands,
+        label: repeatLabels.length > 0 ? `Repeat ${repeatLabels.length}` : 'Repeat',
+        title:
+          repeatLabels.length > 0
+            ? `Repeat ${repeatLabels.join(' → ')} (Ctrl/Command+Shift+R)`
+            : 'Record duplicate, move, rotate, flip, scale, or shear commands first',
+      },
+      'clear-repeat-commands': {
+        disabled: repeatLabels.length === 0,
+        title:
+          repeatLabels.length > 0
+            ? `Clear ${repeatLabels.join(' → ')} and start a new sequence`
+            : 'No recorded command sequence',
+      },
+    });
+    this.ui.simpleShapeTool.update({
+      visible:
+        this.state.activeTool === 'create' || (this.state.activeTool === 'select' && !selection),
+    });
+    this.ui.pointEntityTool.update({ visible: this.state.activeTool === 'entity' });
 
     const objectBrushIds = selection?.faceId
       ? [...new Set(selectedFaceReferences(selection).map((reference) => reference.brushId))]
@@ -320,8 +334,7 @@ export class InspectorPresenter {
     const linkedCopies = presentedGroup
       ? linkedGroupSiblings(document, presentedGroup.id).length
       : 0;
-    this.ui.groupSection.hidden = !objectSelected && !openGroup;
-    this.ui.groupState.textContent = openGroup
+    const groupStateLabel = openGroup
       ? openGroup.linkedGroupId
         ? `Editing linked · ${linkedCopies} copies`
         : `Editing ${openGroup.name}`
@@ -330,16 +343,6 @@ export class InspectorPresenter {
           ? `Linked · ${linkedCopies} copies`
           : `${selectedGroup.brushIds.length + selectedGroup.pointEntityIds.length} objects`
         : 'Selection';
-    if (presentedGroup && window.document.activeElement !== this.ui.groupName) {
-      this.ui.groupName.value = presentedGroup.name;
-    }
-    this.ui.createGroupButton.hidden = Boolean(selectedGroup && !openGroup);
-    this.ui.renameGroupButton.hidden = !presentedGroup;
-    this.ui.openGroupButton.hidden = !selectedGroup || selectedGroup.id === this.state.openGroupId;
-    this.ui.closeGroupButton.hidden = !openGroup;
-    this.ui.createLinkedDuplicateButton.hidden = !selectedGroup || Boolean(openGroup);
-    this.ui.unlinkGroupButton.hidden = !selectedGroup?.linkedGroupId || Boolean(openGroup);
-    this.ui.ungroupButton.hidden = !selectedGroup;
     const brushObjectSelected = Boolean(brush && selectedFaces.length === 0 && !selectedGroup);
     const selectionBrushOwners = objectBrushIds.flatMap((selectedBrushId) => {
       const owner = document.entities.find((entity) =>
@@ -359,34 +362,35 @@ export class InspectorPresenter {
           isEditorLayerEntity(owner),
       ),
     );
-    this.ui.selectionBrushSection.hidden = !selectionBrushEligible;
-    this.ui.selectionBrushCount.textContent = `${objectBrushIds.length} ${objectBrushIds.length === 1 ? 'volume' : 'volumes'}`;
     const primaryBrushOwner = selection?.brushId
       ? document.entities.find((entity) =>
           entity.primitives.some((candidate) => candidate.id === selection.brushId),
         )
       : null;
-    this.ui.entitySection.hidden = Boolean(
-      selectedGroup || (primaryBrushOwner && isEditorGroupEntity(primaryBrushOwner)),
+    this.entity.renderEntityProperties(
+      document,
+      selection,
+      !selectedGroup && !(primaryBrushOwner && isEditorGroupEntity(primaryBrushOwner)),
     );
-    this.entity.renderEntityProperties(document, selection);
-    this.ui.duplicateButton.disabled = !objectSelected;
-    this.ui.copyButton.disabled = !objectSelected && selectedFaces.length === 0;
-    this.ui.copyButton.title =
-      selectedFaces.length > 0
-        ? 'Copy the primary face material and attributes (Ctrl/Command+C)'
-        : 'Copy selected objects as map text (Ctrl/Command+C)';
-    this.ui.pasteButton.disabled = !this.state.lastPointerPosition;
-    this.ui.deleteButton.disabled = !objectSelected;
-    this.ui.focusSelectionButton.disabled = !selection;
-    this.ui.snapSelectionToGridButton.disabled = !brush;
-    this.ui.hideSelectionButton.disabled = !objectSelected;
-    this.ui.isolateSelectionButton.disabled = !objectSelected;
-    this.ui.showAllButton.disabled = !this.state.session.canShowAll;
-    this.ui.lockSelectionButton.disabled = !objectSelected;
-    this.ui.unlockAllButton.disabled = !this.state.session.canUnlockAll;
-    this.ui.selectionEmpty.hidden = Boolean(brush || pointEntity);
-    this.ui.selectionInspector.hidden = !brush && !pointEntity;
+    this.ui.editorCommands.updateActions({
+      duplicate: { disabled: !objectSelected },
+      copy: {
+        disabled: !objectSelected && selectedFaces.length === 0,
+        title:
+          selectedFaces.length > 0
+            ? 'Copy the primary face material and attributes (Ctrl/Command+C)'
+            : 'Copy selected objects as map text (Ctrl/Command+C)',
+      },
+      paste: { disabled: !this.state.lastPointerPosition },
+      delete: { disabled: !objectSelected },
+      'focus-selection': { disabled: !selection },
+      'snap-selection-to-grid': { disabled: !brush },
+      'hide-selection': { disabled: !objectSelected },
+      'isolate-selection': { disabled: !objectSelected },
+      'show-all': { disabled: !this.state.session.canShowAll },
+      'lock-selection': { disabled: !objectSelected },
+      'unlock-all': { disabled: !this.state.session.canUnlockAll },
+    });
     const face =
       brush && selection?.faceId
         ? brush.faces.find((candidate) => candidate.id === selection.faceId)
@@ -407,7 +411,7 @@ export class InspectorPresenter {
       matchingFaces.every((candidate) =>
         faceSelectionKeys.has(`${candidate.brushId}\u0000${candidate.faceId}`),
       );
-    this.ui.selectionKind.textContent = selectedGroup
+    const selectionKind = selectedGroup
       ? selectedGroup.linkedGroupId
         ? 'Linked Group'
         : 'Group'
@@ -428,25 +432,20 @@ export class InspectorPresenter {
                   ? `${objectEntityIds.length} Entities`
                   : 'Entity'
               : 'None';
-    this.ui.faceExtrudeSection.hidden = !faceSetExtrudable;
-    this.ui.sweepToolSection.hidden =
-      this.state.activeTool !== 'sweep' || selectedFaces.length === 0;
-    this.ui.applySweepButton.disabled = !this.state.sweepCandidate;
-    if (this.state.activeTool === 'sweep') {
-      this.ui.sweepGeneratedCount.textContent = this.state.sweepCandidate
+    this.ui.selectionInspector.update({
+      kind: selectionKind,
+      visible: Boolean(brush || pointEntity),
+    });
+    this.ui.sweepTool.update({
+      visible: this.state.activeTool === 'sweep' && selectedFaces.length > 0,
+      canApply: Boolean(this.state.sweepCandidate),
+      generatedLabel: this.state.sweepCandidate
         ? `${this.state.sweepCandidate.insertions.length} ${this.state.sweepCandidate.insertions.length === 1 ? 'brush' : 'brushes'}`
-        : '0 brushes';
-    }
-    this.ui.clipToolSection.hidden = this.state.activeTool !== 'clip' || !brushObjectSelected;
+        : '0 brushes',
+    });
     const transformActive = this.transform.isTransformTool(this.state.activeTool);
     const topologyActive = this.transform.isTopologyTool(this.state.activeTool);
     const transformSelectionSupported = transformActive && objectSelected;
-    this.ui.transformToolSection.hidden = !transformSelectionSupported;
-    this.ui.objectFlipSection.hidden = !objectSelected;
-    this.ui.rotateUpdateEntityAngles.disabled = objectEntityIds.length === 0;
-    this.ui.topologyToolSection.hidden = !topologyActive || !brushObjectSelected;
-    this.ui.csgSection.hidden = !brushObjectSelected;
-    this.ui.brushEntityActions.hidden = !brushObjectSelected;
     const worldspawn = document.entities.find(
       (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
     );
@@ -456,23 +455,13 @@ export class InspectorPresenter {
       );
       return owner ? [owner] : [];
     });
-    this.ui.makeStructuralButton.disabled =
+    const canMakeStructural = !(
       !brushObjectSelected ||
       !worldspawn ||
-      selectedBrushOwners.every((owner) => owner.id === worldspawn.id);
-    this.ui.makeBrushEntityButton.disabled =
-      !brushObjectSelected || this.ui.brushEntityClassname.value.trim() === '';
-    this.ui.csgSelectionCount.textContent = `${objectBrushIds.length} selected`;
-    this.ui.csgMergeButton.disabled = objectBrushIds.length < 2;
-    this.ui.csgIntersectButton.disabled = objectBrushIds.length < 2;
-    if (topologyActive) {
-      this.ui.topologyToolTitle.textContent =
-        this.state.activeTool === 'vertex' ? 'Vertex editing' : 'Edge editing';
-      this.ui.topologyGridSize.textContent = String(this.state.activeGridSize);
-    }
-    for (const panel of window.document.querySelectorAll<HTMLElement>('[data-transform-panel]')) {
-      panel.hidden = !transformActive || panel.dataset.transformPanel !== this.state.activeTool;
-    }
+      selectedBrushOwners.every((owner) => owner.id === worldspawn.id)
+    );
+    let transformTitle = 'Transform';
+    let transformHelp = 'Drag the viewport handle for a live snapped preview.';
     if (transformSelectionSupported) {
       const selectionKey = this.transform.selectedTransformKey(selection);
       const selectionBounds = this.transform.selectedTransformBounds(document);
@@ -488,7 +477,7 @@ export class InspectorPresenter {
         this.state.transformPivotSelectionKey = selectionKey;
       }
       const objectCount = objectBrushIds.length + objectEntityIds.length;
-      this.ui.transformToolTitle.textContent =
+      transformTitle =
         this.state.topologySelectionKind && this.state.topologySelectedVertices.length > 0
           ? `${this.state.activeTool === 'rotate' ? 'Rotate' : this.state.activeTool === 'scale' ? 'Scale' : 'Shear'} selected ${this.state.topologySelectionKind === 'vertex' ? 'vertices' : 'edges'}`
           : this.state.activeTool === 'rotate'
@@ -508,7 +497,7 @@ export class InspectorPresenter {
               : objectBrushIds.length > 1
                 ? 'Shear brushes'
                 : 'Shear brush';
-      this.ui.transformToolHelp.textContent =
+      transformHelp =
         this.state.activeTool === 'scale'
           ? 'Drag a side, edge, or corner handle. Alt anchors at center; Shift scales proportional axes.'
           : this.state.activeTool === 'rotate' && objectEntityIds.length > 0
@@ -518,37 +507,98 @@ export class InspectorPresenter {
               : 'Drag the viewport handle for a live snapped preview.';
       if (this.state.transformPivot) {
         this.state.renderer?.setTransformPivot(this.state.transformPivot);
-        this.ui.transformPivotX.value = String(this.state.transformPivot[0]);
-        this.ui.transformPivotY.value = String(this.state.transformPivot[1]);
-        this.ui.transformPivotZ.value = String(this.state.transformPivot[2]);
       }
     }
-    this.ui.faceExtrudeDistance.step = String(this.state.activeGridSize);
-    this.ui.shearOffset.step = String(this.state.activeGridSize);
+    const objectTools = this.ui.objectTools.getSnapshot();
+    this.ui.objectTools.update({
+      hull: {
+        visible: this.state.activeTool === 'hull',
+        pointCount: this.state.hullBuildPoints.length,
+        canCreate: Boolean(this.state.hullCandidate),
+        canDiscard: this.state.hullBuildPoints.length > 0,
+      },
+      group: {
+        visible: objectSelected || Boolean(openGroup),
+        stateLabel: groupStateLabel,
+        name: presentedGroup?.name ?? objectTools.group.name,
+        canCreate: !selectedGroup || Boolean(openGroup),
+        canRename: Boolean(presentedGroup),
+        canOpen: Boolean(selectedGroup && selectedGroup.id !== this.state.openGroupId),
+        canClose: Boolean(openGroup),
+        canDuplicateLinked: Boolean(selectedGroup && !openGroup),
+        canUnlink: Boolean(selectedGroup?.linkedGroupId && !openGroup),
+        canUngroup: Boolean(selectedGroup),
+      },
+      selectionBrush: {
+        visible: selectionBrushEligible,
+        countLabel: `${objectBrushIds.length} ${objectBrushIds.length === 1 ? 'volume' : 'volumes'}`,
+      },
+      flipVisible: objectSelected,
+      faceExtrude: {
+        ...objectTools.faceExtrude,
+        visible: faceSetExtrudable,
+        step: this.state.activeGridSize,
+      },
+      clip: {
+        ...objectTools.clip,
+        visible: this.state.activeTool === 'clip' && brushObjectSelected,
+        canApply: Boolean(this.state.clipCandidate),
+        mode: this.state.clipMode,
+      },
+      transform: {
+        visible: transformSelectionSupported,
+        tool: this.transform.isTransformTool(this.state.activeTool)
+          ? this.state.activeTool
+          : objectTools.transform.tool,
+        title: transformTitle,
+        help: transformHelp,
+        settings: {
+          ...objectTools.transform.settings,
+          pivot: this.state.transformPivot ?? objectTools.transform.settings.pivot,
+          canUpdateEntityAngles: objectEntityIds.length > 0,
+        },
+      },
+      topology: {
+        visible: topologyActive && brushObjectSelected,
+        title: this.state.activeTool === 'edge' ? 'Edge editing' : 'Vertex editing',
+        selectionCount: this.state.topologySelectionCount,
+        gridSize: this.state.activeGridSize,
+      },
+      csg: {
+        visible: brushObjectSelected,
+        selectionCountLabel: `${objectBrushIds.length} selected`,
+        canMerge: objectBrushIds.length >= 2,
+        canIntersect: objectBrushIds.length >= 2,
+      },
+      brushEntity: {
+        visible: brushObjectSelected,
+        canMakeStructural,
+      },
+      nudgeVisible: objectSelected || selectedFaces.length > 0 || topologyActive,
+    });
     if (!brush) {
       if (pointEntity) {
-        this.ui.selectionIdLabel.textContent = 'Entity';
-        this.ui.selectionRevisionLabel.textContent = 'Type';
-        this.ui.selectionFacesLabel.textContent = 'Brushes';
-        this.ui.selectionMaterialLabel.textContent = 'Classname';
         const bounds = pointEntityBounds(pointEntity);
-        this.ui.brushId.textContent =
-          objectEntityIds.length > 1
-            ? `${pointEntity.id} · ${objectEntityIds.length} selected`
-            : pointEntity.id;
-        this.ui.brushRevision.textContent = 'entity';
-        this.ui.brushFaces.textContent = '0';
-        this.ui.brushBounds.textContent = bounds
-          ? `${this.formatVector(bounds.min)} to ${this.formatVector(bounds.max)}`
-          : 'invalid origin';
-        this.ui.faceMaterial.textContent = pointEntity.properties.classname ?? 'entity';
+        this.ui.selectionInspector.update({
+          idLabel: 'Entity',
+          revisionLabel: 'Type',
+          facesLabel: 'Brushes',
+          materialLabel: 'Classname',
+          id:
+            objectEntityIds.length > 1
+              ? `${pointEntity.id} · ${objectEntityIds.length} selected`
+              : pointEntity.id,
+          revision: 'entity',
+          faces: '0',
+          bounds: bounds
+            ? `${this.formatVector(bounds.min)} to ${this.formatVector(bounds.max)}`
+            : 'invalid origin',
+          material: pointEntity.properties.classname ?? 'entity',
+          faceNormal: '',
+        });
       }
       return;
     }
-    this.ui.selectionIdLabel.textContent = 'Brush';
-    this.ui.selectionRevisionLabel.textContent = 'Revision';
-    this.ui.selectionFacesLabel.textContent = 'Faces';
-    this.ui.selectionMaterialLabel.textContent = 'Material';
     const derived = deriveBrush(brush);
     const derivedFace = face
       ? derived.faces.find((candidate) => candidate.faceId === face.id)
@@ -556,23 +606,17 @@ export class InspectorPresenter {
     const objectBounds = brushObjectSelected
       ? this.transform.selectedObjectBounds(document)
       : derived.bounds;
-    this.ui.brushId.textContent =
-      objectBrushIds.length > 1 ? `${brush.id} · ${objectBrushIds.length} selected` : brush.id;
     const revisions = new Set(objectBrushes.map((candidate) => candidate.revision));
-    this.ui.brushRevision.textContent = revisions.size === 1 ? String(brush.revision) : 'mixed';
-    this.ui.brushFaces.textContent = String(
+    const faceCount = String(
       brushObjectSelected
         ? objectBrushes.reduce((total, candidate) => total + candidate.faces.length, 0)
         : brush.faces.length,
     );
-    this.ui.brushBounds.textContent = objectBounds
-      ? `${this.formatVector(objectBounds.min)} to ${this.formatVector(objectBounds.max)}`
-      : 'invalid';
     const selectedMaterials = new Set(selectedFaces.map((entry) => entry.face.material));
     const objectMaterials = new Set(
       objectBrushes.flatMap((candidate) => candidate.faces.map((entry) => entry.material)),
     );
-    this.ui.faceMaterial.textContent =
+    const material =
       selectedFaces.length === 0
         ? objectMaterials.size === 1
           ? (objectBrushes[0]?.faces[0]?.material ?? 'multiple')
@@ -580,8 +624,19 @@ export class InspectorPresenter {
         : selectedMaterials.size === 1
           ? selectedFaces[0]!.face.material
           : 'mixed';
-    this.ui.faceNormal.textContent = derivedFace
-      ? `N ${this.formatVector(derivedFace.normal)}`
-      : '';
+    this.ui.selectionInspector.update({
+      idLabel: 'Brush',
+      revisionLabel: 'Revision',
+      facesLabel: 'Faces',
+      materialLabel: 'Material',
+      id: objectBrushIds.length > 1 ? `${brush.id} · ${objectBrushIds.length} selected` : brush.id,
+      revision: revisions.size === 1 ? String(brush.revision) : 'mixed',
+      faces: faceCount,
+      bounds: objectBounds
+        ? `${this.formatVector(objectBounds.min)} to ${this.formatVector(objectBounds.max)}`
+        : 'invalid',
+      material,
+      faceNormal: derivedFace ? `N ${this.formatVector(derivedFace.normal)}` : '',
+    });
   }
 }

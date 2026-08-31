@@ -21,7 +21,9 @@ import {
 } from '@jackharrhy/worldview-editor';
 import { z } from 'zod';
 
-import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
+
+type WebMcpUi = Pick<EditorShellState, 'statusMessage'>;
 import type { EditorState } from './editor-state.js';
 import type { ProjectPresenter } from './project-presenter.js';
 import type { SessionPresenter } from './session-presenter.js';
@@ -161,7 +163,7 @@ export class WebMcpPresenter {
 
   public constructor(
     private readonly state: EditorState,
-    private readonly ui: EditorElements,
+    private readonly ui: WebMcpUi,
     private readonly setEditorTool: (tool: EditorTool) => void,
     private readonly replaceDocument: SessionPresenter['replaceDocument'],
     private readonly openEditorMap: ProjectPresenter['openEditorMap'],
@@ -169,7 +171,7 @@ export class WebMcpPresenter {
   ) {}
 
   private status(message: string): void {
-    this.ui.statusMessage.textContent = `Site tool: ${message}`;
+    this.ui.statusMessage.set(`Site tool: ${message}`);
   }
 
   private assertRevision(input: ExpectedDocumentInput): number {
@@ -808,7 +810,9 @@ export class WebMcpPresenter {
     root.dataset.worldviewSiteToolCount = String(registered);
     if (failure?.status === 'rejected') {
       root.dataset.worldviewSiteTools = 'error';
-      this.ui.statusMessage.textContent = `Site tool registration failed; ${registered} of ${tools.length} tools are available: ${failure.reason instanceof Error ? failure.reason.message : String(failure.reason)}`;
+      this.ui.statusMessage.set(
+        `Site tool registration failed; ${registered} of ${tools.length} tools are available: ${failure.reason instanceof Error ? failure.reason.message : String(failure.reason)}`,
+      );
       return;
     }
     root.dataset.worldviewSiteTools = 'ready';

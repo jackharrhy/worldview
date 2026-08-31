@@ -63,10 +63,8 @@ The strongest foundations are:
 The primary liabilities are:
 
 - The editor route creates a long-lived application without a complete teardown path.
-- Visible DOM is split between React and imperative presenters despite the stated React ownership
-  boundary.
-- Presenter files are smaller than the old application entrypoint, but they still share a broad
-  mutable `EditorState` and global `EditorElements` registry.
+- Presenter files are smaller than the old application entrypoint and now have narrow React/runtime
+  dependencies, but they still share broad mutable `EditorState` access.
 - `EditorSession` behaves as one large inherited class spread over several files.
 - Editor scene invalidation is expressed through positional inputs and reuse booleans rather than
   independently cached scene contributions.
@@ -79,20 +77,20 @@ The primary liabilities are:
 
 ## Workstream order
 
-| ID  | Priority | Status      | Workstream                             | Depends on                  |
-| --- | -------- | ----------- | -------------------------------------- | --------------------------- |
-| C0  | P0       | complete    | Editor lifetime and teardown           | —                           |
-| C1  | P0       | in progress | React DOM ownership boundary           | C0 cleanup conventions      |
-| C2  | P1       | ready       | Presenter state and command boundaries | C1 snapshot conventions     |
-| C3  | P1       | ready       | `EditorSession` composition            | C2 command boundaries       |
-| C4  | P1       | ready       | Retained scene contributions           | C2 state boundaries         |
-| C5  | P2       | ready       | Route isolation and optional loading   | —                           |
-| C6  | P1       | complete    | Declarative runtime schemas            | —                           |
-| C7  | P2       | ready       | IndexedDB infrastructure with `idb`    | C6 persisted-record schemas |
-| C8  | P2       | ready       | Test-suite decomposition               | Follow changed domains      |
-| C9  | P2       | ready       | Viewer renderer decomposition          | C5 shared-runtime decision  |
-| C10 | P2       | ready       | Hosted service handler boundaries      | C6 hosted wire schemas      |
-| C11 | P2       | ready       | Broaden architecture enforcement       | C0–C10 conventions          |
+| ID  | Priority | Status   | Workstream                             | Depends on                  |
+| --- | -------- | -------- | -------------------------------------- | --------------------------- |
+| C0  | P0       | complete | Editor lifetime and teardown           | —                           |
+| C1  | P0       | complete | React DOM ownership boundary           | C0 cleanup conventions      |
+| C2  | P1       | ready    | Presenter state and command boundaries | C1 snapshot conventions     |
+| C3  | P1       | ready    | `EditorSession` composition            | C2 command boundaries       |
+| C4  | P1       | ready    | Retained scene contributions           | C2 state boundaries         |
+| C5  | P2       | ready    | Route isolation and optional loading   | —                           |
+| C6  | P1       | complete | Declarative runtime schemas            | —                           |
+| C7  | P2       | ready    | IndexedDB infrastructure with `idb`    | C6 persisted-record schemas |
+| C8  | P2       | ready    | Test-suite decomposition               | Follow changed domains      |
+| C9  | P2       | ready    | Viewer renderer decomposition          | C5 shared-runtime decision  |
+| C10 | P2       | ready    | Hosted service handler boundaries      | C6 hosted wire schemas      |
+| C11 | P2       | ready    | Broaden architecture enforcement       | C0–C10 conventions          |
 
 Dependencies describe the preferred design order, not a reason to create giant pull requests. C0,
 C5, and C6 can be delivered as independent, reviewable changes.
@@ -240,6 +238,32 @@ registry now covers Worldview-authored browser UI and is enforced by the archite
 complete behavior and evidence are recorded in [`face-inspector-plan.md`](./face-inspector-plan.md).
 C1 remains in progress only for unrelated imperative editor surfaces.
 
+**Delivered 2026-08-31 (dynamic inspector and catalog slice):** React now owns entity-property
+controls, point-entity presets, layers, entity links, viewport filters, the issue browser, reference
+scenes, project map/build-profile selection, recovery versions, and build-history diagnostics.
+Presenters publish immutable descriptions and receive typed commands; the obsolete organization
+event adapter and the corresponding broad `EditorElements` entries are gone. Production presenter
+code no longer constructs visible DOM. The architecture gate now rejects `createElement`,
+`createElementNS`, and `new Option` outside the explicit UV renderer, non-visible theme probe, and
+ephemeral download boundaries. C1 remains in progress for visible state still mutated through raw
+tool and toolbar element refs.
+
+**Delivered 2026-08-31 (completion slice):** React now owns the remaining selection, group, hull,
+clip, transform, topology, CSG, brush-entity, nudge, simple-shape, sweep, project-source, checkpoint,
+build-log, viewport-presentation, inspector-layout, and workspace-layout projections. Toolbar
+buttons and overflow menus use the shared React Aria primitives, while keyboard shortcuts invoke
+typed commands instead of clicking DOM nodes. `EditorElements` now contains only explicit canvas,
+runtime-overlay, focus, measurement, resize, and native-file refs; presenter port dependencies are
+narrow `Pick` contracts rather than the DOM registry. The renderer package no longer constructs
+lasso/readout nodes or walks into React viewport wrappers: React supplies explicit overlay roots,
+and the high-frequency renderer runtime controls only those roots and its canvases. The architecture
+gate rejects DOM construction across both the app and renderer package, DOM-shaped `textContent`
+ports, presenter document queries, wrapper mutation, and visible presenter mutation outside the
+documented native/runtime allowlist. Viewport input listeners share an abort-owned lifetime, so
+React Strict Mode remounts cannot leave a stale renderer competing for pointer gestures. GPU
+runtime construction also checks that lifetime before configuring React-owned canvases, preventing
+an aborted device from racing the replacement renderer.
+
 **Acceptance criteria:**
 
 - Presenters do not create or mutate user-visible DOM.
@@ -255,9 +279,9 @@ C1 remains in progress only for unrelated imperative editor surfaces.
 
 ## C2 — Presenter state and command boundaries
 
-**Problem:** Most presenters receive broad `EditorState` and `EditorElements` objects. The files are
-separated, but mutation and dependency ownership remain global. Some event adapters can reach the
-entire application, and multi-step operations manually coordinate peer presenters.
+**Problem:** Most presenters still receive broad `EditorState` access even though their React-port
+and runtime-element dependencies are now narrow. Some event adapters can reach the entire
+application, and multi-step operations manually coordinate peer presenters.
 
 **Target:** Each domain exposes a small immutable snapshot and explicit command interface. The
 composition root wires domains together without allowing arbitrary cross-domain mutation.
@@ -640,7 +664,8 @@ evidence.
 Add one concise entry per completed workstream. Do not use this as a chronological development
 journal; retain only verification and remaining intentional exceptions.
 
-| Date       | ID  | Result                                                               | Verification                                                                                                                   | Remaining exceptions |
-| ---------- | --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
-| 2026-08-30 | C0  | One abort-owned editor, renderer, WebMCP, and collaboration lifetime | `npm run check`; `npm run test:browser:ci`; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs --no-build` | None                 |
-| 2026-08-30 | C6  | One strict declarative schema per untrusted runtime boundary         | `npm run check`; focused WebMCP browser suite; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs`         | None                 |
+| Date       | ID  | Result                                                               | Verification                                                                                                                                                                                                                                                        | Remaining exceptions                                                                                                   |
+| ---------- | --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-30 | C0  | One abort-owned editor, renderer, WebMCP, and collaboration lifetime | `npm run check`; `npm run test:browser:ci`; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs --no-build`                                                                                                                                      | None                                                                                                                   |
+| 2026-08-30 | C6  | One strict declarative schema per untrusted runtime boundary         | `npm run check`; focused WebMCP browser suite; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs`                                                                                                                                              | None                                                                                                                   |
+| 2026-08-31 | C1  | React-owned editor UI with typed snapshots and explicit runtime refs | package/editor unit suites; editor typecheck and production build; architecture/theme/lint/format gates; focused Strict Mode, pivot, topology, and `@ci-smoke` browser coverage; `node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs --no-build` | UV SVG drawing, canvas/overlay runtime geometry, native file reset, metadata/color probes, and download transport only |

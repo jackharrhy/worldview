@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, type CSSProperties } from 'react';
 
 import { Button } from '../ui/button.js';
 import { Icon } from '../ui/icon.js';
@@ -13,14 +13,35 @@ interface EditorWorkspaceProps {
   readonly shellState: EditorShellState;
 }
 
+function ViewportRuntimeOverlays() {
+  return (
+    <>
+      <div className="handle-lasso" data-viewport-overlay="lasso" aria-hidden="true" />
+      <div
+        className="transform-readout"
+        data-viewport-overlay="transform-readout"
+        aria-hidden="true"
+      />
+    </>
+  );
+}
+
 export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
   const viewportLayout = useSyncExternalStore(
     shellState.viewportLayout.subscribe,
     shellState.viewportLayout.getSnapshot,
   );
-  const inspectorPage = useSyncExternalStore(
+  const inspectorLayout = useSyncExternalStore(
     shellState.inspectorLayout.subscribe,
     shellState.inspectorLayout.getSnapshot,
+  );
+  const viewportPresentation = useSyncExternalStore(
+    shellState.viewportPresentation.subscribe,
+    shellState.viewportPresentation.getSnapshot,
+  );
+  const workspaceLayout = useSyncExternalStore(
+    shellState.workspaceLayout.subscribe,
+    shellState.workspaceLayout.getSnapshot,
   );
   const { perspectiveOnly, rendererReady } = viewportLayout;
   const perspectiveToggleLabel = perspectiveOnly
@@ -28,15 +49,26 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
     : 'Show Perspective only';
 
   return (
-    <section className="workspace">
+    <section
+      className={`workspace${inspectorLayout.open ? '' : ' inspector-closed'}`}
+      style={{ '--inspector-width': `${workspaceLayout.inspectorWidth}px` } as CSSProperties}
+    >
       <section
         className={`viewport-grid${perspectiveOnly ? ' perspective-only' : ''}`}
         aria-label="Map viewports"
+        style={
+          {
+            '--viewport-column': `${workspaceLayout.viewportColumn * 100}%`,
+            '--viewport-top': `${workspaceLayout.viewportTop * 100}%`,
+          } as CSSProperties
+        }
       >
         <article className="viewport-pane perspective" data-viewport="perspective">
           <header>
             <strong>PERSPECTIVE</strong>
-            <span id="perspective-mode">EDIT</span>
+            <span id="perspective-mode" title={viewportPresentation.perspectiveTitle}>
+              {viewportPresentation.perspectiveMode}
+            </span>
             <Button
               className="viewport-layout-toggle"
               tone="quiet"
@@ -53,8 +85,14 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
             className="source-canvas"
             aria-label="Perspective map viewport"
             data-rendering="true"
+            hidden={viewportPresentation.showingCompiled}
           />
-          <canvas className="compiled-canvas" aria-label="Compiled BSP preview" hidden />
+          <canvas
+            className="compiled-canvas"
+            aria-label="Compiled BSP preview"
+            hidden={!viewportPresentation.showingCompiled}
+          />
+          <ViewportRuntimeOverlays />
         </article>
         <article className="viewport-pane" data-viewport="xy" hidden={perspectiveOnly}>
           <header>
@@ -66,6 +104,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
             aria-label="Top XY map viewport"
             data-rendering={!perspectiveOnly}
           />
+          <ViewportRuntimeOverlays />
         </article>
         <article className="viewport-pane" data-viewport="xz" hidden={perspectiveOnly}>
           <header>
@@ -77,6 +116,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
             aria-label="Front XZ map viewport"
             data-rendering={!perspectiveOnly}
           />
+          <ViewportRuntimeOverlays />
         </article>
         <article className="viewport-pane" data-viewport="yz" hidden={perspectiveOnly}>
           <header>
@@ -88,46 +128,63 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
             aria-label="Side YZ map viewport"
             data-rendering={!perspectiveOnly}
           />
+          <ViewportRuntimeOverlays />
         </article>
         <div
-          className="viewport-resizer viewport-column-resizer"
+          className={`viewport-resizer viewport-column-resizer${workspaceLayout.dragging === 'viewport-column' ? ' dragging' : ''}`}
           role="separator"
           aria-label="Resize perspective and orthographic viewports"
           aria-orientation="vertical"
+          aria-valuemin={30}
+          aria-valuemax={76}
+          aria-valuenow={Math.round(workspaceLayout.viewportColumn * 100)}
           tabIndex={0}
           data-resize="viewport-column"
           hidden={perspectiveOnly}
         />
         <div
-          className="viewport-resizer viewport-top-resizer"
+          className={`viewport-resizer viewport-top-resizer${workspaceLayout.dragging === 'viewport-top' ? ' dragging' : ''}`}
           role="separator"
           aria-label="Resize upper and lower viewport rows"
           aria-orientation="horizontal"
+          aria-valuemin={20}
+          aria-valuemax={80}
+          aria-valuenow={Math.round(workspaceLayout.viewportTop * 100)}
           tabIndex={0}
           data-resize="viewport-top"
           hidden={perspectiveOnly}
         />
-        <button
-          type="button"
-          className="viewport-resizer viewport-cross-resizer"
+        <div
+          className={`viewport-resizer viewport-cross-resizer${workspaceLayout.dragging === 'viewport-cross' ? ' dragging' : ''}`}
+          role="separator"
+          tabIndex={0}
           aria-label="Resize viewport rows and columns"
+          aria-valuetext={`Column ${Math.round(workspaceLayout.viewportColumn * 100)}%, row ${Math.round(workspaceLayout.viewportTop * 100)}%`}
           data-resize="viewport-cross"
           hidden={perspectiveOnly}
         />
-        <div className="viewport-error" hidden />
+        <div className="viewport-error" hidden={!viewportPresentation.error}>
+          {viewportPresentation.error}
+        </div>
       </section>
       <div
-        className="workspace-resizer"
+        className={`workspace-resizer${workspaceLayout.dragging === 'inspector' ? ' dragging' : ''}`}
         role="separator"
         aria-label="Resize inspector"
         aria-orientation="vertical"
+        aria-valuemin={240}
+        aria-valuemax={520}
+        aria-valuenow={workspaceLayout.inspectorWidth}
         tabIndex={0}
         data-resize="inspector"
       />
-      <aside className="inspector panel" aria-label="Inspector">
+      <aside
+        className={`inspector panel${inspectorLayout.open ? '' : ' closed'}`}
+        aria-label="Inspector"
+      >
         <Tabs
           className="inspector-tabs-shell"
-          selectedKey={inspectorPage}
+          selectedKey={inspectorLayout.active}
           onSelectionChange={(key) => {
             if (key === 'map' || key === 'object' || key === 'textures') {
               shellState.inspectorLayout.setActive(key);
@@ -159,7 +216,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
             data-inspector-panel="object"
             shouldForceMount
           >
-            <ObjectInspector />
+            <ObjectInspector shellState={shellState} />
           </TabPanel>
           <TabPanel
             id="textures"

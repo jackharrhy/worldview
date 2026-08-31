@@ -1,8 +1,14 @@
-import { useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import type { EditorShellState } from '../../editor-shell-state.js';
 import { Button } from '../ui/button.js';
 import { Icon } from '../ui/icon.js';
+import { Checkbox } from '../ui/checkbox.js';
+import { NumberField } from '../ui/number-field.js';
+import { Select } from '../ui/select.js';
+import { TextField } from '../ui/text-field.js';
+
+import type { LayerSnapshot } from '../../organization-ui-state.js';
 
 interface MapInspectorProps {
   readonly shellState: EditorShellState;
@@ -60,6 +66,7 @@ function DocumentSummary({ shellState }: MapInspectorProps) {
 }
 
 function ResourceSettings({ shellState }: MapInspectorProps) {
+  const section = useRef<HTMLElement>(null);
   const wadInput = useRef<HTMLInputElement>(null);
   const paletteInput = useRef<HTMLInputElement>(null);
   const resources = useSyncExternalStore(
@@ -67,8 +74,15 @@ function ResourceSettings({ shellState }: MapInspectorProps) {
     shellState.resourceSettings.getSnapshot,
     shellState.resourceSettings.getSnapshot,
   );
+  useEffect(() => {
+    if (resources.revealVersion === 0) return;
+    const frame = requestAnimationFrame(() =>
+      section.current?.scrollIntoView({ block: 'nearest' }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [resources.revealVersion]);
   return (
-    <section id="resource-settings" className="resource-settings inspector-section">
+    <section ref={section} id="resource-settings" className="resource-settings inspector-section">
       <div className="section-heading">
         <h3>Map resources</h3>
         <span>
@@ -90,6 +104,313 @@ function ResourceSettings({ shellState }: MapInspectorProps) {
   );
 }
 
+function LayerRow({ layer, shellState }: { layer: LayerSnapshot; shellState: EditorShellState }) {
+  const [name, setName] = useState(layer.name);
+  useEffect(() => setName(layer.name), [layer.name]);
+  const objectCount = layer.brushCount + layer.pointEntityCount;
+  const commitName = () => {
+    const next = name.trim();
+    if (layer.id !== null && next && next !== layer.name) {
+      shellState.layerPanel.invoke('rename', layer.id, next);
+    } else {
+      setName(layer.name);
+    }
+  };
+  return (
+    <div
+      className={`layer-row${layer.selected ? ' selected' : ''}${layer.hidden ? ' hidden-layer' : ''}${layer.locked ? ' locked-layer' : ''}${layer.omitted ? ' omitted-layer' : ''}`}
+      data-layer-id={layer.token}
+      role="option"
+      tabIndex={0}
+      aria-selected={layer.selected}
+      onClick={() => shellState.layerPanel.invoke('select', layer.id)}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) {
+          return;
+        }
+        event.preventDefault();
+        shellState.layerPanel.invoke('select', layer.id);
+      }}
+    >
+      <Button
+        className="layer-active"
+        size="compact"
+        aria-pressed={layer.active}
+        aria-label={`Make ${layer.name} active`}
+        onPress={() => shellState.layerPanel.invoke('makeActive', layer.id)}
+      >
+        {layer.active ? 'A' : '·'}
+      </Button>
+      <TextField
+        className="layer-row-name"
+        label={layer.id === null ? 'Default Layer' : `Rename ${layer.name}`}
+        hideLabel
+        value={name}
+        isReadOnly={layer.id === null}
+        onChange={setName}
+        onBlur={commitName}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') (event.target as HTMLElement).blur();
+          if (event.key === 'Escape') {
+            setName(layer.name);
+            (event.target as HTMLElement).blur();
+          }
+        }}
+      />
+      <span
+        className="layer-object-count"
+        title={`${layer.brushCount} brushes · ${layer.pointEntityCount} point entities`}
+      >
+        {objectCount}
+      </span>
+      {(
+        [
+          ['V', layer.hidden ? `Show ${layer.name}` : `Hide ${layer.name}`, 'hidden', layer.hidden],
+          [
+            'L',
+            layer.locked ? `Unlock ${layer.name}` : `Lock ${layer.name}`,
+            'locked',
+            layer.locked,
+          ],
+          [
+            'X',
+            `${layer.omitted ? 'Include' : 'Omit'} ${layer.name} in compile export`,
+            'omit-from-export',
+            layer.omitted,
+          ],
+        ] as const
+      ).map(([text, label, flag, active]) => (
+        <Button
+          key={flag}
+          className="layer-flag"
+          size="compact"
+          aria-pressed={active}
+          aria-label={label}
+          onPress={() => shellState.layerPanel.invoke('setFlag', layer.id, flag, !active)}
+        >
+          {text}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function LayerPanel({ shellState }: MapInspectorProps) {
+  const panel = useSyncExternalStore(
+    shellState.layerPanel.subscribe,
+    shellState.layerPanel.getSnapshot,
+  );
+  const [newName, setNewName] = useState('Layer');
+  const nameInput = useRef<HTMLInputElement>(null);
+  const create = () => {
+    shellState.layerPanel.invoke('create', newName);
+    requestAnimationFrame(() => nameInput.current?.select());
+  };
+  return (
+    <div className="layer-section inspector-section">
+      <div className="section-heading">
+        <h3>Layers</h3>
+        <span id="active-layer-name">{panel.activeName} active</span>
+      </div>
+      <div id="layer-list" className="layer-list" aria-label="Map layers" role="listbox">
+        {panel.layers.map((layer) => (
+          <LayerRow key={layer.token} layer={layer} shellState={shellState} />
+        ))}
+      </div>
+      <div className="layer-create">
+        <TextField
+          label="New layer name"
+          hideLabel
+          value={newName}
+          onChange={setNewName}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') create();
+          }}
+          inputRef={nameInput}
+          input={{ id: 'layer-name', autoComplete: 'off', spellCheck: false }}
+        />
+        <Button size="compact" data-action="add-layer" onPress={create}>
+          Add layer
+        </Button>
+      </div>
+      <div className="layer-selection-actions">
+        <Button
+          size="compact"
+          isDisabled={!panel.canMoveSelection}
+          onPress={() => shellState.layerPanel.invoke('moveSelection')}
+        >
+          Move selection
+        </Button>
+        <Button
+          size="compact"
+          isDisabled={!panel.canSelectContents}
+          onPress={() => shellState.layerPanel.invoke('selectContents')}
+        >
+          Select contents
+        </Button>
+        <Button
+          size="compact"
+          isDisabled={!panel.canIsolate}
+          onPress={() => shellState.layerPanel.invoke('isolate')}
+        >
+          Isolate
+        </Button>
+        <Button
+          size="compact"
+          isDisabled={!panel.canRemove}
+          onPress={() => shellState.layerPanel.invoke('remove')}
+        >
+          Remove
+        </Button>
+        <Button
+          size="compact"
+          isDisabled={!panel.canMoveUp}
+          aria-label="Move selected layer up"
+          onPress={() => shellState.layerPanel.invoke('reorder', -1)}
+        >
+          Move up
+        </Button>
+        <Button
+          size="compact"
+          isDisabled={!panel.canMoveDown}
+          aria-label="Move selected layer down"
+          onPress={() => shellState.layerPanel.invoke('reorder', 1)}
+        >
+          Move down
+        </Button>
+      </div>
+      <div className="layer-global-actions">
+        <Button
+          size="compact"
+          onPress={() => shellState.layerPanel.invoke('setAllFlags', 'hidden', false)}
+        >
+          Show all
+        </Button>
+        <Button
+          size="compact"
+          onPress={() => shellState.layerPanel.invoke('setAllFlags', 'hidden', true)}
+        >
+          Hide all
+        </Button>
+        <Button
+          size="compact"
+          onPress={() => shellState.layerPanel.invoke('setAllFlags', 'locked', false)}
+        >
+          Unlock all
+        </Button>
+        <Button
+          size="compact"
+          onPress={() => shellState.layerPanel.invoke('setAllFlags', 'locked', true)}
+        >
+          Lock all
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function EntityLinks({ shellState }: MapInspectorProps) {
+  const links = useSyncExternalStore(
+    shellState.entityLinks.subscribe,
+    shellState.entityLinks.getSnapshot,
+  );
+  return (
+    <div className="entity-link-section inspector-section">
+      <div className="section-heading">
+        <h3>Entity links</h3>
+        <span id="entity-link-count">
+          {links.shownCount} / {links.totalCount} shown
+        </span>
+      </div>
+      <Select
+        className="entity-link-mode"
+        label="Visibility"
+        options={[
+          { id: 'all', label: 'All' },
+          { id: 'transitive', label: 'Transitive selected' },
+          { id: 'direct', label: 'Direct selected' },
+          { id: 'none', label: 'None' },
+        ]}
+        selectedKey={links.mode}
+        onSelectionChange={(key) => {
+          if (key === 'all' || key === 'transitive' || key === 'direct' || key === 'none') {
+            shellState.entityLinks.setMode(key);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+function ReferenceScenes({ shellState }: MapInspectorProps) {
+  const references = useSyncExternalStore(
+    shellState.referenceScenes.subscribe,
+    shellState.referenceScenes.getSnapshot,
+  );
+  return (
+    <div className="reference-section inspector-section">
+      <div className="section-heading">
+        <h3>References</h3>
+        <span id="reference-count">{references.length} loaded</span>
+      </div>
+      <div className="reference-actions">
+        <Button size="compact" onPress={() => shellState.projectUi.invoke('load-reference')}>
+          Load map
+        </Button>
+        <Button size="compact" onPress={() => shellState.projectUi.invoke('snapshot-reference')}>
+          Snapshot
+        </Button>
+        <Button
+          size="compact"
+          isDisabled={references.length === 0}
+          onPress={() => shellState.referenceScenes.invoke('clear')}
+        >
+          Clear
+        </Button>
+      </div>
+      <div id="reference-list" className="reference-list">
+        {references.map((reference) => (
+          <div className="reference-row" key={reference.id}>
+            <div className="reference-row-heading">
+              <Checkbox
+                isSelected={reference.visible}
+                onChange={(visible) =>
+                  shellState.referenceScenes.invoke('setVisible', reference.id, visible)
+                }
+              >
+                <span className="visually-hidden">Show reference</span>
+              </Checkbox>
+              <span>{reference.label}</span>
+              <Button
+                size="compact"
+                onPress={() => shellState.referenceScenes.invoke('remove', reference.id)}
+              >
+                Remove
+              </Button>
+            </div>
+            <div className="reference-offsets">
+              {reference.offset.map((value, axis) => (
+                <NumberField
+                  key={axis}
+                  label={`${['X', 'Y', 'Z'][axis]} offset`}
+                  value={value}
+                  step={16}
+                  hideSteppers
+                  onChange={(next) => {
+                    if (axis === 0 || axis === 1 || axis === 2) {
+                      shellState.referenceScenes.invoke('setOffset', reference.id, axis, next);
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function MapInspector({ shellState }: MapInspectorProps) {
   return (
     <section>
@@ -97,95 +418,11 @@ export function MapInspector({ shellState }: MapInspectorProps) {
         <h2>Map</h2>
         <span>Valve 220</span>
       </div>
-      <div className="layer-section inspector-section">
-        <div className="section-heading">
-          <h3>Layers</h3>
-          <span id="active-layer-name">Default Layer active</span>
-        </div>
-        <div id="layer-list" className="layer-list" aria-label="Map layers" />
-        <div className="layer-create">
-          <input
-            id="layer-name"
-            type="text"
-            defaultValue="Layer"
-            autoComplete="off"
-            spellCheck="false"
-            aria-label="New layer name"
-          />
-          <button type="button" data-action="add-layer">
-            Add layer
-          </button>
-        </div>
-        <div className="layer-selection-actions">
-          <button type="button" data-action="move-selection-to-layer">
-            Move selection
-          </button>
-          <button type="button" data-action="select-layer">
-            Select contents
-          </button>
-          <button type="button" data-action="isolate-layer">
-            Isolate
-          </button>
-          <button type="button" data-action="remove-layer">
-            Remove
-          </button>
-          <button type="button" data-action="layer-up" aria-label="Move selected layer up">
-            Move up
-          </button>
-          <button type="button" data-action="layer-down" aria-label="Move selected layer down">
-            Move down
-          </button>
-        </div>
-        <div className="layer-global-actions">
-          <button type="button" data-action="show-all-layers">
-            Show all
-          </button>
-          <button type="button" data-action="hide-all-layers">
-            Hide all
-          </button>
-          <button type="button" data-action="unlock-all-layers">
-            Unlock all
-          </button>
-          <button type="button" data-action="lock-all-layers">
-            Lock all
-          </button>
-        </div>
-      </div>
+      <LayerPanel shellState={shellState} />
       <DocumentSummary shellState={shellState} />
       <ResourceSettings shellState={shellState} />
-      <div className="entity-link-section inspector-section">
-        <div className="section-heading">
-          <h3>Entity links</h3>
-          <span id="entity-link-count">0 / 0 shown</span>
-        </div>
-        <label className="entity-link-mode">
-          Visibility
-          <select id="entity-link-mode" defaultValue="direct">
-            <option value="all">All</option>
-            <option value="transitive">Transitive selected</option>
-            <option value="direct">Direct selected</option>
-            <option value="none">None</option>
-          </select>
-        </label>
-      </div>
-      <div className="reference-section inspector-section">
-        <div className="section-heading">
-          <h3>References</h3>
-          <span id="reference-count">0 loaded</span>
-        </div>
-        <div className="reference-actions">
-          <button type="button" data-action="load-reference">
-            Load map
-          </button>
-          <button type="button" data-action="snapshot-reference">
-            Snapshot
-          </button>
-          <button type="button" data-action="clear-references" disabled>
-            Clear
-          </button>
-        </div>
-        <div id="reference-list" className="reference-list" />
-      </div>
+      <EntityLinks shellState={shellState} />
+      <ReferenceScenes shellState={shellState} />
     </section>
   );
 }

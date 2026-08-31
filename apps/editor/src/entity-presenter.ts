@@ -1,106 +1,81 @@
 import {
   deriveEditorGroups,
   linkedGroupSiblings,
+  pointEntityDefinition,
   protectedEntityProperties,
-  type EntityPropertyDefinition,
   type EditorSelection,
   type MapDocument,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
+
+type EntityUi = Pick<EditorShellState, 'entityInspector' | 'pointEntityTool' | 'statusMessage'>;
 import type { EditorState } from './editor-state.js';
+import type {
+  EntityPropertyControlKind,
+  EntityPropertySnapshot,
+} from './entity-inspector-state.js';
 
 export class EntityPresenter {
   public constructor(
     private readonly state: EditorState,
-    private readonly ui: EditorElements,
-  ) {}
+    private readonly ui: EntityUi,
+  ) {
+    this.ui.entityInspector.bind({
+      setProperty: (key, value, protect) => this.setEntityProperty(key, value, protect),
+      setPropertyProtected: (key, protectedValue) =>
+        this.setEntityPropertyProtected(key, protectedValue),
+    });
+    this.ui.pointEntityTool.bind({
+      setClassname: (classname) => {
+        this.ui.pointEntityTool.update({ classname });
+        this.state.renderer?.setEntityPlacementBounds(
+          pointEntityDefinition(classname, this.state.entityDefinitions).bounds,
+        );
+        if (this.state.activeTool === 'entity') {
+          this.ui.statusMessage.set(
+            classname.trim()
+              ? `Entity tool active. Click to place ${classname.trim()}.`
+              : 'Enter a point-entity classname before placing it.',
+          );
+        }
+      },
+    });
+  }
+
+  public dispose(): void {
+    this.ui.entityInspector.unbind();
+    this.ui.pointEntityTool.unbind();
+  }
 
   public setEntityProperty(key: string, value: string | null, protect = false): void {
     if (!this.state.activeEntityId) {
-      this.ui.statusMessage.textContent =
-        'Select a brush or point entity before editing entity properties.';
+      this.ui.statusMessage.set('Select a brush or point entity before editing entity properties.');
       return;
     }
     try {
       if (!this.state.session.setEntityProperty(this.state.activeEntityId, key, value, protect)) {
-        this.ui.statusMessage.textContent = 'Entity property is already up to date.';
+        this.ui.statusMessage.set('Entity property is already up to date.');
       }
     } catch (error) {
-      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
     }
   }
 
-  public typedEntityPropertyControl(
-    key: string,
-    value: string,
-    definition?: EntityPropertyDefinition,
-  ): HTMLElement {
-    if (definition?.type === 'choices' && definition.choices) {
-      const select = document.createElement('select');
-      for (const choice of definition.choices) {
-        const option = document.createElement('option');
-        option.value = choice.value;
-        option.textContent = choice.label;
-        select.append(option);
-      }
-      if (![...select.options].some((option) => option.value === value) && value) {
-        select.append(new Option(`Unknown (${value})`, value));
-      }
-      select.value = value;
-      select.setAttribute('aria-label', `${definition.label} value`);
-      select.addEventListener('change', () => this.setEntityProperty(key, select.value));
-      return select;
+  private setEntityPropertyProtected(key: string, protectedValue: boolean): void {
+    if (!this.state.activeEntityId) return;
+    try {
+      this.state.session.setEntityPropertyProtected(this.state.activeEntityId, key, protectedValue);
+    } catch (error) {
+      this.ui.statusMessage.setError(error instanceof Error ? error.message : String(error));
     }
-    if (definition?.type === 'boolean') {
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.checked = value !== '0' && value.toLowerCase() !== 'false' && value !== '';
-      input.setAttribute('aria-label', `${definition.label} value`);
-      input.addEventListener('change', () =>
-        this.setEntityProperty(key, input.checked ? '1' : '0'),
-      );
-      return input;
-    }
-    if (definition?.type === 'flags' && definition.choices) {
-      const flags = document.createElement('div');
-      flags.className = 'entity-flags';
-      const selected = Number(value) || 0;
-      for (const choice of definition.choices) {
-        const bit = Number(choice.value);
-        if (!Number.isInteger(bit) || bit <= 0) continue;
-        const label = document.createElement('label');
-        const input = document.createElement('input');
-        input.type = 'checkbox';
-        input.checked = (selected & bit) === bit;
-        input.addEventListener('change', () => {
-          const next = [...flags.querySelectorAll<HTMLInputElement>('input[data-flag]')].reduce(
-            (sum, checkbox) => sum | (checkbox.checked ? Number(checkbox.dataset.flag) : 0),
-            0,
-          );
-          this.setEntityProperty(key, String(next));
-        });
-        input.dataset.flag = String(bit);
-        label.append(input, choice.label);
-        flags.append(label);
-      }
-      return flags;
-    }
-    const input = document.createElement('input');
-    input.type =
-      definition?.type === 'integer' || definition?.type === 'float' || definition?.type === 'angle'
-        ? 'number'
-        : 'text';
-    if (definition?.type === 'integer') input.step = '1';
-    if (definition?.type === 'float' || definition?.type === 'angle') input.step = 'any';
-    input.value = value;
-    input.placeholder = definition?.defaultValue ?? '';
-    input.setAttribute('aria-label', `${definition?.label ?? key} value`);
-    input.addEventListener('change', () => this.setEntityProperty(key, input.value));
-    return input;
   }
 
-  public renderEntityProperties(mapDocument: MapDocument, selection: EditorSelection | null): void {
+  public renderEntityProperties(
+    mapDocument: MapDocument,
+    selection: EditorSelection | null,
+    visible = true,
+  ): void {
     const entity = selection?.entityId
       ? mapDocument.entities.find((candidate) => candidate.id === selection.entityId)
       : selection?.brushId
@@ -109,11 +84,15 @@ export class EntityPresenter {
           )
         : undefined;
     this.state.activeEntityId = entity?.id ?? null;
-    this.ui.entityClassname.textContent = entity?.properties.classname ?? '';
-    this.ui.entityProperties.replaceChildren();
-    this.ui.entityPropertyProtectedLabel.hidden = true;
-    this.ui.entityPropertyProtected.checked = false;
-    if (!entity) return;
+    if (!entity) {
+      this.ui.entityInspector.set({
+        visible: false,
+        classname: '',
+        canAddProtectedProperty: false,
+        properties: [],
+      });
+      return;
+    }
 
     const groups = deriveEditorGroups(mapDocument);
     const groupsById = new Map(groups.map((group) => [group.id, group]));
@@ -130,7 +109,6 @@ export class EntityPresenter {
       linkedGroupSiblings(mapDocument, openGroup.id).length > 1 &&
       insideOpenGroup,
     );
-    this.ui.entityPropertyProtectedLabel.hidden = !canProtectProperties;
     const protectedProperties = new Set(protectedEntityProperties(entity));
     const definition = this.state.entityDefinitions.find(entity.properties.classname ?? '');
     const definitionsByKey = new Map(
@@ -143,42 +121,53 @@ export class EntityPresenter {
       ),
     ];
 
-    for (const key of propertyKeys) {
-      if (key === '_tb_group' || key === '_tb_protected_properties') continue;
+    const properties: EntityPropertySnapshot[] = propertyKeys.flatMap((key) => {
+      if (key === '_tb_group' || key === '_tb_protected_properties') return [];
       const propertyDefinition = definitionsByKey.get(key);
       const value = entity.properties[key] ?? propertyDefinition?.defaultValue ?? '';
-      const row = window.document.createElement('div');
-      row.className = 'entity-property-row';
-      const keyLabel = document.createElement('span');
-      keyLabel.textContent = propertyDefinition?.label ?? key;
-      keyLabel.title = propertyDefinition?.description
-        ? `${key}: ${propertyDefinition.description}`
-        : key;
-      const input = this.typedEntityPropertyControl(key, value, propertyDefinition);
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.textContent = 'Remove';
-      remove.disabled = key === 'classname' || !(key in entity.properties);
-      remove.title = remove.disabled ? 'Every map entity needs a classname' : `Remove ${key}`;
-      remove.addEventListener('click', () => this.setEntityProperty(key, null));
-      if (canProtectProperties) {
-        const protection = document.createElement('input');
-        protection.type = 'checkbox';
-        protection.checked = protectedProperties.has(key);
-        protection.className = 'entity-property-protection';
-        protection.setAttribute('aria-label', `Protect ${key}`);
-        protection.title = 'Keep this value independent in this linked copy';
-        protection.addEventListener('change', () => {
-          try {
-            this.state.session.setEntityPropertyProtected(entity.id, key, protection.checked);
-          } catch (error) {
-            this.ui.statusMessage.textContent =
-              error instanceof Error ? error.message : String(error);
-          }
-        });
-        row.append(keyLabel, input, protection, remove);
-      } else row.append(keyLabel, input, remove);
-      this.ui.entityProperties.append(row);
-    }
+      const control: EntityPropertyControlKind =
+        propertyDefinition?.type === 'choices'
+          ? 'choices'
+          : propertyDefinition?.type === 'boolean'
+            ? 'boolean'
+            : propertyDefinition?.type === 'flags'
+              ? 'flags'
+              : propertyDefinition?.type === 'integer' ||
+                  propertyDefinition?.type === 'float' ||
+                  propertyDefinition?.type === 'angle'
+                ? 'number'
+                : 'text';
+      const choices = propertyDefinition?.choices ?? [];
+      const knownChoice = choices.some((choice) => choice.value === value);
+      return [
+        {
+          key,
+          label: propertyDefinition?.label ?? key,
+          description: propertyDefinition?.description ?? '',
+          value,
+          placeholder: propertyDefinition?.defaultValue ?? '',
+          control,
+          ...(propertyDefinition?.type === 'integer'
+            ? { step: 1 as const }
+            : propertyDefinition?.type === 'float' || propertyDefinition?.type === 'angle'
+              ? { step: 'any' as const }
+              : {}),
+          choices: [
+            ...choices,
+            ...(!knownChoice && value ? [{ value, label: `Unknown (${value})` }] : []),
+          ],
+          removable: key !== 'classname' && key in entity.properties,
+          protected: protectedProperties.has(key),
+          canProtect: canProtectProperties,
+        },
+      ];
+    });
+
+    this.ui.entityInspector.set({
+      visible,
+      classname: entity.properties.classname ?? '',
+      canAddProtectedProperty: canProtectProperties,
+      properties,
+    });
   }
 }

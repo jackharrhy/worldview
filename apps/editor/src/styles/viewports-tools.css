@@ -49,19 +49,19 @@
   background: var(--accent-soft);
   color: var(--accent-text);
 }
-.viewport-pane.moving header,
-.viewport-pane.creating header,
-.viewport-pane.extruding header,
-.viewport-pane.painting header,
-.viewport-pane.reshaping header,
-.viewport-pane.transforming header,
-.viewport-pane.camera-looking header,
-.viewport-pane.camera-orbiting header,
-.viewport-pane.camera-panning header {
+.viewport-pane:has(.source-canvas[data-viewport-interaction='moving']) header,
+.viewport-pane:has(.source-canvas[data-viewport-interaction='creating']) header,
+.viewport-pane:has(.source-canvas[data-viewport-interaction='extruding']) header,
+.viewport-pane:has(.source-canvas[data-viewport-interaction='painting']) header,
+.viewport-pane:has(.source-canvas[data-viewport-interaction='reshaping']) header,
+.viewport-pane:has(.source-canvas[data-viewport-interaction='transforming']) header,
+.viewport-pane:has(.source-canvas[data-viewport-interaction='camera-looking']) header,
+.viewport-pane:has(.source-canvas[data-viewport-interaction='camera-orbiting']) header,
+.viewport-pane:has(.source-canvas[data-viewport-interaction='camera-panning']) header {
   box-shadow: inset 2px 0 var(--accent);
 }
 
-.viewport-pane.camera-focused {
+.viewport-pane:has(.source-canvas[data-camera-focused='true']) {
   box-shadow: inset 0 0 0 1px var(--accent-border);
 }
 
@@ -184,6 +184,10 @@
   background: var(--accent-soft);
   box-shadow: 0 0 0 1px var(--shadow);
   pointer-events: none;
+}
+
+[data-viewport-overlay]:not([data-runtime-visible='true']) {
+  display: none;
 }
 
 .transform-readout {
@@ -374,7 +378,8 @@
   line-height: 1.45;
 }
 
-.point-entity-tool-section label {
+.point-entity-tool-section .wv-field,
+.point-entity-tool-section .wv-select {
   display: grid;
   gap: 3px;
   margin-top: 6px;
@@ -383,8 +388,8 @@
   text-transform: uppercase;
 }
 
-.point-entity-tool-section input,
-.point-entity-tool-section select {
+.point-entity-tool-section .wv-input,
+.point-entity-tool-section .wv-select-trigger {
   min-width: 0;
   height: 27px;
   padding: 3px 6px;
@@ -671,6 +676,10 @@
 
 .layer-row-name {
   min-width: 0;
+}
+
+.layer-row-name .wv-input {
+  width: 100%;
   height: 24px;
   padding: 2px 5px;
   border: 1px solid transparent;
@@ -680,12 +689,12 @@
   font-size: 9px;
 }
 
-.layer-row-name:not([readonly]):focus {
+.layer-row-name:focus-within .wv-input:not([readonly]) {
   border-color: var(--accent);
   background: var(--surface-input);
 }
 
-.layer-row-name[readonly] {
+.layer-row-name .wv-input[readonly] {
   color: var(--muted);
 }
 
@@ -711,7 +720,12 @@
   margin-top: 6px;
 }
 
-.layer-create input {
+.layer-create .wv-field {
+  min-width: 0;
+  gap: 0;
+}
+
+.layer-create .wv-input {
   min-width: 0;
   height: 27px;
   padding: 3px 6px;

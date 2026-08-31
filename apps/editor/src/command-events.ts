@@ -1,12 +1,7 @@
-import {
-  createSequentialIdFactory,
-  parseMap,
-  type EditorIssueType,
-  type EditorSpecialBrushFilter,
-} from '@jackharrhy/worldview-editor';
+import { createSequentialIdFactory, parseMap } from '@jackharrhy/worldview-editor';
 
 import type { EditorApplication } from './editor-application.js';
-import { required } from './editor-elements.js';
+import type { EditorCommandId } from './editor-command-state.js';
 
 export class CommandEvents {
   public constructor(private readonly app: EditorApplication) {}
@@ -17,36 +12,138 @@ export class CommandEvents {
     return this.app.ui;
   }
 
-  public connect(signal: AbortSignal): void {
-    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tool]')) {
-      button.addEventListener(
-        'click',
-        () => {
-          const tool = button.dataset.tool;
+  private invokeCommand(command: EditorCommandId): void {
+    switch (command) {
+      case 'undo':
+        this.state.session.undo();
+        return;
+      case 'redo':
+        this.state.session.redo();
+        return;
+      case 'repeat-commands':
+        this.app.document.repeatRecordedCommands();
+        return;
+      case 'clear-repeat-commands':
+        if (!this.state.session.clearRepeatableCommands()) {
+          this.ui.statusMessage.set('No recorded command sequence to clear.');
+        }
+        return;
+      case 'select-all':
+        this.app.document.selectAllEditableObjects();
+        return;
+      case 'invert-selection':
+        this.app.document.invertEditableObjectSelection();
+        return;
+      case 'snap-selection-to-grid':
+        try {
           if (
-            tool === 'select' ||
-            tool === 'create' ||
-            tool === 'entity' ||
-            tool === 'hull' ||
-            tool === 'face' ||
-            tool === 'sweep' ||
-            tool === 'clip' ||
-            tool === 'vertex' ||
-            tool === 'edge' ||
-            tool === 'rotate' ||
-            tool === 'scale' ||
-            tool === 'shear'
+            !this.state.session.snapSelectionToGrid(
+              this.state.activeGridSize,
+              createSequentialIdFactory(`grid-snap-${this.state.session.document.revision + 1}`),
+              this.state.textureLock,
+            )
           ) {
-            this.app.session.setEditorTool(tool);
+            this.ui.statusMessage.set('Select a brush or face to snap to the grid.');
           }
-        },
-        { signal },
-      );
+        } catch (error) {
+          this.ui.statusMessage.setError(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      case 'duplicate':
+        this.app.document.duplicateSelection();
+        return;
+      case 'copy':
+        void this.app.document.copySelection();
+        return;
+      case 'paste':
+        void this.app.document.pasteFromClipboard('cursor');
+        return;
+      case 'paste-original':
+        void this.app.document.pasteFromClipboard('original');
+        return;
+      case 'delete':
+        this.app.document.deleteSelection();
+        return;
+      case 'focus-selection':
+        this.app.contextMenu.focusCurrentSelection();
+        return;
+      case 'hide-selection':
+        this.state.session.hideSelected();
+        return;
+      case 'isolate-selection':
+        this.state.session.isolateSelected();
+        return;
+      case 'show-all':
+        this.state.session.showAll();
+        return;
+      case 'lock-selection':
+        this.state.session.lockSelected();
+        return;
+      case 'unlock-all':
+        this.state.session.unlockAll();
+        return;
+      case 'compile':
+        void this.app.build.compilePreview();
+        return;
+      case 'toggle-preview':
+        this.app.build.showCompiledPreview(!this.state.showingCompiled);
+        return;
+      case 'toggle-leak':
+        this.state.leakOverlayVisible = !this.state.leakOverlayVisible;
+        this.app.build.updateDiagnosticOverlayVisibility();
+        return;
+      case 'toggle-portals':
+        this.state.portalOverlayVisible = !this.state.portalOverlayVisible;
+        this.app.build.updateDiagnosticOverlayVisibility();
+        return;
+      case 'build-log':
+        void this.openBuildLog();
+        return;
+      case 'launch':
+        void this.launchBuild();
     }
-    this.ui.referenceFiles.addEventListener(
+  }
+
+  private async openBuildLog(): Promise<void> {
+    await this.app.build.renderBuildHistory();
+    this.ui.buildLog.setOpen(true);
+  }
+
+  private async launchBuild(): Promise<void> {
+    if (!this.state.latestBuild || !this.state.launchProfileId) return;
+    this.ui.editorCommands.updateActions({ launch: { disabled: true } });
+    try {
+      const result = await this.state.buildService.launch({
+        buildId: this.state.latestBuild.buildId,
+        profileId: this.state.launchProfileId,
+        expectedDocumentRevision: this.state.session.document.revision,
+      });
+      this.ui.statusMessage.set(
+        `Launched build ${result.buildId.slice(0, 8)} with ${result.profileId}.`,
+      );
+    } catch (error) {
+      this.ui.statusMessage.setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      this.ui.editorCommands.updateActions({
+        launch: {
+          disabled:
+            this.state.latestBuild.status !== 'succeeded' ||
+            this.state.latestBuild.sourceDocumentRevision !== this.state.session.document.revision,
+        },
+      });
+    }
+  }
+
+  public connect(signal: AbortSignal): void {
+    this.ui.editorCommands.bind({
+      invoke: (command) => this.invokeCommand(command),
+      selectTool: (tool) => this.app.session.setEditorTool(tool),
+    });
+    signal.addEventListener('abort', () => this.ui.editorCommands.unbind(), { once: true });
+    this.app.elements.referenceFiles.addEventListener(
       'change',
       async () => {
-        const files = [...(this.ui.referenceFiles.files ?? [])];
+        const files = [...(this.app.elements.referenceFiles.files ?? [])];
         const sources = await Promise.allSettled(files.map((file) => file.text()));
         for (const [index, file] of files.entries()) {
           try {
@@ -60,257 +157,12 @@ export class CommandEvents {
             );
             this.app.materials.addReferenceDocument(file.name, document);
           } catch (error) {
-            this.ui.statusMessage.textContent = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
+            this.ui.statusMessage.set(
+              `${file.name}: ${error instanceof Error ? error.message : String(error)}`,
+            );
           }
         }
-        this.ui.referenceFiles.value = '';
-      },
-      { signal },
-    );
-
-    this.ui.undoButton.addEventListener('click', () => this.state.session.undo(), { signal });
-    this.ui.redoButton.addEventListener('click', () => this.state.session.redo(), { signal });
-    this.ui.repeatCommandsButton.addEventListener(
-      'click',
-      () => this.app.document.repeatRecordedCommands(),
-      { signal },
-    );
-    this.ui.clearRepeatCommandsButton.addEventListener(
-      'click',
-      () => {
-        if (!this.state.session.clearRepeatableCommands()) {
-          this.ui.statusMessage.textContent = 'No recorded command sequence to clear.';
-        }
-      },
-      { signal },
-    );
-    this.ui.selectAllButton.addEventListener(
-      'click',
-      () => this.app.document.selectAllEditableObjects(),
-      { signal },
-    );
-    this.ui.invertSelectionButton.addEventListener(
-      'click',
-      () => this.app.document.invertEditableObjectSelection(),
-      { signal },
-    );
-    this.ui.snapSelectionToGridButton.addEventListener(
-      'click',
-      () => {
-        try {
-          if (
-            !this.state.session.snapSelectionToGrid(
-              this.state.activeGridSize,
-              createSequentialIdFactory(`grid-snap-${this.state.session.document.revision + 1}`),
-              this.ui.textureLock.checked,
-            )
-          ) {
-            this.ui.statusMessage.textContent = 'Select a brush or face to snap to the grid.';
-          }
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.duplicateButton.addEventListener(
-      'click',
-      () => this.app.document.duplicateSelection(),
-      { signal },
-    );
-    this.ui.copyButton.addEventListener('click', () => void this.app.document.copySelection(), {
-      signal,
-    });
-    this.ui.pasteButton.addEventListener(
-      'click',
-      () => void this.app.document.pasteFromClipboard('cursor'),
-      { signal },
-    );
-    this.ui.pasteOriginalButton.addEventListener(
-      'click',
-      () => void this.app.document.pasteFromClipboard('original'),
-      { signal },
-    );
-    this.ui.deleteButton.addEventListener('click', () => this.app.document.deleteSelection(), {
-      signal,
-    });
-    this.ui.focusSelectionButton.addEventListener(
-      'click',
-      () => this.app.contextMenu.focusCurrentSelection(),
-      { signal },
-    );
-    this.ui.hideSelectionButton.addEventListener('click', () => this.state.session.hideSelected(), {
-      signal,
-    });
-    this.ui.isolateSelectionButton.addEventListener(
-      'click',
-      () => this.state.session.isolateSelected(),
-      { signal },
-    );
-    this.ui.showAllButton.addEventListener('click', () => this.state.session.showAll(), { signal });
-    this.ui.lockSelectionButton.addEventListener('click', () => this.state.session.lockSelected(), {
-      signal,
-    });
-    this.ui.unlockAllButton.addEventListener('click', () => this.state.session.unlockAll(), {
-      signal,
-    });
-    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-selection-query]')) {
-      button.addEventListener(
-        'click',
-        () => {
-          const mode = button.dataset.selectionQuery;
-          if (mode === 'touching' || mode === 'inside' || mode === 'inside-projected') {
-            this.app.document.applySelectionBrushQuery(mode);
-          }
-        },
-        { signal },
-      );
-    }
-    this.ui.compileButton.addEventListener('click', () => void this.app.build.compilePreview(), {
-      signal,
-    });
-    this.ui.togglePreviewButton.addEventListener(
-      'click',
-      () => this.app.build.showCompiledPreview(!this.state.showingCompiled),
-      { signal },
-    );
-    this.ui.toggleLeakButton.addEventListener(
-      'click',
-      () => {
-        this.state.leakOverlayVisible = !this.state.leakOverlayVisible;
-        this.app.build.updateDiagnosticOverlayVisibility();
-      },
-      { signal },
-    );
-    this.ui.togglePortalsButton.addEventListener(
-      'click',
-      () => {
-        this.state.portalOverlayVisible = !this.state.portalOverlayVisible;
-        this.app.build.updateDiagnosticOverlayVisibility();
-      },
-      { signal },
-    );
-    this.ui.buildLogButton.addEventListener(
-      'click',
-      async () => {
-        await this.app.build.renderBuildHistory();
-        this.ui.buildLogDialog.showModal();
-      },
-      { signal },
-    );
-    this.ui.buildHistory.addEventListener(
-      'change',
-      () => void this.app.build.inspectHistoricalBuild(this.ui.buildHistory.value),
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="close-build-log"]').addEventListener(
-      'click',
-      () => this.ui.buildLogDialog.close(),
-      { signal },
-    );
-    this.ui.launchButton.addEventListener(
-      'click',
-      async () => {
-        if (!this.state.latestBuild || !this.state.launchProfileId) return;
-        this.ui.launchButton.disabled = true;
-        try {
-          const result = await this.state.buildService.launch({
-            buildId: this.state.latestBuild.buildId,
-            profileId: this.state.launchProfileId,
-            expectedDocumentRevision: this.state.session.document.revision,
-          });
-          this.ui.statusMessage.textContent = `Launched build ${result.buildId.slice(0, 8)} with ${result.profileId}.`;
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        } finally {
-          this.ui.launchButton.disabled =
-            this.state.latestBuild.status !== 'succeeded' ||
-            this.state.latestBuild.sourceDocumentRevision !== this.state.session.document.revision;
-        }
-      },
-      { signal },
-    );
-
-    this.ui.issueStatus.addEventListener(
-      'click',
-      () => this.app.organization.setIssueBrowserOpen(!this.state.issueBrowserOpen),
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="close-issues"]').addEventListener(
-      'click',
-      () => this.app.organization.setIssueBrowserOpen(false),
-      { signal },
-    );
-    this.ui.showHiddenIssues.addEventListener(
-      'change',
-      () => this.app.organization.renderIssues(),
-      { signal },
-    );
-    for (const input of document.querySelectorAll<HTMLInputElement>('[data-issue-filter]')) {
-      input.addEventListener(
-        'change',
-        () => {
-          const type = input.dataset.issueFilter as EditorIssueType | undefined;
-          if (!type) return;
-          if (input.checked) this.state.enabledIssueTypes.add(type);
-          else this.state.enabledIssueTypes.delete(type);
-          this.app.organization.renderIssues();
-        },
-        { signal },
-      );
-    }
-
-    this.ui.viewFilterToggle.addEventListener(
-      'click',
-      () => this.app.organization.setViewFilterPopoverOpen(!this.state.viewFilterPopoverOpen),
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="close-view-filters"]').addEventListener(
-      'click',
-      () => this.app.organization.setViewFilterPopoverOpen(false),
-      { signal },
-    );
-    this.ui.showWorldBrushes.addEventListener(
-      'change',
-      () => {
-        this.state.session.setWorldBrushesVisible(this.ui.showWorldBrushes.checked);
-      },
-      { signal },
-    );
-    for (const input of document.querySelectorAll<HTMLInputElement>(
-      '[data-special-brush-filter]',
-    )) {
-      input.addEventListener(
-        'change',
-        () => {
-          const type = input.dataset.specialBrushFilter as EditorSpecialBrushFilter | undefined;
-          if (type) this.state.session.setSpecialBrushFilterVisible(type, input.checked);
-        },
-        { signal },
-      );
-    }
-    this.ui.entityClassFilterSearch.addEventListener(
-      'input',
-      () => this.app.organization.renderViewFilters(),
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="show-all-entity-classes"]').addEventListener(
-      'click',
-      () => this.state.session.setAllEntityClassesVisible(true),
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="hide-all-entity-classes"]').addEventListener(
-      'click',
-      () => this.state.session.setAllEntityClassesVisible(false),
-      { signal },
-    );
-
-    this.ui.inspectorToggle.addEventListener(
-      'click',
-      () => {
-        this.app.document.setInspectorOpen(this.ui.inspector.classList.contains('closed'));
+        this.app.elements.referenceFiles.value = '';
       },
       { signal },
     );

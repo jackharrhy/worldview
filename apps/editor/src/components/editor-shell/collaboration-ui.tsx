@@ -5,7 +5,7 @@ import type {
 } from '../../editor-shell-state.js';
 import { Button } from '../ui/button.js';
 import { Dialog } from '../ui/dialog.js';
-import { Icon, type IconName } from '../ui/icon.js';
+import { Icon, IconButton, type IconName } from '../ui/icon.js';
 import { TextField } from '../ui/text-field.js';
 
 function participantIcon(participant: CollaborationParticipantSnapshot): IconName {
@@ -36,17 +36,15 @@ export function CollaborationPresence({ port }: { readonly port: CollaborationUi
           </span>
         ))}
       </div>
-      <button
+      <IconButton
+        icon="collaborate"
+        label="Share"
+        tooltip="Live collaboration"
         id="collaboration-toggle"
         className="collaboration-toggle icon-button"
-        type="button"
         aria-pressed={state.live}
-        title="Live collaboration"
-        onClick={() => port.invoke('open')}
-      >
-        <Icon name="collaborate" />
-        <span className="toolbar-label">Share</span>
-      </button>
+        onPress={() => port.invoke('open')}
+      />
     </div>
   );
 }

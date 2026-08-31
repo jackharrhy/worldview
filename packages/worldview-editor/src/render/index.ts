@@ -27,6 +27,8 @@ export type {
   EditorTransformPivotDragEvent,
   EditorViewportCameraState,
   EditorViewportCanvases,
+  EditorViewportOverlayElements,
+  EditorViewportOverlays,
   EditorViewportContextMenuEvent,
   EditorViewportKind,
 } from './types.js';

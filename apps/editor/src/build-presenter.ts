@@ -10,21 +10,37 @@ import {
 } from '@jackharrhy/worldview-editor';
 
 import type { DocumentPresenter } from './document-presenter.js';
-import type { EditorElements } from './editor-elements.js';
-import { setToolbarButtonLabel } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
 import type { EditorState } from './editor-state.js';
 import { resolveEditorRenderTheme } from './render-theme.js';
+
+type BuildUi = Pick<
+  EditorShellState,
+  | 'buildLog'
+  | 'compileState'
+  | 'editorCommands'
+  | 'projectToolbar'
+  | 'statusMessage'
+  | 'viewportPresentation'
+>;
 
 export class BuildPresenter {
   public constructor(
     private readonly state: EditorState,
-    private readonly ui: EditorElements,
+    private readonly ui: BuildUi,
+    private readonly compiledCanvas: HTMLCanvasElement,
     private readonly document: Pick<
       DocumentPresenter,
       'compileAssets' | 'serializeCompileDocument'
     >,
     private readonly signal: AbortSignal,
-  ) {}
+  ) {
+    this.ui.buildLog.bind({ inspect: (buildId) => void this.inspectHistoricalBuild(buildId) });
+  }
+
+  public dispose(): void {
+    this.ui.buildLog.unbind();
+  }
 
   public formatVector(value: readonly number[]): string {
     return value.map((component) => Number(component.toFixed(2))).join(' ');
@@ -50,13 +66,16 @@ export class BuildPresenter {
 
   public showCompiledPreview(show: boolean): void {
     this.state.showingCompiled = show && Boolean(this.state.compiledViewer);
-    this.ui.canvases.perspective.hidden = this.state.showingCompiled;
-    this.ui.compiledCanvas.hidden = !this.state.showingCompiled;
-    this.ui.perspectiveMode.textContent = this.state.showingCompiled ? 'COMPILED · FLY' : 'EDIT';
-    setToolbarButtonLabel(
-      this.ui.togglePreviewButton,
-      this.state.showingCompiled ? 'Show source' : 'Show compiled',
-    );
+    this.ui.viewportPresentation.update({
+      showingCompiled: this.state.showingCompiled,
+      perspectiveMode: this.state.showingCompiled ? 'COMPILED · FLY' : 'EDIT',
+    });
+    this.ui.editorCommands.updateActions({
+      'toggle-preview': {
+        label: this.state.showingCompiled ? 'Show source' : 'Show compiled',
+        active: this.state.showingCompiled,
+      },
+    });
     if (this.state.showingCompiled) this.state.compiledViewer?.start();
     else this.state.compiledViewer?.stop();
   }
@@ -74,14 +93,15 @@ export class BuildPresenter {
           (overlay.kind === 'portal' && this.state.portalOverlayVisible),
       ),
     );
-    this.ui.toggleLeakButton.classList.toggle(
-      'active',
-      this.state.leakOverlayVisible && !this.ui.toggleLeakButton.disabled,
-    );
-    this.ui.togglePortalsButton.classList.toggle(
-      'active',
-      this.state.portalOverlayVisible && !this.ui.togglePortalsButton.disabled,
-    );
+    const actions = this.ui.editorCommands.getSnapshot().actions;
+    this.ui.editorCommands.updateActions({
+      'toggle-leak': {
+        active: this.state.leakOverlayVisible && !(actions['toggle-leak']?.disabled ?? true),
+      },
+      'toggle-portals': {
+        active: this.state.portalOverlayVisible && !(actions['toggle-portals']?.disabled ?? true),
+      },
+    });
   }
 
   public inspectBuildResult(result: MapCompileResult, record = true): void {
@@ -106,26 +126,35 @@ export class BuildPresenter {
     ];
     this.state.leakOverlayVisible = Boolean(leak?.points.length);
     this.state.portalOverlayVisible = false;
-    this.ui.toggleLeakButton.disabled = !this.state.buildOverlays.some(
-      (overlay) => overlay.kind === 'leak-path',
-    );
-    this.ui.togglePortalsButton.disabled = !this.state.buildOverlays.some(
-      (overlay) => overlay.kind === 'portal',
-    );
-    this.ui.buildLogButton.disabled = false;
-    this.ui.buildLogOutput.textContent = [
-      ...result.diagnostics.map(
-        (diagnostic) =>
-          `[${diagnostic.severity.toUpperCase()}] ${diagnostic.stage}: ${diagnostic.message}`,
-      ),
-      ...result.logs.map(
-        (log) => `\n--- ${log.stage}${log.truncated ? ' (truncated)' : ''} ---\n${log.text}`,
-      ),
-    ].join('\n');
-    this.ui.launchButton.disabled =
-      result.status !== 'succeeded' ||
-      !this.state.launchProfileId ||
-      result.sourceDocumentRevision !== this.state.session.document.revision;
+    this.ui.editorCommands.updateActions({
+      'toggle-leak': {
+        disabled: !this.state.buildOverlays.some((overlay) => overlay.kind === 'leak-path'),
+      },
+      'toggle-portals': {
+        disabled: !this.state.buildOverlays.some((overlay) => overlay.kind === 'portal'),
+      },
+      'build-log': { disabled: false },
+    });
+    this.ui.buildLog.update({
+      output: [
+        ...result.diagnostics.map(
+          (diagnostic) =>
+            `[${diagnostic.severity.toUpperCase()}] ${diagnostic.stage}: ${diagnostic.message}`,
+        ),
+        ...result.logs.map(
+          (log) => `\n--- ${log.stage}${log.truncated ? ' (truncated)' : ''} ---\n${log.text}`,
+        ),
+      ].join('\n'),
+      selectedBuildId: result.buildId,
+    });
+    this.ui.editorCommands.updateActions({
+      launch: {
+        disabled:
+          result.status !== 'succeeded' ||
+          !this.state.launchProfileId ||
+          result.sourceDocumentRevision !== this.state.session.document.revision,
+      },
+    });
     this.updateDiagnosticOverlayVisibility();
   }
 
@@ -133,21 +162,18 @@ export class BuildPresenter {
     const records = await this.state.buildHistory.list(
       this.state.currentDocumentName.toLowerCase(),
     );
-    this.ui.buildHistory.replaceChildren(
-      ...records.map((record) => {
-        const option = document.createElement('option');
-        option.value = record.buildId;
-        option.textContent = `${record.result.status === 'succeeded' ? 'Succeeded' : 'Failed'} · ${new Date(record.createdAt).toLocaleString()} · r${record.result.sourceDocumentRevision}`;
-        return option;
-      }),
-    );
-    this.ui.buildHistory.disabled = records.length === 0;
-    if (
+    const selectedBuildId =
       this.state.latestBuild &&
       records.some(({ buildId }) => buildId === this.state.latestBuild?.buildId)
-    ) {
-      this.ui.buildHistory.value = this.state.latestBuild.buildId;
-    }
+        ? this.state.latestBuild.buildId
+        : (records[0]?.buildId ?? null);
+    this.ui.buildLog.update({
+      history: records.map((record) => ({
+        id: record.buildId,
+        label: `${record.result.status === 'succeeded' ? 'Succeeded' : 'Failed'} · ${new Date(record.createdAt).toLocaleString()} · r${record.result.sourceDocumentRevision}`,
+      })),
+      selectedBuildId,
+    });
   }
 
   public async inspectHistoricalBuild(buildId: string): Promise<void> {
@@ -156,7 +182,9 @@ export class BuildPresenter {
     ).find((candidate) => candidate.buildId === buildId);
     if (!record) return;
     this.inspectBuildResult(record.result, false);
-    this.ui.statusMessage.textContent = `Showing retained build ${record.buildId.slice(0, 8)} from ${new Date(record.createdAt).toLocaleString()}.`;
+    this.ui.statusMessage.set(
+      `Showing retained build ${record.buildId.slice(0, 8)} from ${new Date(record.createdAt).toLocaleString()}.`,
+    );
   }
 
   public async installCompiledPreview(result: MapCompileResult): Promise<boolean> {
@@ -173,8 +201,8 @@ export class BuildPresenter {
       this.state.compiledViewer?.dispose();
       this.state.compiledViewer = null;
       this.state.compiledRevision = null;
-      this.ui.compiledCanvas.hidden = true;
-      this.ui.togglePreviewButton.disabled = true;
+      this.ui.viewportPresentation.update({ showingCompiled: false });
+      this.ui.editorCommands.updateActions({ 'toggle-preview': { disabled: true } });
       this.showCompiledPreview(false);
       return false;
     }
@@ -184,11 +212,11 @@ export class BuildPresenter {
       : null;
     this.state.compiledViewer?.dispose();
     this.state.compiledViewer = null;
-    this.ui.compiledCanvas.hidden = false;
+    this.ui.viewportPresentation.update({ showingCompiled: true });
     const { createWorldview } = await import('@jackharrhy/worldview');
     this.signal.throwIfAborted();
     const viewer = await createWorldview({
-      canvas: this.ui.compiledCanvas,
+      canvas: this.compiledCanvas,
       source: {
         bsp: artifact.data,
         wads: [...this.state.loadedWadSources.values()],
@@ -208,7 +236,7 @@ export class BuildPresenter {
     }
     this.state.compiledViewer = viewer;
     this.state.compiledRevision = result.sourceDocumentRevision;
-    this.ui.togglePreviewButton.disabled = false;
+    this.ui.editorCommands.updateActions({ 'toggle-preview': { disabled: false } });
     this.showCompiledPreview(true);
     return true;
   }
@@ -216,9 +244,11 @@ export class BuildPresenter {
   public async compilePreview(): Promise<void> {
     this.signal.throwIfAborted();
     const quality = this.state.activeCompileQuality;
-    this.ui.compileButton.disabled = true;
+    this.ui.editorCommands.updateActions({ compile: { disabled: true } });
     this.setCompileState(`COMPILING ${quality.toUpperCase()}`, 'busy');
-    this.ui.statusMessage.textContent = `Sending document revision ${this.state.session.document.revision} to the compiler.`;
+    this.ui.statusMessage.set(
+      `Sending document revision ${this.state.session.document.revision} to the compiler.`,
+    );
     try {
       const assets = this.document.compileAssets();
       const outcome = await this.state.compilerCoordinator.compile(
@@ -239,13 +269,14 @@ export class BuildPresenter {
       this.signal.throwIfAborted();
       if (outcome.status === 'cancelled') {
         this.setCompileState('COMPILE CANCELLED', 'offline');
-        this.ui.statusMessage.textContent = 'Compile cancelled.';
+        this.ui.statusMessage.set('Compile cancelled.');
         return;
       }
       if (outcome.status === 'stale') {
         this.setCompileState('RESULT STALE', 'stale');
-        this.ui.statusMessage.textContent =
-          'Compile finished, but the source changed. Result was not installed.';
+        this.ui.statusMessage.set(
+          'Compile finished, but the source changed. Result was not installed.',
+        );
         return;
       }
       this.inspectBuildResult(outcome.result);
@@ -258,28 +289,34 @@ export class BuildPresenter {
             errors.push(`${diagnostic.stage}: ${diagnostic.message}`);
           }
         }
-        this.ui.statusMessage.textContent =
-          errors.slice(0, 3).join(' · ') || 'Compiler reported a failed build.';
+        this.ui.statusMessage.set(
+          errors.slice(0, 3).join(' · ') || 'Compiler reported a failed build.',
+        );
         return;
       }
       const previewInstalled = await this.installCompiledPreview(outcome.result);
       this.setCompileState(`COMPILED R${outcome.result.sourceDocumentRevision}`, 'ready');
-      this.ui.statusMessage.textContent = `${previewInstalled ? 'Compiled preview installed' : 'Compile completed'} in ${Math.round(outcome.result.elapsedMilliseconds)} ms.${this.state.compiledPreviewWarning ?? ''}`;
+      this.ui.statusMessage.set(
+        `${previewInstalled ? 'Compiled preview installed' : 'Compile completed'} in ${Math.round(outcome.result.elapsedMilliseconds)} ms.${this.state.compiledPreviewWarning ?? ''}`,
+      );
     } catch (error) {
       if (this.signal.aborted) return;
       this.showCompiledPreview(false);
       this.setCompileState('COMPILER ERROR', 'offline');
-      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
     } finally {
-      if (!this.signal.aborted) this.ui.compileButton.disabled = false;
+      if (!this.signal.aborted)
+        this.ui.editorCommands.updateActions({ compile: { disabled: false } });
     }
   }
 
   public async checkCompilerService(): Promise<void> {
     this.signal.throwIfAborted();
     if (!this.state.buildServiceEnabled) {
-      this.ui.compileButton.disabled = true;
-      this.ui.launchButton.disabled = true;
+      this.ui.editorCommands.updateActions({
+        compile: { disabled: true },
+        launch: { disabled: true },
+      });
       this.setCompileState('COMPILER UNCONFIGURED', 'offline');
       return;
     }
@@ -288,7 +325,7 @@ export class BuildPresenter {
       this.signal.throwIfAborted();
       const activeGame = this.state.projectWorkspace?.manifest.game ?? this.state.activeGameProfile;
       const logicalProfile = this.state.projectWorkspace?.manifest.buildProfiles.find(
-        ({ id }) => id === this.ui.buildProfile.value,
+        ({ id }) => id === this.ui.projectToolbar.getSnapshot().selectedBuildProfileId,
       );
       let preferredCompileProfileId: string | undefined;
       if (this.state.projectWorkspace && this.state.projectKey && logicalProfile) {
@@ -314,22 +351,27 @@ export class BuildPresenter {
       }
       this.state.activeCompileProfileId = compileProfile?.id ?? 'default';
       this.state.activeCompileQuality = logicalProfile?.quality ?? 'preview';
-      setToolbarButtonLabel(
-        this.ui.compileButton,
-        logicalProfile ? `Build ${logicalProfile.label}` : 'Compile',
-      );
+      this.ui.editorCommands.updateActions({
+        compile: { label: logicalProfile ? `Build ${logicalProfile.label}` : 'Compile' },
+      });
       this.state.launchProfileId = selectMapLaunchProfile(capabilities, activeGame)?.id ?? null;
-      this.ui.compileButton.disabled = !compileProfile;
-      this.ui.launchButton.disabled =
-        !this.state.launchProfileId ||
-        this.state.latestBuild?.status !== 'succeeded' ||
-        this.state.latestBuild.sourceDocumentRevision !== this.state.session.document.revision;
+      this.ui.editorCommands.updateActions({
+        compile: { disabled: !compileProfile },
+        launch: {
+          disabled:
+            !this.state.launchProfileId ||
+            this.state.latestBuild?.status !== 'succeeded' ||
+            this.state.latestBuild.sourceDocumentRevision !== this.state.session.document.revision,
+        },
+      });
       if (compileProfile) this.setCompileState('COMPILER READY', 'ready');
       else this.setCompileState('COMPILER UNCONFIGURED', 'offline');
     } catch {
       if (this.signal.aborted) return;
-      this.ui.compileButton.disabled = true;
-      this.ui.launchButton.disabled = true;
+      this.ui.editorCommands.updateActions({
+        compile: { disabled: true },
+        launch: { disabled: true },
+      });
       this.setCompileState('COMPILER OFFLINE', 'offline');
     }
   }

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import type { EditorShellState } from '../../editor-shell-state.js';
+import { Button } from '../ui/button.js';
 
 interface StatusBarProps {
   readonly shellState: EditorShellState;
@@ -22,6 +23,10 @@ export function StatusBar({ shellState }: StatusBarProps) {
     shellState.pointerContext.getSnapshot,
     shellState.pointerContext.getSnapshot,
   );
+  const issues = useSyncExternalStore(
+    shellState.issueBrowser.subscribe,
+    shellState.issueBrowser.getSnapshot,
+  );
 
   return (
     <footer className="statusbar">
@@ -32,9 +37,17 @@ export function StatusBar({ shellState }: StatusBarProps) {
       >
         {status.message}
       </span>
-      <button id="issue-status" type="button" data-action="toggle-issues" aria-expanded="false">
-        Issues 0
-      </button>
+      <Button
+        id="issue-status"
+        tone="quiet"
+        size="compact"
+        data-action="toggle-issues"
+        aria-expanded={issues.open}
+        data-state={issues.status}
+        onPress={() => shellState.issueBrowser.invoke('setOpen', !issues.open)}
+      >
+        {issues.statusLabel}
+      </Button>
       <div className="compile-state" title="Compiler service state" data-state={compile.state}>
         {compile.label}
       </div>

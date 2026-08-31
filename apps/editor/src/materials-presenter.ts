@@ -8,13 +8,15 @@ import {
   type MapDocument,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
+
+type MaterialsUi = Pick<EditorShellState, 'materialBrowser' | 'referenceScenes' | 'statusMessage'>;
 import type { EditorState } from './editor-state.js';
 
 export class MaterialsPresenter {
   public constructor(
     private readonly state: EditorState,
-    private readonly ui: EditorElements,
+    private readonly ui: MaterialsUi,
     private readonly setEditorTool: (tool: EditorTool) => void,
   ) {
     this.ui.materialBrowser.bind({
@@ -45,10 +47,23 @@ export class MaterialsPresenter {
       setReplaceTarget: (replaceTarget) => this.ui.materialBrowser.update({ replaceTarget }),
       replace: () => this.replaceSelectedMaterialUsage(),
     });
+    this.ui.referenceScenes.bind({
+      setVisible: (id, visible) => this.updateReferenceScene(id, { visible }),
+      setOffset: (id, axis, value) => {
+        const reference = this.state.referenceScenes.find((candidate) => candidate.id === id);
+        if (!reference || !Number.isFinite(value)) return;
+        const offset = [...reference.offset] as [number, number, number];
+        offset[axis] = value;
+        this.updateReferenceScene(id, { offset });
+      },
+      remove: (id) => this.removeReferenceScene(id),
+      clear: () => this.clearReferenceScenes(),
+    });
   }
 
   public dispose(): void {
     this.ui.materialBrowser.unbind();
+    this.ui.referenceScenes.unbind();
   }
 
   public selectedMaterialToken(): string {
@@ -155,55 +170,29 @@ export class MaterialsPresenter {
   }
 
   public renderReferenceScenes(): void {
-    this.ui.referenceCount.textContent = `${this.state.referenceScenes.length} loaded`;
-    this.ui.clearReferencesButton.disabled = this.state.referenceScenes.length === 0;
-    this.ui.referenceList.replaceChildren();
-    for (const reference of this.state.referenceScenes) {
-      const row = document.createElement('div');
-      row.className = 'reference-row';
-      const heading = document.createElement('div');
-      heading.className = 'reference-row-heading';
-      const visible = document.createElement('input');
-      visible.type = 'checkbox';
-      visible.checked = reference.visible;
-      visible.title = 'Show reference';
-      visible.addEventListener('change', () =>
-        this.updateReferenceScene(reference.id, { visible: visible.checked }),
-      );
-      const label = document.createElement('span');
-      label.textContent = reference.label;
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.textContent = 'Remove';
-      remove.addEventListener('click', () => {
-        this.state.referenceScenes = this.state.referenceScenes.filter(
-          (candidate) => candidate.id !== reference.id,
-        );
-        this.state.renderer?.setReferenceScenes(this.state.referenceScenes);
-        this.renderReferenceScenes();
-      });
-      heading.append(visible, label, remove);
+    this.ui.referenceScenes.set(
+      this.state.referenceScenes.map(({ id, label, visible, offset }) => ({
+        id,
+        label,
+        visible,
+        offset,
+      })),
+    );
+  }
 
-      const offsets = document.createElement('div');
-      offsets.className = 'reference-offsets';
-      for (const [axis, value] of reference.offset.entries()) {
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.step = '16';
-        input.value = String(value);
-        input.title = `${['X', 'Y', 'Z'][axis]} offset`;
-        input.addEventListener('change', () => {
-          const next = [...reference.offset] as [number, number, number];
-          const parsed = Number(input.value);
-          if (!Number.isFinite(parsed)) return;
-          next[axis] = parsed;
-          this.updateReferenceScene(reference.id, { offset: next });
-        });
-        offsets.append(input);
-      }
-      row.append(heading, offsets);
-      this.ui.referenceList.append(row);
-    }
+  private removeReferenceScene(id: string): void {
+    this.state.referenceScenes = this.state.referenceScenes.filter(
+      (candidate) => candidate.id !== id,
+    );
+    this.state.renderer?.setReferenceScenes(this.state.referenceScenes);
+    this.renderReferenceScenes();
+  }
+
+  public clearReferenceScenes(): void {
+    this.state.referenceScenes = [];
+    this.state.renderer?.setReferenceScenes(this.state.referenceScenes);
+    this.renderReferenceScenes();
+    this.ui.statusMessage.set('Cleared reference scenes.');
   }
 
   public addReferenceDocument(label: string, document: MapDocument): void {
@@ -220,7 +209,7 @@ export class MaterialsPresenter {
     ];
     this.state.renderer?.setReferenceScenes(this.state.referenceScenes);
     this.renderReferenceScenes();
-    this.ui.statusMessage.textContent = `Loaded reference ${label}.`;
+    this.ui.statusMessage.set(`Loaded reference ${label}.`);
   }
 
   public setActiveMaterial(name: string): void {
@@ -246,22 +235,22 @@ export class MaterialsPresenter {
         ? brush.faces.find((candidate) => candidate.id === selection.faceId)
         : undefined;
     if (!face) {
-      this.ui.statusMessage.textContent = 'Select a face before sampling its material.';
+      this.ui.statusMessage.set('Select a face before sampling its material.');
       return;
     }
     this.setActiveMaterial(face.material);
-    this.ui.statusMessage.textContent = `Sampled ${face.material}.`;
+    this.ui.statusMessage.set(`Sampled ${face.material}.`);
   }
 
   public copyCurrentMaterialName(): void {
     const material = this.selectedMaterialToken();
     if (!material) {
-      this.ui.statusMessage.textContent = 'Choose or enter a material first.';
+      this.ui.statusMessage.set('Choose or enter a material first.');
       return;
     }
     void navigator.clipboard.writeText(material).then(
       () => {
-        this.ui.statusMessage.textContent = `Copied material name ${material}.`;
+        this.ui.statusMessage.set(`Copied material name ${material}.`);
       },
       (error: unknown) => {
         this.ui.statusMessage.setError(
@@ -274,48 +263,52 @@ export class MaterialsPresenter {
   public applySelectedMaterial(): void {
     const name = this.selectedMaterialToken();
     if (!name || !this.state.session.selection) {
-      this.ui.statusMessage.textContent = 'Select a face and choose or enter a material first.';
+      this.ui.statusMessage.set('Select a face and choose or enter a material first.');
       return;
     }
     try {
       if (!this.state.session.applyMaterial(name)) {
-        this.ui.statusMessage.textContent = `Face already uses ${name}.`;
+        this.ui.statusMessage.set(`Face already uses ${name}.`);
       }
     } catch (error) {
-      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
     }
   }
 
   public selectFacesUsingCurrentMaterial(): void {
     const material = this.selectedMaterialToken();
     if (!material) {
-      this.ui.statusMessage.textContent = 'Choose or enter a material first.';
+      this.ui.statusMessage.set('Choose or enter a material first.');
       return;
     }
     const selection = this.state.session.selectFacesUsingMaterial(material);
     const faceCount = selectedFaceReferences(selection).length;
     if (faceCount === 0) {
-      this.ui.statusMessage.textContent = `No visible, editable faces use ${material}.`;
+      this.ui.statusMessage.set(`No visible, editable faces use ${material}.`);
       return;
     }
     this.setEditorTool('face');
-    this.ui.statusMessage.textContent = `Selected ${faceCount} ${faceCount === 1 ? 'face' : 'faces'} using ${material}.`;
+    this.ui.statusMessage.set(
+      `Selected ${faceCount} ${faceCount === 1 ? 'face' : 'faces'} using ${material}.`,
+    );
   }
 
   public selectBrushesUsingCurrentMaterial(): void {
     const material = this.selectedMaterialToken();
     if (!material) {
-      this.ui.statusMessage.textContent = 'Choose or enter a material first.';
+      this.ui.statusMessage.set('Choose or enter a material first.');
       return;
     }
     const selection = this.state.session.selectBrushesUsingMaterial(material);
     const selectedBrushCount = selectedBrushIds(selection).length;
     if (selectedBrushCount === 0) {
-      this.ui.statusMessage.textContent = `No visible, editable brushes use ${material}.`;
+      this.ui.statusMessage.set(`No visible, editable brushes use ${material}.`);
       return;
     }
     this.setEditorTool('select');
-    this.ui.statusMessage.textContent = `Selected ${selectedBrushCount} ${selectedBrushCount === 1 ? 'brush' : 'brushes'} using ${material}.`;
+    this.ui.statusMessage.set(
+      `Selected ${selectedBrushCount} ${selectedBrushCount === 1 ? 'brush' : 'brushes'} using ${material}.`,
+    );
   }
 
   public replaceSelectedMaterialUsage(): void {
@@ -327,22 +320,26 @@ export class MaterialsPresenter {
       !targetMaterial ||
       sourceMaterial.toLowerCase() === targetMaterial.toLowerCase()
     ) {
-      this.ui.statusMessage.textContent = 'Enter two different material names first.';
+      this.ui.statusMessage.set('Enter two different material names first.');
       return;
     }
     try {
       const changedFaceCount = this.state.session.replaceMaterial(sourceMaterial, targetMaterial);
       if (changedFaceCount === 0) {
-        this.ui.statusMessage.textContent = `No ${sourceMaterial} faces match the current replacement scope.`;
+        this.ui.statusMessage.set(
+          `No ${sourceMaterial} faces match the current replacement scope.`,
+        );
         return;
       }
       this.state.activeMaterialName = targetMaterial;
       this.ui.materialBrowser.update({ activeMaterial: targetMaterial });
       this.setEditorTool('face');
       this.renderMaterialCatalog();
-      this.ui.statusMessage.textContent = `Replaced ${sourceMaterial} with ${targetMaterial} on ${changedFaceCount} ${changedFaceCount === 1 ? 'face' : 'faces'}. Undo restores the previous materials.`;
+      this.ui.statusMessage.set(
+        `Replaced ${sourceMaterial} with ${targetMaterial} on ${changedFaceCount} ${changedFaceCount === 1 ? 'face' : 'faces'}. Undo restores the previous materials.`,
+      );
     } catch (error) {
-      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
     }
   }
 }

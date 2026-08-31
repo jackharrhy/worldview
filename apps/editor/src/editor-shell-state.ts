@@ -6,6 +6,26 @@ import type {
   SurfaceFlagDefinition,
   WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor/core';
+import { EntityInspectorPort } from './entity-inspector-state.js';
+import {
+  EntityLinksPort,
+  IssueBrowserPort,
+  LayerPanelPort,
+  ViewFilterPort,
+} from './organization-ui-state.js';
+import { ReferenceScenesPort } from './reference-scenes-state.js';
+import {
+  BuildLogPort,
+  ProjectUiPort,
+  ProjectToolbarPort,
+  RecoveryVersionsPort,
+} from './project-build-ui-state.js';
+import { PointEntityToolPort } from './point-entity-tool-state.js';
+import { EditorToolSettingsPort } from './editor-tool-settings-state.js';
+import { EditorCommandPort } from './editor-command-state.js';
+import { SelectionInspectorPort } from './selection-inspector-state.js';
+import { SimpleShapeToolPort, SweepToolPort } from './geometry-tool-state.js';
+import { ObjectToolsPort } from './object-tools-state.js';
 
 export interface StatusMessageSnapshot {
   readonly message: string;
@@ -21,11 +41,7 @@ export class StatusMessagePort {
   public readonly subscribe = this.store.subscribe;
   public readonly getSnapshot = this.store.getSnapshot;
 
-  public get textContent(): string {
-    return this.store.getSnapshot().message;
-  }
-
-  public set textContent(message: string | null) {
+  public set(message: string | null): void {
     this.store.set({ message: message ?? '', tone: 'normal' });
   }
 
@@ -78,11 +94,7 @@ export class PointerContextPort {
   public readonly subscribe = this.store.subscribe;
   public readonly getSnapshot = this.store.getSnapshot;
 
-  public get textContent(): string {
-    return this.store.getSnapshot();
-  }
-
-  public set textContent(message: string | null) {
+  public set(message: string | null): void {
     this.store.set(message ?? '');
   }
 }
@@ -90,6 +102,54 @@ export class PointerContextPort {
 export interface ViewportLayoutSnapshot {
   readonly perspectiveOnly: boolean;
   readonly rendererReady: boolean;
+}
+
+export type WorkspaceResizeKind =
+  | 'viewport-column'
+  | 'viewport-top'
+  | 'viewport-cross'
+  | 'inspector';
+
+export interface WorkspaceLayoutSnapshot {
+  readonly viewportColumn: number;
+  readonly viewportTop: number;
+  readonly inspectorWidth: number;
+  readonly dragging: WorkspaceResizeKind | null;
+}
+
+export class WorkspaceLayoutPort {
+  private readonly store = new SnapshotStore<WorkspaceLayoutSnapshot>({
+    viewportColumn: 0.5,
+    viewportTop: 0.5,
+    inspectorWidth: 320,
+    dragging: null,
+  });
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+  public update(update: Partial<WorkspaceLayoutSnapshot>): void {
+    this.store.set({ ...this.store.getSnapshot(), ...update });
+  }
+}
+
+export interface ViewportPresentationSnapshot {
+  readonly showingCompiled: boolean;
+  readonly perspectiveMode: string;
+  readonly perspectiveTitle: string;
+  readonly error: string | null;
+}
+
+export class ViewportPresentationPort {
+  private readonly store = new SnapshotStore<ViewportPresentationSnapshot>({
+    showingCompiled: false,
+    perspectiveMode: 'EDIT',
+    perspectiveTitle: '',
+    error: null,
+  });
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+  public update(update: Partial<ViewportPresentationSnapshot>): void {
+    this.store.set({ ...this.store.getSnapshot(), ...update });
+  }
 }
 
 export interface ViewportLayoutActions {
@@ -129,14 +189,30 @@ export class ViewportLayoutPort {
 
 export type InspectorPage = 'map' | 'object' | 'textures';
 
+export interface InspectorLayoutSnapshot {
+  readonly active: InspectorPage;
+  readonly open: boolean;
+}
+
 export class InspectorLayoutPort {
-  private readonly store = new SnapshotStore<InspectorPage>('object');
+  private readonly store = new SnapshotStore<InspectorLayoutSnapshot>({
+    active: 'object',
+    open: true,
+  });
 
   public readonly subscribe = this.store.subscribe;
   public readonly getSnapshot = this.store.getSnapshot;
 
   public setActive(page: InspectorPage): void {
-    this.store.set(page);
+    this.store.set({ ...this.store.getSnapshot(), active: page });
+  }
+
+  public setOpen(open: boolean): void {
+    this.store.set({ ...this.store.getSnapshot(), open });
+  }
+
+  public toggle(): void {
+    this.setOpen(!this.store.getSnapshot().open);
   }
 }
 
@@ -425,6 +501,7 @@ export interface MaterialBrowserSnapshot {
   readonly replaceSource: string;
   readonly replaceTarget: string;
   readonly replaceScope: string;
+  readonly revealVersion: number;
 }
 
 export interface MaterialBrowserActions {
@@ -458,6 +535,7 @@ const EMPTY_MATERIAL_BROWSER: MaterialBrowserSnapshot = {
   replaceSource: '',
   replaceTarget: '',
   replaceScope: 'No selection: replace across the whole map.',
+  revealVersion: 0,
 };
 
 export class MaterialBrowserPort {
@@ -494,6 +572,7 @@ export interface ResourceSettingsSnapshot {
   readonly paletteLoaded: boolean;
   readonly message: string;
   readonly tone: 'normal' | 'error';
+  readonly revealVersion: number;
 }
 
 export class ResourceSettingsPort {
@@ -502,6 +581,7 @@ export class ResourceSettingsPort {
     paletteLoaded: false,
     message: 'Material resources are local to this browser until added to a project mount.',
     tone: 'normal',
+    revealVersion: 0,
   });
   public readonly subscribe = this.store.subscribe;
   public readonly getSnapshot = this.store.getSnapshot;
@@ -641,6 +721,8 @@ export interface EditorShellState {
   readonly compileState: CompileStatePort;
   readonly pointerContext: PointerContextPort;
   readonly viewportLayout: ViewportLayoutPort;
+  readonly workspaceLayout: WorkspaceLayoutPort;
+  readonly viewportPresentation: ViewportPresentationPort;
   readonly inspectorLayout: InspectorLayoutPort;
   readonly theme: ThemeUiPort;
   readonly viewportContextMenu: ViewportContextMenuPort;
@@ -651,6 +733,23 @@ export interface EditorShellState {
   readonly resourceSettings: ResourceSettingsPort;
   readonly workspaceHome: WorkspaceHomePort;
   readonly collaborationUi: CollaborationUiPort;
+  readonly entityInspector: EntityInspectorPort;
+  readonly layerPanel: LayerPanelPort;
+  readonly issueBrowser: IssueBrowserPort;
+  readonly viewFilter: ViewFilterPort;
+  readonly entityLinks: EntityLinksPort;
+  readonly referenceScenes: ReferenceScenesPort;
+  readonly projectToolbar: ProjectToolbarPort;
+  readonly projectUi: ProjectUiPort;
+  readonly recoveryVersions: RecoveryVersionsPort;
+  readonly buildLog: BuildLogPort;
+  readonly pointEntityTool: PointEntityToolPort;
+  readonly toolSettings: EditorToolSettingsPort;
+  readonly editorCommands: EditorCommandPort;
+  readonly selectionInspector: SelectionInspectorPort;
+  readonly simpleShapeTool: SimpleShapeToolPort;
+  readonly sweepTool: SweepToolPort;
+  readonly objectTools: ObjectToolsPort;
 }
 
 export function createEditorShellState(): EditorShellState {
@@ -660,6 +759,8 @@ export function createEditorShellState(): EditorShellState {
     compileState: new CompileStatePort(),
     pointerContext: new PointerContextPort(),
     viewportLayout: new ViewportLayoutPort(),
+    workspaceLayout: new WorkspaceLayoutPort(),
+    viewportPresentation: new ViewportPresentationPort(),
     inspectorLayout: new InspectorLayoutPort(),
     theme: new ThemeUiPort(),
     viewportContextMenu: new ViewportContextMenuPort(),
@@ -670,5 +771,22 @@ export function createEditorShellState(): EditorShellState {
     resourceSettings: new ResourceSettingsPort(),
     workspaceHome: new WorkspaceHomePort(),
     collaborationUi: new CollaborationUiPort(),
+    entityInspector: new EntityInspectorPort(),
+    layerPanel: new LayerPanelPort(),
+    issueBrowser: new IssueBrowserPort(),
+    viewFilter: new ViewFilterPort(),
+    entityLinks: new EntityLinksPort(),
+    referenceScenes: new ReferenceScenesPort(),
+    projectToolbar: new ProjectToolbarPort(),
+    projectUi: new ProjectUiPort(),
+    recoveryVersions: new RecoveryVersionsPort(),
+    buildLog: new BuildLogPort(),
+    pointEntityTool: new PointEntityToolPort(),
+    toolSettings: new EditorToolSettingsPort(),
+    editorCommands: new EditorCommandPort(),
+    selectionInspector: new SelectionInspectorPort(),
+    simpleShapeTool: new SimpleShapeToolPort(),
+    sweepTool: new SweepToolPort(),
+    objectTools: new ObjectToolsPort(),
   };
 }

@@ -52,7 +52,7 @@
   grid-template-columns: 76px minmax(0, 1fr) 28px auto;
 }
 
-.entity-property-row span {
+.entity-property-row > span {
   align-self: stretch;
   overflow: hidden;
   padding: 5px 6px;
@@ -64,9 +64,8 @@
   white-space: nowrap;
 }
 
-.entity-property-row input:not([type='checkbox']),
-.entity-property-row select,
-.entity-property-add input:not([type='checkbox']) {
+.entity-property-row .wv-input,
+.entity-property-add .wv-input {
   min-width: 0;
   height: 24px;
   padding: 3px 6px;
@@ -78,6 +77,27 @@
   font-size: 9px;
 }
 
+.entity-property-value,
+.entity-property-add .wv-field {
+  min-width: 0;
+  gap: 0;
+}
+
+.entity-property-value .wv-select-trigger {
+  width: 100%;
+  min-height: 24px;
+  border-width: 0 1px 0 0;
+  border-radius: 0;
+  border-color: var(--line-subtle);
+  background: var(--surface-input);
+  font: 9px/1 var(--font-mono);
+}
+
+.entity-property-boolean {
+  align-self: center;
+  padding-inline: 6px;
+}
+
 .entity-flags {
   display: grid;
   gap: 0.25rem;
@@ -85,18 +105,25 @@
   overflow: auto;
 }
 
-.entity-flags label {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.72rem;
+.entity-flags .wv-checkbox {
+  min-height: 20px;
+  padding-inline: 5px;
+  font-size: 9px;
 }
 
 .entity-property-protection {
   place-self: center;
-  width: 13px;
-  height: 13px;
-  accent-color: var(--special);
+}
+
+.entity-property-protection .wv-checkbox {
+  width: 22px;
+  min-height: 22px;
+  justify-content: center;
+  padding: 0;
+}
+
+.entity-property-protection .wv-checkbox-indicator {
+  margin: 0;
 }
 
 .entity-property-row button {
@@ -113,6 +140,16 @@
   margin-top: 0;
   border: 0;
   border-bottom: 1px solid var(--line-subtle);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .entity-property-protected {
@@ -695,7 +732,7 @@
   font-size: 9px;
 }
 
-.entity-link-mode select {
+.entity-link-mode .wv-select-trigger {
   min-width: 0;
   height: 27px;
   border: 1px solid var(--line);

@@ -1,13 +1,12 @@
 import {
   createSequentialIdFactory,
   deriveEditorGroups,
-  pointEntityDefinition,
   selectedEditorGroup,
   type EditorSelection,
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorApplication } from './editor-application.js';
-import { required } from './editor-elements.js';
+import type { ObjectToolsCommand } from './object-tools-state.js';
 
 export class ToolEvents {
   public constructor(private readonly app: EditorApplication) {}
@@ -19,489 +18,33 @@ export class ToolEvents {
   }
 
   public connect(signal: AbortSignal): void {
-    for (const control of [
-      this.ui.simpleShapeKind,
-      this.ui.simpleShapeAxis,
-      this.ui.simpleShapeSides,
-      this.ui.simpleShapeCircleMode,
-      this.ui.simpleShapeHollow,
-      this.ui.simpleShapeThickness,
-      this.ui.simpleShapeRings,
-      this.ui.simpleShapeAccuracy,
-      this.ui.simpleShapeStepHeight,
-      this.ui.simpleShapeStairDirection,
-    ]) {
-      control.addEventListener(
-        'change',
-        () => {
-          try {
-            this.app.geometry.updateSimpleShapeFields();
-            if (this.state.activeTool === 'create') {
-              this.ui.statusMessage.textContent = `${this.app.geometry.simpleShapeLabel(this.state.simpleShapeOptions.kind)} selected. Drag a bounding box in any viewport.`;
-            }
-          } catch (error) {
-            this.ui.statusMessage.textContent =
-              error instanceof Error ? error.message : String(error);
-          }
-        },
-        { signal },
-      );
-    }
-
-    this.ui.gridSizeSelect.addEventListener(
-      'change',
-      () => {
-        this.state.activeGridSize = Number(this.ui.gridSizeSelect.value);
+    this.ui.toolSettings.bind({
+      setGridSize: (size) => {
+        this.state.activeGridSize = size;
+        this.ui.toolSettings.update({ gridSize: size });
         this.state.renderer?.setGridSize(this.state.activeGridSize);
-        this.ui.faceExtrudeDistance.step = String(this.state.activeGridSize);
-        this.ui.faceExtrudeDistance.value = String(this.state.activeGridSize);
-        this.ui.shearOffset.step = String(this.state.activeGridSize);
-        this.ui.sweepTranslateInputs.forEach((input) => {
-          input.step = String(this.state.activeGridSize);
-        });
-        this.ui.statusMessage.textContent = `Grid size set to ${this.state.activeGridSize}.`;
+        this.ui.objectTools.updateFaceExtrude({ distance: size, step: size });
+        this.app.geometry.syncSweepControls();
+        this.ui.statusMessage.set(`Grid size set to ${this.state.activeGridSize}.`);
       },
-      { signal },
-    );
-
-    required<HTMLButtonElement>('[data-action="extrude-inward"]').addEventListener(
-      'click',
-      () => {
-        this.app.geometry.extrudeSelectedFaceBy(-this.state.activeGridSize);
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="extrude-outward"]').addEventListener(
-      'click',
-      () => {
-        this.app.geometry.extrudeSelectedFaceBy(this.state.activeGridSize);
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="extrude-exact"]').addEventListener(
-      'click',
-      () => {
-        this.app.geometry.extrudeSelectedFaceBy(Number(this.ui.faceExtrudeDistance.value));
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="split-face"]').addEventListener(
-      'click',
-      () => {
-        this.app.geometry.splitSelectedFaceBy(Number(this.ui.faceExtrudeDistance.value));
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="stamp-face"]').addEventListener(
-      'click',
-      () => {
-        this.app.geometry.stampSelectedFaceBy(Number(this.ui.faceExtrudeDistance.value));
-      },
-      { signal },
-    );
-    const updateSweepFromControls = (): void => {
-      if (this.state.activeTool !== 'sweep') return;
-      try {
-        this.app.geometry.readSweepControls();
-        this.state.sweepEscapeReset = false;
-        this.app.geometry.refreshSweepPreview();
-      } catch (error) {
-        this.state.sweepCandidate = null;
-        this.ui.applySweepButton.disabled = true;
-        this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
-      }
-    };
-    for (const input of [
-      ...this.ui.sweepTranslateInputs,
-      ...this.ui.sweepRotateInputs,
-      this.ui.sweepScale,
-      this.ui.sweepSegments,
-      this.ui.sweepIterations,
-    ]) {
-      input.addEventListener('input', updateSweepFromControls, { signal });
-      input.addEventListener(
-        'keydown',
-        (event) => {
-          if (event.key !== 'Enter') return;
-          event.preventDefault();
-          updateSweepFromControls();
-          this.app.geometry.applySweep();
-        },
-        { signal },
-      );
-    }
-    this.ui.sweepPath.addEventListener('change', updateSweepFromControls, { signal });
-    this.ui.sweepSnap.addEventListener('change', updateSweepFromControls, { signal });
-    this.ui.textureLock.addEventListener(
-      'change',
-      () => {
-        this.state.sweepOptions = {
-          ...this.state.sweepOptions,
-          textureLock: this.ui.textureLock.checked,
-        };
+      setTextureLock: (enabled) => {
+        this.state.textureLock = enabled;
+        this.ui.toolSettings.update({ textureLock: enabled });
+        this.state.sweepOptions = { ...this.state.sweepOptions, textureLock: enabled };
         this.app.geometry.refreshSweepPreview(false);
       },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="reset-sweep"]').addEventListener(
-      'click',
-      () => {
-        this.app.geometry.resetSweep(true);
-        this.ui.statusMessage.textContent = 'Sweep destination and path controls reset.';
-      },
-      { signal },
-    );
-    this.ui.applySweepButton.addEventListener('click', () => this.app.geometry.applySweep(), {
-      signal,
     });
-    this.ui.createHullButton.addEventListener(
-      'click',
-      () => {
-        try {
-          if (!this.state.renderer?.commitHullBrush())
-            this.ui.statusMessage.textContent = 'Place hull points first.';
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.discardHullButton.addEventListener(
-      'click',
-      () => {
-        if (!this.state.renderer?.clearHullPoints())
-          this.ui.statusMessage.textContent = 'There are no hull points to discard.';
-      },
-      { signal },
-    );
-    this.ui.csgMergeButton.addEventListener(
-      'click',
-      () => this.app.geometry.applyCsgOperation('merge'),
-      { signal },
-    );
-    this.ui.csgIntersectButton.addEventListener(
-      'click',
-      () => this.app.geometry.applyCsgOperation('intersect'),
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="csg-subtract"]').addEventListener(
-      'click',
-      () => this.app.geometry.applyCsgOperation('subtract'),
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="csg-hollow"]').addEventListener(
-      'click',
-      () => this.app.geometry.applyCsgOperation('hollow'),
-      { signal },
-    );
-    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-clip-mode]')) {
-      button.addEventListener(
-        'click',
-        () => {
-          const mode = button.dataset.clipMode;
-          if (mode === 'back' || mode === 'split' || mode === 'front')
-            this.app.geometry.setClipMode(mode);
-        },
-        { signal },
-      );
-    }
-    this.ui.applyClipButton.addEventListener('click', () => this.app.geometry.applyClip(), {
-      signal,
+    signal.addEventListener('abort', () => this.ui.toolSettings.unbind(), { once: true });
+
+    this.ui.objectTools.bind({
+      dispatch: (command) => this.dispatchObjectToolsCommand(command),
     });
-    required<HTMLButtonElement>('[data-action="reset-clip"]').addEventListener(
-      'click',
-      () => {
-        this.state.renderer?.clearClipPlane();
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="reset-transform-pivot"]').addEventListener(
-      'click',
-      () => this.app.transform.resetTransformPivot(),
-      { signal },
-    );
-    for (const input of [
-      this.ui.transformPivotX,
-      this.ui.transformPivotY,
-      this.ui.transformPivotZ,
-    ]) {
-      input.addEventListener(
-        'input',
-        () => {
-          try {
-            this.app.transform.readTransformPivot();
-          } catch (error) {
-            this.ui.statusMessage.textContent =
-              error instanceof Error ? error.message : String(error);
-          }
-        },
-        { signal },
-      );
-    }
-    required<HTMLButtonElement>('[data-action="apply-transform"]').addEventListener(
-      'click',
-      () => this.app.transform.applyExactTransform(),
-      { signal },
-    );
-    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-flip-axis]')) {
-      button.addEventListener(
-        'click',
-        () => {
-          const axis = Number(button.dataset.flipAxis);
-          if (axis === 0 || axis === 1 || axis === 2) this.app.transform.flipSelectedObjects(axis);
-        },
-        { signal },
-      );
-    }
+    signal.addEventListener('abort', () => this.ui.objectTools.unbind(), { once: true });
 
-    required<HTMLButtonElement>('[data-action="set-entity-property"]').addEventListener(
-      'click',
-      () => {
-        const key = this.ui.entityPropertyKey.value.trim();
-        if (!key) {
-          this.ui.statusMessage.textContent = 'Enter an entity property key first.';
-          this.ui.entityPropertyKey.focus();
-          return;
-        }
-        this.app.entity.setEntityProperty(
-          key,
-          this.ui.entityPropertyValue.value,
-          this.ui.entityPropertyProtected.checked,
-        );
-        this.ui.entityPropertyKey.value = '';
-        this.ui.entityPropertyValue.value = '';
-        this.ui.entityPropertyProtected.checked = false;
-        this.ui.entityPropertyKey.focus();
-      },
-      { signal },
-    );
-    for (const input of [this.ui.entityPropertyKey, this.ui.entityPropertyValue]) {
-      input.addEventListener(
-        'keydown',
-        (event) => {
-          if (event.key !== 'Enter') return;
-          event.preventDefault();
-          required<HTMLButtonElement>('[data-action="set-entity-property"]').click();
-        },
-        { signal },
-      );
-    }
-
-    this.ui.pointEntityPreset.addEventListener(
-      'change',
-      () => {
-        this.ui.pointEntityClassname.value = this.ui.pointEntityPreset.value;
-        this.state.renderer?.setEntityPlacementBounds(
-          pointEntityDefinition(this.ui.pointEntityClassname.value, this.state.entityDefinitions)
-            .bounds,
-        );
-        if (this.state.activeTool === 'entity') this.app.session.setEditorTool('entity');
-      },
-      { signal },
-    );
-    this.ui.pointEntityClassname.addEventListener(
-      'input',
-      () => {
-        this.state.renderer?.setEntityPlacementBounds(
-          pointEntityDefinition(this.ui.pointEntityClassname.value, this.state.entityDefinitions)
-            .bounds,
-        );
-        if (this.state.activeTool === 'entity') {
-          this.ui.statusMessage.textContent = this.ui.pointEntityClassname.value.trim()
-            ? `Entity tool active. Click to place ${this.ui.pointEntityClassname.value.trim()}.`
-            : 'Enter a point-entity classname before placing it.';
-        }
-      },
-      { signal },
-    );
-
-    this.ui.brushEntityClassname.addEventListener(
-      'input',
-      () => this.app.inspector.updateInspector(),
-      { signal },
-    );
-    this.ui.createGroupButton.addEventListener(
-      'click',
-      () => {
-        try {
-          const name = this.ui.groupName.value.trim() || 'Group';
-          const ids = createSequentialIdFactory(
-            `group-${this.state.session.document.revision + 1}`,
-          );
-          const groupId = this.state.session.groupSelected(name, ids, this.state.openGroupId);
-          if (!groupId) {
-            this.ui.statusMessage.textContent = 'Select one or more objects before grouping.';
-            return;
-          }
-          this.ui.statusMessage.textContent = `Grouped the selection as ${name}.`;
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.renameGroupButton.addEventListener(
-      'click',
-      () => {
-        try {
-          const group =
-            selectedEditorGroup(this.state.session.document, this.state.session.selection) ??
-            deriveEditorGroups(this.state.session.document).find(
-              (candidate) => candidate.id === this.state.openGroupId,
-            );
-          if (!group) throw new Error('Select or open a group before renaming it');
-          const name = this.ui.groupName.value.trim();
-          if (!name) throw new Error('Enter a group name');
-          this.state.session.renameGroup(group.id, name);
-          this.ui.statusMessage.textContent = `Renamed group to ${name}.`;
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.openGroupButton.addEventListener(
-      'click',
-      () => {
-        const group = selectedEditorGroup(
-          this.state.session.document,
-          this.state.session.selection,
-        );
-        if (!group) {
-          this.ui.statusMessage.textContent = 'Select a group before opening it.';
-          return;
-        }
-        const memberSelection: EditorSelection | null = this.state.session.selection?.brushId
-          ? { brushId: this.state.session.selection.brushId }
-          : this.state.session.selection?.entityId
-            ? { entityId: this.state.session.selection.entityId }
-            : null;
-        this.app.organization.openEditorGroup(group.id, memberSelection);
-      },
-      { signal },
-    );
-    this.ui.closeGroupButton.addEventListener(
-      'click',
-      () => this.app.organization.closeEditorGroup(),
-      { signal },
-    );
-    this.ui.createLinkedDuplicateButton.addEventListener(
-      'click',
-      () => {
-        try {
-          this.state.duplicateSequence += 1;
-          const groupId = this.state.session.linkedDuplicateSelected(
-            createSequentialIdFactory(`linked-duplicate-${this.state.duplicateSequence}`),
-            [this.state.activeGridSize, this.state.activeGridSize, 0],
-            this.ui.textureLock.checked,
-          );
-          if (!groupId) {
-            this.ui.statusMessage.textContent =
-              'Select a closed group before creating a linked duplicate.';
-            return;
-          }
-          const group = deriveEditorGroups(this.state.session.document).find(
-            (candidate) => candidate.id === groupId,
-          );
-          this.ui.statusMessage.textContent = `Created linked duplicate${group ? ` of ${group.name}` : ''}. Move or transform this copy independently.`;
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.unlinkGroupButton.addEventListener(
-      'click',
-      () => {
-        try {
-          const group = selectedEditorGroup(
-            this.state.session.document,
-            this.state.session.selection,
-          );
-          if (!group || !this.state.session.unlinkGroup(group.id)) {
-            this.ui.statusMessage.textContent = 'Select a linked group before unlinking it.';
-            return;
-          }
-          this.ui.statusMessage.textContent = `Unlinked ${group.name}. Its contents are now independent.`;
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.ungroupButton.addEventListener(
-      'click',
-      () => {
-        try {
-          const group = selectedEditorGroup(
-            this.state.session.document,
-            this.state.session.selection,
-          );
-          if (!group || !this.state.session.ungroupSelected(group.id)) {
-            this.ui.statusMessage.textContent = 'Select a closed group before ungrouping it.';
-            return;
-          }
-          if (this.state.openGroupId === group.id) this.app.organization.closeEditorGroup(false);
-          this.ui.statusMessage.textContent = `Ungrouped ${group.name} without deleting its objects.`;
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.groupName.addEventListener(
-      'keydown',
-      (event) => {
-        if (event.key !== 'Enter') return;
-        event.preventDefault();
-        if (!this.ui.renameGroupButton.hidden) this.ui.renameGroupButton.click();
-        else this.ui.createGroupButton.click();
-      },
-      { signal },
-    );
-    this.ui.makeBrushEntityButton.addEventListener(
-      'click',
-      () => {
-        try {
-          const classname = this.ui.brushEntityClassname.value.trim();
-          if (!classname) throw new Error('Enter a brush-entity classname first');
-          const ids = createSequentialIdFactory(
-            `brush-entity-${this.state.session.document.revision + 1}`,
-          );
-          if (!this.state.session.createBrushEntity(classname, ids)) {
-            this.ui.statusMessage.textContent = 'Select one or more brushes first.';
-          }
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.makeStructuralButton.addEventListener(
-      'click',
-      () => {
-        try {
-          if (!this.state.session.makeSelectedStructural()) {
-            this.ui.statusMessage.textContent = 'Select one or more brushes first.';
-          }
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.paletteFile.addEventListener(
+    this.app.elements.paletteFile.addEventListener(
       'change',
       async () => {
-        const file = this.ui.paletteFile.files?.[0];
+        const file = this.app.elements.paletteFile.files?.[0];
         if (!file) return;
         const bytes = new Uint8Array(await file.arrayBuffer());
         if (bytes.byteLength < 768) {
@@ -522,15 +65,15 @@ export class ToolEvents {
             tone: 'normal',
           });
         }
-        this.ui.paletteFile.value = '';
+        this.app.elements.paletteFile.value = '';
       },
       { signal },
     );
 
-    this.ui.wadFiles.addEventListener(
+    this.app.elements.wadFiles.addEventListener(
       'change',
       async () => {
-        const files = [...(this.ui.wadFiles.files ?? [])];
+        const files = [...(this.app.elements.wadFiles.files ?? [])];
         if (files.length === 0) return;
         const summaries: string[] = [];
         let hasErrors = false;
@@ -573,65 +116,13 @@ export class ToolEvents {
           tone: hasErrors ? 'error' : 'normal',
           loadedWadCount: this.state.loadedWadSources.size,
         });
-        this.ui.statusMessage.textContent = `Material catalog now contains ${this.state.materialCatalog.size} textures.`;
-        this.ui.wadFiles.value = '';
+        this.ui.statusMessage.set(
+          `Material catalog now contains ${this.state.materialCatalog.size} textures.`,
+        );
+        this.app.elements.wadFiles.value = '';
       },
       { signal },
     );
-
-    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-nudge-axis]')) {
-      button.addEventListener(
-        'click',
-        () => {
-          const axis = Number(button.dataset.nudgeAxis);
-          const direction = Number(button.dataset.nudgeDirection);
-          if (!Number.isInteger(axis) || axis < 0 || axis > 2 || !Number.isFinite(direction))
-            return;
-          const delta: [number, number, number] = [0, 0, 0];
-          delta[axis] = this.state.activeGridSize * direction;
-          if (this.state.activeTool === 'sweep') {
-            const translation = [...this.state.sweepTransform.translation] as [
-              number,
-              number,
-              number,
-            ];
-            translation[axis] = translation[axis]! + delta[axis]!;
-            this.state.sweepTransform = { ...this.state.sweepTransform, translation };
-            this.state.sweepEscapeReset = false;
-            this.app.geometry.syncSweepControls();
-            this.app.geometry.refreshSweepPreview();
-            return;
-          }
-          if (
-            this.state.activeTool === 'face' &&
-            this.app.transform.commitFaceNudge(
-              delta,
-              this.state.lastPointerPosition?.viewport ?? 'perspective',
-            )
-          ) {
-            return;
-          }
-          if (
-            this.app.transform.isTopologyTool(this.state.activeTool) &&
-            this.app.transform.commitTopologyNudge(
-              delta,
-              this.state.lastPointerPosition?.viewport ?? 'perspective',
-            )
-          ) {
-            return;
-          }
-          try {
-            if (!this.state.session.translateSelected(delta, this.ui.textureLock.checked)) {
-              this.ui.statusMessage.textContent = 'Select a brush before nudging.';
-            }
-          } catch (error) {
-            this.ui.statusMessage.textContent =
-              error instanceof Error ? error.message : String(error);
-          }
-        },
-        { signal },
-      );
-    }
 
     window.addEventListener(
       'copy',
@@ -641,9 +132,11 @@ export class ToolEvents {
         if (!text) return;
         event.preventDefault();
         event.clipboardData?.setData('text/plain', text);
-        this.ui.statusMessage.textContent = this.state.session.selection?.faceId
-          ? 'Copied face material and attributes.'
-          : 'Copied selected objects as map text.';
+        this.ui.statusMessage.set(
+          this.state.session.selection?.faceId
+            ? 'Copied face material and attributes.'
+            : 'Copied selected objects as map text.',
+        );
       },
       { signal },
     );
@@ -659,5 +152,198 @@ export class ToolEvents {
       },
       { signal },
     );
+  }
+
+  private dispatchObjectToolsCommand(command: ObjectToolsCommand): void {
+    try {
+      switch (command.type) {
+        case 'create-hull':
+          if (!this.state.renderer?.commitHullBrush()) {
+            this.ui.statusMessage.set('Place hull points first.');
+          }
+          return;
+        case 'discard-hull':
+          if (!this.state.renderer?.clearHullPoints()) {
+            this.ui.statusMessage.set('There are no hull points to discard.');
+          }
+          return;
+        case 'create-group': {
+          const name = command.name.trim() || 'Group';
+          const ids = createSequentialIdFactory(
+            `group-${this.state.session.document.revision + 1}`,
+          );
+          if (!this.state.session.groupSelected(name, ids, this.state.openGroupId)) {
+            this.ui.statusMessage.set('Select one or more objects before grouping.');
+            return;
+          }
+          this.ui.statusMessage.set(`Grouped the selection as ${name}.`);
+          return;
+        }
+        case 'rename-group': {
+          const group =
+            selectedEditorGroup(this.state.session.document, this.state.session.selection) ??
+            deriveEditorGroups(this.state.session.document).find(
+              (candidate) => candidate.id === this.state.openGroupId,
+            );
+          if (!group) throw new Error('Select or open a group before renaming it');
+          const name = command.name.trim();
+          if (!name) throw new Error('Enter a group name');
+          this.state.session.renameGroup(group.id, name);
+          this.ui.statusMessage.set(`Renamed group to ${name}.`);
+          return;
+        }
+        case 'open-group': {
+          const group = selectedEditorGroup(
+            this.state.session.document,
+            this.state.session.selection,
+          );
+          if (!group) {
+            this.ui.statusMessage.set('Select a group before opening it.');
+            return;
+          }
+          const memberSelection: EditorSelection | null = this.state.session.selection?.brushId
+            ? { brushId: this.state.session.selection.brushId }
+            : this.state.session.selection?.entityId
+              ? { entityId: this.state.session.selection.entityId }
+              : null;
+          this.app.organization.openEditorGroup(group.id, memberSelection);
+          return;
+        }
+        case 'close-group':
+          this.app.organization.closeEditorGroup();
+          return;
+        case 'duplicate-linked-group': {
+          this.state.duplicateSequence += 1;
+          const groupId = this.state.session.linkedDuplicateSelected(
+            createSequentialIdFactory(`linked-duplicate-${this.state.duplicateSequence}`),
+            [this.state.activeGridSize, this.state.activeGridSize, 0],
+            this.state.textureLock,
+          );
+          if (!groupId) {
+            this.ui.statusMessage.set('Select a closed group before creating a linked duplicate.');
+            return;
+          }
+          const group = deriveEditorGroups(this.state.session.document).find(
+            (candidate) => candidate.id === groupId,
+          );
+          this.ui.statusMessage.set(
+            `Created linked duplicate${group ? ` of ${group.name}` : ''}. Move or transform this copy independently.`,
+          );
+          return;
+        }
+        case 'unlink-group': {
+          const group = selectedEditorGroup(
+            this.state.session.document,
+            this.state.session.selection,
+          );
+          if (!group || !this.state.session.unlinkGroup(group.id)) {
+            this.ui.statusMessage.set('Select a linked group before unlinking it.');
+            return;
+          }
+          this.ui.statusMessage.set(`Unlinked ${group.name}. Its contents are now independent.`);
+          return;
+        }
+        case 'ungroup': {
+          const group = selectedEditorGroup(
+            this.state.session.document,
+            this.state.session.selection,
+          );
+          if (!group || !this.state.session.ungroupSelected(group.id)) {
+            this.ui.statusMessage.set('Select a closed group before ungrouping it.');
+            return;
+          }
+          if (this.state.openGroupId === group.id) this.app.organization.closeEditorGroup(false);
+          this.ui.statusMessage.set(`Ungrouped ${group.name} without deleting its objects.`);
+          return;
+        }
+        case 'selection-query':
+          this.app.document.applySelectionBrushQuery(command.mode);
+          return;
+        case 'flip':
+          this.app.transform.flipSelectedObjects(command.axis);
+          return;
+        case 'face-extrude':
+          if (command.operation === 'inward') {
+            this.app.geometry.extrudeSelectedFaceBy(-this.state.activeGridSize);
+          } else if (command.operation === 'outward') {
+            this.app.geometry.extrudeSelectedFaceBy(this.state.activeGridSize);
+          } else if (command.operation === 'exact') {
+            this.app.geometry.extrudeSelectedFaceBy(command.distance);
+          } else if (command.operation === 'split') {
+            this.app.geometry.splitSelectedFaceBy(command.distance);
+          } else {
+            this.app.geometry.stampSelectedFaceBy(command.distance);
+          }
+          return;
+        case 'set-clip-mode':
+          this.app.geometry.setClipMode(command.mode);
+          return;
+        case 'apply-clip':
+          this.app.geometry.applyClip();
+          return;
+        case 'reset-clip':
+          this.state.renderer?.clearClipPlane();
+          return;
+        case 'set-transform-pivot':
+          this.app.transform.setTransformPivot(command.pivot);
+          return;
+        case 'reset-transform-pivot':
+          this.app.transform.resetTransformPivot();
+          return;
+        case 'apply-transform':
+          this.app.transform.applyExactTransform();
+          return;
+        case 'csg':
+          this.app.geometry.applyCsgOperation(command.operation);
+          return;
+        case 'make-brush-entity': {
+          const classname = command.classname.trim();
+          if (!classname) throw new Error('Enter a brush-entity classname first');
+          const ids = createSequentialIdFactory(
+            `brush-entity-${this.state.session.document.revision + 1}`,
+          );
+          if (!this.state.session.createBrushEntity(classname, ids)) {
+            this.ui.statusMessage.set('Select one or more brushes first.');
+          }
+          return;
+        }
+        case 'make-structural':
+          if (!this.state.session.makeSelectedStructural()) {
+            this.ui.statusMessage.set('Select one or more brushes first.');
+          }
+          return;
+        case 'nudge':
+          this.nudge(command.axis, command.direction);
+      }
+    } catch (error) {
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private nudge(axis: 0 | 1 | 2, direction: -1 | 1): void {
+    const delta: [number, number, number] = [0, 0, 0];
+    delta[axis] = this.state.activeGridSize * direction;
+    if (this.state.activeTool === 'sweep') {
+      const translation = [...this.state.sweepTransform.translation] as [number, number, number];
+      translation[axis] += delta[axis];
+      this.state.sweepTransform = { ...this.state.sweepTransform, translation };
+      this.state.sweepEscapeReset = false;
+      this.app.geometry.syncSweepControls();
+      this.app.geometry.refreshSweepPreview();
+      return;
+    }
+    const viewport = this.state.lastPointerPosition?.viewport ?? 'perspective';
+    if (this.state.activeTool === 'face' && this.app.transform.commitFaceNudge(delta, viewport)) {
+      return;
+    }
+    if (
+      this.app.transform.isTopologyTool(this.state.activeTool) &&
+      this.app.transform.commitTopologyNudge(delta, viewport)
+    ) {
+      return;
+    }
+    if (!this.state.session.translateSelected(delta, this.state.textureLock)) {
+      this.ui.statusMessage.set('Select a brush before nudging.');
+    }
   }
 }

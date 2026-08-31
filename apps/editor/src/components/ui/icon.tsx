@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import { Tooltip, TooltipTrigger } from 'react-aria-components/Tooltip';
 
 import { Button, type ButtonProps } from './button.js';
@@ -23,9 +23,18 @@ export function Icon({ name, className = '', ...props }: IconProps) {
 export interface IconButtonProps extends Omit<ButtonProps, 'children' | 'aria-label'> {
   readonly icon: IconName;
   readonly label: string;
+  readonly tooltip?: ReactNode;
+  readonly badge?: ReactNode;
 }
 
-export function IconButton({ icon, label, className = '', ...props }: IconButtonProps) {
+export function IconButton({
+  icon,
+  label,
+  tooltip = label,
+  badge,
+  className = '',
+  ...props
+}: IconButtonProps) {
   return (
     <TooltipTrigger delay={500} closeDelay={0}>
       <Button
@@ -36,9 +45,10 @@ export function IconButton({ icon, label, className = '', ...props }: IconButton
         {...props}
       >
         <Icon name={icon} />
+        {badge}
       </Button>
       <Tooltip className="wv-tooltip" placement="bottom">
-        {label}
+        {tooltip}
       </Tooltip>
     </TooltipTrigger>
   );

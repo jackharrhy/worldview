@@ -393,7 +393,7 @@ async function openEditor(page: Page, options: { empty?: boolean } = {}): Promis
 }
 
 async function openToolbarMenu(page: Page, name: string): Promise<void> {
-  await page.getByTitle(name, { exact: true }).click();
+  await page.getByRole('button', { name, exact: true }).click();
 }
 
 async function chooseMaterialAction(page: Page, name: string): Promise<void> {
@@ -601,9 +601,9 @@ interface CameraSnapshot {
 }
 
 async function perspectiveCamera(page: Page): Promise<CameraSnapshot> {
-  const indicator = page.locator('#perspective-mode');
-  await expect(indicator).toHaveAttribute('data-camera');
-  const value = await indicator.getAttribute('data-camera');
+  const canvas = page.locator('[data-viewport="perspective"] .source-canvas');
+  await expect(canvas).toHaveAttribute('data-camera');
+  const value = await canvas.getAttribute('data-camera');
   if (!value) throw new Error('Perspective camera state was not published');
   return JSON.parse(value) as CameraSnapshot;
 }
@@ -695,6 +695,15 @@ test.describe('Editor application lifetime', () => {
   test('owns one event and renderer lifetime across repeated route mounts @ci-smoke', async ({
     page,
   }) => {
+    const gpuErrors: string[] = [];
+    page.on('console', (message) => {
+      if (
+        message.type() === 'error' &&
+        /WebGPU|Invalid TextureView|cannot be used with \[Device\]/i.test(message.text())
+      ) {
+        gpuErrors.push(message.text());
+      }
+    });
     await page.goto('http://127.0.0.1:5174/new-map');
 
     for (let cycle = 0; cycle < 2; cycle += 1) {
@@ -717,6 +726,7 @@ test.describe('Editor application lifetime', () => {
       await expect(page.locator('html')).not.toHaveAttribute('data-worldview-editor-ready', 'true');
       await expect(page.locator('html')).not.toHaveAttribute('data-worldview-site-tools', /.+/);
     }
+    expect(gpuErrors).toEqual([]);
   });
 
   test('cannot publish readiness after the route leaves during startup @ci-smoke', async ({
@@ -865,7 +875,7 @@ test.describe('WebMCP site authoring', () => {
       }
       expect(failures, `${theme} editor controls below 3:1: ${failures.join(', ')}`).toEqual([]);
       for (const control of [
-        page.getByTitle('Worldview Editor', { exact: true }),
+        page.getByRole('button', { name: 'Home', exact: true }),
         page.getByRole('button', { name: 'Source', exact: true }),
         page.locator('#issue-status'),
       ]) {
@@ -1154,10 +1164,12 @@ test.describe('WebMCP site authoring', () => {
         overflow: getComputedStyle(button).overflow,
       })),
     ).toEqual({ width: 30, overflow: 'hidden' });
-    await expect(page.getByTitle('More document actions', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Versions', exact: true })).toBeHidden();
+    await expect(
+      page.getByRole('button', { name: 'More document actions', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Versions', exact: true })).toBeHidden();
     await openToolbarMenu(page, 'More document actions');
-    await expect(page.getByRole('button', { name: 'Versions', exact: true })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Versions', exact: true })).toBeVisible();
   });
 
   test('registers first-class live tools with revision guards, visible edits, and undo @ci-smoke', async ({
@@ -4742,9 +4754,10 @@ test.describe('3D source authoring', () => {
     await page.mouse.move(topLeft.x, topLeft.y);
     await page.mouse.down();
     await page.mouse.move(topRight.x, topRight.y, { steps: 8 });
-    await expect(page.locator('.handle-lasso')).toBeVisible();
+    const lasso = page.locator('[data-viewport="xy"] .handle-lasso');
+    await expect(lasso).toBeVisible();
     await page.mouse.up();
-    await expect(page.locator('.handle-lasso')).toHaveCount(0);
+    await expect(lasso).toBeHidden();
     await expect(page.locator('#topology-selection-count')).toHaveText('4');
 
     const bottomLeft = await topWorldPoint(page, -150, -100);

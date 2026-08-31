@@ -1,7 +1,6 @@
 import { selectedFaceReferences } from '@jackharrhy/worldview-editor';
 
 import type { EditorApplication } from './editor-application.js';
-import { required } from './editor-elements.js';
 
 export class KeyboardEvents {
   public constructor(private readonly app: EditorApplication) {}
@@ -37,15 +36,14 @@ export class KeyboardEvents {
               : gridSizes[steppedIndex];
           if (nextGridSize !== undefined && this.state.activeTool !== 'sweep') {
             event.preventDefault();
-            this.ui.gridSizeSelect.value = String(nextGridSize);
-            this.ui.gridSizeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            this.ui.toolSettings.setGridSize(nextGridSize);
             return;
           }
         }
         if (event.key === 'Escape' && this.state.viewFilterPopoverOpen) {
           event.preventDefault();
           this.app.organization.setViewFilterPopoverOpen(false);
-          this.ui.viewFilterToggle.focus();
+          this.app.elements.viewFilterToggle.focus();
           return;
         }
         if (!editingText && event.key === 'Home') {
@@ -113,8 +111,9 @@ export class KeyboardEvents {
         }
         if (!editingText && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'g') {
           event.preventDefault();
-          if (event.shiftKey) this.ui.ungroupButton.click();
-          else this.ui.createGroupButton.click();
+          this.ui.objectTools.dispatch(
+            event.shiftKey ? { type: 'ungroup' } : { type: 'create-group', name: 'Group' },
+          );
           return;
         }
         if (
@@ -124,15 +123,16 @@ export class KeyboardEvents {
           event.key.toLowerCase() === 'd'
         ) {
           event.preventDefault();
-          this.ui.createLinkedDuplicateButton.click();
+          this.ui.objectTools.dispatch({ type: 'duplicate-linked-group' });
           return;
         }
         if (this.state.activeTool === 'sweep' && event.key === 'Escape') {
           event.preventDefault();
           if (!this.state.sweepEscapeReset) {
             this.app.geometry.resetSweep(true);
-            this.ui.statusMessage.textContent =
-              'Sweep destination reset. Press Escape again to leave the tool.';
+            this.ui.statusMessage.set(
+              'Sweep destination reset. Press Escape again to leave the tool.',
+            );
           } else {
             this.app.session.setEditorTool('select');
           }
@@ -294,10 +294,9 @@ export class KeyboardEvents {
           event.preventDefault();
           try {
             if (!this.state.renderer?.commitHullBrush())
-              this.ui.statusMessage.textContent = 'Place hull points first.';
+              this.ui.statusMessage.set('Place hull points first.');
           } catch (error) {
-            this.ui.statusMessage.textContent =
-              error instanceof Error ? error.message : String(error);
+            this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
           }
           return;
         }
@@ -312,11 +311,11 @@ export class KeyboardEvents {
         if (!editingText && event.key === 'Escape' && this.state.activeTool !== 'select') {
           event.preventDefault();
           if (this.state.activeTool === 'clip' && this.state.renderer?.removeLastClipPoint()) {
-            this.ui.statusMessage.textContent = 'Removed the most recent clip point.';
+            this.ui.statusMessage.set('Removed the most recent clip point.');
             return;
           }
           if (this.state.activeTool === 'hull' && this.state.renderer?.clearHullPoints()) {
-            this.ui.statusMessage.textContent = 'Discarded all hull points.';
+            this.ui.statusMessage.set('Discarded all hull points.');
             return;
           }
           this.app.session.setEditorTool('select');
@@ -330,7 +329,7 @@ export class KeyboardEvents {
         if (!editingText && event.key === 'Escape' && this.state.session.selection) {
           event.preventDefault();
           this.state.session.select(null);
-          this.ui.statusMessage.textContent = 'Cleared the object selection.';
+          this.ui.statusMessage.set('Cleared the object selection.');
           return;
         }
         if (!editingText && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
@@ -341,7 +340,7 @@ export class KeyboardEvents {
         if (!editingText && (event.key === 'Delete' || event.key === 'Backspace')) {
           event.preventDefault();
           if (this.state.activeTool === 'clip' && this.state.renderer?.removeLastClipPoint()) {
-            this.ui.statusMessage.textContent = 'Removed the most recent clip point.';
+            this.ui.statusMessage.set('Removed the most recent clip point.');
             return;
           }
           if (this.app.transform.isTopologyTool(this.state.activeTool)) {
@@ -353,12 +352,12 @@ export class KeyboardEvents {
         }
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'o') {
           event.preventDefault();
-          required<HTMLButtonElement>('[data-action="open-file"]').click();
+          this.ui.projectUi.invoke('open-file');
           return;
         }
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
           event.preventDefault();
-          required<HTMLButtonElement>('[data-action="download"]').click();
+          this.ui.projectUi.invoke('download');
           return;
         }
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {

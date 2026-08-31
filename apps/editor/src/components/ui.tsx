@@ -93,7 +93,3 @@ export function Field({
 export function ActionButton({ tone = 'secondary', className = '', ...props }: ButtonProps) {
   return <Button tone={tone} className={className} {...props} />;
 }
-
-export function FormSurface({ children }: PropsWithChildren) {
-  return <div className="form-surface">{children}</div>;
-}

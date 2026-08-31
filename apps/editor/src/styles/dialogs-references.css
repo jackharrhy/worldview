@@ -111,7 +111,7 @@
   box-shadow: 0 8px 24px var(--shadow);
 }
 
-.issue-filter-list label,
+.issue-filter-list .wv-checkbox,
 .show-hidden-issues {
   display: flex;
   align-items: center;
@@ -120,16 +120,14 @@
   white-space: nowrap;
 }
 
-.issue-filter-list label {
+.issue-filter-list .wv-checkbox {
   min-width: 0;
   padding: 3px;
 }
 
-.issue-filter-list input,
-.show-hidden-issues input {
-  width: 13px;
-  height: 13px;
-  accent-color: var(--accent);
+.issue-filter-list .wv-checkbox-field,
+.show-hidden-issues {
+  min-width: 0;
 }
 
 .issue-list {

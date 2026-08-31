@@ -198,14 +198,15 @@ behavior and boundaries; the cleanup plan is the canonical execution and handoff
 bringing the implementation into conformance.
 
 The application entrypoint is composition-only. The Vanilla-to-React shell translation is
-complete: React shell components are split into chrome,
-dialogs, workspace, status, and focused inspector panels. React exclusively renders the live
-document name, status/error message, compiler state, pointer context, and read-only document summary
-from five narrow immutable stores. Presenters write those stores through typed ports; they never
-also mutate the corresponding DOM nodes. Focused adapters intentionally retain direct ownership of
-canvas input, project/files, commands, tool forms, materials, organization, build dialogs, WebMCP
-registration, and session-to-view presentation. Those imperative seams are browser/controller
-boundaries beneath the React shell, not a second UI framework or an unfinished vanilla application.
+complete: React shell components are split into chrome, dialogs, workspace, status, and focused
+inspector panels. React renders all visible controls and presentation from narrow immutable stores;
+presenters publish snapshots and receive typed commands instead of creating nodes, querying
+controls, or mutating wrapper state. `EditorElements` is limited to explicit canvas, renderer
+overlay, focus, measurement, resize, and native-file refs. Focused adapters retain direct ownership
+only where a browser or renderer runtime requires it: canvas input and pixels, high-frequency lasso
+and transform-readout geometry within React-created overlay roots, pointer capture, measurement,
+file-input reset, document metadata, and WebMCP registration. Those seams are controller boundaries
+beneath the React shell, not a second UI framework.
 The resizable right inspector uses a compact Map, Entity, Face hierarchy: editable key/value data
 and face projection controls lead each view, while operation groups and asset browsers remain flat,
 dense, and separated by functional dividers instead of nested cards. The Face tab is a React-owned,
@@ -465,9 +466,8 @@ feature-detect to a no-op while keeping the complete visual workflow.
 1. A new/imported/file-backed `.map` is parsed into source state plus semantic `MapDocument`.
 2. Visible controls or a registered site tool call focused presenters; `EditorSession` commands
    derive and validate candidates, then atomically commit one document and history entry.
-3. Presenters update narrow React shell stores, remaining imperative inspectors, site-tool
-   verification state, and renderer state; derived geometry, spatial indexes, and GPU batches are
-   disposable caches.
+3. Presenters update narrow React shell stores, site-tool verification state, and renderer state;
+   derived geometry, spatial indexes, and GPU batches are disposable caches.
 4. Recovery snapshots source state after commits. Save planning patches original source regions;
    a file-backed save first rechecks disk fingerprint.
 5. A project manifest resolves ordered browser-local resources and logical build profiles.

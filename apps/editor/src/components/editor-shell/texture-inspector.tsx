@@ -469,6 +469,15 @@ function MaterialGrid({
         : [...rows, focusedRow].toSorted((left, right) => left - right);
     },
   });
+  useEffect(() => {
+    if (snapshot.revealVersion === 0) return;
+    const index = snapshot.cells.findIndex(
+      (cell) => cell.material.name.toLowerCase() === snapshot.activeMaterial.toLowerCase(),
+    );
+    if (index < 0) return;
+    setFocusedMaterial(snapshot.cells[index]!.material.name);
+    virtualizer.scrollToIndex(Math.floor(index / columns), { align: 'auto' });
+  }, [snapshot.revealVersion, snapshot.activeMaterial, snapshot.cells, virtualizer]);
   return (
     <div ref={scroll} id="material-grid" className="material-grid" aria-label="Loaded materials">
       {snapshot.cells.length === 0 ? (
@@ -578,9 +587,8 @@ function MaterialBrowser({ shellState }: { readonly shellState: EditorShellState
           size="compact"
           onPress={() => {
             shellState.inspectorLayout.setActive('map');
-            window.requestAnimationFrame(() =>
-              document.querySelector('#resource-settings')?.scrollIntoView({ block: 'nearest' }),
-            );
+            const resources = shellState.resourceSettings.getSnapshot();
+            shellState.resourceSettings.update({ revealVersion: resources.revealVersion + 1 });
           }}
         >
           <Icon name="settings" />

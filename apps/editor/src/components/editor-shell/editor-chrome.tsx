@@ -1,7 +1,17 @@
 import { useSyncExternalStore } from 'react';
+import { MenuTrigger } from 'react-aria-components/Menu';
 
 import type { EditorShellState } from '../../editor-shell-state.js';
-import { Icon, type IconName } from '../ui/icon.js';
+import {
+  isEditorCommandId,
+  type EditorCommandPresentation,
+  type EditorCommandSnapshot,
+} from '../../editor-command-state.js';
+import type { EditorTool } from '@jackharrhy/worldview-editor';
+import { isProjectActionId } from '../../project-build-ui-state.js';
+import { Icon, IconButton, type IconName } from '../ui/icon.js';
+import { Checkbox } from '../ui/checkbox.js';
+import { Menu, MenuItem, Popover } from '../ui/menu.js';
 import { Select } from '../ui/select.js';
 import { CollaborationPresence } from './collaboration-ui.js';
 
@@ -18,7 +28,7 @@ interface ActionSpec {
 }
 
 interface ToolSpec {
-  readonly tool: string;
+  readonly tool: EditorTool;
   readonly icon: IconName;
   readonly label: string;
   readonly title: string;
@@ -326,19 +336,22 @@ function ActionButton({
   title,
   disabled = false,
   onClick,
-}: ActionSpec & { readonly onClick?: () => void }) {
+  presentation,
+}: ActionSpec & {
+  readonly onClick?: () => void;
+  readonly presentation?: EditorCommandPresentation;
+}) {
   return (
-    <button
+    <IconButton
+      icon={icon}
+      label={presentation?.label ?? label}
+      tooltip={presentation?.title ?? title}
       className="icon-button"
-      type="button"
       data-action={action}
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <Icon name={icon} />
-      <span className="toolbar-label">{label}</span>
-    </button>
+      isDisabled={presentation?.disabled ?? disabled}
+      {...(presentation?.active === undefined ? {} : { 'aria-pressed': presentation.active })}
+      {...(onClick ? { onPress: onClick } : {})}
+    />
   );
 }
 
@@ -347,11 +360,13 @@ function ActionGroup({
   actions,
   className = '',
   onAction,
+  commandState,
 }: {
   readonly label: string;
   readonly actions: readonly ActionSpec[];
   readonly className?: string;
   readonly onAction?: (action: string) => void;
+  readonly commandState?: EditorCommandSnapshot['actions'];
 }) {
   return (
     <div className={`toolbar-group ${className}`.trim()} aria-label={label}>
@@ -359,6 +374,9 @@ function ActionGroup({
         <ActionButton
           key={action.action}
           {...action}
+          {...(isEditorCommandId(action.action) && commandState?.[action.action]
+            ? { presentation: commandState[action.action] }
+            : {})}
           {...(onAction ? { onClick: () => onAction(action.action) } : {})}
         />
       ))}
@@ -371,53 +389,67 @@ function ActionMenu({
   icon,
   actions,
   className = '',
+  onAction,
+  commandState,
+  placement = 'bottom start',
 }: {
   readonly label: string;
   readonly icon: IconName;
   readonly actions: readonly ActionSpec[];
   readonly className?: string;
+  readonly onAction?: (action: string) => void;
+  readonly commandState?: EditorCommandSnapshot['actions'];
+  readonly placement?: 'bottom start' | 'right bottom';
 }) {
   return (
-    <details
-      className={`toolbar-menu ${className}`.trim()}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          event.currentTarget.removeAttribute('open');
-        }
-      }}
-      onKeyDown={(event) => {
-        if (event.key !== 'Escape') return;
-        event.currentTarget.removeAttribute('open');
-        event.currentTarget.querySelector('summary')?.focus();
-      }}
-    >
-      <summary className="icon-button" title={label}>
-        <Icon name={icon} />
-        <span className="toolbar-label">{label}</span>
-      </summary>
-      <div
-        className="toolbar-menu-items"
-        role="group"
-        aria-label={label}
-        onClick={(event) => {
-          if ((event.target as Element).closest('button')) {
-            event.currentTarget.closest('details')?.removeAttribute('open');
-          }
-        }}
+    <MenuTrigger>
+      <IconButton icon={icon} label={label} className="icon-button" />
+      <Popover
+        className={`toolbar-menu-popover ${className}`.trim()}
+        placement={placement}
+        offset={4}
       >
-        {actions.map(({ action, icon: actionIcon, label: actionLabel, title, disabled }) => (
-          <button key={action} type="button" data-action={action} title={title} disabled={disabled}>
-            <Icon name={actionIcon} />
-            <span className="toolbar-label">{actionLabel}</span>
-          </button>
-        ))}
-      </div>
-    </details>
+        <Menu aria-label={label} onAction={(key) => onAction?.(String(key))} selectionMode="none">
+          {actions.map((action) => {
+            const presentation =
+              isEditorCommandId(action.action) && commandState?.[action.action]
+                ? commandState[action.action]
+                : undefined;
+            return (
+              <MenuItem
+                key={action.action}
+                id={action.action}
+                icon={action.icon}
+                label={presentation?.label ?? action.label}
+                {...((presentation?.disabled ?? action.disabled) ? { isDisabled: true } : {})}
+              />
+            );
+          })}
+        </Menu>
+      </Popover>
+    </MenuTrigger>
   );
 }
 
 function TopBar({ shellState }: EditorChromeProps) {
   const theme = useSyncExternalStore(shellState.theme.subscribe, shellState.theme.getSnapshot);
+  const project = useSyncExternalStore(
+    shellState.projectToolbar.subscribe,
+    shellState.projectToolbar.getSnapshot,
+  );
+  const commands = useSyncExternalStore(
+    shellState.editorCommands.subscribe,
+    shellState.editorCommands.getSnapshot,
+  );
+  const inspectorLayout = useSyncExternalStore(
+    shellState.inspectorLayout.subscribe,
+    shellState.inspectorLayout.getSnapshot,
+  );
+  const invokeAction = (action: string) => {
+    if (action === 'home') shellState.workspaceHome.invoke('showHome');
+    else if (isProjectActionId(action)) shellState.projectUi.invoke(action);
+    else if (isEditorCommandId(action)) shellState.editorCommands.invoke(action);
+  };
   return (
     <header className="topbar">
       <div className="brand-lockup">
@@ -428,21 +460,74 @@ function TopBar({ shellState }: EditorChromeProps) {
         <ActionGroup
           label="Files"
           actions={primaryFileActions}
-          onAction={(action) => {
-            if (action === 'home') shellState.workspaceHome.invoke('showHome');
-          }}
+          onAction={invokeAction}
+          commandState={commands.actions}
         />
-        <ActionMenu label="Open and create" icon="open-map" actions={fileMenuActions} />
-        <select id="project-map" aria-label="Project map" hidden />
-        <ActionGroup label="History" actions={primaryEditActions} />
-        <ActionGroup label="Source" actions={primaryHistoryActions} />
-        <ActionMenu label="More document actions" icon="versions" actions={documentMenuActions} />
+        <ActionMenu
+          label="Open and create"
+          icon="open-map"
+          actions={fileMenuActions}
+          onAction={invokeAction}
+          commandState={commands.actions}
+        />
+        {project.maps.length > 0 ? (
+          <Select
+            id="project-map"
+            className="project-map-select"
+            label="Project map"
+            hideLabel
+            placeholder="Choose map"
+            options={project.maps}
+            selectedKey={project.selectedMapId}
+            onSelectionChange={(key) => shellState.projectToolbar.openMap(String(key))}
+          />
+        ) : null}
+        <ActionGroup
+          label="History"
+          actions={primaryEditActions}
+          onAction={invokeAction}
+          commandState={commands.actions}
+        />
+        <ActionGroup
+          label="Source"
+          actions={primaryHistoryActions}
+          onAction={invokeAction}
+          commandState={commands.actions}
+        />
+        <ActionMenu
+          label="More document actions"
+          icon="versions"
+          actions={documentMenuActions}
+          onAction={invokeAction}
+          commandState={commands.actions}
+        />
         <div className="toolbar-group build-actions" aria-label="Build">
-          <select id="build-profile" aria-label="Build profile" hidden />
+          {project.buildProfiles.length > 0 ? (
+            <Select
+              id="build-profile"
+              className="build-profile-select"
+              label="Build profile"
+              hideLabel
+              options={project.buildProfiles}
+              selectedKey={project.selectedBuildProfileId}
+              onSelectionChange={(key) => shellState.projectToolbar.selectBuildProfile(String(key))}
+            />
+          ) : null}
           {primaryBuildActions.map((action) => (
-            <ActionButton key={action.action} {...action} />
+            <ActionButton
+              key={action.action}
+              {...action}
+              {...(commands.actions.compile ? { presentation: commands.actions.compile } : {})}
+              onClick={() => shellState.editorCommands.invoke('compile')}
+            />
           ))}
-          <ActionMenu label="Build results" icon="build-results" actions={buildMenuActions} />
+          <ActionMenu
+            label="Build results"
+            icon="build-results"
+            actions={buildMenuActions}
+            onAction={invokeAction}
+            commandState={commands.actions}
+          />
         </div>
       </nav>
       <CollaborationPresence port={shellState.collaborationUi} />
@@ -464,16 +549,15 @@ function TopBar({ shellState }: EditorChromeProps) {
           }}
         />
       </div>
-      <button
+      <IconButton
+        icon="inspector"
+        label="Inspector"
+        tooltip="Toggle inspector"
         className="inspector-toggle icon-button"
-        type="button"
         data-action="toggle-inspector"
-        aria-pressed="true"
-        title="Toggle inspector"
-      >
-        <Icon name="inspector" />
-        <span className="toolbar-label">Inspector</span>
-      </button>
+        aria-pressed={inspectorLayout.open}
+        onPress={() => shellState.inspectorLayout.toggle()}
+      />
       <input id="map-file" type="file" accept=".map,.txt" aria-label="Open map file" hidden />
       <input
         id="reference-files"
@@ -487,56 +571,98 @@ function TopBar({ shellState }: EditorChromeProps) {
   );
 }
 
-function ToolRail() {
+function ToolRail({ shellState }: EditorChromeProps) {
+  const filters = useSyncExternalStore(
+    shellState.viewFilter.subscribe,
+    shellState.viewFilter.getSnapshot,
+  );
+  const settings = useSyncExternalStore(
+    shellState.toolSettings.subscribe,
+    shellState.toolSettings.getSnapshot,
+  );
+  const commands = useSyncExternalStore(
+    shellState.editorCommands.subscribe,
+    shellState.editorCommands.getSnapshot,
+  );
+  const invokeAction = (action: string) => {
+    if (isEditorCommandId(action)) shellState.editorCommands.invoke(action);
+  };
   return (
     <section className="toolrail" aria-label="Editor tools">
       <div className="toolbar-group tool-group" aria-label="Modes">
-        {editorTools.map(({ tool, icon, label, title }, index) => (
-          <button
+        {editorTools.map(({ tool, icon, label, title }) => (
+          <IconButton
             key={tool}
-            className={`tool-button icon-button${index === 0 ? ' active' : ''}`}
-            type="button"
+            icon={icon}
+            label={label}
+            tooltip={title}
+            className={`tool-button icon-button${commands.activeTool === tool ? ' active' : ''}`}
             data-tool={tool}
-            aria-pressed={index === 0 ? 'true' : 'false'}
-            title={title}
-          >
-            <Icon name={icon} />
-            <span className="toolbar-label">{label}</span>
-          </button>
+            aria-pressed={commands.activeTool === tool}
+            onPress={() => shellState.editorCommands.selectTool(tool)}
+          />
         ))}
       </div>
       <ActionGroup
         label="Selection commands"
         actions={contextualEditActions}
         className="selection-actions"
+        onAction={invokeAction}
+        commandState={commands.actions}
       />
-      <ActionMenu label="More edit actions" icon="more-actions" actions={editMenuActions} />
+      <ActionMenu
+        label="More edit actions"
+        icon="more-actions"
+        actions={editMenuActions}
+        onAction={invokeAction}
+        commandState={commands.actions}
+        placement="right bottom"
+      />
       <span className="toolrail-spacer" />
-      <ActionMenu label="Visibility and locking" icon="show" actions={visibilityActions} />
-      <label className="tool-select" title="Grid size">
-        <select id="grid-size" aria-label="Grid size" defaultValue={16}>
-          {[1, 2, 4, 8, 16, 32, 64, 128, 256].map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="tool-toggle" title="Texture lock">
-        <input id="texture-lock" type="checkbox" defaultChecked />
-        <Icon name="texture-lock" />
-      </label>
-      <button
-        className="view-filter-toggle icon-button"
-        type="button"
-        data-action="toggle-view-filters"
-        aria-expanded="false"
-        title="Viewport filters"
+      <ActionMenu
+        label="Visibility and locking"
+        icon="show"
+        actions={visibilityActions}
+        onAction={invokeAction}
+        commandState={commands.actions}
+        placement="right bottom"
+      />
+      <Select
+        id="grid-size"
+        className="tool-select"
+        label="Grid size"
+        hideLabel
+        options={[1, 2, 4, 8, 16, 32, 64, 128, 256].map((size) => ({
+          id: String(size),
+          label: String(size),
+        }))}
+        selectedKey={String(settings.gridSize)}
+        onSelectionChange={(key) => shellState.toolSettings.setGridSize(Number(key))}
+      />
+      <Checkbox
+        id="texture-lock"
+        className="tool-toggle"
+        aria-label="Texture lock"
+        isSelected={settings.textureLock}
+        onChange={(enabled) => shellState.toolSettings.setTextureLock(enabled)}
       >
-        <Icon name="filter" />
-        <span className="toolbar-label">View</span>
-        <span id="view-filter-count">0</span>
-      </button>
+        <Icon name="texture-lock" />
+        <span className="visually-hidden">Texture lock</span>
+      </Checkbox>
+      <IconButton
+        icon="filter"
+        label="View"
+        tooltip="Viewport filters"
+        badge={
+          <span id="view-filter-count" hidden={filters.filteredCount === 0}>
+            {filters.filteredCount}
+          </span>
+        }
+        className={`view-filter-toggle icon-button${filters.filteredCount > 0 ? ' active-filter' : ''}`}
+        data-action="toggle-view-filters"
+        aria-expanded={filters.open}
+        onPress={() => shellState.viewFilter.invoke('setOpen', !filters.open)}
+      />
     </section>
   );
 }
@@ -545,7 +671,7 @@ export function EditorChrome({ shellState }: EditorChromeProps) {
   return (
     <>
       <TopBar shellState={shellState} />
-      <ToolRail />
+      <ToolRail shellState={shellState} />
     </>
   );
 }

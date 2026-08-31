@@ -98,10 +98,10 @@ export class FlyCameraController {
 
   private readonly blur = () => {
     this.keys.clear();
-    this.options.canvas.closest('.viewport-pane')?.classList.remove('camera-focused');
+    delete this.options.canvas.dataset.cameraFocused;
   };
 
   private readonly focus = () => {
-    this.options.canvas.closest('.viewport-pane')?.classList.add('camera-focused');
+    this.options.canvas.dataset.cameraFocused = 'true';
   };
 }

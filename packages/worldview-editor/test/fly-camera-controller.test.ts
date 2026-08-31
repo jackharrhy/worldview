@@ -3,16 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { FlyCameraController } from '../src/render/viewport/fly-camera-controller.js';
 
 class FakeCanvas extends EventTarget {
-  public readonly classes = new Set<string>();
-
-  public closest(): Pick<Element, 'classList'> {
-    return {
-      classList: {
-        add: (...tokens: string[]) => tokens.forEach((token) => this.classes.add(token)),
-        remove: (...tokens: string[]) => tokens.forEach((token) => this.classes.delete(token)),
-      } as DOMTokenList,
-    };
-  }
+  public readonly dataset: DOMStringMap = {};
 }
 
 function keyboardEvent(type: 'keydown' | 'keyup', key: string): KeyboardEvent {
@@ -68,7 +59,7 @@ describe('fly camera controller', () => {
     });
 
     canvas.dispatchEvent(new Event('focus'));
-    expect(canvas.classes.has('camera-focused')).toBe(true);
+    expect(canvas.dataset.cameraFocused).toBe('true');
     canvas.dispatchEvent(keyboardEvent('keydown', 'w'));
     canvas.dispatchEvent(keyboardEvent('keydown', 'd'));
     now = 50;
@@ -78,7 +69,7 @@ describe('fly camera controller', () => {
 
     canvas.dispatchEvent(new Event('blur'));
     expect(controller.active).toBe(false);
-    expect(canvas.classes.has('camera-focused')).toBe(false);
+    expect(canvas.dataset.cameraFocused).toBeUndefined();
     controller.dispose();
   });
 });

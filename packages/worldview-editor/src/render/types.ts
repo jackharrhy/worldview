@@ -252,6 +252,17 @@ export interface EditorViewportCanvases {
   readonly yz: HTMLCanvasElement;
 }
 
+/** React-owned overlay roots whose high-frequency geometry is controlled by a viewport runtime. */
+export interface EditorViewportOverlayElements {
+  readonly container: HTMLElement;
+  readonly handleLasso: HTMLDivElement;
+  readonly transformReadout: HTMLDivElement;
+}
+
+export type EditorViewportOverlays = Partial<
+  Readonly<Record<EditorViewportKind, EditorViewportOverlayElements>>
+>;
+
 export interface EditorReferenceScene {
   readonly id: string;
   readonly label: string;
@@ -282,7 +293,9 @@ export interface EditorSpriteMaterial {
 }
 
 export interface EditorSourceRendererOptions {
+  readonly signal?: AbortSignal;
   readonly canvases: EditorViewportCanvases;
+  readonly viewportOverlays?: EditorViewportOverlays;
   readonly document: MapDocument;
   readonly selection?: EditorSelection | null;
   readonly objectViewState?: EditorObjectViewState;

@@ -3,13 +3,13 @@ import { CommandEvents } from './command-events.js';
 import { ContextMenuPresenter } from './context-menu-presenter.js';
 import { DocumentPresenter } from './document-presenter.js';
 import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
 import { EditorState, type EditorStateHost, type EditorStateOptions } from './editor-state.js';
 import { EntityPresenter } from './entity-presenter.js';
 import { GeometryToolPresenter } from './geometry-tool-presenter.js';
 import { InspectorPresenter } from './inspector-presenter.js';
 import { KeyboardEvents } from './keyboard-events.js';
 import { MaterialsPresenter } from './materials-presenter.js';
-import { OrganizationEvents } from './organization-events.js';
 import { OrganizationPresenter } from './organization-presenter.js';
 import { ProjectPresenter } from './project-presenter.js';
 import { RendererPresenter } from './renderer-presenter.js';
@@ -70,7 +70,6 @@ export class EditorApplication implements EditorStateHost {
   public readonly theme: ThemePresenter;
   public readonly collaborationUi: CollaborationPresenter;
   public readonly viewportWorkspace: ViewportWorkspacePresenter;
-  private readonly organizationEvents = new OrganizationEvents(this);
   private readonly commandEvents = new CommandEvents(this);
   private readonly toolEvents = new ToolEvents(this);
   private readonly keyboardEvents = new KeyboardEvents(this);
@@ -90,10 +89,17 @@ export class EditorApplication implements EditorStateHost {
   } | null = null;
 
   public constructor(
-    public readonly ui: EditorElements,
+    public readonly ui: EditorShellState,
+    public readonly elements: EditorElements,
     options: EditorStateOptions = {},
   ) {
-    this.state = new EditorState(ui, () => this, this.lifetime.signal, options);
+    this.state = new EditorState(
+      ui,
+      elements.uvEditorSvg,
+      () => this,
+      this.lifetime.signal,
+      options,
+    );
     this.viewportWorkspace = new ViewportWorkspacePresenter(undefined, (error) => {
       if (this.signal.aborted) return;
       console.error('Viewport workspace persistence failed', error);
@@ -110,10 +116,17 @@ export class EditorApplication implements EditorStateHost {
     this.document = new DocumentPresenter(
       this.state,
       ui,
+      elements,
       (tool) => this.session.setEditorTool(tool),
       (layout) => this.viewportWorkspace.setLayout(layout),
     );
-    this.build = new BuildPresenter(this.state, ui, this.document, this.lifetime.signal);
+    this.build = new BuildPresenter(
+      this.state,
+      ui,
+      elements.compiledCanvas,
+      this.document,
+      this.lifetime.signal,
+    );
     this.transform = new TransformToolPresenter(
       this.state,
       ui,
@@ -154,6 +167,7 @@ export class EditorApplication implements EditorStateHost {
     this.contextMenu = new ContextMenuPresenter(
       this.state,
       ui,
+      elements.canvases,
       (value) => this.build.formatVector(value),
       () => this.materials.renderMaterialCatalog(),
       (selection) => this.document.copySelection(selection),
@@ -163,6 +177,8 @@ export class EditorApplication implements EditorStateHost {
     this.renderer = new RendererPresenter({
       state: this.state,
       ui,
+      canvases: elements.canvases,
+      viewportOverlays: elements.viewportOverlays,
       build: this.build,
       contextMenu: this.contextMenu,
       document: this.document,
@@ -177,10 +193,10 @@ export class EditorApplication implements EditorStateHost {
     this.project = new ProjectPresenter(
       this.state,
       ui,
+      elements,
       this.build,
       this.document,
       this.materials,
-      this.organization,
       this.session,
       this.viewportWorkspace,
       this.lifetime.signal,
@@ -244,7 +260,6 @@ export class EditorApplication implements EditorStateHost {
       this.signal.throwIfAborted();
       this.contextMenu.connect();
       this.project.connect(this.signal);
-      this.organizationEvents.connect(this.signal);
       this.commandEvents.connect(this.signal);
       this.toolEvents.connect(this.signal);
       this.keyboardEvents.connect(this.signal);
@@ -270,7 +285,12 @@ export class EditorApplication implements EditorStateHost {
     this.state.compiledViewer?.dispose();
     this.state.compiledViewer = null;
     this.contextMenu.dispose();
+    this.geometry.dispose();
     this.inspector.dispose();
+    this.entity.dispose();
+    this.organization.dispose();
+    this.project.dispose();
+    this.build.dispose();
     this.materials.dispose();
     this.collaborationUi.dispose();
     this.theme.dispose();
@@ -409,7 +429,7 @@ export class EditorApplication implements EditorStateHost {
         if (pending.length > 0) return;
         this.state.savedDocumentRevision = this.state.session.document.revision;
         this.document.setDocumentDirty(false);
-        if (status) this.ui.statusMessage.textContent = status;
+        if (status) this.ui.statusMessage.set(status);
       });
     };
     controller = new CollaborationController({
@@ -435,8 +455,9 @@ export class EditorApplication implements EditorStateHost {
     });
     controller.setMapVersion(snapshot.mapVersion);
     bridge = new EditorCollaborationBridge(this.state.session, controller, (error) => {
-      this.ui.statusMessage.textContent =
-        error instanceof Error ? error.message : 'Collaboration operation failed';
+      this.ui.statusMessage.set(
+        error instanceof Error ? error.message : 'Collaboration operation failed',
+      );
     });
     const socketEndpoint = new URL(options.endpoint);
     socketEndpoint.protocol = socketEndpoint.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -535,8 +556,9 @@ export class EditorApplication implements EditorStateHost {
       },
       onError: (error) => {
         if (signal.aborted) return;
-        this.ui.statusMessage.textContent =
-          error instanceof Error ? error.message : 'Collaboration connection failed';
+        this.ui.statusMessage.set(
+          error instanceof Error ? error.message : 'Collaboration connection failed',
+        );
       },
     });
     const presenceTimer = window.setInterval(sendPresence, 2_000);
@@ -569,7 +591,7 @@ export class EditorApplication implements EditorStateHost {
       },
     };
     socket.connect();
-    this.ui.statusMessage.textContent = `Joined collaboration room ${options.mapId}.`;
+    this.ui.statusMessage.set(`Joined collaboration room ${options.mapId}.`);
   }
 
   public leaveCollaboration(): void {
@@ -589,6 +611,8 @@ export class EditorApplication implements EditorStateHost {
     collaboration.socket.close();
     collaboration.bridge.close();
     if (announce)
-      this.ui.statusMessage.textContent = `Left collaboration room ${collaboration.mapId}; editing remains local.`;
+      this.ui.statusMessage.set(
+        `Left collaboration room ${collaboration.mapId}; editing remains local.`,
+      );
   }
 }

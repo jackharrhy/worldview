@@ -244,9 +244,17 @@
 }
 
 .wv-menu-item-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wv-menu-item-label .wv-icon {
+  flex: none;
+  font-size: 13px;
 }
 
 .wv-menu-shortcut {

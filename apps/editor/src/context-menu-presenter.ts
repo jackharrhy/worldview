@@ -9,10 +9,11 @@ import {
   selectedPointEntityIds,
   selectionForEditorGroup,
   type EditorSelection,
+  type EditorViewportCanvases,
   type EditorViewportContextMenuEvent,
 } from '@jackharrhy/worldview-editor';
 
-import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
 import type { ObjectPastePlacement } from './editor-clipboard.js';
 import type { EditorState } from './editor-state.js';
 import type {
@@ -21,6 +22,15 @@ import type {
 } from './editor-shell-state.js';
 
 type ContextMenuCommand = () => unknown;
+type ContextMenuUi = Pick<
+  EditorShellState,
+  | 'editorCommands'
+  | 'inspectorLayout'
+  | 'materialBrowser'
+  | 'pointEntityTool'
+  | 'statusMessage'
+  | 'viewportContextMenu'
+>;
 
 export class ContextMenuPresenter {
   private readonly commands = new Map<string, ContextMenuCommand>();
@@ -28,7 +38,8 @@ export class ContextMenuPresenter {
 
   public constructor(
     private readonly state: EditorState,
-    private readonly ui: EditorElements,
+    private readonly ui: ContextMenuUi,
+    private readonly canvases: EditorViewportCanvases,
     private readonly formatVector: (value: readonly number[]) => string,
     private readonly renderMaterialCatalog: () => void,
     private readonly copySelection: (selection: EditorSelection) => Promise<void>,
@@ -43,15 +54,15 @@ export class ContextMenuPresenter {
 
   public focusCurrentSelection(): void {
     if (!this.state.renderer?.focusSelection()) {
-      this.ui.statusMessage.textContent = 'Select an object or component to focus.';
+      this.ui.statusMessage.set('Select an object or component to focus.');
       return;
     }
-    this.ui.statusMessage.textContent = 'Framed the selection in every viewport.';
+    this.ui.statusMessage.set('Framed the selection in every viewport.');
   }
 
   public focusContextViewport(context = this.state.viewportContext): void {
     if (!context) return;
-    const canvas = this.ui.canvases[context.viewport];
+    const canvas = this.canvases[context.viewport];
     if (!(canvas instanceof HTMLCanvasElement)) return;
     this.requestFrame(() => canvas.focus({ preventScroll: true }));
   }
@@ -107,7 +118,7 @@ export class ContextMenuPresenter {
     try {
       await command();
     } catch (error) {
-      this.ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
     } finally {
       this.focusContextViewport(context);
     }
@@ -168,10 +179,8 @@ export class ContextMenuPresenter {
       ids,
       this.state.openGroupId ? { _tb_group: this.state.openGroupId } : {},
     );
-    this.ui.pointEntityPreset.value = classname;
-    this.ui.pointEntityClassname.value = classname;
-    this.state.renderer?.setEntityPlacementBounds(definition.bounds);
-    this.ui.statusMessage.textContent = `Created ${classname} at ${this.formatVector(origin)}.`;
+    this.ui.pointEntityTool.setClassname(classname);
+    this.ui.statusMessage.set(`Created ${classname} at ${this.formatVector(origin)}.`);
   }
 
   public createBrushEntityFromContext(classname: string): void {
@@ -179,38 +188,33 @@ export class ContextMenuPresenter {
       `context-brush-entity-${this.state.session.document.revision + 1}`,
     );
     if (!this.state.session.createBrushEntity(classname, ids)) {
-      this.ui.statusMessage.textContent =
-        'Select one or more brushes before creating a brush entity.';
+      this.ui.statusMessage.set('Select one or more brushes before creating a brush entity.');
       return;
     }
-    this.ui.brushEntityClassname.value = classname;
-    this.ui.statusMessage.textContent = `Created ${classname} from the selected brushes.`;
+    this.ui.statusMessage.set(`Created ${classname} from the selected brushes.`);
   }
 
   public revealContextMaterial(material: string): void {
     this.state.activeMaterialName = material;
-    this.ui.materialBrowser.update({ activeMaterial: material, filter: material });
+    const browser = this.ui.materialBrowser.getSnapshot();
+    this.ui.materialBrowser.update({
+      activeMaterial: material,
+      filter: material,
+      revealVersion: browser.revealVersion + 1,
+    });
     this.ui.inspectorLayout.setActive('textures');
     this.renderMaterialCatalog();
-    this.requestFrame(() => {
-      const tile = document.querySelector<HTMLElement>(
-        `[data-material-name="${CSS.escape(material)}"]`,
-      );
-      (
-        tile ?? document.querySelector<HTMLElement>('[data-inspector-panel="textures"]')
-      )?.scrollIntoView({
-        block: 'nearest',
-      });
-    });
-    this.ui.statusMessage.textContent = this.state.materialCatalog.find(material)
-      ? `Revealed ${material} in the material browser.`
-      : `${material} is used by the map but is not loaded in the material catalog.`;
+    this.ui.statusMessage.set(
+      this.state.materialCatalog.find(material)
+        ? `Revealed ${material} in the material browser.`
+        : `${material} is used by the map but is not loaded in the material catalog.`,
+    );
   }
 
   public showViewportContextMenu(context: EditorViewportContextMenuEvent): void {
     this.state.viewportContext = context;
     this.state.lastPointerPosition = context.pointer;
-    this.ui.pasteButton.disabled = false;
+    this.ui.editorCommands.updateActions({ paste: { disabled: false } });
     this.commands.clear();
 
     const hitActions: ContextMenuActionSnapshot[] = [];
@@ -362,7 +366,7 @@ export class ContextMenuPresenter {
         'create:paste',
         'Paste here',
         () => this.pasteFromClipboard('cursor'),
-        this.ui.pasteButton.disabled,
+        this.ui.editorCommands.getSnapshot().actions.paste?.disabled ?? false,
       ),
     ];
 

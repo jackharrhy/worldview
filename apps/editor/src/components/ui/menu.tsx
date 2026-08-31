@@ -10,7 +10,7 @@ import {
   type MenuProps as AriaMenuProps,
   type PopoverProps as AriaPopoverProps,
 } from 'react-aria-components/Menu';
-import { Icon } from './icon.js';
+import { Icon, type IconName } from './icon.js';
 
 export function Menu<T extends object>({ className = '', ...props }: AriaMenuProps<T>) {
   return <AriaMenu className={`wv-menu ${className}`.trim()} {...props} />;
@@ -18,6 +18,7 @@ export function Menu<T extends object>({ className = '', ...props }: AriaMenuPro
 
 export interface MenuItemProps extends Omit<AriaMenuItemProps, 'children' | 'className'> {
   readonly label: string;
+  readonly icon?: IconName;
   readonly shortcut?: string;
   readonly submenu?: boolean;
   readonly referenceState?: 'focused' | 'open';
@@ -29,6 +30,7 @@ function accessibleShortcut(shortcut: string | undefined): string | undefined {
 
 export function MenuItem({
   label,
+  icon,
   shortcut,
   submenu = false,
   referenceState,
@@ -42,7 +44,10 @@ export function MenuItem({
       aria-keyshortcuts={accessibleShortcut(shortcut)}
       {...props}
     >
-      <span className="wv-menu-item-label">{label}</span>
+      <span className="wv-menu-item-label">
+        {icon ? <Icon name={icon} /> : null}
+        {label}
+      </span>
       {shortcut ? (
         <kbd className="wv-menu-shortcut" aria-hidden="true">
           {shortcut}

@@ -484,6 +484,7 @@ export class EditorSourceRenderer {
           this.gridSize,
           () => this.onRenderRequest?.(),
           this.theme,
+          options.viewportOverlays?.[kind],
         ),
     );
     this.renderedViewportKinds = new Set(this.viewports.map((viewport) => viewport.kind));
@@ -498,6 +499,10 @@ export class EditorSourceRenderer {
 
   public static async create(options: EditorSourceRendererOptions): Promise<EditorSourceRenderer> {
     const { root, device, format, pipelines, materialSampler } = await createRendererGpuRuntime();
+    if (options.signal?.aborted) {
+      root.destroy();
+      options.signal.throwIfAborted();
+    }
     return new EditorSourceRenderer(
       root,
       device,

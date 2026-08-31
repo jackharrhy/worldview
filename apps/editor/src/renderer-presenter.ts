@@ -23,6 +23,8 @@ import {
   type EditorTopologyDragEvent,
   type EditorTransformDragEvent,
   type EditorTransformPivotDragEvent,
+  type EditorViewportCanvases,
+  type EditorViewportOverlays,
 } from '@jackharrhy/worldview-editor';
 import { AnimationFrameScheduler } from '@jackharrhy/worldview';
 
@@ -30,7 +32,7 @@ import type { BuildPresenter } from './build-presenter.js';
 import type { ContextMenuPresenter } from './context-menu-presenter.js';
 import type { DocumentPresenter } from './document-presenter.js';
 import { resolveEditorRenderTheme } from './render-theme.js';
-import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
 import type { EditorState } from './editor-state.js';
 import type { GeometryToolPresenter } from './geometry-tool-presenter.js';
 import type { InspectorPresenter } from './inspector-presenter.js';
@@ -38,9 +40,22 @@ import type { OrganizationPresenter } from './organization-presenter.js';
 import type { TransformToolPresenter } from './transform-tool-presenter.js';
 import type { ViewportWorkspacePresenter } from './viewport-workspace-presenter.js';
 
+type RendererUi = Pick<
+  EditorShellState,
+  | 'editorCommands'
+  | 'pointEntityTool'
+  | 'pointerContext'
+  | 'simpleShapeTool'
+  | 'statusMessage'
+  | 'viewportLayout'
+  | 'viewportPresentation'
+>;
+
 interface RendererPresenterDependencies {
   readonly state: EditorState;
-  readonly ui: EditorElements;
+  readonly ui: RendererUi;
+  readonly canvases: EditorViewportCanvases;
+  readonly viewportOverlays: EditorViewportOverlays;
   readonly build: BuildPresenter;
   readonly contextMenu: ContextMenuPresenter;
   readonly document: DocumentPresenter;
@@ -62,12 +77,15 @@ export class RendererPresenter {
     const app = this.dependencies;
     const state = app.state;
     const ui = app.ui;
+    const canvases = app.canvases;
     const renderScheduler = new AnimationFrameScheduler();
     this.scheduler = renderScheduler;
     try {
       const renderer = await EditorSourceRenderer.create({
+        signal,
         theme: resolveEditorRenderTheme(),
-        canvases: ui.canvases,
+        canvases,
+        viewportOverlays: app.viewportOverlays,
         document: state.session.document,
         selection: state.session.selection,
         objectViewState: app.organization.effectiveObjectViewState(),
@@ -79,32 +97,35 @@ export class RendererPresenter {
         tool: state.activeTool,
         gridSize: state.activeGridSize,
         entityPlacementBounds: pointEntityDefinition(
-          ui.pointEntityClassname.value,
+          ui.pointEntityTool.getSnapshot().classname,
           state.entityDefinitions,
         ).bounds,
         onRenderRequest: () => renderScheduler.request(),
         onPreviewDocument: (document) => app.publishCollaborationPreview(document),
         onDeviceLost(message) {
           if (signal.aborted) return;
-          ui.viewportError.hidden = false;
-          ui.viewportError.textContent = `${message}. Reload the editor to restore rendering.`;
-          ui.statusMessage.textContent = 'WebGPU renderer stopped.';
+          ui.viewportPresentation.update({
+            error: `${message}. Reload the editor to restore rendering.`,
+          });
+          ui.statusMessage.set('WebGPU renderer stopped.');
         },
         onCameraChange(event: EditorCameraChangeEvent) {
-          ui.canvases[event.viewport].dataset.camera = JSON.stringify(event.camera);
+          canvases[event.viewport].dataset.camera = JSON.stringify(event.camera);
           app.viewportWorkspace.setCamera(event);
           if (event.viewport !== 'perspective') return;
           state.perspectiveCamera = event.camera;
-          ui.perspectiveMode.dataset.camera = JSON.stringify(event.camera);
-          ui.perspectiveMode.title = `Position ${app.build.formatVector(event.camera.position)} · ${Math.round(event.camera.fieldOfViewDegrees)}° FOV · ${Math.round(event.camera.flySpeed)} units/s`;
-          if (ui.compiledCanvas.hidden) {
-            ui.perspectiveMode.textContent =
-              event.mode === 'initial' ? 'EDIT' : `EDIT · ${event.mode.toUpperCase()}`;
+          if (!state.showingCompiled) {
+            ui.viewportPresentation.update({
+              perspectiveMode:
+                event.mode === 'initial' ? 'EDIT' : `EDIT · ${event.mode.toUpperCase()}`,
+              perspectiveTitle: `Position ${app.build.formatVector(event.camera.position)} · ${Math.round(event.camera.fieldOfViewDegrees)}° FOV · ${Math.round(event.camera.flySpeed)} units/s`,
+            });
           }
           const position = event.camera.position.map((value) => Math.round(value));
-          ui.cameraPointerContext.textContent =
+          ui.pointerContext.set(
             `PERSPECTIVE / ${event.mode} ${app.build.formatVector(position)}` +
-            (event.mode === 'fly' ? ` · speed ${Math.round(event.camera.flySpeed)}` : '');
+              (event.mode === 'fly' ? ` · speed ${Math.round(event.camera.flySpeed)}` : ''),
+          );
         },
         onPick(selection, viewport, intent) {
           const objectSelectionIds = selectedBrushIds(state.session.selection);
@@ -119,7 +140,7 @@ export class RendererPresenter {
               : null;
             if (selection && intent.objectExpansion === 'activate' && containingGroup) {
               app.organization.openEditorGroup(containingGroup.id, selection);
-              ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / editing group`;
+              ui.pointerContext.set(`${viewport.toUpperCase()} / editing group`);
               return;
             }
             if (selection && containingGroup) {
@@ -233,12 +254,16 @@ export class RendererPresenter {
                     : count === 1
                       ? 'object'
                       : 'objects';
-            ui.statusMessage.textContent = `Paint selected ${count} ${subject}.`;
-            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / ${faces.length > 0 ? 'face' : 'object'} paint ${count}`;
+            ui.statusMessage.set(`Paint selected ${count} ${subject}.`);
+            ui.pointerContext.set(
+              `${viewport.toUpperCase()} / ${faces.length > 0 ? 'face' : 'object'} paint ${count}`,
+            );
           } else if (intent.drill) {
             const target = intent.drillTarget === 'face' ? 'face' : 'object';
-            ui.statusMessage.textContent = `Drilled ${target} selection ${intent.drill} in the ${viewport.toUpperCase()} view.`;
-            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / ${target} drill ${intent.drill}`;
+            ui.statusMessage.set(
+              `Drilled ${target} selection ${intent.drill} in the ${viewport.toUpperCase()} view.`,
+            );
+            ui.pointerContext.set(`${viewport.toUpperCase()} / ${target} drill ${intent.drill}`);
           } else if (
             selection &&
             !selection.faceId &&
@@ -249,24 +274,25 @@ export class RendererPresenter {
               selection,
               state.openGroupId,
             )!;
-            ui.statusMessage.textContent = `Selected group ${group.name}.`;
-            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / group ${group.name}`;
+            ui.statusMessage.set(`Selected group ${group.name}.`);
+            ui.pointerContext.set(`${viewport.toUpperCase()} / group ${group.name}`);
           } else if (
             selection?.brushId &&
             (intent.objectExpansion === 'siblings' || intent.objectExpansion === 'activate')
           ) {
             const count = selectedBrushIds(state.session.selection).length;
-            ui.statusMessage.textContent =
-              count > 1 ? `Selected ${count} sibling brushes.` : 'Selected brush.';
-            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / siblings ${count}`;
+            ui.statusMessage.set(
+              count > 1 ? `Selected ${count} sibling brushes.` : 'Selected brush.',
+            );
+            ui.pointerContext.set(`${viewport.toUpperCase()} / siblings ${count}`);
           } else {
-            ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / edit`;
+            ui.pointerContext.set(`${viewport.toUpperCase()} / edit`);
           }
         },
         onPointEntityPlace(event) {
-          const classname = ui.pointEntityClassname.value.trim();
+          const classname = ui.pointEntityTool.getSnapshot().classname.trim();
           if (!classname) {
-            ui.statusMessage.textContent = 'Enter a point-entity classname before placing it.';
+            ui.statusMessage.set('Enter a point-entity classname before placing it.');
             return;
           }
           try {
@@ -279,29 +305,31 @@ export class RendererPresenter {
               ids,
               state.openGroupId ? { _tb_group: state.openGroupId } : {},
             );
-            ui.statusMessage.textContent = `Placed ${classname} at ${app.build.formatVector(event.origin)}.`;
-            ui.cameraPointerContext.textContent = `${event.viewport.toUpperCase()} / placed ${classname}`;
+            ui.statusMessage.set(`Placed ${classname} at ${app.build.formatVector(event.origin)}.`);
+            ui.pointerContext.set(`${event.viewport.toUpperCase()} / placed ${classname}`);
           } catch (error) {
-            ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+            ui.statusMessage.set(error instanceof Error ? error.message : String(error));
           }
         },
         onPointerPosition(event) {
           state.lastPointerPosition = event;
           app.publishCollaborationPointer();
-          ui.pasteButton.disabled = false;
+          ui.editorCommands.updateActions({ paste: { disabled: false } });
         },
         onContextMenu(event) {
           app.contextMenu.showViewportContextMenu(event);
-          ui.cameraPointerContext.textContent = `${event.viewport.toUpperCase()} / context ${app.build.formatVector(event.pointer.point)}`;
+          ui.pointerContext.set(
+            `${event.viewport.toUpperCase()} / context ${app.build.formatVector(event.pointer.point)}`,
+          );
         },
         onFaceLasso(faces, viewport, ensureSelected) {
           if (faces.length === 0) {
-            ui.statusMessage.textContent = 'Face lasso did not contain any handles.';
+            ui.statusMessage.set('Face lasso did not contain any handles.');
             return;
           }
           state.session.selectFacesWithLasso(faces, ensureSelected);
           const count = selectedFaceReferences(state.session.selection).length;
-          ui.cameraPointerContext.textContent = `${viewport.toUpperCase()} / face lasso ${count}`;
+          ui.pointerContext.set(`${viewport.toUpperCase()} / face lasso ${count}`);
         },
         onClipPlaneChange(event: EditorClipPlaneEvent) {
           app.geometry.handleClipPlaneChange(event);
@@ -310,14 +338,15 @@ export class RendererPresenter {
               event.axisRestriction === undefined || event.axisRestriction === null
                 ? ''
                 : ` · ${['X', 'Y', 'Z'][event.axisRestriction]} locked`;
-            ui.statusMessage.textContent =
+            ui.statusMessage.set(
               event.pointMovePhase === 'commit'
                 ? `Moved clip point ${event.movingPointIndex + 1}${constraint}.`
                 : event.pointMovePhase === 'cancel'
                   ? `Clip point ${event.movingPointIndex + 1} move cancelled.`
-                  : `Clip point ${event.movingPointIndex + 1} preview${constraint}. Release to place it.`;
+                  : `Clip point ${event.movingPointIndex + 1} preview${constraint}. Release to place it.`,
+            );
           }
-          ui.cameraPointerContext.textContent = `${event.viewport.toUpperCase()} / clip ${event.points.length}`;
+          ui.pointerContext.set(`${event.viewport.toUpperCase()} / clip ${event.points.length}`);
         },
         onTransformDrag(event: EditorTransformDragEvent) {
           app.transform.handleTransformDrag(event);
@@ -332,23 +361,23 @@ export class RendererPresenter {
           app.transform.handleTopologyDrag(event);
         },
         onTopologySelectionChange(kind, selectedCount, vertices) {
-          ui.topologySelectionCount.textContent = String(selectedCount);
+          state.topologySelectionCount = selectedCount;
           state.topologySelectedVertices = vertices;
           state.topologySelectionKind = selectedCount > 0 ? kind : null;
-          if (app.transform.isTransformTool(state.activeTool)) app.inspector.updateInspector();
+          app.inspector.updateInspector();
         },
         onBrushDrag(event: EditorBrushDragEvent) {
-          const pointerContext = ui.cameraPointerContext;
+          const pointerContext = ui.pointerContext;
           if (event.phase === 'cancel') {
             state.moveCandidate = null;
             state.duplicationBase = null;
             state.duplicationCandidate = null;
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
-            ui.statusMessage.textContent = event.duplicate
-              ? 'Duplicate-and-move cancelled.'
-              : 'Brush move cancelled.';
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / edit`;
+            ui.statusMessage.set(
+              event.duplicate ? 'Duplicate-and-move cancelled.' : 'Brush move cancelled.',
+            );
+            pointerContext.set(`${event.viewport.toUpperCase()} / edit`);
             return;
           }
 
@@ -360,10 +389,12 @@ export class RendererPresenter {
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
             if (event.phase === 'commit') {
-              ui.statusMessage.textContent = event.duplicate
-                ? 'Duplicate remained on the original grid position; nothing was created.'
-                : 'Brush remained on its original grid position.';
-              pointerContext.textContent = `${event.viewport.toUpperCase()} / edit`;
+              ui.statusMessage.set(
+                event.duplicate
+                  ? 'Duplicate remained on the original grid position; nothing was created.'
+                  : 'Brush remained on its original grid position.',
+              );
+              pointerContext.set(`${event.viewport.toUpperCase()} / edit`);
             }
             return;
           }
@@ -382,58 +413,62 @@ export class RendererPresenter {
               const candidate = state.session.translateObjectDuplicationCandidate(
                 state.duplicationBase,
                 event.delta,
-                ui.textureLock.checked,
+                state.textureLock,
                 state.duplicationBase.label.replace('Duplicate', 'Duplicate and move'),
               );
               if (event.phase === 'preview') {
                 state.duplicationCandidate = candidate;
                 state.renderer?.setDocument(candidate.document, candidate.selectionAfter);
                 app.inspector.updateInspector(candidate.document, candidate.selectionAfter);
-                ui.statusMessage.textContent = `Duplicate-and-move preview: ${app.build.formatVector(event.delta)} (${app.build.movementDescription(event)}). Release to commit.`;
-                pointerContext.textContent = `${event.viewport.toUpperCase()} / duplicate move`;
+                ui.statusMessage.set(
+                  `Duplicate-and-move preview: ${app.build.formatVector(event.delta)} (${app.build.movementDescription(event)}). Release to commit.`,
+                );
+                pointerContext.set(`${event.viewport.toUpperCase()} / duplicate move`);
                 return;
               }
               state.session.commitDocumentCandidate(state.duplicationCandidate ?? candidate);
               state.duplicationBase = null;
               state.duplicationCandidate = null;
-              pointerContext.textContent = `${event.viewport.toUpperCase()} / edit`;
+              pointerContext.set(`${event.viewport.toUpperCase()} / edit`);
               return;
             }
             const candidate = state.session.createObjectTranslationCandidate(
               event.selection,
               event.delta,
-              ui.textureLock.checked,
+              state.textureLock,
             );
             if (!candidate) return;
             if (event.phase === 'preview') {
               state.moveCandidate = candidate;
               state.renderer?.setDocument(candidate.document, state.session.selection);
               app.inspector.updateInspector(candidate.document);
-              ui.statusMessage.textContent = `Move preview: ${app.build.formatVector(event.delta)} (${app.build.movementDescription(event)}). Release to commit.`;
-              pointerContext.textContent = `${event.viewport.toUpperCase()} / move`;
+              ui.statusMessage.set(
+                `Move preview: ${app.build.formatVector(event.delta)} (${app.build.movementDescription(event)}). Release to commit.`,
+              );
+              pointerContext.set(`${event.viewport.toUpperCase()} / move`);
               return;
             }
             state.session.commitDocumentCandidate(state.moveCandidate ?? candidate);
             state.moveCandidate = null;
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / edit`;
+            pointerContext.set(`${event.viewport.toUpperCase()} / edit`);
           } catch (error) {
             state.moveCandidate = null;
             state.duplicationBase = null;
             state.duplicationCandidate = null;
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
-            ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / edit`;
+            ui.statusMessage.set(error instanceof Error ? error.message : String(error));
+            pointerContext.set(`${event.viewport.toUpperCase()} / edit`);
           }
         },
         onFaceTransfer(event: EditorFaceTransferEvent) {
-          const pointerContext = ui.cameraPointerContext;
+          const pointerContext = ui.pointerContext;
           if (event.phase === 'cancel') {
             state.faceTransferCandidate = null;
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
-            ui.statusMessage.textContent = 'Face attribute transfer cancelled.';
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / transfer cancelled`;
+            ui.statusMessage.set('Face attribute transfer cancelled.');
+            pointerContext.set(`${event.viewport.toUpperCase()} / transfer cancelled`);
             return;
           }
 
@@ -454,23 +489,27 @@ export class RendererPresenter {
               state.faceTransferCandidate = candidate;
               state.renderer?.setDocument(candidate.document, state.session.selection);
               app.inspector.updateInspector(candidate.document, state.session.selection);
-              ui.statusMessage.textContent = `Transfer preview: ${modeLabel} across ${event.targets.length} ${event.targets.length === 1 ? 'face' : 'faces'}. Release to commit.`;
-              pointerContext.textContent = `${event.viewport.toUpperCase()} / transfer ${event.targets.length}`;
+              ui.statusMessage.set(
+                `Transfer preview: ${modeLabel} across ${event.targets.length} ${event.targets.length === 1 ? 'face' : 'faces'}. Release to commit.`,
+              );
+              pointerContext.set(
+                `${event.viewport.toUpperCase()} / transfer ${event.targets.length}`,
+              );
               return;
             }
             state.session.commitCandidate(state.faceTransferCandidate ?? candidate);
             state.faceTransferCandidate = null;
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / transfer`;
+            pointerContext.set(`${event.viewport.toUpperCase()} / transfer`);
           } catch (error) {
             state.faceTransferCandidate = null;
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
-            ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / transfer invalid`;
+            ui.statusMessage.set(error instanceof Error ? error.message : String(error));
+            pointerContext.set(`${event.viewport.toUpperCase()} / transfer invalid`);
           }
         },
         onFaceDrag(event: EditorFaceDragEvent) {
-          const pointerContext = ui.cameraPointerContext;
+          const pointerContext = ui.pointerContext;
           const hasMovement =
             event.mode === 'translate'
               ? event.delta.some((component) => Math.abs(component) > Number.EPSILON)
@@ -479,7 +518,7 @@ export class RendererPresenter {
             state.faceCandidate = null;
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
-            ui.statusMessage.textContent =
+            ui.statusMessage.set(
               event.phase === 'cancel'
                 ? event.mode === 'translate'
                   ? 'Face move cancelled.'
@@ -488,8 +527,9 @@ export class RendererPresenter {
                     : event.split
                       ? 'Face split cancelled.'
                       : 'Face extrusion cancelled.'
-                : 'Face stayed on its plane.';
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / face`;
+                : 'Face stayed on its plane.',
+            );
+            pointerContext.set(`${event.viewport.toUpperCase()} / face`);
             return;
           }
 
@@ -516,7 +556,7 @@ export class RendererPresenter {
                     faces,
                     event.delta,
                     createSequentialIdFactory(`face-move-${state.faceTranslationSequence + 1}`),
-                    ui.textureLock.checked,
+                    state.textureLock,
                   )
                 : event.stamp
                   ? state.session.createFaceStampCandidate(
@@ -524,7 +564,7 @@ export class RendererPresenter {
                       eventFace,
                       event.distance,
                       createSequentialIdFactory(`face-stamp-${state.faceStampSequence + 1}`),
-                      ui.textureLock.checked,
+                      state.textureLock,
                     )
                   : event.split
                     ? state.session.createFaceSetSplitCandidate(
@@ -545,14 +585,16 @@ export class RendererPresenter {
               // The viewport is the latency-critical feedback surface during a drag. Inspector
               // values settle from the committed session change; rebuilding its derived model on
               // every snapped pointer position only competes with the next visual frame.
-              ui.statusMessage.textContent =
+              ui.statusMessage.set(
                 event.mode === 'translate'
                   ? `Face move preview: ${app.build.formatVector(event.delta)}. Release to commit.`
-                  : `${event.stamp ? 'Face stamp' : event.split ? 'Face split' : 'Face extrusion'} preview: ${event.distance > 0 ? '+' : ''}${event.distance}. Release to commit.`;
-              pointerContext.textContent =
+                  : `${event.stamp ? 'Face stamp' : event.split ? 'Face split' : 'Face extrusion'} preview: ${event.distance > 0 ? '+' : ''}${event.distance}. Release to commit.`,
+              );
+              pointerContext.set(
                 event.mode === 'translate'
                   ? `${event.viewport.toUpperCase()} / face move ${app.build.formatVector(event.delta)}`
-                  : `${event.viewport.toUpperCase()} / face ${event.stamp ? 'stamp ' : event.split ? 'split ' : ''}${event.distance}`;
+                  : `${event.viewport.toUpperCase()} / face ${event.stamp ? 'stamp ' : event.split ? 'split ' : ''}${event.distance}`,
+              );
               return;
             }
             const committed = state.faceCandidate ?? candidate;
@@ -567,24 +609,24 @@ export class RendererPresenter {
               if (event.mode === 'translate') state.faceTranslationSequence += 1;
             }
             state.faceCandidate = null;
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / face`;
+            pointerContext.set(`${event.viewport.toUpperCase()} / face`);
           } catch (error) {
             state.faceCandidate = null;
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
-            ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / face invalid`;
+            ui.statusMessage.set(error instanceof Error ? error.message : String(error));
+            pointerContext.set(`${event.viewport.toUpperCase()} / face invalid`);
           }
         },
         onHullCreate(event: EditorHullCreateEvent) {
-          const pointerContext = ui.cameraPointerContext;
+          const pointerContext = ui.pointerContext;
           state.hullBuildPoints = event.points;
-          pointerContext.textContent = 'PERSPECTIVE / hull';
+          pointerContext.set('PERSPECTIVE / hull');
           if (event.phase === 'cancel') {
             state.hullCandidate = null;
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
-            ui.statusMessage.textContent = 'Hull point set discarded.';
+            ui.statusMessage.set('Hull point set discarded.');
             return;
           }
           try {
@@ -601,7 +643,9 @@ export class RendererPresenter {
               state.hullCandidate = candidate;
               state.renderer?.setDocument(state.session.document, state.session.selection);
               app.inspector.updateInspector();
-              ui.statusMessage.textContent = `${event.points.length} hull points enclose a valid brush. Press Enter or Create hull.`;
+              ui.statusMessage.set(
+                `${event.points.length} hull points enclose a valid brush. Press Enter or Create hull.`,
+              );
               return;
             }
             state.hullBuildPoints = [];
@@ -613,24 +657,25 @@ export class RendererPresenter {
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
             if (event.phase === 'commit') throw error;
-            ui.statusMessage.textContent =
+            ui.statusMessage.set(
               event.points.length < 4
                 ? `${event.points.length} hull points placed. Add at least four non-coplanar points.`
                 : error instanceof Error
                   ? error.message
-                  : String(error);
+                  : String(error),
+            );
           }
         },
         onBrushCreate(event: EditorBrushCreateEvent) {
-          const pointerContext = ui.cameraPointerContext;
+          const pointerContext = ui.pointerContext;
           if (event.phase === 'cancel' || !event.bounds) {
             state.creationCandidate = null;
             state.creationSequence += 1;
-            ui.simpleShapeResult.textContent = 'Drag to draw';
+            ui.simpleShapeTool.update({ result: 'Drag to draw' });
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
-            ui.statusMessage.textContent = 'Brush creation cancelled.';
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / create`;
+            ui.statusMessage.set('Brush creation cancelled.');
+            pointerContext.set(`${event.viewport.toUpperCase()} / create`);
             return;
           }
 
@@ -653,24 +698,28 @@ export class RendererPresenter {
               const selection = createBrushSelection(candidate.selectionAfter);
               state.renderer?.setDocument(candidate.document, selection);
               app.inspector.updateInspector(candidate.document, selection);
-              ui.simpleShapeResult.textContent = `${brushes.length} ${brushes.length === 1 ? 'brush' : 'brushes'}`;
-              ui.statusMessage.textContent = `${app.geometry.simpleShapeLabel(state.simpleShapeOptions.kind)} preview${event.constraint === 'none' ? '' : ` (${event.constraint})`}: ${brushes.length} ${brushes.length === 1 ? 'brush' : 'brushes'}, ${app.build.formatVector(event.bounds.min)} to ${app.build.formatVector(event.bounds.max)}. Release to commit.`;
-              pointerContext.textContent = `${event.viewport.toUpperCase()} / create`;
+              ui.simpleShapeTool.update({
+                result: `${brushes.length} ${brushes.length === 1 ? 'brush' : 'brushes'}`,
+              });
+              ui.statusMessage.set(
+                `${app.geometry.simpleShapeLabel(state.simpleShapeOptions.kind)} preview${event.constraint === 'none' ? '' : ` (${event.constraint})`}: ${brushes.length} ${brushes.length === 1 ? 'brush' : 'brushes'}, ${app.build.formatVector(event.bounds.min)} to ${app.build.formatVector(event.bounds.max)}. Release to commit.`,
+              );
+              pointerContext.set(`${event.viewport.toUpperCase()} / create`);
               return;
             }
             state.session.commitBatchCreationCandidate(state.creationCandidate ?? candidate);
             state.creationCandidate = null;
             state.creationSequence += 1;
-            ui.simpleShapeResult.textContent = `${brushes.length} created`;
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / create`;
+            ui.simpleShapeTool.update({ result: `${brushes.length} created` });
+            pointerContext.set(`${event.viewport.toUpperCase()} / create`);
           } catch (error) {
             state.creationCandidate = null;
             state.creationSequence += 1;
-            ui.simpleShapeResult.textContent = 'Invalid bounds';
+            ui.simpleShapeTool.update({ result: 'Invalid bounds' });
             state.renderer?.setDocument(state.session.document, state.session.selection);
             app.inspector.updateInspector();
-            ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
-            pointerContext.textContent = `${event.viewport.toUpperCase()} / create`;
+            ui.statusMessage.set(error instanceof Error ? error.message : String(error));
+            pointerContext.set(`${event.viewport.toUpperCase()} / create`);
           }
         },
       });
@@ -701,14 +750,15 @@ export class RendererPresenter {
       });
       renderScheduler.setTarget(renderer);
       renderScheduler.start();
-      ui.statusMessage.textContent = 'Source renderer ready. Select a brush in any viewport.';
+      ui.statusMessage.set('Source renderer ready. Select a brush in any viewport.');
     } catch (error) {
       renderScheduler.dispose();
       if (this.scheduler === renderScheduler) this.scheduler = null;
       if (signal.aborted) signal.throwIfAborted();
-      ui.viewportError.hidden = false;
-      ui.viewportError.textContent = error instanceof Error ? error.message : String(error);
-      ui.statusMessage.textContent = 'WebGPU renderer could not start.';
+      ui.viewportPresentation.update({
+        error: error instanceof Error ? error.message : String(error),
+      });
+      ui.statusMessage.set('WebGPU renderer could not start.');
     }
   }
 

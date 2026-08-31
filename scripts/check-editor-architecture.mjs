@@ -10,6 +10,22 @@ const svgOwnershipAllowlist = new Set([
   'apps/editor/src/components/editor-shell/texture-inspector.tsx',
   'apps/editor/src/uv-editor.ts',
 ]);
+const imperativeDomConstructionAllowlist = new Set([
+  // Focused renderer boundary: React owns the SVG root and this module owns its drawing children.
+  'apps/editor/src/uv-editor.ts',
+  // Non-visible CSS/WebGPU color resolution probes.
+  'apps/editor/src/render-theme.ts',
+  // Ephemeral native download transport; the anchor is never attached to visible UI.
+  'apps/editor/src/project-files.ts',
+]);
+const presenterDomMutationAllowlist = new Set([
+  // Native file inputs must be reset after the browser change event is consumed.
+  'apps/editor/src/command-events.ts',
+  'apps/editor/src/project-presenter.ts',
+  'apps/editor/src/tool-events.ts',
+  // Document metadata lives outside the React application root.
+  'apps/editor/src/theme-presenter.ts',
+]);
 
 async function sourceFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -50,11 +66,65 @@ for (const file of files) {
     violations.push(`${file}: presenters may not depend on the EditorApplication container`);
   }
   if (
+    file === 'apps/editor/src/editor-elements.ts' &&
+    /\bEditorShellState\b|editor-shell-state/.test(source)
+  ) {
+    violations.push(
+      `${file}: EditorElements is reserved for canvas, focus, measurement, and native-file refs; React ports belong to EditorShellState`,
+    );
+  }
+  if (
+    /(?:-presenter|events)\.ts$/.test(file) &&
+    file !== 'apps/editor/src/theme-presenter.ts' &&
+    /\bdocument\.querySelector(?:All)?\s*(?:<[^>]+>)?\s*\(/.test(source)
+  ) {
+    violations.push(
+      `${file}: presenters and event adapters may not discover visible UI through document queries`,
+    );
+  }
+  if (
+    /(?:-presenter|events)\.ts$/.test(file) &&
+    !presenterDomMutationAllowlist.has(file) &&
+    /\.classList\.(?:add|remove|toggle)\s*\(|\.style\.(?:setProperty|removeProperty)\s*\(|\.replaceChildren\s*\(|\.append(?:Child)?\s*\(|\.setAttribute\s*\(|\.(?:hidden|disabled|checked|value)\s*=(?!=)/.test(
+      source,
+    )
+  ) {
+    violations.push(
+      `${file}: presenter-visible properties belong to React snapshots; only documented runtime/native boundaries may mutate DOM`,
+    );
+  }
+  if (
     file.startsWith('apps/editor/src/') &&
     /\.(?:ts|tsx)$/.test(file) &&
     /\.innerHTML\b|\.outerHTML\b|insertAdjacentHTML\s*\(/.test(source)
   ) {
     violations.push(`${file}: HTML string injection is forbidden; render editor UI with React`);
+  }
+  if (
+    file.startsWith('apps/editor/src/') &&
+    file !== 'apps/editor/src/uv-editor.ts' &&
+    /\.textContent\b/.test(source)
+  ) {
+    violations.push(
+      `${file}: DOM-shaped textContent mutation is reserved for the focused UV renderer; publish visible text through a snapshot port`,
+    );
+  }
+  if (
+    /\.tsx?$/.test(file) &&
+    !imperativeDomConstructionAllowlist.has(file) &&
+    /\b(?:document|window\.document)\.createElement(?:NS)?\s*\(|\bnew\s+Option\s*\(/.test(source)
+  ) {
+    violations.push(
+      `${file}: visible DOM construction belongs in React; add only non-visible runtime boundaries to the explicit allowlist`,
+    );
+  }
+  if (
+    file.startsWith('packages/worldview-editor/src/render/') &&
+    /\.closest\s*\([^)]*viewport-pane[^)]*\)\s*\?*\.classList\b/.test(source)
+  ) {
+    violations.push(
+      `${file}: renderer runtimes may mutate their explicit canvas/overlay refs, not React-owned viewport wrappers`,
+    );
   }
   if (
     file !== 'apps/editor/src/components/ui/icon.tsx' &&

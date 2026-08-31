@@ -44,7 +44,7 @@ import {
 import { MapBuildHistoryService } from './build-history.js';
 import { DocumentRecoveryService } from './document-recovery.js';
 import { EditorClipboard } from './editor-clipboard.js';
-import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
 import {
   createDeveloperMaterial,
   createDiagnosticQuakePalette,
@@ -54,6 +54,8 @@ import { ProjectLocalStateService } from './project-local-state.js';
 import { AssetMountStateService } from './asset-mount-state.js';
 import type { WorldviewProjectWorkspace } from './project-workspace.js';
 import { TextureUvEditor } from './uv-editor.js';
+
+type EditorStateUi = Pick<EditorShellState, 'faceInspector' | 'statusMessage'>;
 
 export interface EditorStateHost {
   effectiveObjectViewState(
@@ -134,6 +136,7 @@ export class EditorState {
     | null = null;
   public topologyCandidate: BrushEditCandidate | BrushBatchEditCandidate | null = null;
   public topologySequence = 0;
+  public topologySelectionCount = 0;
   public topologySelectedVertices: readonly Vec3[] = [];
   public topologySelectionKind: EditorTopologyKind | null = null;
   public topologyTransformSequence = 0;
@@ -153,7 +156,8 @@ export class EditorState {
   public duplicateSequence = 0;
   public lastPointerPosition: EditorPointerPositionEvent | null = null;
   public perspectiveCamera: EditorCameraChangeEvent['camera'] | null = null;
-  public activeGridSize: number;
+  public activeGridSize = 16;
+  public textureLock = true;
   public currentDocumentName = 'untitled.map';
   public activeEntityId: MapDocument['entities'][number]['id'] | null = null;
   public activeTool: EditorTool = 'select';
@@ -172,7 +176,6 @@ export class EditorState {
   public entityLinkMode: EntityLinkMode = 'direct';
   public openGroupId: string | null = null;
   public selectedLayerId: EditorLayerId = null;
-  public layerPanelSignature = '';
   public issueBrowserOpen = false;
   public viewFilterPopoverOpen = false;
   public readonly hiddenIssueIds = new Set<string>();
@@ -205,12 +208,12 @@ export class EditorState {
   public readonly recovery: DocumentRecoveryService;
 
   public constructor(
-    public readonly ui: EditorElements,
+    ui: EditorStateUi,
+    uvEditorSvg: SVGSVGElement,
     host: () => EditorStateHost,
     signal: AbortSignal,
     options: EditorStateOptions = {},
   ) {
-    this.activeGridSize = Number(ui.gridSizeSelect.value);
     const configuredCompilerEndpoint =
       new URLSearchParams(window.location.search).get('compiler') ??
       import.meta.env.VITE_WORLDVIEW_COMPILER_ENDPOINT;
@@ -252,13 +255,13 @@ export class EditorState {
     };
     signal.addEventListener('abort', cancelUvPreviewFrame, { once: true });
     this.uvEditor = new TextureUvEditor({
-      svg: ui.uvEditorSvg,
+      svg: uvEditorSvg,
       signal,
       onStatus(message) {
         ui.faceInspector.update({ uvStatus: message });
       },
       onAnnounce(message) {
-        ui.statusMessage.textContent = message;
+        ui.statusMessage.set(message);
       },
       onTransform: (event) => {
         if (event.phase === 'cancel') {
@@ -271,7 +274,7 @@ export class EditorState {
           );
           host().updateFaceInspector();
           host().publishCollaborationPreview(this.session.document);
-          ui.statusMessage.textContent = 'UV transform cancelled.';
+          ui.statusMessage.set('UV transform cancelled.');
           return;
         }
         try {
@@ -284,7 +287,7 @@ export class EditorState {
           if (event.phase === 'preview') {
             this.uvTextureCandidate = candidate;
             scheduleUvPreview();
-            ui.statusMessage.textContent = `${candidate.label} preview. Release to commit.`;
+            ui.statusMessage.set(`${candidate.label} preview. Release to commit.`);
             return;
           }
           cancelUvPreviewFrame();
@@ -301,7 +304,7 @@ export class EditorState {
           );
           host().updateFaceInspector();
           host().publishCollaborationPreview(this.session.document);
-          ui.statusMessage.textContent = error instanceof Error ? error.message : String(error);
+          ui.statusMessage.set(error instanceof Error ? error.message : String(error));
         }
       },
     });
@@ -309,14 +312,14 @@ export class EditorState {
       session: () => this.session,
       context: () => ({
         pointer: this.lastPointerPosition,
-        textureLock: ui.textureLock.checked,
+        textureLock: this.textureLock,
         targetGroupId: this.openGroupId,
         selectToolActive: this.activeTool === 'select',
         gridSize: this.activeGridSize,
       }),
       activateSelectTool: () => host().setEditorTool('select'),
       setStatus: (message) => {
-        ui.statusMessage.textContent = message;
+        ui.statusMessage.set(message);
       },
     });
     this.recovery = new DocumentRecoveryService(

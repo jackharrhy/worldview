@@ -93,7 +93,11 @@ export function Component() {
                     <span className="project-access-role">Owner</span>
                   ) : (
                     <>
-                      <select name="role" defaultValue={user.role ?? 'editor'}>
+                      <select
+                        name="role"
+                        defaultValue={user.role ?? 'editor'}
+                        aria-label={`Access role for ${user.displayName}`}
+                      >
                         <option value="editor">Editor</option>
                         <option value="viewer">Viewer</option>
                       </select>

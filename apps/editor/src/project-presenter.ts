@@ -35,13 +35,24 @@ import {
 import type { BuildPresenter } from './build-presenter.js';
 import type { DocumentPresenter } from './document-presenter.js';
 import type { EditorElements } from './editor-elements.js';
+import type { EditorShellState } from './editor-shell-state.js';
 import type { EditorState } from './editor-state.js';
 import type { MaterialsPresenter } from './materials-presenter.js';
-import type { OrganizationPresenter } from './organization-presenter.js';
 import type { SessionPresenter } from './session-presenter.js';
 import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
-import { required } from './editor-elements.js';
+import type { ProjectActionId } from './project-build-ui-state.js';
 import type { ViewportWorkspacePresenter } from './viewport-workspace-presenter.js';
+
+type ProjectUi = Pick<
+  EditorShellState,
+  | 'pointEntityTool'
+  | 'projectToolbar'
+  | 'projectUi'
+  | 'recoveryVersions'
+  | 'resourceSettings'
+  | 'statusMessage'
+  | 'workspaceHome'
+>;
 
 interface OpenEditorMapOptions {
   readonly expectedDocumentId?: string;
@@ -51,26 +62,62 @@ interface OpenEditorMapOptions {
 }
 
 export class ProjectPresenter {
+  private recoverySnapshots = new Map<string, DocumentRecoverySnapshot>();
+
   public constructor(
     private readonly state: EditorState,
-    private readonly ui: EditorElements,
+    private readonly ui: ProjectUi,
+    private readonly elements: Pick<EditorElements, 'mapFile' | 'referenceFiles'>,
     private readonly build: BuildPresenter,
     private readonly document: DocumentPresenter,
     private readonly materials: MaterialsPresenter,
-    private readonly organization: OrganizationPresenter,
     private readonly session: SessionPresenter,
     private readonly viewportWorkspace: ViewportWorkspacePresenter,
     private readonly signal: AbortSignal,
-  ) {}
+  ) {
+    this.ui.projectToolbar.bind({
+      openMap: (id) => void this.openProjectMap(id),
+      selectBuildProfile: (id) => {
+        this.ui.projectToolbar.update({ selectedBuildProfileId: id });
+        void this.build.checkCompilerService();
+      },
+    });
+    this.ui.recoveryVersions.bind({
+      restore: (id) => this.restoreRecoveryVersion(id),
+      setProtected: (id, protectedValue) =>
+        void this.setRecoveryVersionProtected(id, protectedValue),
+    });
+    this.ui.projectUi.bind({
+      invoke: (action) => this.invokeProjectAction(action),
+      applySource: (source) => this.applySource(source),
+      createCheckpoint: (label) => void this.createCheckpoint(label),
+    });
+    this.refreshEntityDefinitionPresets();
+  }
+
+  public dispose(): void {
+    this.ui.projectToolbar.unbind();
+    this.ui.recoveryVersions.unbind();
+    this.ui.projectUi.unbind();
+  }
+
+  private async openProjectMap(path: string): Promise<void> {
+    const map = this.state.projectWorkspace?.maps.find((candidate) => candidate.path === path);
+    if (!map) return;
+    this.ui.projectToolbar.update({ selectedMapId: path });
+    await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
+  }
 
   private detachProjectContext(): void {
     if (!this.state.projectWorkspace) return;
     this.state.projectWorkspace = null;
     this.state.projectKey = null;
-    this.ui.projectMap.replaceChildren();
-    this.ui.projectMap.hidden = true;
-    this.ui.buildProfile.replaceChildren();
-    this.ui.buildProfile.hidden = true;
+    this.ui.projectToolbar.set({
+      maps: [],
+      selectedMapId: null,
+      buildProfiles: [],
+      selectedBuildProfileId: null,
+    });
     this.state.entityDefinitions = new EntityDefinitionCatalog();
     this.state.projectSprites = [];
     this.state.materialCatalog.clear();
@@ -162,9 +209,11 @@ export class ProjectPresenter {
         this.state.session.restoreDocument(recovered.document, `Restore ${recovered.label}`);
         this.session.setEditorTool('select');
         this.viewportWorkspace.restore(viewportWorkspaceKey);
-        this.ui.statusMessage.textContent = sourceMatchesDisk
-          ? `Restored recovery for ${logicalName}; the on-disk map is unchanged.`
-          : `Restored recovery for ${logicalName} as a detached copy because the on-disk source changed.`;
+        this.ui.statusMessage.set(
+          sourceMatchesDisk
+            ? `Restored recovery for ${logicalName}; the on-disk map is unchanged.`
+            : `Restored recovery for ${logicalName} as a detached copy because the on-disk source changed.`,
+        );
         return;
       }
       assertExpectedDocument();
@@ -184,10 +233,14 @@ export class ProjectPresenter {
       }
       await this.restoreBrowserAssetMounts();
       assertExpectedDocument();
-      this.ui.statusMessage.textContent = `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`;
+      this.ui.statusMessage.set(
+        `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`,
+      );
     } catch (error) {
       if (this.signal.aborted) throw error;
-      this.ui.statusMessage.textContent = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
+      this.ui.statusMessage.set(
+        `${file.name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       if (options.throwOnError) throw error;
     }
   }
@@ -207,21 +260,16 @@ export class ProjectPresenter {
         bounds: definition.bounds ?? { min: [-16, -16, -16], max: [16, 16, 16] },
       });
     }
-    const selectedClassname = this.ui.pointEntityClassname.value.trim().toLowerCase();
-    this.ui.pointEntityPreset.replaceChildren(
-      ...[...definitions.values()]
-        .toSorted((left, right) => left.label.localeCompare(right.label))
-        .map((definition) => {
-          const option = document.createElement('option');
-          option.value = definition.classname;
-          option.textContent = definition.label;
-          return option;
-        }),
-    );
+    const selectedClassname = this.ui.pointEntityTool.getSnapshot().classname.trim().toLowerCase();
     const selected = [...definitions.values()].find(
       ({ classname }) => classname.toLowerCase() === selectedClassname,
     );
-    if (selected) this.ui.pointEntityPreset.value = selected.classname;
+    this.ui.pointEntityTool.update({
+      presets: [...definitions.values()]
+        .toSorted((left, right) => left.label.localeCompare(right.label))
+        .map((definition) => ({ id: definition.classname, label: definition.label })),
+      ...(selected ? { classname: selected.classname } : {}),
+    });
   }
 
   public async loadProjectResources(workspace: WorldviewProjectWorkspace): Promise<void> {
@@ -311,27 +359,16 @@ export class ProjectPresenter {
     if (remembered) this.state.projectKey = remembered.projectKey;
     this.state.workspaceId = remembered?.workspaceId ?? `project:${this.state.projectKey}`;
     this.state.activeGameProfile = workspace.manifest.game;
-    this.ui.projectMap.replaceChildren(
-      ...workspace.maps.map(({ path }) => {
-        const option = document.createElement('option');
-        option.value = path;
-        option.textContent = path;
-        return option;
-      }),
-    );
-    this.ui.projectMap.hidden = workspace.maps.length === 0;
-    this.ui.projectMap.selectedIndex = -1;
-    this.ui.buildProfile.replaceChildren(
-      ...workspace.manifest.buildProfiles.map((profile) => {
-        const option = document.createElement('option');
-        option.value = profile.id;
-        option.textContent = `${profile.label} · ${profile.quality}`;
-        return option;
-      }),
-    );
-    this.ui.buildProfile.hidden = workspace.manifest.buildProfiles.length === 0;
-    this.ui.buildProfile.value =
-      workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? '';
+    this.ui.projectToolbar.set({
+      maps: workspace.maps.map(({ path }) => ({ id: path, label: path })),
+      selectedMapId: null,
+      buildProfiles: workspace.manifest.buildProfiles.map((profile) => ({
+        id: profile.id,
+        label: `${profile.label} · ${profile.quality}`,
+      })),
+      selectedBuildProfileId:
+        workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? null,
+    });
     await this.build.checkCompilerService();
     this.signal.throwIfAborted();
     const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
@@ -339,10 +376,10 @@ export class ProjectPresenter {
       const warning =
         'The project is open, but its directory binding could not be saved; choose the directory again after reload.';
       this.ui.resourceSettings.update({ message: warning, tone: 'error' });
-      this.ui.statusMessage.textContent = `${summary} ${warning}`;
+      this.ui.statusMessage.set(`${summary} ${warning}`);
       return;
     }
-    this.ui.statusMessage.textContent = summary;
+    this.ui.statusMessage.set(summary);
   }
 
   public createNewMap(
@@ -371,7 +408,7 @@ export class ProjectPresenter {
       focusView: true,
     });
     this.viewportWorkspace.restore(this.state.documentKey);
-    this.ui.statusMessage.textContent = `Created an empty ${definition.label} ${format} map.`;
+    this.ui.statusMessage.set(`Created an empty ${definition.label} ${format} map.`);
   }
 
   public async recentProjects() {
@@ -442,7 +479,7 @@ export class ProjectPresenter {
   }
 
   public async chooseMapFile(): Promise<boolean> {
-    const opened = await pickMapFile(this.ui.mapFile);
+    const opened = await pickMapFile(this.elements.mapFile);
     if (!opened) return false;
     await this.openEditorMap(opened.file, opened.handle);
     return true;
@@ -450,31 +487,32 @@ export class ProjectPresenter {
 
   public async renderRecoveryVersions(): Promise<void> {
     const snapshots = await this.state.recovery.list(this.state.documentKey);
-    this.ui.recoveryList.replaceChildren(
-      ...snapshots.map((snapshot) => {
-        const row = document.createElement('div');
-        row.className = 'recovery-row';
-        const description = document.createElement('span');
-        description.textContent = `${snapshot.protected ? '★ ' : ''}${snapshot.label} · r${snapshot.document.revision} · ${new Date(snapshot.updatedAt).toLocaleString()}`;
-        const restore = document.createElement('button');
-        restore.type = 'button';
-        restore.textContent = 'Restore';
-        restore.addEventListener('click', () => {
-          this.restoreRecoverySnapshot(snapshot);
-          this.ui.recoveryDialog.close();
-          this.ui.statusMessage.textContent = `Restored ${snapshot.label} as one undoable replacement.`;
-        });
-        const protect = document.createElement('button');
-        protect.type = 'button';
-        protect.textContent = snapshot.protected ? 'Unprotect' : 'Protect';
-        protect.addEventListener('click', async () => {
-          await this.state.recovery.setProtected(snapshot.snapshotId, !snapshot.protected);
-          await this.renderRecoveryVersions();
-        });
-        row.append(description, restore, protect);
-        return row;
-      }),
+    this.recoverySnapshots = new Map(snapshots.map((snapshot) => [snapshot.snapshotId, snapshot]));
+    this.ui.recoveryVersions.set(
+      snapshots.map((snapshot) => ({
+        id: snapshot.snapshotId,
+        label: snapshot.label,
+        revision: snapshot.document.revision,
+        updatedAtLabel: new Date(snapshot.updatedAt).toLocaleString(),
+        protected: snapshot.protected,
+      })),
     );
+  }
+
+  private restoreRecoveryVersion(snapshotId: string): void {
+    const snapshot = this.recoverySnapshots.get(snapshotId);
+    if (!snapshot) return;
+    this.restoreRecoverySnapshot(snapshot);
+    this.ui.projectUi.update({ recoveryOpen: false });
+    this.ui.statusMessage.set(`Restored ${snapshot.label} as one undoable replacement.`);
+  }
+
+  private async setRecoveryVersionProtected(
+    snapshotId: string,
+    protectedValue: boolean,
+  ): Promise<void> {
+    await this.state.recovery.setProtected(snapshotId, protectedValue);
+    await this.renderRecoveryVersions();
   }
 
   private restoreRecoverySnapshot(snapshot: DocumentRecoverySnapshot): void {
@@ -489,269 +527,174 @@ export class ProjectPresenter {
     this.state.session.restoreDocument(snapshot.document, `Restore ${snapshot.label}`);
   }
 
-  public connect(signal: AbortSignal): void {
-    required<HTMLButtonElement>('[data-action="new"]').addEventListener(
-      'click',
-      () => {
+  private invokeProjectAction(action: ProjectActionId): void {
+    switch (action) {
+      case 'new':
         this.ui.workspaceHome.invoke('newMap');
-      },
-      { signal },
-    );
-
-    required<HTMLButtonElement>('[data-action="show-source"]').addEventListener(
-      'click',
-      () => {
+        return;
+      case 'show-source':
         this.document.updateSourceFromDocument(true);
-        this.ui.sourceDialog.showModal();
-        this.ui.source.focus();
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="close-source"]').addEventListener(
-      'click',
-      () => {
-        this.ui.sourceDialog.close();
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="apply-source"]').addEventListener(
-      'click',
-      () => {
-        try {
-          const parsed = parseMapSource(
-            this.ui.source.value,
-            createSequentialIdFactory(`source-${Date.now()}`),
-          );
-          this.session.replaceDocument(parsed.document, 'Apply map source', {
-            source: parsed.source,
-            dirty: true,
-            savedRevision: this.state.savedDocumentRevision,
-          });
-          this.ui.sourceDialog.close();
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          this.ui.sourceMessage.textContent = message;
-          this.ui.sourceMessage.classList.add('error-text');
-          this.ui.statusMessage.textContent = 'Source contains a parse error.';
-        }
-      },
-      { signal },
-    );
-
-    required<HTMLButtonElement>('[data-action="open-project"]').addEventListener(
-      'click',
-      async () => {
-        try {
-          if (!(await this.chooseProjectDirectory())) {
-            this.ui.statusMessage.textContent =
-              'Persistent project directories require a Chromium browser with File System Access.';
-            return;
-          }
-        } catch (error) {
-          this.ui.statusMessage.textContent = `Project open failed: ${error instanceof Error ? error.message : String(error)}`;
-        }
-      },
-      { signal },
-    );
-
-    this.ui.projectMap.addEventListener(
-      'change',
-      async () => {
-        const map = this.state.projectWorkspace?.maps.find(
-          ({ path }) => path === this.ui.projectMap.value,
-        );
-        if (!map) return;
-        await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
-      },
-      { signal },
-    );
-    this.ui.buildProfile.addEventListener('change', () => void this.build.checkCompilerService(), {
-      signal,
-    });
-
-    required<HTMLButtonElement>('[data-action="open-file"]').addEventListener(
-      'click',
-      async () => {
-        try {
-          await this.chooseMapFile();
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    this.ui.mapFile.addEventListener(
-      'change',
-      async () => {
-        const file = this.ui.mapFile.files?.[0];
-        if (!file) return;
-        await this.openEditorMap(file, null);
-        this.ui.mapFile.value = '';
-      },
-      { signal },
-    );
-
-    required<HTMLButtonElement>('[data-action="download"]').addEventListener(
-      'click',
-      async () => {
-        const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
-        if (plan.status === 'blocked') {
-          this.ui.statusMessage.textContent = `${plan.diagnostics.map(({ message }) => message).join(' ')} Use Export normalized to create a separate copy.`;
-          return;
-        }
-        if (!this.state.currentFileHandle || !this.state.lastDiskFingerprint) {
-          downloadMapCopy(this.state.currentDocumentName, plan.text);
-          this.ui.statusMessage.textContent =
-            'Downloaded a source-preserving copy; the browser cannot confirm an on-disk save.';
-          return;
-        }
-        try {
-          this.state.lastDiskFingerprint = await saveMapFile(
-            this.state.currentFileHandle,
-            this.state.lastDiskFingerprint,
-            plan.text,
-          );
-          this.state.currentMapSource = rebaseMapSource(this.state.session.document, plan.text);
-          this.state.savedDocumentRevision = this.state.session.document.revision;
-          this.document.setDocumentDirty(false);
-          this.state.lastRecoveryLabel = `Saved ${this.state.currentDocumentName}`;
-          await this.state.recovery.flush();
-          this.ui.statusMessage.textContent = `Saved ${this.state.currentDocumentName} without normalizing untouched source.`;
-        } catch (error) {
-          if (error instanceof ExternalFileChangeError && this.state.currentFileHandle) {
-            const reload = window.confirm(
-              `${error.message}\n\nChoose OK to reload the disk version, or Cancel to download a source-preserving copy.`,
-            );
-            if (reload)
-              await this.openEditorMap(
-                await this.state.currentFileHandle.getFile(),
-                this.state.currentFileHandle,
-              );
-            else {
-              downloadMapCopy(
-                this.state.currentDocumentName.replace(/\.map$/i, '.copy.map'),
-                plan.text,
-              );
-              this.ui.statusMessage.textContent =
-                'Downloaded a copy; the externally changed file was not overwritten.';
-            }
-          } else {
-            this.ui.statusMessage.textContent = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
-          }
-        }
-      },
-      { signal },
-    );
-
-    const closeCheckpointDialog = () => this.ui.checkpointDialog.close();
-    const createCheckpoint = async () => {
-      const label =
-        this.ui.checkpointLabel.value.trim() ||
-        `Checkpoint r${this.state.session.document.revision}`;
-      try {
-        const snapshot = await this.state.recovery.createCheckpoint(label);
-        closeCheckpointDialog();
-        this.ui.statusMessage.textContent = `Protected checkpoint “${snapshot.label}” created.`;
-      } catch (error) {
-        this.ui.statusMessage.textContent = `Checkpoint failed: ${error instanceof Error ? error.message : String(error)}`;
-      }
-    };
-    required<HTMLButtonElement>('[data-action="checkpoint"]').addEventListener(
-      'click',
-      () => {
-        this.ui.checkpointLabel.value = `Checkpoint r${this.state.session.document.revision}`;
-        this.ui.checkpointDialog.showModal();
-        this.ui.checkpointLabel.focus();
-        this.ui.checkpointLabel.select();
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="create-checkpoint"]').addEventListener(
-      'click',
-      () => void createCheckpoint(),
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="close-checkpoint"]').addEventListener(
-      'click',
-      closeCheckpointDialog,
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="cancel-checkpoint"]').addEventListener(
-      'click',
-      closeCheckpointDialog,
-      { signal },
-    );
-    this.ui.checkpointLabel.addEventListener(
-      'keydown',
-      (event) => {
-        if (event.key !== 'Enter') return;
-        event.preventDefault();
-        void createCheckpoint();
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="versions"]').addEventListener(
-      'click',
-      async () => {
-        await this.renderRecoveryVersions();
-        this.ui.recoveryDialog.showModal();
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="close-recovery"]').addEventListener(
-      'click',
-      () => this.ui.recoveryDialog.close(),
-      { signal },
-    );
-
-    required<HTMLButtonElement>('[data-action="export-normalized"]').addEventListener(
-      'click',
-      () => {
+        this.ui.projectUi.updateSource({ open: true });
+        return;
+      case 'open-project':
+        void this.openProjectFromPicker();
+        return;
+      case 'open-file':
+        void this.openMapFromPicker();
+        return;
+      case 'download':
+        void this.saveCurrentMap();
+        return;
+      case 'checkpoint':
+        this.ui.projectUi.updateCheckpoint({
+          open: true,
+          label: `Checkpoint r${this.state.session.document.revision}`,
+        });
+        return;
+      case 'versions':
+        void this.openRecoveryVersions();
+        return;
+      case 'export-normalized': {
         const normalizedName = this.state.currentDocumentName.replace(/\.map$/i, '.normalized.map');
         downloadMapCopy(normalizedName, serializeMap(this.state.session.document));
-        this.ui.statusMessage.textContent = `Exported normalized source as ${normalizedName}; the original was not overwritten.`;
-      },
-      { signal },
-    );
-
-    required<HTMLButtonElement>('[data-action="load-reference"]').addEventListener(
-      'click',
-      () => {
-        this.ui.referenceFiles.click();
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="snapshot-reference"]').addEventListener(
-      'click',
-      () => {
+        this.ui.statusMessage.set(
+          `Exported normalized source as ${normalizedName}; the original was not overwritten.`,
+        );
+        return;
+      }
+      case 'load-reference':
+        this.elements.referenceFiles.click();
+        return;
+      case 'snapshot-reference':
         this.materials.addReferenceDocument(
           `Document revision ${this.state.session.document.revision}`,
           this.state.session.document,
         );
-      },
-      { signal },
-    );
-    this.ui.clearReferencesButton.addEventListener(
-      'click',
-      () => {
-        this.state.referenceScenes = [];
-        this.state.renderer?.setReferenceScenes(this.state.referenceScenes);
-        this.materials.renderReferenceScenes();
-        this.ui.statusMessage.textContent = 'Cleared reference scenes.';
-      },
-      { signal },
-    );
+    }
+  }
 
-    this.ui.entityLinkModeSelect.addEventListener(
+  private applySource(source: string): void {
+    try {
+      const parsed = parseMapSource(source, createSequentialIdFactory(`source-${Date.now()}`));
+      this.session.replaceDocument(parsed.document, 'Apply map source', {
+        source: parsed.source,
+        dirty: true,
+        savedRevision: this.state.savedDocumentRevision,
+      });
+      this.ui.projectUi.updateSource({ open: false });
+    } catch (error) {
+      this.ui.projectUi.updateSource({
+        message: error instanceof Error ? error.message : String(error),
+        tone: 'error',
+      });
+      this.ui.statusMessage.set('Source contains a parse error.');
+    }
+  }
+
+  private async openProjectFromPicker(): Promise<void> {
+    try {
+      if (!(await this.chooseProjectDirectory())) {
+        this.ui.statusMessage.set(
+          'Persistent project directories require a Chromium browser with File System Access.',
+        );
+      }
+    } catch (error) {
+      this.ui.statusMessage.set(
+        `Project open failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async openMapFromPicker(): Promise<void> {
+    try {
+      await this.chooseMapFile();
+    } catch (error) {
+      this.ui.statusMessage.set(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private async saveCurrentMap(): Promise<void> {
+    const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
+    if (plan.status === 'blocked') {
+      this.ui.statusMessage.set(
+        `${plan.diagnostics.map(({ message }) => message).join(' ')} Use Export normalized to create a separate copy.`,
+      );
+      return;
+    }
+    if (!this.state.currentFileHandle || !this.state.lastDiskFingerprint) {
+      downloadMapCopy(this.state.currentDocumentName, plan.text);
+      this.ui.statusMessage.set(
+        'Downloaded a source-preserving copy; the browser cannot confirm an on-disk save.',
+      );
+      return;
+    }
+    try {
+      this.state.lastDiskFingerprint = await saveMapFile(
+        this.state.currentFileHandle,
+        this.state.lastDiskFingerprint,
+        plan.text,
+      );
+      this.state.currentMapSource = rebaseMapSource(this.state.session.document, plan.text);
+      this.state.savedDocumentRevision = this.state.session.document.revision;
+      this.document.setDocumentDirty(false);
+      this.state.lastRecoveryLabel = `Saved ${this.state.currentDocumentName}`;
+      await this.state.recovery.flush();
+      this.ui.statusMessage.set(
+        `Saved ${this.state.currentDocumentName} without normalizing untouched source.`,
+      );
+    } catch (error) {
+      if (error instanceof ExternalFileChangeError && this.state.currentFileHandle) {
+        const reload = window.confirm(
+          `${error.message}\n\nChoose OK to reload the disk version, or Cancel to download a source-preserving copy.`,
+        );
+        if (reload) {
+          await this.openEditorMap(
+            await this.state.currentFileHandle.getFile(),
+            this.state.currentFileHandle,
+          );
+        } else {
+          downloadMapCopy(
+            this.state.currentDocumentName.replace(/\.map$/i, '.copy.map'),
+            plan.text,
+          );
+          this.ui.statusMessage.set(
+            'Downloaded a copy; the externally changed file was not overwritten.',
+          );
+        }
+      } else {
+        this.ui.statusMessage.set(
+          `Save failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
+  private async createCheckpoint(label: string): Promise<void> {
+    const resolvedLabel = label.trim() || `Checkpoint r${this.state.session.document.revision}`;
+    try {
+      const snapshot = await this.state.recovery.createCheckpoint(resolvedLabel);
+      this.ui.projectUi.updateCheckpoint({ open: false });
+      this.ui.statusMessage.set(`Protected checkpoint “${snapshot.label}” created.`);
+    } catch (error) {
+      this.ui.statusMessage.set(
+        `Checkpoint failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async openRecoveryVersions(): Promise<void> {
+    await this.renderRecoveryVersions();
+    this.ui.projectUi.update({ recoveryOpen: true });
+  }
+
+  public connect(signal: AbortSignal): void {
+    this.elements.mapFile.addEventListener(
       'change',
-      () => {
-        const mode = this.ui.entityLinkModeSelect.value;
-        if (mode !== 'all' && mode !== 'transitive' && mode !== 'direct' && mode !== 'none') return;
-        this.state.entityLinkMode = mode;
-        this.state.renderer?.setEntityLinkMode(mode);
-        this.organization.updateEntityLinkSummary();
-        this.ui.statusMessage.textContent = `Entity links: ${this.ui.entityLinkModeSelect.selectedOptions[0]?.textContent ?? mode}.`;
+      async () => {
+        const file = this.elements.mapFile.files?.[0];
+        if (!file) return;
+        await this.openEditorMap(file, null);
+        this.elements.mapFile.value = '';
       },
       { signal },
     );
