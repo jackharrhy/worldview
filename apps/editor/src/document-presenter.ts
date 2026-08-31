@@ -16,6 +16,7 @@ import {
 import type { EditorElements } from './editor-elements.js';
 import type { ObjectPastePlacement } from './editor-clipboard.js';
 import type { EditorState } from './editor-state.js';
+import type { ViewportWorkspaceLayout } from './viewport-workspace-presenter.js';
 
 interface CompileAssetEntry {
   readonly name: string;
@@ -31,6 +32,7 @@ export class DocumentPresenter {
     private readonly state: EditorState,
     private readonly ui: EditorElements,
     private readonly setEditorTool: (tool: EditorTool) => void,
+    private readonly onWorkspaceLayoutChange: (layout: ViewportWorkspaceLayout) => void,
   ) {}
 
   public compileAssetName(name: string, index: number): string {
@@ -124,6 +126,17 @@ export class DocumentPresenter {
     }
   }
 
+  public restoreWorkspaceLayout(layout: ViewportWorkspaceLayout): void {
+    const workspaceWidth = this.ui.workspace.getBoundingClientRect().width;
+    const maximumInspectorWidth = Math.max(240, Math.min(520, workspaceWidth * 0.48));
+    this.viewportColumn = Math.max(0.3, Math.min(0.76, layout.viewportColumn));
+    this.viewportTop = Math.max(0.2, Math.min(0.8, layout.viewportTop));
+    this.inspectorWidth = Math.round(
+      Math.max(240, Math.min(maximumInspectorWidth, layout.inspectorWidth)),
+    );
+    this.applyWorkspaceLayout();
+  }
+
   private applyWorkspaceLayout(): void {
     this.ui.viewportGrid.style.setProperty('--viewport-column', `${this.viewportColumn * 100}%`);
     this.ui.viewportGrid.style.setProperty('--viewport-top', `${this.viewportTop * 100}%`);
@@ -145,6 +158,11 @@ export class DocumentPresenter {
             : this.inspectorWidth;
       handle.setAttribute('aria-valuenow', String(value));
     }
+    this.onWorkspaceLayoutChange({
+      viewportColumn: this.viewportColumn,
+      viewportTop: this.viewportTop,
+      inspectorWidth: this.inspectorWidth,
+    });
   }
 
   private beginWorkspaceResize(event: PointerEvent, handle: HTMLElement): void {

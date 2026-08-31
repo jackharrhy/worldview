@@ -84,17 +84,38 @@ describe('browser-owned runtime schemas', () => {
   it('accepts only the current strict new-map navigation shape', () => {
     expect(
       readNewMapLaunch({
-        newMap: { name: ' test.map ', profile: 'quake', format: 'valve-220' },
+        newMap: {
+          workspaceId: 'workspace-1',
+          name: ' test.map ',
+          profile: 'quake',
+          format: 'valve-220',
+        },
       }),
-    ).toEqual({ name: 'test.map', profile: 'quake', format: 'valve-220' });
+    ).toEqual({
+      workspaceId: 'workspace-1',
+      name: 'test.map',
+      profile: 'quake',
+      format: 'valve-220',
+    });
     expect(
       readNewMapLaunch({
-        newMap: { name: 'test.map', profile: 'quake', format: 'valve-220', legacy: true },
+        newMap: {
+          workspaceId: 'workspace-1',
+          name: 'test.map',
+          profile: 'quake',
+          format: 'valve-220',
+          legacy: true,
+        },
       }),
     ).toBeNull();
     expect(
       readNewMapLaunch({
-        newMap: { name: 'test.map', profile: 'quake', format: 'quake2' },
+        newMap: {
+          workspaceId: 'workspace-1',
+          name: 'test.map',
+          profile: 'quake',
+          format: 'quake2',
+        },
       }),
     ).toBeNull();
   });

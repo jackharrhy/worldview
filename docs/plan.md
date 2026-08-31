@@ -246,6 +246,11 @@ enforce usable minimum sizes. A two-axis handle at the central row/column juncti
 viewport splits in one pointer drag, with directional arrow-key control as its keyboard equivalent.
 The Perspective header can expand its pane across the full viewport workspace; while expanded, the
 renderer suspends all orthographic render passes instead of merely hiding their canvases.
+Each map has a machine-local viewport workspace snapshot containing all four cameras, the row,
+column, and inspector splits, and Perspective-only mode. This small, non-authoritative display state
+is validated and written to `localStorage` after a short debounce, flushed when leaving the page,
+and restored synchronously after that map opens. It never enters map source, recovery history, or
+the collaboration protocol, so another collaborator retains their own viewpoint and layout.
 The default Select tool is likewise a permanent controller stack: clicks select, selected objects
 move or resize, and a left drag creates the configured simple shape whenever the selection is empty.
 Orthographic and perspective construction bounds align component-wise to the active power-of-two

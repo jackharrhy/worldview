@@ -41,11 +41,13 @@ import type { OrganizationPresenter } from './organization-presenter.js';
 import type { SessionPresenter } from './session-presenter.js';
 import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
 import { required } from './editor-elements.js';
+import type { ViewportWorkspacePresenter } from './viewport-workspace-presenter.js';
 
 interface OpenEditorMapOptions {
   readonly expectedDocumentId?: string;
   readonly expectedRevision?: number;
   readonly throwOnError?: boolean;
+  readonly viewportWorkspaceKey?: string;
 }
 
 export class ProjectPresenter {
@@ -57,6 +59,7 @@ export class ProjectPresenter {
     private readonly materials: MaterialsPresenter,
     private readonly organization: OrganizationPresenter,
     private readonly session: SessionPresenter,
+    private readonly viewportWorkspace: ViewportWorkspacePresenter,
     private readonly signal: AbortSignal,
   ) {}
 
@@ -124,6 +127,9 @@ export class ProjectPresenter {
       const documentKey = belongsToCurrentProject
         ? `${this.state.workspaceId}:map:${logicalName.toLowerCase()}`
         : `file:${logicalName.toLowerCase()}:${fingerprint}`;
+      const viewportWorkspaceKey =
+        options.viewportWorkspaceKey ??
+        (belongsToCurrentProject ? documentKey : `standalone-map:${logicalName.toLowerCase()}`);
       const recovered = await this.state.recovery.latest(documentKey);
       assertExpectedDocument();
       const restoreRecovery = Boolean(
@@ -136,6 +142,7 @@ export class ProjectPresenter {
       );
       assertExpectedDocument();
       if (!belongsToCurrentProject) this.detachProjectContext();
+      this.viewportWorkspace.beginDocumentChange();
       this.state.documentKey = documentKey;
       if (recovered && restoreRecovery) {
         const sourceMatchesDisk = recovered.source.fingerprint === fingerprint;
@@ -151,6 +158,7 @@ export class ProjectPresenter {
         });
         this.state.session.restoreDocument(recovered.document, `Restore ${recovered.label}`);
         this.session.setEditorTool('select');
+        this.viewportWorkspace.restore(viewportWorkspaceKey);
         this.ui.statusMessage.textContent = sourceMatchesDisk
           ? `Restored recovery for ${logicalName}; the on-disk map is unchanged.`
           : `Restored recovery for ${logicalName} as a detached copy because the on-disk source changed.`;
@@ -167,6 +175,7 @@ export class ProjectPresenter {
         focusView: true,
       });
       this.session.setEditorTool('select');
+      this.viewportWorkspace.restore(viewportWorkspaceKey);
       if (belongsToCurrentProject && this.state.projectKey) {
         await this.state.projectLocalState.setLastMap(this.state.projectKey, logicalName);
       }
@@ -336,15 +345,17 @@ export class ProjectPresenter {
     profile: WorldviewGameProfile,
     format: MapFaceSyntax = worldviewGameProfile(profile).defaultFaceSyntax,
     name = 'untitled.map',
+    workspaceId: string = crypto.randomUUID(),
   ): void {
     const definition = worldviewGameProfile(profile);
     if (!definition.supportedFaceSyntaxes.includes(format)) {
       throw new Error(`${definition.label} does not support ${format}`);
     }
+    this.viewportWorkspace.beginDocumentChange();
     this.detachProjectContext();
     const document = { ...createEmptyDocument(), faceSyntax: format };
-    this.state.workspaceId = `browser:${crypto.randomUUID()}`;
-    this.state.documentKey = `${this.state.workspaceId}:map:${crypto.randomUUID()}`;
+    this.state.workspaceId = `browser:${workspaceId}`;
+    this.state.documentKey = `${this.state.workspaceId}:map`;
     this.state.activeGameProfile = profile;
     this.session.replaceDocument(document, `Create empty ${definition.label} map`, {
       name: name.toLowerCase().endsWith('.map') ? name : `${name}.map`,
@@ -355,6 +366,7 @@ export class ProjectPresenter {
       savedRevision: -1,
       focusView: true,
     });
+    this.viewportWorkspace.restore(this.state.documentKey);
     this.ui.statusMessage.textContent = `Created an empty ${definition.label} ${format} map.`;
   }
 

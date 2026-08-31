@@ -360,7 +360,8 @@ export type EditorCameraNavigationMode =
   | 'zoom'
   | 'fly'
   | 'linked'
-  | 'focus';
+  | 'focus'
+  | 'restore';
 
 export interface EditorCameraChangeEvent {
   readonly viewport: EditorViewportKind;

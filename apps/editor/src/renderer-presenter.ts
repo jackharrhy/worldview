@@ -36,6 +36,7 @@ import type { GeometryToolPresenter } from './geometry-tool-presenter.js';
 import type { InspectorPresenter } from './inspector-presenter.js';
 import type { OrganizationPresenter } from './organization-presenter.js';
 import type { TransformToolPresenter } from './transform-tool-presenter.js';
+import type { ViewportWorkspacePresenter } from './viewport-workspace-presenter.js';
 
 interface RendererPresenterDependencies {
   readonly state: EditorState;
@@ -47,6 +48,7 @@ interface RendererPresenterDependencies {
   readonly inspector: InspectorPresenter;
   readonly organization: OrganizationPresenter;
   readonly transform: TransformToolPresenter;
+  readonly viewportWorkspace: ViewportWorkspacePresenter;
   readonly publishCollaborationPreview: (document: EditorState['session']['document']) => void;
   readonly publishCollaborationPointer: () => void;
 }
@@ -90,6 +92,7 @@ export class RendererPresenter {
         },
         onCameraChange(event: EditorCameraChangeEvent) {
           ui.canvases[event.viewport].dataset.camera = JSON.stringify(event.camera);
+          app.viewportWorkspace.setCamera(event);
           if (event.viewport !== 'perspective') return;
           state.perspectiveCamera = event.camera;
           ui.perspectiveMode.dataset.camera = JSON.stringify(event.camera);
@@ -676,12 +679,24 @@ export class RendererPresenter {
         signal.throwIfAborted();
       }
       state.renderer = renderer;
+      const applyPerspectiveOnly = (enabled: boolean) => {
+        renderer.setRenderedViewports(
+          enabled ? ['perspective'] : ['perspective', 'xy', 'xz', 'yz'],
+        );
+        ui.viewportLayout.setPerspectiveOnly(enabled);
+      };
+      app.viewportWorkspace.bind({
+        applyCameras(cameras) {
+          renderer.restoreViewportCameras(cameras);
+        },
+        applyLayout(layout) {
+          app.document.restoreWorkspaceLayout(layout);
+        },
+        applyPerspectiveOnly,
+      });
       ui.viewportLayout.bind({
         setPerspectiveOnly(enabled) {
-          renderer.setRenderedViewports(
-            enabled ? ['perspective'] : ['perspective', 'xy', 'xz', 'yz'],
-          );
-          ui.viewportLayout.setPerspectiveOnly(enabled);
+          app.viewportWorkspace.setPerspectiveOnly(enabled);
         },
       });
       renderScheduler.setTarget(renderer);
@@ -703,5 +718,6 @@ export class RendererPresenter {
     this.dependencies.state.renderer?.dispose();
     this.dependencies.state.renderer = null;
     this.dependencies.ui.viewportLayout.unbind();
+    this.dependencies.viewportWorkspace.unbind();
   }
 }

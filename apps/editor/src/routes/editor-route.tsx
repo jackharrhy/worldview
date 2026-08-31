@@ -61,15 +61,21 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
       const application = new EditorApplication(bindEditorElements(shellState), applicationOptions);
       editor.current = application;
       delete document.documentElement.dataset.worldviewEditorReady;
-      if (initialMap)
-        application.project.createNewMap(initialMap.profile, initialMap.format, initialMap.name);
       void (async () => {
         await application.start();
         application.signal.throwIfAborted();
-        if (hostedMap) {
+        if (initialMap) {
+          application.project.createNewMap(
+            initialMap.profile,
+            initialMap.format,
+            initialMap.name,
+            initialMap.workspaceId,
+          );
+        } else if (hostedMap) {
           const source = new File([hostedMap.source], hostedMap.name, { type: 'text/plain' });
           await application.project.openEditorMap(source, null, hostedMap.name, {
             throwOnError: true,
+            viewportWorkspaceKey: `hosted-map:${hostedMap.id}`,
           });
           application.signal.throwIfAborted();
           application.project.loadHostedResources(hostedMap.resources ?? []);
@@ -80,7 +86,7 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
           );
           application.signal.throwIfAborted();
           shellState.statusMessage.textContent = `Opened hosted map ${hostedMap.projectName} / ${hostedMap.name} · live at v${hostedMap.mapVersion}`;
-        } else if (!initialMap) {
+        } else {
           const launch = takePendingEditorLaunch();
           if (launch?.kind === 'project')
             await application.project.openProjectDirectory(launch.handle);

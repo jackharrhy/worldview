@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 const EditorNavigationStateSchema = z.strictObject({
   newMap: z.strictObject({
+    workspaceId: z.string().min(1).max(128),
     name: z.string().max(4_096),
     profile: z.enum(['quake', 'goldsrc', 'quake2']),
     format: z.enum(['valve-220', 'quake']),
@@ -17,7 +18,7 @@ export type NewMapLaunch = EditorNavigationState['newMap'];
 export function readNewMapLaunch(state: unknown): NewMapLaunch | null {
   const result = EditorNavigationStateSchema.safeParse(state);
   if (!result.success) return null;
-  const { name, profile, format } = result.data.newMap;
+  const { workspaceId, name, profile, format } = result.data.newMap;
   if (!gameProfileSupportsFaceSyntax(worldviewGameProfile(profile), format)) return null;
-  return { name: name.trim() || 'untitled.map', profile, format };
+  return { workspaceId, name: name.trim() || 'untitled.map', profile, format };
 }

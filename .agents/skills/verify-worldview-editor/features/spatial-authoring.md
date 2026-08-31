@@ -38,6 +38,10 @@ separator immediately left of the inspector, to resize them. Dragging the centra
 junction changes both viewport splits in one gesture. Focused separators and the junction also
 respond to arrow keys.
 
+Camera positions for all four viewports, pane and inspector splits, and Perspective-only mode are
+remembered per map in the current browser. Returning to the same hosted, project, standalone, or
+new-map workspace restores that local view without changing the map or another participant's view.
+
 ## Driving it with Playwright
 
 Reuse the projection and selector helpers in `tests/browser/editor.spec.ts`. Seed or inspect state
@@ -62,6 +66,12 @@ is exposed through `aria-valuetext`. Minimum-size clamps are intentional.
 Toggle `Show Perspective only` and require the Perspective pane to match the viewport-grid bounds,
 all orthographic panes and internal separators to be hidden, and their canvases to publish
 `data-rendering="false"`. Restore the four-view layout before continuing multi-viewport gestures.
+
+For viewport-workspace persistence, move both a Perspective and orthographic camera, change all
+three workspace split values, enable Perspective-only mode, and reload the same map route. Require
+the published camera snapshots, separator values, expanded layout, and suspended orthographic
+canvases to match before reload. Use a fresh map identity when testing defaults so earlier local
+snapshots cannot influence the result.
 
 The React-owned viewport context menu also owns native-menu suppression. Keep the document capture
 listener scoped to viewport targets or the short interval while the Worldview menu is open, and

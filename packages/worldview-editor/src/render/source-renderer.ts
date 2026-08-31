@@ -893,6 +893,13 @@ export class EditorSourceRenderer {
     return this.viewports.find((viewport) => viewport.kind === kind)?.camera ?? null;
   }
 
+  public restoreViewportCameras(
+    cameras: Readonly<Record<EditorViewportKind, EditorViewportCameraState>>,
+  ): void {
+    if (this.disposed) return;
+    for (const viewport of this.viewports) viewport.restoreCamera(cameras[viewport.kind]);
+  }
+
   public focusSelection(): boolean {
     if (this.disposed) return false;
     const bounds =

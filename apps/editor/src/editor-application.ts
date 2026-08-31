@@ -19,6 +19,7 @@ import { ThemePresenter } from './theme-presenter.js';
 import { CollaborationPresenter } from './collaboration-presenter.js';
 import { TransformToolPresenter } from './transform-tool-presenter.js';
 import { WebMcpPresenter } from './webmcp-presenter.js';
+import { ViewportWorkspacePresenter } from './viewport-workspace-presenter.js';
 import {
   applyCollaborationOperation,
   collaborationEditsBetween,
@@ -68,6 +69,7 @@ export class EditorApplication implements EditorStateHost {
   public readonly webmcp: WebMcpPresenter;
   public readonly theme: ThemePresenter;
   public readonly collaborationUi: CollaborationPresenter;
+  public readonly viewportWorkspace: ViewportWorkspacePresenter;
   private readonly organizationEvents = new OrganizationEvents(this);
   private readonly commandEvents = new CommandEvents(this);
   private readonly toolEvents = new ToolEvents(this);
@@ -92,6 +94,10 @@ export class EditorApplication implements EditorStateHost {
     options: EditorStateOptions = {},
   ) {
     this.state = new EditorState(ui, () => this, this.lifetime.signal, options);
+    this.viewportWorkspace = new ViewportWorkspacePresenter(undefined, (error) => {
+      if (this.signal.aborted) return;
+      console.error('Viewport workspace persistence failed', error);
+    });
     this.theme = new ThemePresenter(this.state, ui);
     this.collaborationUi = new CollaborationPresenter(
       ui,
@@ -101,8 +107,11 @@ export class EditorApplication implements EditorStateHost {
     );
     this.entity = new EntityPresenter(this.state, ui);
     this.organization = new OrganizationPresenter(this.state, ui);
-    this.document = new DocumentPresenter(this.state, ui, (tool) =>
-      this.session.setEditorTool(tool),
+    this.document = new DocumentPresenter(
+      this.state,
+      ui,
+      (tool) => this.session.setEditorTool(tool),
+      (layout) => this.viewportWorkspace.setLayout(layout),
     );
     this.build = new BuildPresenter(this.state, ui, this.document, this.lifetime.signal);
     this.transform = new TransformToolPresenter(
@@ -161,6 +170,7 @@ export class EditorApplication implements EditorStateHost {
       inspector: this.inspector,
       organization: this.organization,
       transform: this.transform,
+      viewportWorkspace: this.viewportWorkspace,
       publishCollaborationPreview: (document) => this.publishCollaborationPreview(document),
       publishCollaborationPointer: () => this.publishCollaborationPointer(),
     });
@@ -172,6 +182,7 @@ export class EditorApplication implements EditorStateHost {
       this.materials,
       this.organization,
       this.session,
+      this.viewportWorkspace,
       this.lifetime.signal,
     );
     this.webmcp = new WebMcpPresenter(
@@ -257,6 +268,7 @@ export class EditorApplication implements EditorStateHost {
     this.theme.dispose();
     this.webmcp.dispose();
     this.renderer.dispose();
+    this.viewportWorkspace.dispose();
   }
 
   public get collaborationMapId(): string | null {

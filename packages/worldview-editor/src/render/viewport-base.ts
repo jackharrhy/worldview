@@ -268,6 +268,18 @@ export abstract class ViewportBase {
     };
   }
 
+  public restoreCamera(camera: EditorViewportCameraState): void {
+    this.state.center = [camera.center[0], camera.center[1], camera.center[2]];
+    this.state.yaw = camera.yaw;
+    this.state.pitch = Math.max(-1.45, Math.min(1.45, camera.pitch));
+    this.state.distance = Math.max(8, Math.min(65_536, camera.distance));
+    this.state.orthographicSpan = Math.max(32, Math.min(32_768, camera.orthographicSpan));
+    this.state.fieldOfViewRadians =
+      (Math.max(20, Math.min(120, camera.fieldOfViewDegrees)) * Math.PI) / 180;
+    this.state.flySpeed = Math.max(32, Math.min(4_096, camera.flySpeed));
+    this.notifyCamera('restore');
+  }
+
   public synchronizeOrthographicCamera(
     source: EditorViewportKind,
     camera: EditorViewportCameraState,

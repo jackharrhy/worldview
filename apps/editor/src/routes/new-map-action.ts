@@ -14,5 +14,5 @@ export async function action({ request }: { readonly request: Request }) {
   if (!gameProfileSupportsFaceSyntax(definition, format)) {
     return { error: `${definition.label} does not support that map format.` };
   }
-  return { launch: { name, profile, format } };
+  return { launch: { workspaceId: crypto.randomUUID(), name, profile, format } };
 }

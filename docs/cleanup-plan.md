@@ -463,6 +463,10 @@ and domain policy.
 parallel generic promise wrapper around the native API, and do not turn `idb` into a repository/ORM
 abstraction.
 
+Small synchronous display preferences and per-map viewport snapshots may remain in validated,
+debounced `localStorage`; they are non-authoritative UI state and do not justify another native
+IndexedDB request/transaction implementation before this workstream lands.
+
 **Implementation direction:**
 
 - Define typed `DBSchema` contracts and migrate services to `openDB`, enhanced requests, and

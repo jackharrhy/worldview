@@ -998,6 +998,56 @@ test.describe('WebMCP site authoring', () => {
     await expect(inspectorHandle).not.toBeFocused();
   });
 
+  test('restores the per-map viewport workspace after reload', async ({ page }) => {
+    await openEditor(page, { empty: true });
+    const columnHandle = page.locator('[data-resize="viewport-column"]');
+    const rowHandle = page.locator('[data-resize="viewport-top"]');
+    const inspectorHandle = page.locator('[data-resize="inspector"]');
+    await columnHandle.press('ArrowRight');
+    await rowHandle.press('ArrowUp');
+    await inspectorHandle.press('ArrowLeft');
+
+    const perspective = page.getByLabel('Perspective map viewport');
+    const perspectiveBounds = await perspective.boundingBox();
+    const top = page.getByLabel('Top XY map viewport');
+    const topBounds = await top.boundingBox();
+    if (!perspectiveBounds || !topBounds) throw new Error('Viewport camera targets have no bounds');
+    await page.mouse.move(
+      perspectiveBounds.x + perspectiveBounds.width * 0.5,
+      perspectiveBounds.y + perspectiveBounds.height * 0.65,
+    );
+    await page.mouse.wheel(0, -240);
+    await page.mouse.move(
+      topBounds.x + topBounds.width * 0.7,
+      topBounds.y + topBounds.height * 0.4,
+    );
+    await page.mouse.wheel(0, -180);
+
+    const perspectiveBefore = await perspectiveCamera(page);
+    const topBefore = await viewportCamera(page, 'xy');
+    const layoutBefore = {
+      column: await columnHandle.getAttribute('aria-valuenow'),
+      row: await rowHandle.getAttribute('aria-valuenow'),
+      inspector: await inspectorHandle.getAttribute('aria-valuenow'),
+    };
+    await page.getByRole('button', { name: 'Show Perspective only' }).click();
+    await expect(page.locator('.viewport-grid')).toHaveClass(/perspective-only/);
+
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
+    await expect(page.locator('.viewport-error')).toBeHidden();
+    await expect(page.locator('.viewport-grid')).toHaveClass(/perspective-only/);
+    await expect(page.getByRole('button', { name: 'Restore four viewports' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(await perspectiveCamera(page)).toEqual(perspectiveBefore);
+    expect(await viewportCamera(page, 'xy')).toEqual(topBefore);
+    await expect(columnHandle).toHaveAttribute('aria-valuenow', layoutBefore.column!);
+    await expect(rowHandle).toHaveAttribute('aria-valuenow', layoutBefore.row!);
+    await expect(inspectorHandle).toHaveAttribute('aria-valuenow', layoutBefore.inspector!);
+  });
+
   test('shows Perspective alone without rendering hidden orthographic panes', async ({ page }) => {
     await openEditor(page, { empty: true });
     const grid = page.locator('.viewport-grid');
