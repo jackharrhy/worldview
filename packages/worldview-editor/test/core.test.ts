@@ -2604,6 +2604,69 @@ describe('editor transactions', () => {
     expect(findBrush(session.document, brush.id)?.faces[0]?.projection).toEqual(face.projection);
   });
 
+  it('edits one mixed projection field without flattening the other face attributes', () => {
+    const source = createStarterDocument();
+    const sourceBrush = brushesInDocument(source)[1]!;
+    const first = sourceBrush.faces[0]!;
+    const second = sourceBrush.faces[1]!;
+    const brush = Object.assign({}, sourceBrush, {
+      faces: sourceBrush.faces.map((face) => {
+        if (face.id === first.id) {
+          return Object.assign({}, face, {
+            projection: Object.assign({}, face.projection, {
+              offset: [8, 16] as const,
+              scale: [0.5, 1] as const,
+            }),
+          });
+        }
+        if (face.id === second.id) {
+          return Object.assign({}, face, {
+            projection: Object.assign({}, face.projection, {
+              offset: [24, -12] as const,
+              scale: [2, 0.25] as const,
+              rotationDegrees: 30,
+            }),
+          });
+        }
+        return face;
+      }),
+    });
+    const document: MapDocument = {
+      ...source,
+      entities: source.entities.map((entity) =>
+        Object.assign({}, entity, {
+          primitives: entity.primitives.map((candidate) =>
+            candidate.id === brush.id ? brush : candidate,
+          ),
+        }),
+      ),
+    };
+    const session = new EditorSession(document);
+    const selection = createFaceSelection([
+      { brushId: brush.id, faceId: first.id },
+      { brushId: brush.id, faceId: second.id },
+    ]);
+    session.select(selection);
+
+    expect(session.setSelectedTextureProjectionField('offset-u', 64)).toBe(true);
+    const changed = findBrush(session.document, brush.id)!;
+    expect(changed.faces[0]?.projection).toEqual({
+      ...brush.faces[0]!.projection,
+      offset: [64, 16],
+    });
+    expect(changed.faces[1]?.projection).toEqual({
+      ...brush.faces[1]!.projection,
+      offset: [64, -12],
+    });
+    expect(session.undoLabel).toBe('Adjust texture');
+    expect(session.undo()).toBe(true);
+    expect(findBrush(session.document, brush.id)?.faces).toEqual(brush.faces);
+    expect(session.setSelectedTextureProjectionField('offset-u', 8)).toBe(true);
+    expect(() => session.setSelectedTextureProjectionField('scale-u', 0)).toThrow(
+      'Texture scale cannot be zero',
+    );
+  });
+
   it('edits Quake II surface flags atomically while preserving unknown bits and undo', () => {
     const document = createStarterDocument();
     const brush = brushesInDocument(document)[1]!;

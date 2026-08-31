@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 export { Button } from './ui/button.js';
 export type { ButtonProps, ButtonSize, ButtonTone } from './ui/button.js';
 import { Button, type ButtonProps } from './ui/button.js';
+import { Icon } from './ui/icon.js';
 
 export function ProductPage({
   children,
@@ -42,7 +43,7 @@ export function ProductHeader({
       <div className="product-header-primary">
         {backTo ? (
           <Link to={backTo} className="text-action product-back">
-            <i className="ph ph-arrow-left" aria-hidden="true" />
+            <Icon name="back" />
             {backLabel}
           </Link>
         ) : showWordmark ? (

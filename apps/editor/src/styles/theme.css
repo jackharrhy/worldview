@@ -30,9 +30,7 @@
   --shadow-strong: oklch(0% 0 0 / 0.25);
   --overlay: oklch(24% 0.007 244 / 0.45);
   --readout-bg: oklch(98% 0.003 248 / 0.94);
-  --uv-face: oklch(94% 0.005 250);
   --uv-empty: oklch(58% 0.018 251);
-  --uv-outline: oklch(69% 0.018 248);
   --accent: oklch(54% 0.13 245);
   --accent-bright: oklch(47% 0.14 245);
   --accent-text: oklch(37% 0.11 245);

@@ -11,6 +11,7 @@ import {
   Text,
   type SelectProps as AriaSelectProps,
 } from 'react-aria-components/Select';
+import { Icon } from './icon.js';
 
 export interface SelectOption {
   readonly id: string;
@@ -52,7 +53,7 @@ export function Select({
       {hideLabel ? null : <Label className="wv-field-label">{label}</Label>}
       <Button className="wv-select-trigger">
         <SelectValue className="wv-select-value" />
-        <i className="ph ph-caret-down wv-select-caret" aria-hidden="true" />
+        <Icon name="caret-down" className="wv-select-caret" />
       </Button>
       {description ? (
         <Text className="wv-field-description" slot="description">
@@ -71,7 +72,7 @@ export function Select({
             >
               <span>{option.label}</span>
               {option.description ? <small>{option.description}</small> : null}
-              <i className="ph ph-check wv-listbox-check" aria-hidden="true" />
+              <Icon name="check" className="wv-listbox-check" />
             </ListBoxItem>
           )}
         </ListBox>

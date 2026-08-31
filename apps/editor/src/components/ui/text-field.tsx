@@ -15,6 +15,7 @@ export interface TextFieldProps extends Omit<AriaTextFieldProps, 'children' | 'c
   readonly errorMessage?: ReactNode;
   readonly input?: InputProps;
   readonly className?: string;
+  readonly hideLabel?: boolean;
   readonly referenceState?: 'hover' | 'focus' | 'invalid';
 }
 
@@ -24,6 +25,7 @@ export function TextField({
   errorMessage,
   input,
   className = '',
+  hideLabel = false,
   referenceState,
   ...props
 }: TextFieldProps) {
@@ -31,9 +33,10 @@ export function TextField({
     <AriaTextField
       className={`wv-field ${className}`.trim()}
       data-reference-state={referenceState}
+      {...(hideLabel ? { 'aria-label': label } : {})}
       {...props}
     >
-      <Label className="wv-field-label">{label}</Label>
+      {hideLabel ? null : <Label className="wv-field-label">{label}</Label>}
       <Input className="wv-input" {...input} />
       {description ? (
         <Text className="wv-field-description" slot="description">

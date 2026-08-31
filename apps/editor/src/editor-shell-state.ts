@@ -1,5 +1,8 @@
 import { SnapshotStore } from '@jackharrhy/worldview';
 import type {
+  EditorMaterial,
+  FaceTextureProjectionField,
+  FaceTextureAlignmentOperation,
   SurfaceFlagDefinition,
   WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor/core';
@@ -326,6 +329,187 @@ export class SurfaceInspectorPort {
   }
 }
 
+export interface FaceInspectorSnapshot {
+  readonly mode: 'none' | 'single' | 'multiple';
+  readonly selectedFaceCount: number;
+  readonly material: string;
+  readonly materialMixed: boolean;
+  readonly materialSize: readonly [number, number] | null;
+  readonly offset: readonly [number | null, number | null];
+  readonly scale: readonly [number | null, number | null];
+  readonly rotationDegrees: number | null;
+  readonly uAxis: string;
+  readonly vAxis: string;
+  readonly canEditProjection: boolean;
+  readonly canAlign: boolean;
+  readonly uvStatus: string;
+  readonly uvGrid: readonly [number, number];
+}
+
+export interface FaceInspectorActions {
+  setProjectionField(field: FaceTextureProjectionField, value: number): void;
+  align(
+    operation: FaceTextureAlignmentOperation,
+    options?: { readonly reverse?: boolean; readonly subdivide?: boolean },
+  ): void;
+  resetUvPivot(): void;
+  frameUvSelection(): void;
+  setUvGrid(axis: 0 | 1, subdivisions: number): void;
+}
+
+const EMPTY_FACE_INSPECTOR: FaceInspectorSnapshot = {
+  mode: 'none',
+  selectedFaceCount: 0,
+  material: '',
+  materialMixed: false,
+  materialSize: null,
+  offset: [null, null],
+  scale: [null, null],
+  rotationDegrees: null,
+  uAxis: '',
+  vAxis: '',
+  canEditProjection: false,
+  canAlign: false,
+  uvStatus: 'No editable UV projection',
+  uvGrid: [1, 1],
+};
+
+export class FaceInspectorPort {
+  private readonly store = new SnapshotStore<FaceInspectorSnapshot>(EMPTY_FACE_INSPECTOR);
+  private actions: FaceInspectorActions | null = null;
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+  public bind(actions: FaceInspectorActions): void {
+    this.actions = actions;
+  }
+  public unbind(): void {
+    this.actions = null;
+    this.store.set(EMPTY_FACE_INSPECTOR);
+  }
+  public set(snapshot: FaceInspectorSnapshot): void {
+    this.store.set(snapshot);
+  }
+  public update(update: Partial<FaceInspectorSnapshot>): void {
+    this.store.set({ ...this.store.getSnapshot(), ...update });
+  }
+  public invoke<K extends keyof FaceInspectorActions>(
+    action: K,
+    ...args: Parameters<FaceInspectorActions[K]>
+  ): void {
+    const handler = this.actions?.[action] as
+      | ((...values: Parameters<FaceInspectorActions[K]>) => void)
+      | undefined;
+    handler?.(...args);
+  }
+}
+
+export interface MaterialCellSnapshot {
+  readonly material: EditorMaterial;
+  readonly active: boolean;
+  readonly inUse: boolean;
+  readonly faceCount: number;
+  readonly brushCount: number;
+}
+
+export interface MaterialBrowserSnapshot {
+  readonly loadedCount: number;
+  readonly usedCount: number;
+  readonly cells: readonly MaterialCellSnapshot[];
+  readonly activeMaterial: string;
+  readonly filter: string;
+  readonly sort: 'name' | 'usage';
+  readonly usedOnly: boolean;
+  readonly sources: readonly string[];
+  readonly source: string;
+  readonly coverageMessage: string;
+  readonly replaceSource: string;
+  readonly replaceTarget: string;
+  readonly replaceScope: string;
+}
+
+export interface MaterialBrowserActions {
+  setFilter(value: string): void;
+  setSort(value: 'name' | 'usage'): void;
+  setUsedOnly(value: boolean): void;
+  setSource(value: string): void;
+  setActiveMaterial(value: string): void;
+  activateMaterial(value: string): void;
+  sampleSelection(): void;
+  applyActiveMaterial(): void;
+  selectFaces(): void;
+  selectBrushes(): void;
+  copyMaterialName(): void;
+  setReplaceSource(value: string): void;
+  setReplaceTarget(value: string): void;
+  replace(): void;
+}
+
+const EMPTY_MATERIAL_BROWSER: MaterialBrowserSnapshot = {
+  loadedCount: 0,
+  usedCount: 0,
+  cells: [],
+  activeMaterial: '',
+  filter: '',
+  sort: 'name',
+  usedOnly: false,
+  sources: [],
+  source: 'all',
+  coverageMessage: '',
+  replaceSource: '',
+  replaceTarget: '',
+  replaceScope: 'No selection: replace across the whole map.',
+};
+
+export class MaterialBrowserPort {
+  private readonly store = new SnapshotStore<MaterialBrowserSnapshot>(EMPTY_MATERIAL_BROWSER);
+  private actions: MaterialBrowserActions | null = null;
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+  public bind(actions: MaterialBrowserActions): void {
+    this.actions = actions;
+  }
+  public unbind(): void {
+    this.actions = null;
+    this.store.set(EMPTY_MATERIAL_BROWSER);
+  }
+  public set(snapshot: MaterialBrowserSnapshot): void {
+    this.store.set(snapshot);
+  }
+  public update(update: Partial<MaterialBrowserSnapshot>): void {
+    this.store.set({ ...this.store.getSnapshot(), ...update });
+  }
+  public invoke<K extends keyof MaterialBrowserActions>(
+    action: K,
+    ...args: Parameters<MaterialBrowserActions[K]>
+  ): void {
+    const handler = this.actions?.[action] as
+      | ((...values: Parameters<MaterialBrowserActions[K]>) => void)
+      | undefined;
+    handler?.(...args);
+  }
+}
+
+export interface ResourceSettingsSnapshot {
+  readonly loadedWadCount: number;
+  readonly paletteLoaded: boolean;
+  readonly message: string;
+  readonly tone: 'normal' | 'error';
+}
+
+export class ResourceSettingsPort {
+  private readonly store = new SnapshotStore<ResourceSettingsSnapshot>({
+    loadedWadCount: 0,
+    paletteLoaded: false,
+    message: 'Material resources are local to this browser until added to a project mount.',
+    tone: 'normal',
+  });
+  public readonly subscribe = this.store.subscribe;
+  public readonly getSnapshot = this.store.getSnapshot;
+  public update(update: Partial<ResourceSettingsSnapshot>): void {
+    this.store.set({ ...this.store.getSnapshot(), ...update });
+  }
+}
+
 export interface RecentProjectSnapshot {
   readonly projectKey: string;
   readonly displayName: string;
@@ -462,6 +646,9 @@ export interface EditorShellState {
   readonly viewportContextMenu: ViewportContextMenuPort;
   readonly documentSummary: DocumentSummaryPort;
   readonly surfaceInspector: SurfaceInspectorPort;
+  readonly faceInspector: FaceInspectorPort;
+  readonly materialBrowser: MaterialBrowserPort;
+  readonly resourceSettings: ResourceSettingsPort;
   readonly workspaceHome: WorkspaceHomePort;
   readonly collaborationUi: CollaborationUiPort;
 }
@@ -478,6 +665,9 @@ export function createEditorShellState(): EditorShellState {
     viewportContextMenu: new ViewportContextMenuPort(),
     documentSummary: new DocumentSummaryPort(),
     surfaceInspector: new SurfaceInspectorPort(),
+    faceInspector: new FaceInspectorPort(),
+    materialBrowser: new MaterialBrowserPort(),
+    resourceSettings: new ResourceSettingsPort(),
     workspaceHome: new WorkspaceHomePort(),
     collaborationUi: new CollaborationUiPort(),
   };

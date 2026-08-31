@@ -1,4 +1,4 @@
-export { EditorSession } from './session-history.js';
+export { EditorSession, type FaceTextureProjectionField } from './session-history.js';
 export type {
   BrushBatchClipCandidate,
   BrushBatchCreationCandidate,

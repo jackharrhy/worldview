@@ -416,6 +416,7 @@ export {
 } from './materials.js';
 export {
   EditorSession,
+  type FaceTextureProjectionField,
   type DocumentEditCandidate,
   type BrushBatchCreationCandidate,
   type SweepCandidate,

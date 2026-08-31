@@ -3,6 +3,7 @@ import { Form, Link, useActionData, useLoaderData, useNavigate, useNavigation } 
 import type { action } from './project-action.js';
 import type { loader } from './project-loader.js';
 import { hostedMapPath } from './hosted-route.js';
+import { Icon } from '../components/ui/icon.js';
 
 export function Component() {
   const { project, mounts, assets, assetQuery, accessUsers } = useLoaderData<typeof loader>();
@@ -19,7 +20,7 @@ export function Component() {
       <section className="landing-card hosted-project-card">
         <header>
           <Link to="/" className="route-back">
-            ← Projects
+            <Icon name="back" /> Projects
           </Link>
           <h1>{project.name}</h1>
           <p>

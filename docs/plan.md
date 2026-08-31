@@ -208,7 +208,13 @@ registration, and session-to-view presentation. Those imperative seams are brows
 boundaries beneath the React shell, not a second UI framework or an unfinished vanilla application.
 The resizable right inspector uses a compact Map, Entity, Face hierarchy: editable key/value data
 and face projection controls lead each view, while operation groups and asset browsers remain flat,
-dense, and separated by functional dividers instead of nested cards.
+dense, and separated by functional dividers instead of nested cards. The Face tab is a React-owned,
+split workspace: a persistent tiled UV plane and always-visible projection controls sit above a
+virtualized material browser, while WAD and palette sources live under Map resources. UV camera
+movement is machine-local view state; projection gestures update locally on the next frame, publish
+bounded collaboration previews independently, and commit exactly one `EditorSession` transaction.
+The delivered behavior, ownership contract, and product-wide icon system are recorded in
+[`face-inspector-plan.md`](./face-inspector-plan.md).
 
 `EditorSession` is the singular transaction and history coordinator. Focused DOM-free domains own
 selection/view state, object transforms, topology, geometry/CSG, entities/materials, and
@@ -234,7 +240,11 @@ vertical rail beside the viewports; applicable selection commands appear context
 texture-lock, visibility, and uncommon edit controls anchored at the rail's foot. Document and
 build-profile selectors retain text where context matters. Every icon action keeps an accessible
 text name, keyboard path, focus treatment, descriptive tooltip, and stable presenter action
-contract. The hierarchy simplifies scanning without removing editor capability.
+contract. Phosphor is the one application-wide icon family behind a typed semantic registry; raw
+library names and copied or unrelated icon dialects do not leak into feature components. Original
+map-editor-specific icons are permitted only when the family has no suitable semantic symbol and
+must follow the same optical, accessibility, theme, and license rules. The hierarchy simplifies
+scanning without removing editor capability.
 
 Source viewport navigation follows the TrenchBroom editing model: once a viewport has keyboard
 focus, focus follows the pointer between source panes; orthographic panes share zoom and synchronize

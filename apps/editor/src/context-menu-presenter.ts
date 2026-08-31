@@ -12,7 +12,7 @@ import {
   type EditorViewportContextMenuEvent,
 } from '@jackharrhy/worldview-editor';
 
-import { required, type EditorElements } from './editor-elements.js';
+import type { EditorElements } from './editor-elements.js';
 import type { ObjectPastePlacement } from './editor-clipboard.js';
 import type { EditorState } from './editor-state.js';
 import type {
@@ -189,15 +189,16 @@ export class ContextMenuPresenter {
 
   public revealContextMaterial(material: string): void {
     this.state.activeMaterialName = material;
-    this.ui.materialName.value = material;
-    this.ui.materialFilter.value = material;
+    this.ui.materialBrowser.update({ activeMaterial: material, filter: material });
     this.ui.inspectorLayout.setActive('textures');
     this.renderMaterialCatalog();
     this.requestFrame(() => {
-      const tile = [
-        ...this.ui.materialGrid.querySelectorAll<HTMLButtonElement>('.material-tile'),
-      ].find((button) => button.textContent?.trim().toLowerCase() === material.toLowerCase());
-      (tile ?? required<HTMLElement>('.material-section')).scrollIntoView({
+      const tile = document.querySelector<HTMLElement>(
+        `[data-material-name="${CSS.escape(material)}"]`,
+      );
+      (
+        tile ?? document.querySelector<HTMLElement>('[data-inspector-panel="textures"]')
+      )?.scrollIntoView({
         block: 'nearest',
       });
     });

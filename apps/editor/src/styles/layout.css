@@ -70,9 +70,7 @@
   --accent-border: color-mix(in oklch, var(--accent) 55%, transparent);
   --danger-soft: color-mix(in oklch, var(--danger) 8%, transparent);
   --danger-border: color-mix(in oklch, var(--danger) 42%, transparent);
-  --uv-face: oklch(14.23% 0.0127 248.47);
   --uv-empty: oklch(41.44% 0.0219 250.81);
-  --uv-outline: oklch(33.28% 0.0216 248.4);
   --uv-control: oklch(81.68% 0.1246 75.1);
   --uv-control-strong: oklch(88.75% 0.1002 77.59);
   --uv-axis-u: oklch(64.74% 0.1463 21.99);

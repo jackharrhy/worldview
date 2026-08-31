@@ -1,32 +1,13 @@
 import {
   createSequentialIdFactory,
   deriveEditorGroups,
-  findBrush,
   pointEntityDefinition,
   selectedEditorGroup,
-  type FaceTextureAlignmentOperation,
   type EditorSelection,
 } from '@jackharrhy/worldview-editor';
 
 import type { EditorApplication } from './editor-application.js';
 import { required } from './editor-elements.js';
-
-const FACE_TEXTURE_ALIGNMENT_OPERATIONS = new Set<FaceTextureAlignmentOperation>([
-  'reset',
-  'world',
-  'flip-u',
-  'flip-v',
-  'rotate-ccw',
-  'rotate-cw',
-  'align-edge',
-  'justify-u-min',
-  'justify-u-max',
-  'justify-v-min',
-  'justify-v-max',
-  'fit-u',
-  'fit-v',
-  'auto-fit',
-]);
 
 export class ToolEvents {
   public constructor(private readonly app: EditorApplication) {}
@@ -274,77 +255,6 @@ export class ToolEvents {
       );
     }
 
-    required<HTMLButtonElement>('[data-action="load-wad"]').addEventListener(
-      'click',
-      () => {
-        this.ui.wadFiles.click();
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="load-palette"]').addEventListener(
-      'click',
-      () => {
-        this.ui.paletteFile.click();
-      },
-      { signal },
-    );
-    required<HTMLButtonElement>('[data-action="apply-material"]').addEventListener(
-      'click',
-      () => {
-        this.app.materials.applySelectedMaterial();
-      },
-      { signal },
-    );
-    this.ui.applyTextureTransformButton.addEventListener(
-      'click',
-      () => {
-        try {
-          const changed = this.state.session.applyTextureTransform({
-            offset: [Number(this.ui.textureShiftU.value), Number(this.ui.textureShiftV.value)],
-            rotationDegrees: Number(this.ui.textureRotation.value),
-            scale: [Number(this.ui.textureScaleU.value), Number(this.ui.textureScaleV.value)],
-          });
-          if (!changed)
-            this.ui.statusMessage.textContent = 'Select a face before adjusting its texture.';
-        } catch (error) {
-          this.ui.statusMessage.textContent =
-            error instanceof Error ? error.message : String(error);
-        }
-      },
-      { signal },
-    );
-    for (const button of document.querySelectorAll<HTMLButtonElement>(
-      '[data-texture-align], [data-texture-layout]',
-    )) {
-      button.addEventListener(
-        'click',
-        (event) => {
-          const operation = (button.dataset.textureAlign ?? button.dataset.textureLayout) as
-            | FaceTextureAlignmentOperation
-            | undefined;
-          if (!operation || !FACE_TEXTURE_ALIGNMENT_OPERATIONS.has(operation)) return;
-          try {
-            if (
-              !this.state.session.alignTexture(operation, {
-                direction: event.shiftKey ? -1 : 1,
-                fitMode: event.ctrlKey || event.metaKey ? 'subdivide' : 'repeat',
-                textureSizeForMaterial: (materialToken) => {
-                  const material = this.state.materialCatalog.find(materialToken);
-                  return material ? [material.width, material.height] : null;
-                },
-              })
-            ) {
-              this.ui.statusMessage.textContent =
-                'Select a brush or face before aligning its texture.';
-            }
-          } catch (error) {
-            this.ui.statusMessage.textContent =
-              error instanceof Error ? error.message : String(error);
-          }
-        },
-        { signal },
-      );
-    }
     required<HTMLButtonElement>('[data-action="set-entity-property"]').addEventListener(
       'click',
       () => {
@@ -588,97 +498,6 @@ export class ToolEvents {
       },
       { signal },
     );
-    required<HTMLButtonElement>('[data-action="sample-material"]').addEventListener(
-      'click',
-      () => {
-        const selection = this.state.session.selection;
-        const brush = selection?.brushId
-          ? findBrush(this.state.session.document, selection.brushId)
-          : null;
-        const face = selection?.faceId
-          ? brush?.faces.find((candidate) => candidate.id === selection.faceId)
-          : undefined;
-        if (!face) {
-          this.ui.statusMessage.textContent = 'Select a face before sampling its material.';
-          return;
-        }
-        this.state.activeMaterialName = face.material;
-        this.ui.materialName.value = face.material;
-        this.ui.applyMaterialButton.disabled = false;
-        this.app.materials.renderMaterialCatalog();
-        this.ui.statusMessage.textContent = `Sampled ${face.material}.`;
-      },
-      { signal },
-    );
-
-    this.ui.materialFilter.addEventListener(
-      'input',
-      () => this.app.materials.renderMaterialCatalog(),
-      { signal },
-    );
-    this.ui.materialSort.addEventListener(
-      'change',
-      () => this.app.materials.renderMaterialCatalog(),
-      { signal },
-    );
-    this.ui.materialUsedOnly.addEventListener(
-      'change',
-      () => this.app.materials.renderMaterialCatalog(),
-      { signal },
-    );
-    this.ui.materialName.addEventListener(
-      'input',
-      () => {
-        this.state.activeMaterialName = this.ui.materialName.value.trim();
-        this.ui.applyMaterialButton.disabled =
-          !this.state.session.selection || this.state.activeMaterialName.length === 0;
-        this.app.materials.renderMaterialCatalog();
-      },
-      { signal },
-    );
-    this.ui.selectMaterialFacesButton.addEventListener(
-      'click',
-      () => this.app.materials.selectFacesUsingCurrentMaterial(),
-      { signal },
-    );
-    this.ui.selectMaterialBrushesButton.addEventListener(
-      'click',
-      () => this.app.materials.selectBrushesUsingCurrentMaterial(),
-      { signal },
-    );
-    this.ui.setMaterialReplaceSourceButton.addEventListener(
-      'click',
-      () => {
-        this.ui.materialReplaceSource.value = this.app.materials.selectedMaterialToken();
-        this.app.materials.updateMaterialBrowserControls();
-        this.ui.materialReplaceTarget.focus();
-      },
-      { signal },
-    );
-    this.ui.setMaterialReplaceTargetButton.addEventListener(
-      'click',
-      () => {
-        this.ui.materialReplaceTarget.value = this.app.materials.selectedMaterialToken();
-        this.app.materials.updateMaterialBrowserControls();
-      },
-      { signal },
-    );
-    this.ui.materialReplaceSource.addEventListener(
-      'input',
-      () => this.app.materials.updateMaterialBrowserControls(),
-      { signal },
-    );
-    this.ui.materialReplaceTarget.addEventListener(
-      'input',
-      () => this.app.materials.updateMaterialBrowserControls(),
-      { signal },
-    );
-    this.ui.materialReplaceButton.addEventListener(
-      'click',
-      () => this.app.materials.replaceSelectedMaterialUsage(),
-      { signal },
-    );
-
     this.ui.paletteFile.addEventListener(
       'change',
       async () => {
@@ -686,8 +505,10 @@ export class ToolEvents {
         if (!file) return;
         const bytes = new Uint8Array(await file.arrayBuffer());
         if (bytes.byteLength < 768) {
-          this.ui.materialMessage.textContent = `${file.name} is ${bytes.byteLength} bytes; a Quake palette needs at least 768.`;
-          this.ui.materialMessage.classList.add('error-text');
+          this.ui.resourceSettings.update({
+            message: `${file.name} is ${bytes.byteLength} bytes; a Quake palette needs at least 768.`,
+            tone: 'error',
+          });
         } else {
           this.state.quakePalette = bytes.slice(0, 768);
           for (const [name, data] of this.state.loadedWadSources) {
@@ -695,8 +516,11 @@ export class ToolEvents {
           }
           this.app.materials.renderMaterialCatalog();
           this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
-          this.ui.materialMessage.textContent = `Loaded ${file.name}. Existing and future WAD2 imports use this palette.`;
-          this.ui.materialMessage.classList.remove('error-text');
+          this.ui.resourceSettings.update({
+            message: `Loaded ${file.name}. Existing and future WAD2 imports use this palette.`,
+            paletteLoaded: true,
+            tone: 'normal',
+          });
         }
         this.ui.paletteFile.value = '';
       },
@@ -744,8 +568,11 @@ export class ToolEvents {
         }
         this.app.materials.renderMaterialCatalog();
         this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
-        this.ui.materialMessage.textContent = summaries.join(' · ');
-        this.ui.materialMessage.classList.toggle('error-text', hasErrors);
+        this.ui.resourceSettings.update({
+          message: summaries.join(' · '),
+          tone: hasErrors ? 'error' : 'normal',
+          loadedWadCount: this.state.loadedWadSources.size,
+        });
         this.ui.statusMessage.textContent = `Material catalog now contains ${this.state.materialCatalog.size} textures.`;
         this.ui.wadFiles.value = '';
       },

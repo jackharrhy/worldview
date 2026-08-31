@@ -5,16 +5,17 @@ import type {
 } from '../../editor-shell-state.js';
 import { Button } from '../ui/button.js';
 import { Dialog } from '../ui/dialog.js';
+import { Icon, type IconName } from '../ui/icon.js';
 import { TextField } from '../ui/text-field.js';
 
-function participantIcon(participant: CollaborationParticipantSnapshot): string {
+function participantIcon(participant: CollaborationParticipantSnapshot): IconName {
   return participant.moving
-    ? 'arrows-out-cardinal'
+    ? 'viewport-move'
     : participant.selectedCount
-      ? 'selection'
+      ? 'selection-active'
       : participant.viewport === '3D'
-        ? 'cube'
-        : 'square-split-horizontal';
+        ? 'viewport-3d'
+        : 'viewport-2d';
 }
 
 export function CollaborationPresence({ port }: { readonly port: CollaborationUiPort }) {
@@ -31,7 +32,7 @@ export function CollaborationPresence({ port }: { readonly port: CollaborationUi
             aria-label={`${participant.displayName} · ${participant.viewport}`}
           >
             <strong>{participant.displayName.charAt(0).toUpperCase()}</strong>
-            <i className={`ph ph-${participantIcon(participant)}`} aria-hidden="true" />
+            <Icon name={participantIcon(participant)} />
           </span>
         ))}
       </div>
@@ -43,7 +44,7 @@ export function CollaborationPresence({ port }: { readonly port: CollaborationUi
         title="Live collaboration"
         onClick={() => port.invoke('open')}
       >
-        <i className="ph ph-users-three" aria-hidden="true" />
+        <Icon name="collaborate" />
         <span className="toolbar-label">Share</span>
       </button>
     </div>

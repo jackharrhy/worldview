@@ -10,6 +10,7 @@ import {
   type InputProps,
   type NumberFieldProps as AriaNumberFieldProps,
 } from 'react-aria-components/NumberField';
+import { Icon } from './icon.js';
 
 export interface NumberFieldProps extends Omit<AriaNumberFieldProps, 'children' | 'className'> {
   readonly label: string;
@@ -43,10 +44,10 @@ export function NumberField({
         {hideSteppers ? null : (
           <span className="wv-number-steppers">
             <Button className="wv-number-stepper" slot="increment">
-              <i className="ph ph-caret-up" aria-hidden="true" />
+              <Icon name="caret-up" />
             </Button>
             <Button className="wv-number-stepper" slot="decrement">
-              <i className="ph ph-caret-down" aria-hidden="true" />
+              <Icon name="caret-down" />
             </Button>
           </span>
         )}

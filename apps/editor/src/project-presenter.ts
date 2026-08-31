@@ -82,9 +82,12 @@ export class ProjectPresenter {
     this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
     this.refreshEntityDefinitionPresets();
     this.materials.renderMaterialCatalog();
-    this.ui.materialMessage.textContent =
-      'Standalone map opened without the previous project’s resources.';
-    this.ui.materialMessage.classList.remove('error-text');
+    this.ui.resourceSettings.update({
+      loadedWadCount: 0,
+      paletteLoaded: false,
+      message: 'Standalone map opened without the previous project’s resources.',
+      tone: 'normal',
+    });
     void this.build.checkCompilerService();
   }
 
@@ -278,16 +281,18 @@ export class ProjectPresenter {
     this.refreshEntityDefinitionPresets();
     this.materials.renderMaterialCatalog();
     const definitionErrors = definitions.diagnostics.filter(({ severity }) => severity === 'error');
-    this.ui.materialMessage.textContent = [
+    const resourceMessage = [
       `${workspace.manifest.name}: ${this.state.materialCatalog.size} textures and ${this.state.entityDefinitions.size} entity definitions`,
       ...resourceMessages,
       ...definitionErrors.map(({ message }) => message),
       ...sprites.diagnostics,
     ].join(' · ');
-    this.ui.materialMessage.classList.toggle(
-      'error-text',
-      definitionErrors.length > 0 || sprites.diagnostics.length > 0,
-    );
+    this.ui.resourceSettings.update({
+      loadedWadCount: this.state.loadedWadSources.size,
+      paletteLoaded: Boolean(this.state.quakePalette),
+      message: resourceMessage,
+      tone: definitionErrors.length > 0 || sprites.diagnostics.length > 0 ? 'error' : 'normal',
+    });
   }
 
   public async openProjectDirectory(handle: EditorDirectoryHandle): Promise<void> {
@@ -333,8 +338,7 @@ export class ProjectPresenter {
     if (remembered === null) {
       const warning =
         'The project is open, but its directory binding could not be saved; choose the directory again after reload.';
-      this.ui.materialMessage.textContent = `${this.ui.materialMessage.textContent} · ${warning}`;
-      this.ui.materialMessage.classList.add('error-text');
+      this.ui.resourceSettings.update({ message: warning, tone: 'error' });
       this.ui.statusMessage.textContent = `${summary} ${warning}`;
       return;
     }

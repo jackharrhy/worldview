@@ -1,9 +1,8 @@
 import {
+  findBrush,
   materialUsageInDocument,
   selectedBrushIds,
   selectedFaceReferences,
-  type EditorMaterial,
-  type EditorMaterialUsage,
   type EditorReferenceScene,
   type EditorTool,
   type MapDocument,
@@ -13,74 +12,69 @@ import type { EditorElements } from './editor-elements.js';
 import type { EditorState } from './editor-state.js';
 
 export class MaterialsPresenter {
-  private readonly materialIdentityTokens = new WeakMap<object, number>();
-  private readonly materialTiles = new Map<string, HTMLButtonElement>();
-  private materialIdentitySequence = 0;
-  private materialLayoutSignature = '';
-  private materialUsageSignature = '';
-  private presentedActiveMaterial = '';
-
   public constructor(
     private readonly state: EditorState,
     private readonly ui: EditorElements,
     private readonly setEditorTool: (tool: EditorTool) => void,
-  ) {}
+  ) {
+    this.ui.materialBrowser.bind({
+      setFilter: (filter) => {
+        this.ui.materialBrowser.update({ filter });
+        this.renderMaterialCatalog();
+      },
+      setSort: (sort) => {
+        this.ui.materialBrowser.update({ sort });
+        this.renderMaterialCatalog();
+      },
+      setUsedOnly: (usedOnly) => {
+        this.ui.materialBrowser.update({ usedOnly });
+        this.renderMaterialCatalog();
+      },
+      setSource: (source) => {
+        this.ui.materialBrowser.update({ source });
+        this.renderMaterialCatalog();
+      },
+      setActiveMaterial: (value) => this.setActiveMaterial(value),
+      activateMaterial: (value) => this.activateMaterial(value),
+      sampleSelection: () => this.sampleSelection(),
+      applyActiveMaterial: () => this.applySelectedMaterial(),
+      selectFaces: () => this.selectFacesUsingCurrentMaterial(),
+      selectBrushes: () => this.selectBrushesUsingCurrentMaterial(),
+      copyMaterialName: () => this.copyCurrentMaterialName(),
+      setReplaceSource: (replaceSource) => this.ui.materialBrowser.update({ replaceSource }),
+      setReplaceTarget: (replaceTarget) => this.ui.materialBrowser.update({ replaceTarget }),
+      replace: () => this.replaceSelectedMaterialUsage(),
+    });
+  }
+
+  public dispose(): void {
+    this.ui.materialBrowser.unbind();
+  }
 
   public selectedMaterialToken(): string {
-    return this.ui.materialName.value.trim() || this.state.activeMaterialName;
-  }
-
-  private materialIdentityToken(material: object): number {
-    const existing = this.materialIdentityTokens.get(material);
-    if (existing !== undefined) return existing;
-    const token = ++this.materialIdentitySequence;
-    this.materialIdentityTokens.set(material, token);
-    return token;
-  }
-
-  private updateMaterialTile(
-    button: HTMLButtonElement,
-    material: EditorMaterial,
-    usage: EditorMaterialUsage | undefined,
-  ): void {
-    button.classList.toggle(
-      'active',
-      material.name.toLowerCase() === this.state.activeMaterialName.toLowerCase(),
-    );
-    button.classList.toggle('in-use', Boolean(usage));
-    button.title = usage
-      ? `${material.name} · ${material.width}×${material.height} · ${usage.faceCount} ${usage.faceCount === 1 ? 'face' : 'faces'} in ${usage.brushCount} ${usage.brushCount === 1 ? 'brush' : 'brushes'} · ${material.sourceName}`
-      : `${material.name} · ${material.width}×${material.height} · unused · ${material.sourceName}`;
+    return this.ui.materialBrowser.getSnapshot().activeMaterial.trim();
   }
 
   public updateMaterialBrowserControls(): void {
-    const material = this.selectedMaterialToken();
-    const hasMaterial = material.length > 0;
-    this.ui.selectMaterialFacesButton.disabled = !hasMaterial;
-    this.ui.selectMaterialBrushesButton.disabled = !hasMaterial;
-    this.ui.setMaterialReplaceSourceButton.disabled = !hasMaterial;
-    this.ui.setMaterialReplaceTargetButton.disabled = !hasMaterial;
-
-    const sourceMaterial = this.ui.materialReplaceSource.value.trim();
-    const targetMaterial = this.ui.materialReplaceTarget.value.trim();
-    this.ui.materialReplaceButton.disabled =
-      !sourceMaterial ||
-      !targetMaterial ||
-      sourceMaterial.toLowerCase() === targetMaterial.toLowerCase();
-
     const selectedFaces = selectedFaceReferences(this.state.session.selection);
     if (selectedFaces.length > 0) {
-      this.ui.materialReplaceScope.textContent = `${selectedFaces.length} selected ${selectedFaces.length === 1 ? 'face' : 'faces'} · replacement selects changed faces.`;
+      this.ui.materialBrowser.update({
+        replaceScope: `${selectedFaces.length} selected ${selectedFaces.length === 1 ? 'face' : 'faces'}. Replacement selects changed faces.`,
+      });
       return;
     }
     const selectedBrushes = selectedBrushIds(this.state.session.selection);
     if (selectedBrushes.length > 0) {
-      this.ui.materialReplaceScope.textContent = `${selectedBrushes.length} selected ${selectedBrushes.length === 1 ? 'brush' : 'brushes'} · replacement affects their matching faces.`;
+      this.ui.materialBrowser.update({
+        replaceScope: `${selectedBrushes.length} selected ${selectedBrushes.length === 1 ? 'brush' : 'brushes'}. Replacement affects matching faces.`,
+      });
       return;
     }
-    this.ui.materialReplaceScope.textContent = this.state.session.selection
-      ? 'Selection has no brush faces to replace.'
-      : 'No selection · replacement affects the whole map and selects changed faces.';
+    this.ui.materialBrowser.update({
+      replaceScope: this.state.session.selection
+        ? 'Selection has no brush faces to replace.'
+        : 'No selection. Replacement affects the whole map and selects changed faces.',
+    });
   }
 
   public renderMaterialCatalog(): void {
@@ -90,11 +84,8 @@ export class MaterialsPresenter {
         start: started,
         end: performance.now(),
       });
-    const queryTokens = this.ui.materialFilter.value
-      .trim()
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
+    const snapshot = this.ui.materialBrowser.getSnapshot();
+    const queryTokens = snapshot.filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const usages = materialUsageInDocument(this.state.session.document);
     const usageByName = new Map(usages.map((usage) => [usage.material.toLowerCase(), usage]));
     const catalogMaterials = this.state.materialCatalog.materials();
@@ -104,15 +95,23 @@ export class MaterialsPresenter {
       if (!loadedNames.has(usage.material.toLowerCase())) missingMaterials.push(usage.material);
     }
     missingMaterials.sort((left, right) => left.localeCompare(right));
+    const sources = [
+      ...new Set(
+        catalogMaterials.flatMap((material) => (material.sourceName ? [material.sourceName] : [])),
+      ),
+    ].toSorted((left, right) => left.localeCompare(right));
+    const activeSource =
+      snapshot.source === 'all' || sources.includes(snapshot.source) ? snapshot.source : 'all';
     const materials = catalogMaterials.filter((material) => {
       const normalizedName = material.name.toLowerCase();
       return (
         queryTokens.every((token) => normalizedName.includes(token)) &&
-        (!this.ui.materialUsedOnly.checked || usageByName.has(normalizedName))
+        (!snapshot.usedOnly || usageByName.has(normalizedName)) &&
+        (activeSource === 'all' || material.sourceName === activeSource)
       );
     });
     materials.sort((left, right) => {
-      if (this.ui.materialSort.value === 'usage') {
+      if (snapshot.sort === 'usage') {
         const usageDifference =
           (usageByName.get(right.name.toLowerCase())?.faceCount ?? 0) -
           (usageByName.get(left.name.toLowerCase())?.faceCount ?? 0);
@@ -120,82 +119,29 @@ export class MaterialsPresenter {
       }
       return left.name.localeCompare(right.name);
     });
-    this.ui.materialCount.textContent = `${this.state.materialCatalog.size} loaded · ${usages.length} in use`;
-    this.ui.materialCoverage.hidden = missingMaterials.length === 0;
-    this.ui.materialCoverage.textContent =
+    const coverageMessage =
       missingMaterials.length === 0
         ? ''
-        : `Missing ${missingMaterials.length} of ${usages.length} map materials: ${missingMaterials.slice(0, 8).join(', ')}${missingMaterials.length > 8 ? `, +${missingMaterials.length - 8} more` : ''}. Load the matching WAD to render them.`;
-
-    const usageSignature = usages
-      .map((usage) => `${usage.material.toLowerCase()}:${usage.faceCount}:${usage.brushCount}`)
-      .toSorted()
-      .join('|');
-    const catalogSignature = catalogMaterials
-      .map((material) => `${this.materialIdentityToken(material)}:${material.name}`)
-      .join('|');
-    const layoutSignature = JSON.stringify({
-      catalog: catalogSignature,
-      query: queryTokens,
-      usedOnly: this.ui.materialUsedOnly.checked,
-      sort: this.ui.materialSort.value,
-      usage:
-        this.ui.materialUsedOnly.checked || this.ui.materialSort.value === 'usage'
-          ? usageSignature
-          : '',
+        : `Missing ${missingMaterials.length} of ${usages.length} map materials: ${missingMaterials.slice(0, 8).join(', ')}${missingMaterials.length > 8 ? `, +${missingMaterials.length - 8} more` : ''}. Add the matching source in Map resources.`;
+    this.ui.materialBrowser.set({
+      ...snapshot,
+      loadedCount: this.state.materialCatalog.size,
+      usedCount: usages.length,
+      activeMaterial: this.state.activeMaterialName,
+      source: activeSource,
+      sources,
+      coverageMessage,
+      cells: materials.map((material) => {
+        const usage = usageByName.get(material.name.toLowerCase());
+        return {
+          material,
+          active: material.name.toLowerCase() === this.state.activeMaterialName.toLowerCase(),
+          inUse: Boolean(usage),
+          faceCount: usage?.faceCount ?? 0,
+          brushCount: usage?.brushCount ?? 0,
+        };
+      }),
     });
-    if (layoutSignature === this.materialLayoutSignature) {
-      if (
-        usageSignature !== this.materialUsageSignature ||
-        this.state.activeMaterialName !== this.presentedActiveMaterial
-      ) {
-        for (const material of materials) {
-          const button = this.materialTiles.get(material.name.toLowerCase());
-          if (button)
-            this.updateMaterialTile(button, material, usageByName.get(material.name.toLowerCase()));
-        }
-      }
-      this.materialUsageSignature = usageSignature;
-      this.presentedActiveMaterial = this.state.activeMaterialName;
-      this.updateMaterialBrowserControls();
-      finish();
-      return;
-    }
-
-    this.materialLayoutSignature = layoutSignature;
-    this.materialUsageSignature = usageSignature;
-    this.presentedActiveMaterial = this.state.activeMaterialName;
-    this.materialTiles.clear();
-    this.ui.materialGrid.replaceChildren();
-    for (const material of materials) {
-      const usage = usageByName.get(material.name.toLowerCase());
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'material-tile';
-      this.updateMaterialTile(button, material, usage);
-
-      const canvas = document.createElement('canvas');
-      canvas.width = material.width;
-      canvas.height = material.height;
-      const context = canvas.getContext('2d');
-      context?.putImageData(
-        new ImageData(new Uint8ClampedArray(material.rgba), material.width, material.height),
-        0,
-        0,
-      );
-      const label = document.createElement('span');
-      label.textContent = material.name;
-      button.append(canvas, label);
-      button.addEventListener('click', () => {
-        this.state.activeMaterialName = material.name;
-        this.ui.materialName.value = material.name;
-        this.ui.applyMaterialButton.disabled = !this.state.session.selection;
-        this.renderMaterialCatalog();
-      });
-      button.addEventListener('dblclick', () => this.applySelectedMaterial());
-      this.materialTiles.set(material.name.toLowerCase(), button);
-      this.ui.materialGrid.append(button);
-    }
     this.updateMaterialBrowserControls();
     finish();
   }
@@ -277,8 +223,56 @@ export class MaterialsPresenter {
     this.ui.statusMessage.textContent = `Loaded reference ${label}.`;
   }
 
+  public setActiveMaterial(name: string): void {
+    this.state.activeMaterialName = name.trim();
+    this.ui.materialBrowser.update({ activeMaterial: this.state.activeMaterialName });
+    this.renderMaterialCatalog();
+  }
+
+  public activateMaterial(name: string): void {
+    this.state.activeMaterialName = name;
+    this.ui.materialBrowser.update({ activeMaterial: name });
+    if (this.state.session.selection) this.applySelectedMaterial();
+    else this.renderMaterialCatalog();
+  }
+
+  public sampleSelection(): void {
+    const selection = this.state.session.selection;
+    const brush = selection?.brushId
+      ? findBrush(this.state.session.document, selection.brushId)
+      : null;
+    const face =
+      brush && selection?.faceId
+        ? brush.faces.find((candidate) => candidate.id === selection.faceId)
+        : undefined;
+    if (!face) {
+      this.ui.statusMessage.textContent = 'Select a face before sampling its material.';
+      return;
+    }
+    this.setActiveMaterial(face.material);
+    this.ui.statusMessage.textContent = `Sampled ${face.material}.`;
+  }
+
+  public copyCurrentMaterialName(): void {
+    const material = this.selectedMaterialToken();
+    if (!material) {
+      this.ui.statusMessage.textContent = 'Choose or enter a material first.';
+      return;
+    }
+    void navigator.clipboard.writeText(material).then(
+      () => {
+        this.ui.statusMessage.textContent = `Copied material name ${material}.`;
+      },
+      (error: unknown) => {
+        this.ui.statusMessage.setError(
+          `Could not copy the material name: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+    );
+  }
+
   public applySelectedMaterial(): void {
-    const name = this.ui.materialName.value.trim();
+    const name = this.selectedMaterialToken();
     if (!name || !this.state.session.selection) {
       this.ui.statusMessage.textContent = 'Select a face and choose or enter a material first.';
       return;
@@ -325,8 +319,9 @@ export class MaterialsPresenter {
   }
 
   public replaceSelectedMaterialUsage(): void {
-    const sourceMaterial = this.ui.materialReplaceSource.value.trim();
-    const targetMaterial = this.ui.materialReplaceTarget.value.trim();
+    const browser = this.ui.materialBrowser.getSnapshot();
+    const sourceMaterial = browser.replaceSource.trim();
+    const targetMaterial = browser.replaceTarget.trim();
     if (
       !sourceMaterial ||
       !targetMaterial ||
@@ -342,7 +337,7 @@ export class MaterialsPresenter {
         return;
       }
       this.state.activeMaterialName = targetMaterial;
-      this.ui.materialName.value = targetMaterial;
+      this.ui.materialBrowser.update({ activeMaterial: targetMaterial });
       this.setEditorTool('face');
       this.renderMaterialCatalog();
       this.ui.statusMessage.textContent = `Replaced ${sourceMaterial} with ${targetMaterial} on ${changedFaceCount} ${changedFaceCount === 1 ? 'face' : 'faces'}. Undo restores the previous materials.`;

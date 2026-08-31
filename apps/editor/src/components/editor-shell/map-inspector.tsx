@@ -1,6 +1,8 @@
-import { useSyncExternalStore } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
 
 import type { EditorShellState } from '../../editor-shell-state.js';
+import { Button } from '../ui/button.js';
+import { Icon } from '../ui/icon.js';
 
 interface MapInspectorProps {
   readonly shellState: EditorShellState;
@@ -54,6 +56,37 @@ function DocumentSummary({ shellState }: MapInspectorProps) {
         </div>
       </dl>
     </div>
+  );
+}
+
+function ResourceSettings({ shellState }: MapInspectorProps) {
+  const wadInput = useRef<HTMLInputElement>(null);
+  const paletteInput = useRef<HTMLInputElement>(null);
+  const resources = useSyncExternalStore(
+    shellState.resourceSettings.subscribe,
+    shellState.resourceSettings.getSnapshot,
+    shellState.resourceSettings.getSnapshot,
+  );
+  return (
+    <section id="resource-settings" className="resource-settings inspector-section">
+      <div className="section-heading">
+        <h3>Map resources</h3>
+        <span>
+          {resources.loadedWadCount} WAD{resources.loadedWadCount === 1 ? '' : 's'}
+        </span>
+      </div>
+      <p className={resources.tone === 'error' ? 'error-text' : undefined}>{resources.message}</p>
+      <div className="resource-settings-actions">
+        <Button size="compact" onPress={() => wadInput.current?.click()}>
+          <Icon name="texture-source" /> Add WAD
+        </Button>
+        <Button size="compact" onPress={() => paletteInput.current?.click()}>
+          <Icon name="palette" /> {resources.paletteLoaded ? 'Replace palette' : 'Add palette'}
+        </Button>
+      </div>
+      <input ref={wadInput} id="wad-files" type="file" accept=".wad" multiple hidden />
+      <input ref={paletteInput} id="palette-file" type="file" accept=".lmp,.pal,.dat" hidden />
+    </section>
   );
 }
 
@@ -119,6 +152,7 @@ export function MapInspector({ shellState }: MapInspectorProps) {
         </div>
       </div>
       <DocumentSummary shellState={shellState} />
+      <ResourceSettings shellState={shellState} />
       <div className="entity-link-section inspector-section">
         <div className="section-heading">
           <h3>Entity links</h3>
