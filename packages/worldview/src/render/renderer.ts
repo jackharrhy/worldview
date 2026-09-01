@@ -10,6 +10,7 @@ import {
   decodeMipTexture,
   decodeQuakeSky,
   findBspLeaf,
+  isQuakePaletteFormat,
   LightstyleState,
   type DecodedMipTexture,
   type DrawBatch,
@@ -324,7 +325,9 @@ function selectedPipeline(
   world: ParsedWorld,
   batch: DrawBatch,
 ): Pipelines[keyof Pipelines] {
-  if (batch.kind === 'sky') return world.version === 29 ? pipelines.quakeSky : pipelines.unlitSky;
+  if (batch.kind === 'sky') {
+    return isQuakePaletteFormat(world.format) ? pipelines.quakeSky : pipelines.unlitSky;
+  }
   const model = world.models[batch.modelIndex];
   const brush = batch.modelIndex > 0;
   if (world.version === 30 && brush) {
@@ -372,6 +375,7 @@ export class TypeGpuWorldRenderer {
   private readonly uploadedMaterials = new Map<number, UploadedMaterial>();
   private readonly lightmapTextures = new Map<number, UploadedTexture>();
   private readonly materialBindings = new Map<string, MaterialBinding>();
+  private readonly facesBySourceIndex: ReadonlyMap<number, ParsedWorld['faces'][number]>;
   private readonly lightstyles = new LightstyleState();
   private readonly spriteRenderer: TypeGpuSpriteRenderer;
   private readonly walkabilityRenderer: TypeGpuWalkabilityRenderer;
@@ -396,6 +400,9 @@ export class TypeGpuWorldRenderer {
     private readonly clearColor: readonly [number, number, number, number],
   ) {
     this.device = root.device;
+    this.facesBySourceIndex = new Map(
+      loaded.world.faces.map((face) => [face.sourceIndex, face] as const),
+    );
     this.pipelines = createPipelines(root, format);
     this.vertexBuffer = createRawBuffer(this.device, loaded.world.vertices, GPUBufferUsage.VERTEX);
     this.indexBuffer = createRawBuffer(this.device, loaded.world.indices, GPUBufferUsage.INDEX);
@@ -466,7 +473,7 @@ export class TypeGpuWorldRenderer {
         (batch) =>
           this.loaded.world.models[batch.modelIndex]?.visible &&
           (batch.kind === 'water' ||
-            (batch.kind === 'sky' && this.loaded.world.version === 29) ||
+            (batch.kind === 'sky' && isQuakePaletteFormat(this.loaded.world.format)) ||
             goldSrcTextureScrollSpeed(this.loaded.world, batch) !== 0),
       )
     );
@@ -728,7 +735,7 @@ export class TypeGpuWorldRenderer {
           depthStoreOp: 'store',
         },
       });
-      if (this.loaded.world.version === 29 || this.loaded.skybox) {
+      if (isQuakePaletteFormat(this.loaded.world.format) || this.loaded.skybox) {
         this.drawSkyboxBackground(pass, sky[0]!, pipelines, options.sceneGroup);
       }
       for (const batch of sky)
@@ -825,7 +832,11 @@ export class TypeGpuWorldRenderer {
         this.uploadedMaterials.set(materialIndex, { diffuse: missing, skyAlpha: missing });
         continue;
       }
-      if (this.loaded.world.version === 29 && material.kind === 'sky' && this.loaded.palette) {
+      if (
+        isQuakePaletteFormat(this.loaded.world.format) &&
+        material.kind === 'sky' &&
+        this.loaded.palette
+      ) {
         const decoded = decodeQuakeSky(bytes, this.loaded.palette);
         this.uploadedMaterials.set(materialIndex, {
           diffuse: this.uploadRgba(`${decoded.name}-solid`, decoded.width, decoded.height, [
@@ -838,7 +849,7 @@ export class TypeGpuWorldRenderer {
       } else {
         const decoded = decodeMipTexture(
           bytes,
-          this.loaded.world.version === 29 ? this.loaded.palette : undefined,
+          isQuakePaletteFormat(this.loaded.world.format) ? this.loaded.palette : undefined,
         );
         const diffuse = this.uploadDecoded(decoded);
         this.uploadedMaterials.set(materialIndex, { diffuse, skyAlpha: diffuse });
@@ -857,7 +868,7 @@ export class TypeGpuWorldRenderer {
       const uniform = this.root.createUniform(MaterialUniform, {
         sizes: [material.diffuse.width, material.diffuse.height, lightmap.width, lightmap.height],
         options: [
-          this.loaded.world.version === 29 ? 1 : 0,
+          isQuakePaletteFormat(this.loaded.world.format) ? 1 : 0,
           this.loaded.skybox ? 1 : 0,
           0,
           goldSrcTextureScrollSpeed(this.loaded.world, batch),
@@ -992,7 +1003,7 @@ export class TypeGpuWorldRenderer {
         flush();
         continue;
       }
-      const face = this.loaded.world.faces[faceIndex];
+      const face = this.facesBySourceIndex.get(faceIndex);
       if (!face) continue;
       if (firstIndex >= 0 && firstIndex + indexCount !== face.firstIndex) flush();
       if (firstIndex < 0) firstIndex = face.firstIndex;
@@ -1009,10 +1020,9 @@ export class TypeGpuWorldRenderer {
   ): void {
     const binding = this.materialBindings.get(this.bindingKey(batch));
     if (!binding) return;
-    const pipeline =
-      this.loaded.world.version === 29
-        ? pipelines.quakeSkyBackground
-        : pipelines.unlitSkyBackground;
+    const pipeline = isQuakePaletteFormat(this.loaded.world.format)
+      ? pipelines.quakeSkyBackground
+      : pipelines.unlitSkyBackground;
     pipeline
       .with(worldVertexLayout, this.skyboxVertexBuffer)
       .withIndexBuffer(this.skyboxIndexBuffer, 'uint32')

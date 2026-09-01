@@ -19,7 +19,7 @@ const toolNames = new Set([
 
 export function classifyMaterial(
   name: string,
-  format: 'quake-bsp29' | 'goldsrc-bsp30' | 'quake2-bsp38',
+  format: 'quake-bsp29' | 'quake-bsp2' | 'goldsrc-bsp30' | 'quake2-bsp38',
   surfaceFlags = 0,
 ): MaterialKind {
   const lower = name.toLowerCase();

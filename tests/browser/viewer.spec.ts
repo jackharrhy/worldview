@@ -186,14 +186,14 @@ test('walking produces player audio and exposes independent footstep volume', as
   }
 });
 
-test('alpha-test, water, and sky fixtures submit without GPU errors', async ({ page }) => {
+test('alpha-test, water, sky, and BSP2 fixtures submit without GPU errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
 
-  for (const fixture of ['alpha', 'water', 'goldsrc-sky', 'quake']) {
+  for (const fixture of ['alpha', 'water', 'goldsrc-sky', 'quake', 'quake-bsp2']) {
     await page.goto(`/?fixture=${fixture}`);
     await requireWebGpu(page);
     await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 15_000 });
@@ -205,7 +205,7 @@ test('alpha-test, water, and sky fixtures submit without GPU errors', async ({ p
         ),
     );
   }
-  await expect(page.locator('[data-format]')).toContainText('quake-bsp29');
+  await expect(page.locator('[data-format]')).toContainText('quake-bsp2 / BSP2');
   expect(errors).toEqual([]);
 });
 

@@ -6,6 +6,7 @@
 import {
   decodeTga,
   findMipTexture,
+  isQuakePaletteFormat,
   parseBsp,
   parseWad,
   WorldviewError,
@@ -82,11 +83,11 @@ async function loadDerivedPalette(
   source: WorldSource,
   context: LoadAssetContext,
 ): Promise<Uint8Array | undefined> {
-  if (world.version !== 29) return undefined;
+  if (!isQuakePaletteFormat(world.format)) return undefined;
   if (!source.gameBaseUrl) {
     throw new WorldviewError(
       'missing-palette',
-      'BSP29 maps require an external 768-byte Quake palette',
+      'Quake BSP maps require an external 768-byte palette',
     );
   }
   return loadPaletteSource(sourceBelow(source.gameBaseUrl, 'gfx/palette.lmp'), context);
@@ -383,6 +384,7 @@ export async function loadWorldAssets(
       textureData: textures.value.textureData,
       missingTextures: textures.value.missingTextures,
       warnings: [
+        ...world.warnings,
         ...baseWarnings,
         ...spriteAssets.warnings,
         ...soundAssets.warnings,

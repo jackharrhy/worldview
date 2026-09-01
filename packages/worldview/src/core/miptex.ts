@@ -24,10 +24,6 @@ export function readMipTextureHeader(input: ArrayBuffer | ArrayBufferView): MipT
   const height = source.u32(20);
   invariant(width > 0 && height > 0, `MIPTEX ${name} has zero dimensions`);
   invariant(width <= 16_384 && height <= 16_384, `MIPTEX ${name} dimensions are unreasonable`);
-  invariant(
-    width % 8 === 0 && height % 8 === 0,
-    `MIPTEX ${name} dimensions are not mip-compatible`,
-  );
   const offsets = Array.from({ length: MIP_LEVEL_COUNT }, (_, index) => source.u32(24 + index * 4));
   return { name, width, height, offsets };
 }

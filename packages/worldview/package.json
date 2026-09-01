@@ -1,9 +1,10 @@
 {
   "name": "@jackharrhy/worldview",
-  "version": "0.4.0",
-  "description": "Embeddable TypeGPU renderer for Quake and GoldSrc maps with Quake II BSP38 previews",
+  "version": "0.5.0",
+  "description": "Embeddable TypeGPU renderer for Quake, BSP2, GoldSrc, and Quake II maps",
   "keywords": [
     "bsp",
+    "bsp2",
     "goldsrc",
     "quake",
     "quake2",

@@ -25,12 +25,13 @@ function mipTexture(name: string, embeddedPalette: boolean): Uint8Array {
 }
 
 function syntheticBsp(
-  version: 29 | 30,
+  version: 29 | 30 | 'BSP2',
   textureName: string,
   skyName?: string,
   additionalEntities = '',
   includeTrace = false,
 ): ArrayBuffer {
+  const bsp2 = version === 'BSP2';
   const texture = mipTexture(textureName, version === 30);
   const entities = new TextEncoder().encode(
     `{\n"classname" "worldspawn"\n${skyName ? `"skyname" "${skyName}"\n` : ''}}\n{\n"classname" "info_player_start"\n"origin" "8 -48 ${version === 30 ? 36 : 24}"\n"angle" "90"\n}\n${additionalEntities}\0`,
@@ -55,17 +56,20 @@ function syntheticBsp(
   const texinfoView = new DataView(texinfo.buffer);
   texinfoView.setFloat32(0, 0.125, true);
   texinfoView.setFloat32(20, 0.125, true);
-  const face = new Uint8Array(20);
+  const face = new Uint8Array(bsp2 ? 28 : 20);
   const faceView = new DataView(face.buffer);
-  faceView.setUint16(8, 4, true);
-  faceView.setUint8(12, 0);
-  faceView.setUint8(13, 255);
-  faceView.setUint8(14, 255);
-  faceView.setUint8(15, 255);
-  const lighting = new Uint8Array(version === 29 ? 9 : 27).fill(112);
-  const edges = new Uint8Array(16);
+  faceView.setUint32(bsp2 ? 12 : 8, 4, true);
+  const stylesOffset = bsp2 ? 20 : 12;
+  faceView.setUint8(stylesOffset, 0);
+  faceView.setUint8(stylesOffset + 1, 255);
+  faceView.setUint8(stylesOffset + 2, 255);
+  faceView.setUint8(stylesOffset + 3, 255);
+  const lighting = new Uint8Array(version === 30 ? 27 : 9).fill(112);
+  const edges = new Uint8Array(bsp2 ? 32 : 16);
   const edgeView = new DataView(edges.buffer);
-  [0, 3, 3, 2, 2, 1, 1, 0].forEach((value, index) => edgeView.setUint16(index * 2, value, true));
+  [0, 3, 3, 2, 2, 1, 1, 0].forEach((value, index) =>
+    bsp2 ? edgeView.setUint32(index * 4, value, true) : edgeView.setUint16(index * 2, value, true),
+  );
   const surfedges = new Uint8Array(16);
   const surfedgeView = new DataView(surfedges.buffer);
   [0, 1, 2, 3].forEach((value, index) => surfedgeView.setInt32(index * 4, value, true));
@@ -89,10 +93,15 @@ function syntheticBsp(
     lumps[1] = plane;
   }
   {
-    const clipnode = new Uint8Array(8);
+    const clipnode = new Uint8Array(bsp2 ? 12 : 8);
     const clipnodeView = new DataView(clipnode.buffer);
-    clipnodeView.setInt16(4, -1, true);
-    clipnodeView.setInt16(6, -2, true);
+    if (bsp2) {
+      clipnodeView.setInt32(4, -1, true);
+      clipnodeView.setInt32(8, -2, true);
+    } else {
+      clipnodeView.setInt16(4, -1, true);
+      clipnodeView.setInt16(6, -2, true);
+    }
     lumps[9] = clipnode;
   }
   if (includeTrace) {
@@ -128,7 +137,8 @@ function syntheticBsp(
   }
   const bsp = new Uint8Array(size);
   const bspView = new DataView(bsp.buffer);
-  bspView.setUint32(0, version, true);
+  if (bsp2) new TextEncoder().encodeInto('BSP2', bsp.subarray(0, 4));
+  else bspView.setUint32(0, version, true);
   lumps.forEach((lump, index) => {
     const offset = offsets[index] ?? 124;
     bspView.setUint32(4 + index * 8, offset, true);
@@ -265,4 +275,8 @@ export function syntheticGoldSrcSkybox() {
 
 export function syntheticQuakeBsp(): ArrayBuffer {
   return syntheticBsp(29, 'sky_fixture');
+}
+
+export function syntheticQuakeBsp2(): ArrayBuffer {
+  return syntheticBsp('BSP2', 'wv_grid');
 }

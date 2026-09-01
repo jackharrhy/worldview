@@ -11,6 +11,7 @@ import {
   syntheticGoldSrcSpriteBsp,
   syntheticGoldSrcWave,
   syntheticQuakeBsp,
+  syntheticQuakeBsp2,
   syntheticQuakePalette,
 } from './synthetic.js';
 import type { FixtureCameraDefinition, ViewerFixture } from './fixture-types.js';
@@ -53,6 +54,13 @@ const builtInFixtures: readonly ViewerFixture[] = [
     aliases: [],
     selectable: true,
     source: { bsp: syntheticQuakeBsp(), palette: syntheticQuakePalette() },
+  },
+  {
+    id: 'quake-bsp2',
+    label: 'Quake BSP2',
+    aliases: [],
+    selectable: false,
+    source: { bsp: syntheticQuakeBsp2(), palette: syntheticQuakePalette() },
   },
   {
     id: 'audio',

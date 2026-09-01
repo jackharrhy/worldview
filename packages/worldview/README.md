@@ -1,13 +1,15 @@
 # @jackharrhy/worldview
 
-Worldview is an embeddable WebGPU renderer for Quake BSP29 and GoldSrc BSP30 maps, with static
-Quake II BSP38 previews.
+Worldview is an embeddable WebGPU renderer for Quake BSP29, sanitized BSP2, and GoldSrc BSP30 maps,
+with static Quake II BSP38 previews.
 
 Documentation, examples, the custom-element setup, and development notes live in the
 [Worldview monorepo](https://github.com/jackharrhy/worldview#readme).
 
-Version 0.4 makes `<world-view>` the canonical embeddable lifecycle owner with atomic `WorldSource`
-assignment, non-blocking persisted walkability, public visibility state, and mirrored typed events.
+Version 0.5 adds sanitized BSP2 geometry, visibility, and collision layouts plus typed, bounded
+compatibility warnings for engine-tolerated Quake-family data. Version 0.4 makes `<world-view>` the
+canonical embeddable lifecycle owner with atomic `WorldSource` assignment, non-blocking persisted
+walkability, public visibility state, and mirrored typed events.
 It also separates GPU-independent stores and scheduling under the `/runtime` entrypoint. Version 0.3
 added concurrent caller-supplied WAD/palette loading and persisted walkability through the viewer.
 Version 0.2 added BSP38 static geometry and RGB lightmaps, WAL decoding primitives, GoldSrc

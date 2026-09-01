@@ -10,16 +10,25 @@ import { validateBspCollision, type ParsedBspCollision } from './collision.js';
 import { entityValue, parseEntities, wadReferences } from './entities.js';
 import { invalidData, invariant, WorldviewError } from './errors.js';
 import { LightmapPacker, LIGHTMAP_PAGE_SIZE } from './lightmaps.js';
-import { classifyMaterial } from './materials.js';
-import { readMipTextureHeader } from './miptex.js';
+import {
+  BSP2_2PSB_MAGIC,
+  quakeBspLayout,
+  readQuakeClipnode,
+  readQuakeEdge,
+  readQuakeFace,
+  readQuakeLeaf,
+  readQuakeMarkSurface,
+  readQuakeTraceNode,
+  type QuakeBspLayout,
+} from './quake-bsp-layout.js';
+import { parseQuakeTextures } from './quake-bsp-textures.js';
 import { validateBspTrace, type ParsedBspTrace } from './trace.js';
 import type { ParsedBspVisibility } from './visibility.js';
 import type {
   Bounds,
+  BspWarning,
   GoldSrcRenderMode,
   ParsedLightmap,
-  ParsedMaterial,
-  ParsedMipTexture,
   ParsedModel,
   ParsedWorld,
   Vec3Tuple,
@@ -86,32 +95,33 @@ function parseTrace(
   nodeLump: BinaryView,
   leafLump: BinaryView,
   headNode: number,
+  layout: QuakeBspLayout,
 ): ParsedBspTrace | null {
   if (nodeLump.byteLength === 0 && leafLump.byteLength === 0) return null;
   invariant(
     planes.byteLength > 0 && nodeLump.byteLength > 0 && leafLump.byteLength > 0,
     'BSP trace lumps must either all be present or all be empty',
   );
-  const nodeCount = recordCount(nodeLump, 24, 'node');
-  const leafCount = recordCount(leafLump, 28, 'leaf');
+  const nodeCount = recordCount(nodeLump, layout.nodeSize, 'node');
+  const leafCount = recordCount(leafLump, layout.leafSize, 'leaf');
   const nodes = new Int32Array(nodeCount * 3);
   for (let index = 0; index < nodeCount; index += 1) {
-    const sourceOffset = index * 24;
     const targetOffset = index * 3;
-    nodes[targetOffset] = nodeLump.u32(sourceOffset);
-    nodes[targetOffset + 1] = nodeLump.i16(sourceOffset + 4);
-    nodes[targetOffset + 2] = nodeLump.i16(sourceOffset + 6);
+    nodes.set(readQuakeTraceNode(nodeLump, index, layout), targetOffset);
   }
   const leafContents = new Int32Array(leafCount);
-  for (let index = 0; index < leafCount; index += 1) leafContents[index] = leafLump.i32(index * 28);
+  for (let index = 0; index < leafCount; index += 1) {
+    leafContents[index] = readQuakeLeaf(leafLump, index, layout).contents;
+  }
   const trace = { planes, nodes, leafContents, headNode };
   validateBspTrace(trace);
   return trace;
 }
 
-function validateVisibilityRow(data: Uint8Array, offset: number, byteCount: number): void {
+function validateVisibilityRow(data: Uint8Array, offset: number, byteCount: number): boolean {
   let source = offset;
   let destination = 0;
+  let clipped = false;
   while (destination < byteCount) {
     invariant(source < data.length, 'BSP visibility row is truncated');
     const value = data[source++]!;
@@ -122,9 +132,10 @@ function validateVisibilityRow(data: Uint8Array, offset: number, byteCount: numb
     invariant(source < data.length, 'BSP visibility run is truncated');
     const length = data[source++]!;
     invariant(length > 0, 'BSP visibility contains an empty zero run');
-    invariant(destination + length <= byteCount, 'BSP visibility run exceeds its row');
-    destination += length;
+    clipped ||= destination + length > byteCount;
+    destination = Math.min(byteCount, destination + length);
   }
+  return clipped;
 }
 
 function parseVisibility(
@@ -133,20 +144,26 @@ function parseVisibility(
   visibilityLump: BinaryView,
   visLeafCount: number,
   faceCount: number,
-): ParsedBspVisibility | null {
+  layout: QuakeBspLayout,
+): {
+  readonly visibility: ParsedBspVisibility | null;
+  readonly clippedRun: boolean;
+} {
   invariant(visLeafCount >= 0, 'world model has a negative visibility leaf count');
-  if (visLeafCount === 0 || visibilityLump.byteLength === 0) return null;
-  const leafCount = recordCount(leafLump, 28, 'leaf');
+  if (visLeafCount === 0 || visibilityLump.byteLength === 0) {
+    return { visibility: null, clippedRun: false };
+  }
+  const leafCount = recordCount(leafLump, layout.leafSize, 'leaf');
   invariant(visLeafCount < leafCount, 'world visibility references missing leaves');
-  const markSurfaceCount = recordCount(markSurfaceLump, 2, 'marksurface');
+  const markSurfaceCount = recordCount(markSurfaceLump, layout.marksurfaceSize, 'marksurface');
   const leafVisOffsets = new Int32Array(leafCount);
   const leafMarkSurfaceStarts = new Uint32Array(leafCount);
   const leafMarkSurfaceCounts = new Uint32Array(leafCount);
   for (let leafIndex = 0; leafIndex < leafCount; leafIndex += 1) {
-    const offset = leafIndex * 28;
-    const visOffset = leafLump.i32(offset + 4);
-    const first = leafLump.u16(offset + 20);
-    const count = leafLump.u16(offset + 22);
+    const leaf = readQuakeLeaf(leafLump, leafIndex, layout);
+    const visOffset = leaf.visibilityOffset;
+    const first = leaf.firstMarkSurface;
+    const count = leaf.markSurfaceCount;
     invariant(
       first + count <= markSurfaceCount,
       `BSP leaf ${leafIndex} has an invalid marksurface range`,
@@ -165,24 +182,28 @@ function parseVisibility(
 
   const markSurfaces = new Uint32Array(markSurfaceCount);
   for (let index = 0; index < markSurfaceCount; index += 1) {
-    const faceIndex = markSurfaceLump.u16(index * 2);
+    const faceIndex = readQuakeMarkSurface(markSurfaceLump, index, layout);
     invariant(faceIndex < faceCount, `marksurface ${index} references missing face ${faceIndex}`);
     markSurfaces[index] = faceIndex;
   }
   const data = visibilityLump.uint8Array(0, visibilityLump.byteLength).slice();
   const rowByteCount = Math.ceil(visLeafCount / 8);
+  let clippedRun = false;
   for (let leafIndex = 1; leafIndex <= visLeafCount; leafIndex += 1) {
     const offset = leafVisOffsets[leafIndex]!;
-    if (offset >= 0) validateVisibilityRow(data, offset, rowByteCount);
+    if (offset >= 0) clippedRun ||= validateVisibilityRow(data, offset, rowByteCount);
   }
   return {
-    leafCount: visLeafCount,
-    worldFaceCount: faceCount,
-    leafVisOffsets,
-    leafMarkSurfaceStarts,
-    leafMarkSurfaceCounts,
-    markSurfaces,
-    data,
+    visibility: {
+      leafCount: visLeafCount,
+      worldFaceCount: faceCount,
+      leafVisOffsets,
+      leafMarkSurfaceStarts,
+      leafMarkSurfaceCounts,
+      markSurfaces,
+      data,
+    },
+    clippedRun,
   };
 }
 
@@ -205,17 +226,15 @@ function parseCollision(
   planes: Float32Array,
   lump: BinaryView,
   headNodes: readonly number[],
+  layout: QuakeBspLayout,
 ): ParsedBspCollision | null {
   if (lump.byteLength === 0) return null;
   invariant(planes.length > 0, 'BSP clipnodes require planes');
-  const nodeCount = recordCount(lump, 8, 'clipnode');
+  const nodeCount = recordCount(lump, layout.clipnodeSize, 'clipnode');
   const clipnodes = new Int32Array(nodeCount * 3);
   for (let index = 0; index < nodeCount; index += 1) {
-    const sourceOffset = index * 8;
     const targetOffset = index * 3;
-    clipnodes[targetOffset] = lump.i32(sourceOffset);
-    clipnodes[targetOffset + 1] = lump.i16(sourceOffset + 4);
-    clipnodes[targetOffset + 2] = lump.i16(sourceOffset + 6);
+    clipnodes.set(readQuakeClipnode(lump, index, layout), targetOffset);
   }
   const collision = { planes, clipnodes };
   validateBspCollision(collision, headNodes);
@@ -229,33 +248,6 @@ function dotMapping(
   return Math.fround(
     position[0] * mapping[0] + position[1] * mapping[1] + position[2] * mapping[2] + mapping[3],
   );
-}
-
-function texturePayload(
-  textures: BinaryView,
-  offset: number,
-  version: 29 | 30,
-): ParsedMipTexture | undefined {
-  textures.require(offset, 40, 'embedded MIPTEX header');
-  const remainder = textures.slice(offset);
-  const header = readMipTextureHeader(remainder.bytes);
-  if (header.offsets[0] === 0) return undefined;
-  let end = 40;
-  for (let level = 0; level < 4; level += 1) {
-    const width = Math.max(1, header.width >> level);
-    const height = Math.max(1, header.height >> level);
-    const mipOffset = header.offsets[level] ?? 0;
-    invariant(mipOffset >= 40, `MIPTEX ${header.name} mip ${level} overlaps its header`);
-    const mipEnd = mipOffset + checkedProduct(width, height, `MIPTEX ${header.name} mip ${level}`);
-    remainder.require(mipOffset, width * height, `MIPTEX ${header.name} mip ${level}`);
-    end = Math.max(end, mipEnd);
-  }
-  if (version === 30) {
-    remainder.require(end, 2 + 256 * 3, `MIPTEX ${header.name} palette`);
-    invariant(remainder.u16(end) === 256, `MIPTEX ${header.name} has an invalid palette size`);
-    end += 2 + 256 * 3;
-  }
-  return { name: header.name, data: remainder.uint8Array(0, end).slice() };
 }
 
 const movingBrushClasses = new Set([
@@ -377,28 +369,34 @@ export function parseBsp(
   }
   invariant(source.byteLength >= HEADER_SIZE, 'BSP header is truncated');
   const version = source.u32(0);
-  if (version !== 29 && version !== 30) {
+  const layout = quakeBspLayout(version);
+  if (!layout) {
+    if (version === BSP2_2PSB_MAGIC) {
+      throw new WorldviewError(
+        'unsupported-bsp',
+        'Worldview supports sanitized BSP2 but not the earlier 2PSB layout',
+      );
+    }
     throw new WorldviewError(
       'unsupported-bsp',
-      `Worldview supports BSP versions 29 and 30, received ${version}`,
+      `Worldview supports BSP29, BSP30, sanitized BSP2, and Quake II BSP38; received ${version}`,
     );
   }
-  const format = version === 29 ? 'quake-bsp29' : 'goldsrc-bsp30';
-  const bytesPerTexel = version === 29 ? 1 : 3;
 
-  const lump = (type: LumpType): BinaryView => {
+  const lumps = Array.from({ length: LUMP_COUNT }, (_, type) => {
     const header = 4 + type * 8;
     const offset = source.u32(header);
     const length = source.u32(header + 4);
+    if (length > 0) invariant(offset >= HEADER_SIZE, `BSP lump ${type} overlaps its header`);
     source.require(offset, length, `BSP lump ${type}`);
     return source.slice(offset, length);
-  };
+  });
+  const lump = (type: LumpType): BinaryView => lumps[type]!;
 
-  const entities = parseEntities(
-    lump(LumpType.Entities).string(0, lump(LumpType.Entities).byteLength),
-  );
+  const entityLump = lump(LumpType.Entities);
+  const entities = parseEntities(entityLump.string(0, entityLump.byteLength));
   const audioEntities =
-    version === 30
+    layout.version === 30
       ? parseGoldSrcAudioEntities(entities)
       : { ambientSounds: [], envSounds: [], musicTracks: [] };
   const worldspawn = entities.find(
@@ -406,25 +404,11 @@ export function parseBsp(
   );
   const skyName = entityValue(worldspawn ?? {}, 'skyname')?.trim() || null;
 
-  const textures = lump(LumpType.Textures);
-  invariant(textures.byteLength >= 4, 'texture lump is truncated');
-  const textureCount = textures.u32(0);
-  invariant(textureCount <= 1_000_000, 'texture lump has an unreasonable record count');
-  textures.require(4, textureCount * 4, 'texture offset table');
-  const materials: ParsedMaterial[] = [];
-  for (let index = 0; index < textureCount; index += 1) {
-    const offset = textures.i32(4 + index * 4);
-    if (offset < 0) {
-      const name = `__invalid_${index}__`;
-      materials.push({ name, kind: 'tool' });
-      continue;
-    }
-    textures.require(offset, 40, `MIPTEX ${index}`);
-    const name = textures.string(offset, 16, true);
-    const kind = classifyMaterial(name, format);
-    const embeddedTexture = texturePayload(textures, offset, version);
-    materials.push(embeddedTexture ? { name, kind, embeddedTexture } : { name, kind });
-  }
+  const { materials, warnings: parsedTextureWarnings } = parseQuakeTextures(
+    lump(LumpType.Textures),
+    layout,
+  );
+  const warnings: BspWarning[] = [...parsedTextureWarnings];
 
   const texinfoLump = lump(LumpType.Texinfo);
   const texinfoCount = recordCount(texinfoLump, 40, 'texinfo');
@@ -466,12 +450,10 @@ export function parseBsp(
   }
 
   const edgeLump = lump(LumpType.Edges);
-  const edgeCount = recordCount(edgeLump, 4, 'edge');
+  const edgeCount = recordCount(edgeLump, layout.edgeSize, 'edge');
   const edges: Array<readonly [number, number]> = [];
   for (let index = 0; index < edgeCount; index += 1) {
-    const offset = index * 4;
-    const first = edgeLump.u16(offset);
-    const second = edgeLump.u16(offset + 2);
+    const [first, second] = readQuakeEdge(edgeLump, index, layout);
     invariant(
       first < positions.length && second < positions.length,
       `edge ${index} references an invalid vertex`,
@@ -514,28 +496,58 @@ export function parseBsp(
       faceCount: modelLump.u32(offset + 60),
     });
   }
+  const collisionLump = lump(LumpType.Clipnodes);
+  const collisionNodeCount = recordCount(collisionLump, layout.clipnodeSize, 'clipnode');
+  rawModels.forEach((model, modelIndex) => {
+    const headnodes = model.headnodes.map((headNode, hullIndex) => {
+      if (hullIndex === 0 || headNode < collisionNodeCount) return headNode;
+      invariant(
+        headNode === collisionNodeCount,
+        `BSP collision hull has invalid headnode ${headNode}`,
+      );
+      warnings.push({
+        code: 'noncanonical-collision-headnode',
+        message: `model ${modelIndex} collision hull ${hullIndex} uses one-past-end headnode ${headNode}; the empty hull sentinel was substituted`,
+        modelIndex,
+        hullIndex,
+        headNode,
+      });
+      return -1;
+    });
+    rawModels[modelIndex] = { ...model, headnodes };
+  });
   const planes = parsePlanes(lump(LumpType.Planes));
   const trace = parseTrace(
     planes,
     lump(LumpType.Nodes),
     lump(LumpType.Leaves),
     rawModels[0]!.headnodes[0]!,
+    layout,
   );
   const collision = parseCollision(
     planes,
-    lump(LumpType.Clipnodes),
+    collisionLump,
     rawModels.flatMap((model) => model.headnodes.slice(1, 2)),
+    layout,
   );
 
   const faceLump = lump(LumpType.Faces);
-  const faceCount = recordCount(faceLump, 20, 'face');
-  const visibility = parseVisibility(
+  const faceCount = recordCount(faceLump, layout.faceSize, 'face');
+  const visibilityResult = parseVisibility(
     lump(LumpType.Leaves),
     lump(LumpType.Marksurfaces),
     lump(LumpType.Visibility),
     rawModels[0]!.visLeafCount,
     faceCount,
+    layout,
   );
+  const visibility = visibilityResult.visibility;
+  if (visibilityResult.clippedRun) {
+    warnings.push({
+      code: 'noncanonical-visibility-run',
+      message: 'BSP visibility contains a zero run longer than its row; the run was safely clipped',
+    });
+  }
   const faceToModel = new Int32Array(faceCount).fill(-1);
   rawModels.forEach((model, modelIndex) => {
     invariant(
@@ -559,11 +571,18 @@ export function parseBsp(
   const lightmaps: ParsedLightmap[] = [];
 
   for (let sourceIndex = 0; sourceIndex < faceCount; sourceIndex += 1) {
-    const offset = sourceIndex * 20;
-    const firstEdge = faceLump.u32(offset + 4);
-    const edgeCountForFace = faceLump.u16(offset + 8);
-    const mappingIndex = faceLump.u16(offset + 10);
-    invariant(edgeCountForFace >= 3, `face ${sourceIndex} has fewer than three edges`);
+    const face = readQuakeFace(faceLump, sourceIndex, layout);
+    const { firstEdge, edgeCount: edgeCountForFace, mappingIndex } = face;
+    invariant(
+      face.planeIndex >= 0 && face.planeIndex < planes.length / 4,
+      `face ${sourceIndex} references plane ${face.planeIndex}`,
+    );
+    invariant(
+      face.side === 0 || face.side === 1,
+      `face ${sourceIndex} has invalid side ${face.side}`,
+    );
+    invariant(firstEdge >= 0, `face ${sourceIndex} has a negative first surfedge`);
+    invariant(edgeCountForFace >= 0, `face ${sourceIndex} has a negative edge count`);
     invariant(
       firstEdge + edgeCountForFace <= surfaceVertexIndices.length,
       `face ${sourceIndex} surfedge range is invalid`,
@@ -574,6 +593,16 @@ export function parseBsp(
     invariant(material !== undefined, `face ${sourceIndex} references a missing material`);
     const modelIndex = faceToModel[sourceIndex] ?? -1;
     invariant(modelIndex >= 0, `face ${sourceIndex} does not belong to a model`);
+    if (edgeCountForFace < 3) {
+      warnings.push({
+        code: 'degenerate-face',
+        message: `face ${sourceIndex} has ${edgeCountForFace} edges and was omitted from render geometry`,
+        faceIndex: sourceIndex,
+        modelIndex,
+        edgeCount: edgeCountForFace,
+      });
+      continue;
+    }
 
     let minimumS = Number.POSITIVE_INFINITY;
     let minimumT = Number.POSITIVE_INFINITY;
@@ -595,20 +624,24 @@ export function parseBsp(
     const height = Math.ceil(maximumT / 16) - Math.floor(minimumT / 16) + 1;
     invariant(width > 0 && height > 0, `face ${sourceIndex} has invalid lightmap dimensions`);
     const styles: number[] = [];
-    for (let style = 0; style < 4; style += 1) {
-      const value = faceLump.u8(offset + 12 + style);
+    for (const value of face.styles) {
       if (value === 255) break;
-      invariant(value < 64, `face ${sourceIndex} references lightstyle ${value}`);
       styles.push(value);
     }
-    const lightOffset = faceLump.i32(offset + 16);
+    const lightOffset = face.lightOffset;
     let samples: Uint8Array | null = null;
-    const allocation: MutableAllocation = { width, height, pageIndex: -1, pageX: 0, pageY: 0 };
+    const allocation: MutableAllocation = {
+      width,
+      height,
+      pageIndex: -1,
+      pageX: 0,
+      pageY: 0,
+    };
     if (lightOffset !== -1 && styles.length > 0) {
       invariant(lightOffset >= 0, `face ${sourceIndex} has an invalid light offset`);
       const sampleLength = checkedProduct(
         checkedProduct(width, height, `face ${sourceIndex} lightmap`),
-        styles.length * bytesPerTexel,
+        styles.length * layout.lightmapBytesPerTexel,
         `face ${sourceIndex} styled lightmap`,
       );
       lighting.require(lightOffset, sampleLength, `face ${sourceIndex} light samples`);
@@ -661,8 +694,9 @@ export function parseBsp(
   const worldModel = models[0];
   if (!worldModel) invalidData('BSP has no world model');
   return {
-    format,
-    version,
+    format: layout.format,
+    version: layout.version,
+    warnings,
     bounds: worldModel.bounds,
     entities,
     skyName,
@@ -680,7 +714,7 @@ export function parseBsp(
     batches: geometry.batches,
     models,
     lightmapPages: packer.finish(lightmaps),
-    lightmapBytesPerTexel: bytesPerTexel,
+    lightmapBytesPerTexel: layout.lightmapBytesPerTexel,
     hasAnimatedLightmaps: lightmaps.some((lightmap) =>
       lightmap.styles.some((style) => style !== 0),
     ),

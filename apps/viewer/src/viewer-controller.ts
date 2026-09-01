@@ -472,7 +472,8 @@ export class ViewerController {
       entityIndex: track.entityIndex,
     }));
     const overview = planOverview(world);
-    const format = `${diagnostics.format} / BSP${world.version}`;
+    const version = typeof world.version === 'number' ? `BSP${world.version}` : world.version;
+    const format = `${diagnostics.format} / ${version}`;
     const triangles = diagnostics.triangles.toLocaleString();
     const faces = diagnostics.faces.toLocaleString();
     const batches = diagnostics.batches.toLocaleString();

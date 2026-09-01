@@ -40,6 +40,7 @@ export {
   type EntitySupportReport,
 } from './entity-support.js';
 export { type WorldviewErrorCode, WorldviewError } from './errors.js';
+export { isQuakePaletteFormat } from './formats.js';
 export {
   buildLightmapPage,
   LightmapPacker,
@@ -105,6 +106,8 @@ export {
 export type {
   Bounds,
   BspFormat,
+  BspVersion,
+  BspWarning,
   DecodedMipLevel,
   DecodedMipTexture,
   DecodedQuakeSky,

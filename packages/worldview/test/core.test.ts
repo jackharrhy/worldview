@@ -51,7 +51,11 @@ import {
 describe('overview planning', () => {
   it('fits renderable geometry with deterministic padding', () => {
     const world = parseBsp(makeBsp());
-    const overview = planOverview(world, { width: 200, height: 100, padding: 0.1 });
+    const overview = planOverview(world, {
+      width: 200,
+      height: 100,
+      padding: 0.1,
+    });
     expect(overview.bounds).toEqual({ min: [0, 0, 0], max: [16, 16, 0] });
     expect(overview.rotation).toBe(0);
     expect(overview.origin).toEqual([8, 8, 0]);
@@ -78,6 +82,7 @@ describe('overview planning', () => {
 describe('BSP player profiles', () => {
   it('keeps format-owned spawn and eye-height behavior explicit', () => {
     expect(bspPlayerProfile('quake-bsp29').eyeHeight).toBe(22);
+    expect(bspPlayerProfile('quake-bsp2')).toEqual(bspPlayerProfile('quake-bsp29'));
     expect(bspPlayerProfile('quake2-bsp38').eyeHeight).toBe(22);
     expect(bspPlayerProfile('goldsrc-bsp30').eyeHeight).toBe(28);
     expect(bspPlayerProfile('goldsrc-bsp30').spawnClasses.has('info_player_counterterrorist')).toBe(
@@ -177,10 +182,17 @@ describe('entities', () => {
       attenuation: 2,
       looping: true,
       activeOnLoad: true,
-      reference: { declaredPath: 'Ambience/Hum.wav', normalizedPath: 'ambience/hum.wav' },
+      reference: {
+        declaredPath: 'Ambience/Hum.wav',
+        normalizedPath: 'ambience/hum.wav',
+      },
       modulation: { runVolume: 0.5, runPitch: 120 },
     });
-    expect(world.envSounds[0]).toMatchObject({ origin: [4, 5, 6], radius: 256, roomType: 7 });
+    expect(world.envSounds[0]).toMatchObject({
+      origin: [4, 5, 6],
+      radius: 256,
+      roomType: 7,
+    });
   });
 
   it('retains numbered ambient preset IDs without inferring their modulation', () => {
@@ -240,7 +252,11 @@ describe('GoldSrc WAV and spatial audio', () => {
 
   it('decodes signed 16-bit stereo channels', () => {
     const wave = parseWave(
-      makeWave({ bitsPerSample: 16, channels: 2, frames: [-32_768, 0, 16_384] }),
+      makeWave({
+        bitsPerSample: 16,
+        channels: 2,
+        frames: [-32_768, 0, 16_384],
+      }),
     );
     const samples = new Float32Array(wave.frameCount);
     copyWaveChannel(wave, 1, samples);
@@ -483,7 +499,10 @@ describe('BSP', () => {
   it('merges compatible draw batches while retaining each face boundary', () => {
     const world = parseBsp(makeBsp({ faceCopies: 2 }));
     expect(world.batches).toHaveLength(1);
-    expect(world.batches[0]).toMatchObject({ indexCount: 12, faceIndices: [0, 1] });
+    expect(world.batches[0]).toMatchObject({
+      indexCount: 12,
+      faceIndices: [0, 1],
+    });
     expect(world.faces.map((face) => [face.sourceIndex, face.firstIndex, face.indexCount])).toEqual(
       [
         [0, 0, 6],
@@ -558,7 +577,10 @@ describe('BSP', () => {
       }),
     );
     expect(world.models[0]).toMatchObject({ collidable: true });
-    expect(world.models[1]).toMatchObject({ classname: 'func_wall', collidable: true });
+    expect(world.models[1]).toMatchObject({
+      classname: 'func_wall',
+      collidable: true,
+    });
   });
 
   it('hides moving func_water brush models from static exhibits', () => {
@@ -708,7 +730,11 @@ describe('player controls', () => {
       removeEventListener: () => undefined,
     } as unknown as HTMLCanvasElement;
     const dispatchKey = (code: string) => {
-      const event = { code, repeat: false, preventDefault: () => undefined } as KeyboardEvent;
+      const event = {
+        code,
+        repeat: false,
+        preventDefault: () => undefined,
+      } as KeyboardEvent;
       for (const listener of listeners.get('keydown') ?? []) listener(event);
     };
     const world = parseBsp(makeBsp({ collision: true }));
@@ -799,7 +825,10 @@ describe('player controls', () => {
       { mouseSensitivity: 3, mouseAcceleration: 0.04 },
     );
     vi.stubGlobal('document', { pointerLockElement: canvas });
-    listeners.get('mousemove')?.({ movementX: 10, movementY: -5 } as unknown as MouseEvent);
+    listeners.get('mousemove')?.({
+      movementX: 10,
+      movementY: -5,
+    } as unknown as MouseEvent);
     const sensitivity = 3 + Math.hypot(10, -5) * 0.04;
     const radiansPerCount = (0.022 * sensitivity * Math.PI) / 180;
     expect(look?.yaw).toBeCloseTo(-10 * radiansPerCount);

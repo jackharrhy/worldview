@@ -142,7 +142,10 @@ export function parseBsp38(
     const offset = index * 76;
     const flags = texinfoLump.u32(offset + 32);
     const name = texinfoLump.string(offset + 40, 32, true);
-    materials.push({ name, kind: classifyMaterial(name, 'quake2-bsp38', flags) });
+    materials.push({
+      name,
+      kind: classifyMaterial(name, 'quake2-bsp38', flags),
+    });
     mappings.push({
       s: [
         texinfoLump.f32(offset),
@@ -240,12 +243,17 @@ export function parseBsp38(
     for (let style = 0; style < 4; style += 1) {
       const value = faceLump.u8(offset + 12 + style);
       if (value === 255) break;
-      invariant(value < 64, `face ${sourceIndex} references lightstyle ${value}`);
       styles.push(value);
     }
     const lightOffset = faceLump.i32(offset + 16);
     let samples: Uint8Array | null = null;
-    const allocation: MutableAllocation = { width, height, pageIndex: -1, pageX: 0, pageY: 0 };
+    const allocation: MutableAllocation = {
+      width,
+      height,
+      pageIndex: -1,
+      pageX: 0,
+      pageY: 0,
+    };
     if (lighting.byteLength > 0 && lightOffset !== -1 && styles.length > 0) {
       invariant(lightOffset >= 0, `face ${sourceIndex} has an invalid light offset`);
       const sampleLength = checkedProduct(
@@ -308,6 +316,7 @@ export function parseBsp38(
   return {
     format: 'quake2-bsp38',
     version: 38,
+    warnings: [],
     bounds: worldModel.bounds,
     entities,
     skyName,

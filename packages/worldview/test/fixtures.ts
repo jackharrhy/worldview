@@ -7,6 +7,10 @@ interface FixtureOptions {
   readonly firstSurfedge?: number;
   readonly embeddedTexture?: boolean;
   readonly faceCopies?: number;
+  readonly faceEdgeCounts?: readonly number[];
+  readonly textureWidth?: number;
+  readonly textureHeight?: number;
+  readonly textureRecords?: readonly Uint8Array[];
   readonly brushEntity?: string;
   readonly trace?: boolean;
   readonly visibility?: boolean;
@@ -38,6 +42,28 @@ interface SpriteFixtureOptions {
 
 function align4(value: number): number {
   return (value + 3) & ~3;
+}
+
+function assembleQuakeBsp(lumps: readonly Uint8Array[], version: 29 | 30 | 'BSP2'): Uint8Array {
+  const headerSize = 4 + LUMP_COUNT * 8;
+  let size = headerSize;
+  const offsets: number[] = [];
+  for (const lump of lumps) {
+    size = align4(size);
+    offsets.push(size);
+    size += lump.length;
+  }
+  const result = new Uint8Array(size);
+  const view = new DataView(result.buffer);
+  if (version === 'BSP2') new TextEncoder().encodeInto(version, result.subarray(0, 4));
+  else view.setUint32(0, version, true);
+  lumps.forEach((lump, index) => {
+    const offset = offsets[index] ?? headerSize;
+    view.setUint32(4 + index * 8, offset, true);
+    view.setUint32(8 + index * 8, lump.length, true);
+    result.set(lump, offset);
+  });
+  return result;
 }
 
 export function makePalette(): Uint8Array {
@@ -185,9 +211,11 @@ export function makeSprite(options: SpriteFixtureOptions = {}): Uint8Array {
 export function makeMipTexture(
   version: 29 | 30,
   name = version === 29 ? 'stone' : 'brick',
+  width = 16,
+  height = 16,
 ): Uint8Array {
-  const widths = [16, 8, 4, 2];
-  const heights = [16, 8, 4, 2];
+  const widths = Array.from({ length: 4 }, (_, level) => Math.max(1, width >> level));
+  const heights = Array.from({ length: 4 }, (_, level) => Math.max(1, height >> level));
   const offsets: number[] = [];
   let length = 40;
   for (let index = 0; index < 4; index += 1) {
@@ -198,8 +226,8 @@ export function makeMipTexture(
   const result = new Uint8Array(length + (version === 30 ? 2 + palette.length : 0));
   const view = new DataView(result.buffer);
   new TextEncoder().encodeInto(name, result.subarray(0, 16));
-  view.setUint32(16, 16, true);
-  view.setUint32(20, 16, true);
+  view.setUint32(16, width, true);
+  view.setUint32(20, height, true);
   offsets.forEach((offset, index) => view.setUint32(24 + index * 4, offset, true));
   for (let index = 40; index < length; index += 1) result[index] = (index - 40) & 255;
   if (version === 30) {
@@ -235,8 +263,18 @@ export function makeWad(
 export function makeBsp(options: FixtureOptions = {}): Uint8Array {
   const version = options.version ?? 30;
   const hasTrace = options.trace || options.visibility;
-  const texture = makeMipTexture(version, options.textureName);
+  const textureRecords = (
+    options.textureRecords ?? [
+      makeMipTexture(
+        version,
+        options.textureName,
+        options.textureWidth ?? 16,
+        options.textureHeight ?? 16,
+      ),
+    ]
+  ).map((texture) => texture.slice());
   if (options.embeddedTexture === false) {
+    const texture = textureRecords[0]!;
     new DataView(texture.buffer, texture.byteOffset, texture.byteLength).setUint32(24, 0, true);
   }
   const entities = new TextEncoder().encode(
@@ -244,10 +282,18 @@ export function makeBsp(options: FixtureOptions = {}): Uint8Array {
       `{\n"classname" "worldspawn"\n"wad" "C:\\games\\valve\\fixture.wad;custom.wad"\n}\n${options.brushEntity ? `{\n"model" "*1"\n${options.brushEntity}\n}\n` : ''}\0`,
   );
 
-  const textureLump = new Uint8Array(8 + texture.length);
-  new DataView(textureLump.buffer).setUint32(0, 1, true);
-  new DataView(textureLump.buffer).setUint32(4, 8, true);
-  textureLump.set(texture, 8);
+  const textureTableSize = 4 + textureRecords.length * 4;
+  const textureLump = new Uint8Array(
+    textureTableSize + textureRecords.reduce((total, texture) => total + texture.length, 0),
+  );
+  const textureLumpView = new DataView(textureLump.buffer);
+  textureLumpView.setUint32(0, textureRecords.length, true);
+  let textureOffset = textureTableSize;
+  textureRecords.forEach((texture, index) => {
+    textureLumpView.setUint32(4 + index * 4, textureOffset, true);
+    textureLump.set(texture, textureOffset);
+    textureOffset += texture.length;
+  });
 
   const vertices = new Uint8Array(48);
   const vertexView = new DataView(vertices.buffer);
@@ -264,13 +310,15 @@ export function makeBsp(options: FixtureOptions = {}): Uint8Array {
   texinfoView.setFloat32(0, 1, true);
   texinfoView.setFloat32(20, 1, true);
 
-  const faceCopies = options.brushEntity ? 2 : (options.faceCopies ?? 1);
+  const faceCopies = options.brushEntity
+    ? 2
+    : (options.faceEdgeCounts?.length ?? options.faceCopies ?? 1);
   const face = new Uint8Array(20 * faceCopies);
   const faceView = new DataView(face.buffer);
   for (let index = 0; index < faceCopies; index += 1) {
     const offset = index * 20;
     faceView.setUint32(offset + 4, 0, true);
-    faceView.setUint16(offset + 8, 4, true);
+    faceView.setUint16(offset + 8, options.faceEdgeCounts?.[index] ?? 4, true);
     faceView.setUint16(offset + 10, 0, true);
     faceView.setUint8(offset + 12, 0);
     faceView.setUint8(offset + 13, 255);
@@ -307,8 +355,8 @@ export function makeBsp(options: FixtureOptions = {}): Uint8Array {
   }
 
   const lumps: Uint8Array[] = Array.from({ length: LUMP_COUNT }, () => new Uint8Array());
-  if (hasTrace || options.collision) {
-    const planeCount = Number(Boolean(hasTrace)) + Number(Boolean(options.collision));
+  {
+    const planeCount = Math.max(1, Number(Boolean(hasTrace)) + Number(Boolean(options.collision)));
     const planes = new Uint8Array(20 * planeCount);
     const planeView = new DataView(planes.buffer);
     if (hasTrace) {
@@ -360,24 +408,89 @@ export function makeBsp(options: FixtureOptions = {}): Uint8Array {
   lumps[13] = surfedges;
   lumps[14] = model;
 
-  const headerSize = 4 + LUMP_COUNT * 8;
-  let size = headerSize;
-  const offsets: number[] = [];
-  for (const lump of lumps) {
-    size = align4(size);
-    offsets.push(size);
-    size += lump.length;
+  return assembleQuakeBsp(lumps, version);
+}
+
+function widenRecords(
+  source: Uint8Array<ArrayBuffer>,
+  sourceSize: number,
+  targetSize: number,
+  write: (source: DataView, sourceOffset: number, target: DataView, targetOffset: number) => void,
+): Uint8Array<ArrayBuffer> {
+  const count = source.length / sourceSize;
+  const result = new Uint8Array(count * targetSize);
+  const sourceView = new DataView(source.buffer, source.byteOffset, source.byteLength);
+  const targetView = new DataView(result.buffer);
+  for (let index = 0; index < count; index += 1) {
+    write(sourceView, index * sourceSize, targetView, index * targetSize);
   }
-  const result = new Uint8Array(size);
-  const view = new DataView(result.buffer);
-  view.setUint32(0, version, true);
-  lumps.forEach((lump, index) => {
-    const offset = offsets[index] ?? headerSize;
-    view.setUint32(4 + index * 8, offset, true);
-    view.setUint32(8 + index * 8, lump.length, true);
-    result.set(lump, offset);
-  });
   return result;
+}
+
+export function makeBsp2(options: Omit<FixtureOptions, 'version'> = {}): Uint8Array {
+  const classic = makeBsp({ ...options, version: 29 });
+  const classicView = new DataView(classic.buffer, classic.byteOffset, classic.byteLength);
+  const lumps = Array.from({ length: LUMP_COUNT }, (_, index) => {
+    const offset = classicView.getUint32(4 + index * 8, true);
+    const length = classicView.getUint32(8 + index * 8, true);
+    return classic.slice(offset, offset + length);
+  });
+
+  lumps[5] = widenRecords(lumps[5]!, 24, 44, (source, input, target, output) => {
+    target.setInt32(output, source.getUint32(input, true), true);
+    target.setInt32(output + 4, source.getInt16(input + 4, true), true);
+    target.setInt32(output + 8, source.getInt16(input + 6, true), true);
+    for (let component = 0; component < 6; component += 1) {
+      target.setFloat32(
+        output + 12 + component * 4,
+        source.getInt16(input + 8 + component * 2, true),
+        true,
+      );
+    }
+    target.setUint32(output + 36, source.getUint16(input + 20, true), true);
+    target.setUint32(output + 40, source.getUint16(input + 22, true), true);
+  });
+  lumps[7] = widenRecords(lumps[7]!, 20, 28, (source, input, target, output) => {
+    target.setInt32(output, source.getUint16(input, true), true);
+    target.setInt32(output + 4, source.getUint16(input + 2, true), true);
+    target.setInt32(output + 8, source.getUint32(input + 4, true), true);
+    target.setInt32(output + 12, source.getUint16(input + 8, true), true);
+    target.setInt32(output + 16, source.getUint16(input + 10, true), true);
+    for (let style = 0; style < 4; style += 1) {
+      target.setUint8(output + 20 + style, source.getUint8(input + 12 + style));
+    }
+    target.setInt32(output + 24, source.getInt32(input + 16, true), true);
+  });
+  lumps[9] = widenRecords(lumps[9]!, 8, 12, (source, input, target, output) => {
+    target.setInt32(output, source.getInt32(input, true), true);
+    target.setInt32(output + 4, source.getInt16(input + 4, true), true);
+    target.setInt32(output + 8, source.getInt16(input + 6, true), true);
+  });
+  lumps[10] = widenRecords(lumps[10]!, 28, 44, (source, input, target, output) => {
+    target.setInt32(output, source.getInt32(input, true), true);
+    target.setInt32(output + 4, source.getInt32(input + 4, true), true);
+    for (let component = 0; component < 6; component += 1) {
+      target.setFloat32(
+        output + 8 + component * 4,
+        source.getInt16(input + 8 + component * 2, true),
+        true,
+      );
+    }
+    target.setUint32(output + 32, source.getUint16(input + 20, true), true);
+    target.setUint32(output + 36, source.getUint16(input + 22, true), true);
+    for (let ambient = 0; ambient < 4; ambient += 1) {
+      target.setUint8(output + 40 + ambient, source.getUint8(input + 24 + ambient));
+    }
+  });
+  lumps[11] = widenRecords(lumps[11]!, 2, 4, (source, input, target, output) => {
+    target.setUint32(output, source.getUint16(input, true), true);
+  });
+  lumps[12] = widenRecords(lumps[12]!, 4, 8, (source, input, target, output) => {
+    target.setUint32(output, source.getUint16(input, true), true);
+    target.setUint32(output + 4, source.getUint16(input + 2, true), true);
+  });
+
+  return assembleQuakeBsp(lumps, 'BSP2');
 }
 
 export function makeBsp38(options: Bsp38FixtureOptions = {}): Uint8Array {

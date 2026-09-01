@@ -1,5 +1,7 @@
 import type {
   BspFormat,
+  BspVersion,
+  BspWarning,
   OverviewLayout,
   OverviewRotation,
   ParsedWorld,
@@ -140,7 +142,7 @@ export interface CameraUpdate {
 
 export interface MapDiagnostics {
   readonly format: BspFormat;
-  readonly version: 29 | 30 | 38;
+  readonly version: BspVersion;
   readonly vertices: number;
   readonly triangles: number;
   readonly faces: number;
@@ -190,17 +192,19 @@ export interface ReadyDetail {
   readonly diagnostics: MapDiagnostics;
 }
 
-export interface WarningDetail {
-  readonly message: string;
-  readonly code:
-    | 'missing-wad'
-    | 'missing-texture'
-    | 'missing-skybox'
-    | 'missing-sprite'
-    | 'missing-sound'
-    | 'audio-warning'
-    | 'asset-warning';
-}
+export type WarningDetail =
+  | BspWarning
+  | {
+      readonly message: string;
+      readonly code:
+        | 'missing-wad'
+        | 'missing-texture'
+        | 'missing-skybox'
+        | 'missing-sprite'
+        | 'missing-sound'
+        | 'audio-warning'
+        | 'asset-warning';
+    };
 
 export interface AudioState {
   readonly enabled: boolean;
