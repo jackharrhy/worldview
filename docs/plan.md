@@ -218,6 +218,16 @@ walkability supersedes the previous walkability operation; loading another BSP s
 well. The lower-level parse, compatibility, serialization, and direct assignment APIs remain
 available.
 
+`<world-view>` is the canonical embeddable lifecycle owner rather than a thin URL-attribute wrapper.
+Its atomic `source` property accepts the same `WorldSource` as `createWorldview()`, while
+`walkabilitySource` accepts the same `BinarySource` as `loadWalkability()`. Declarative URL
+attributes remain conveniences and do not form a parallel source model. Element `ready` means the
+base BSP is rendered and interactive; optional persisted walkability begins afterward, preserves
+the hidden ready status, mirrors `walkability` progress and `walkabilitychange`, and degrades to an
+`asset-warning` if invalid or incompatible. An absent sidecar does nothing. Source, sidecar, and
+connection generations abort stale work before it can apply. Reflected `walkabilityVisible` state
+delegates to the viewer; embedding applications retain button and keybinding policy.
+
 ## Editor architecture
 
 The ordered structural remediation work is tracked in

@@ -313,10 +313,11 @@ test('published subpaths bundle and execute without the TypeGPU consumer plugin'
   await expect(page.locator('body')).toHaveAttribute('data-element', 'true');
   await expect(page.locator('body')).toHaveAttribute('data-walkability', 'true');
   await expect(page.locator('body')).toHaveAttribute('data-runtime', 'true');
+  await expect(page.locator('body')).toHaveAttribute('data-element-contract', 'true');
   await expect(page.locator('body')).toHaveAttribute('data-error', 'invalid-data');
 });
 
-test('standalone module auto-registers and renders in multiple custom elements', async ({
+test('standalone module owns atomic sources and derived walkability in custom elements', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -328,81 +329,128 @@ test('standalone module auto-registers and renders in multiple custom elements',
   await page.goto('http://127.0.0.1:4173/standalone.html');
   await requireWebGpu(page);
   await expect(page.locator('body')).toHaveAttribute('data-ready', '2');
-  await expect(page.locator('world-view')).toHaveCount(2);
-  await expect(page.locator('world-view').first()).toHaveAttribute('data-triangles', '2');
-  await expect(page.locator('world-view').first()).toHaveAttribute('data-audio-volume', '0.35');
-  await expect(page.locator('world-view').first()).toHaveAttribute('data-audio-enabled', 'false');
-  await expect(page.locator('world-view').first()).toHaveAttribute('data-music-volume', '0.45');
-  await expect(page.locator('world-view').last()).toHaveAttribute('data-triangles', '2');
-  await expect(page.locator('world-view').first()).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-element-contract-ready', 'true');
+  const sourceElements = page.locator('world-view[data-kind="source"]');
+  await expect(sourceElements).toHaveCount(2);
+  await expect(sourceElements.first()).toHaveAttribute('data-ready-count', '1');
+  await expect(sourceElements.last()).toHaveAttribute('data-ready-count', '1');
+  await expect(sourceElements.first()).toHaveAttribute('data-triangles', '2');
+  await expect(sourceElements.first()).toHaveAttribute('data-audio-volume', '0.35');
+  await expect(sourceElements.first()).toHaveAttribute('data-audio-enabled', 'false');
+  await expect(sourceElements.first()).toHaveAttribute('data-music-volume', '0.45');
+  await expect(sourceElements.last()).toHaveAttribute('data-triangles', '2');
+  await expect(sourceElements.first()).toBeVisible();
+  expect(await sourceElements.first().evaluate((element) => Boolean(element.shadowRoot))).toBe(
+    true,
+  );
   expect(
-    await page
-      .locator('world-view')
-      .first()
-      .evaluate((element) => Boolean(element.shadowRoot)),
+    await sourceElements.first().evaluate((element) => {
+      const worldView = element as HTMLElement & {
+        viewer: { audio: { musicVolume: number } };
+      };
+      const viewer = worldView.viewer;
+      worldView.setAttribute('music-volume', '0.2');
+      return worldView.viewer === viewer && viewer.audio.musicVolume === 0.2;
+    }),
   ).toBe(true);
   expect(
-    await page
-      .locator('world-view')
-      .first()
-      .evaluate((element) => {
-        const worldView = element as HTMLElement & {
-          viewer: { audio: { musicVolume: number } };
+    await sourceElements.first().evaluate(async (element) => {
+      const worldView = element as HTMLElement & {
+        viewer: {
+          captureOverview(options: {
+            width: number;
+            height: number;
+            zMin?: number;
+            zMax?: number;
+          }): Promise<{ image: Blob; layout: { rotation: number } }>;
         };
-        const viewer = worldView.viewer;
-        worldView.setAttribute('music-volume', '0.2');
-        return worldView.viewer === viewer && viewer.audio.musicVolume === 0.2;
-      }),
-  ).toBe(true);
-  expect(
-    await page
-      .locator('world-view')
-      .first()
-      .evaluate(async (element) => {
-        const worldView = element as HTMLElement & {
-          viewer: {
-            captureOverview(options: {
-              width: number;
-              height: number;
-              zMin?: number;
-              zMax?: number;
-            }): Promise<{ image: Blob; layout: { rotation: number } }>;
-          };
-        };
-        const visible = await worldView.viewer.captureOverview({ width: 64, height: 64 });
-        const clipped = await worldView.viewer.captureOverview({
-          width: 64,
-          height: 64,
-          zMin: 1,
-          zMax: 2,
-        });
-        const opaqueCounts: number[] = [];
-        for (const capture of [visible, clipped]) {
-          const bitmap = await createImageBitmap(capture.image);
-          const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-          const context = canvas.getContext('2d')!;
-          context.drawImage(bitmap, 0, 0);
-          const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
-          bitmap.close();
-          let count = 0;
-          for (let index = 3; index < pixels.length; index += 4) {
-            if ((pixels[index] ?? 0) > 0) count += 1;
-          }
-          opaqueCounts.push(count);
+      };
+      const visible = await worldView.viewer.captureOverview({ width: 64, height: 64 });
+      const clipped = await worldView.viewer.captureOverview({
+        width: 64,
+        height: 64,
+        zMin: 1,
+        zMax: 2,
+      });
+      const opaqueCounts: number[] = [];
+      for (const capture of [visible, clipped]) {
+        const bitmap = await createImageBitmap(capture.image);
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const context = canvas.getContext('2d')!;
+        context.drawImage(bitmap, 0, 0);
+        const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+        bitmap.close();
+        let count = 0;
+        for (let index = 3; index < pixels.length; index += 4) {
+          if ((pixels[index] ?? 0) > 0) count += 1;
         }
-        return {
-          visible: (opaqueCounts[0] ?? 0) > 1000,
-          clipped: (opaqueCounts[1] ?? 0) === 0,
-          imageType: visible.image.type,
-          rotation: visible.layout.rotation,
-        };
-      }),
+        opaqueCounts.push(count);
+      }
+      return {
+        visible: (opaqueCounts[0] ?? 0) > 1000,
+        clipped: (opaqueCounts[1] ?? 0) === 0,
+        imageType: visible.image.type,
+        rotation: visible.layout.rotation,
+      };
+    }),
   ).toEqual({ visible: true, clipped: true, imageType: 'image/png', rotation: 0 });
-  await page
-    .locator('world-view')
-    .first()
-    .evaluate((element) => element.remove());
-  await expect(page.locator('world-view')).toHaveCount(1);
-  await expect(page.locator('world-view')).toHaveAttribute('data-triangles', '2');
+  const sidecarElement = page.locator('world-view[data-kind="sidecar"]');
+  await expect(sidecarElement).toHaveAttribute('walkability-visible', '');
+  expect(
+    await sidecarElement.evaluate((element) => {
+      const worldView = element as HTMLElement & {
+        walkabilityVisible: boolean;
+        viewer: { walkability: unknown; walkabilityVisible: boolean };
+        shadowRoot: ShadowRoot;
+      };
+      return {
+        propertyVisible: worldView.walkabilityVisible,
+        viewerVisible: worldView.viewer.walkabilityVisible,
+        loaded: Boolean(worldView.viewer.walkability),
+        statusHidden: (worldView.shadowRoot.querySelector('[part="status"]') as HTMLElement).hidden,
+      };
+    }),
+  ).toEqual({ propertyVisible: true, viewerVisible: true, loaded: true, statusHidden: true });
+  await expect(page.locator('body')).toHaveAttribute(
+    'data-sidecar-order',
+    'ready,progress,applied,visible',
+  );
+  await sidecarElement.evaluate((element) => {
+    (element as HTMLElement & { walkabilityVisible: boolean }).walkabilityVisible = false;
+  });
+  await expect(sidecarElement).not.toHaveAttribute('walkability-visible', /.*/);
+  expect(
+    await sidecarElement.evaluate(
+      (element) =>
+        (element as HTMLElement & { viewer: { walkabilityVisible: boolean } }).viewer
+          .walkabilityVisible,
+    ),
+  ).toBe(false);
+
+  const invalidElement = page.locator('world-view[data-kind="invalid-sidecar"]');
+  await expect(invalidElement).toHaveAttribute('data-ready', 'true');
+  await expect(invalidElement).toHaveAttribute('data-warning-code', 'asset-warning');
+  await expect(invalidElement).not.toHaveAttribute('data-error', /.*/);
+  expect(
+    await invalidElement.evaluate((element) => ({
+      worldLoaded: Boolean((element as HTMLElement & { viewer: { world: unknown } }).viewer.world),
+      walkabilityVisible: (element as HTMLElement & { viewer: { walkabilityVisible: boolean } })
+        .viewer.walkabilityVisible,
+      statusHidden: (element.shadowRoot!.querySelector('[part="status"]') as HTMLElement).hidden,
+    })),
+  ).toEqual({ worldLoaded: true, walkabilityVisible: true, statusHidden: true });
+  const staleElement = page.locator('world-view[data-kind="stale-sidecar"]');
+  await expect(staleElement).toHaveAttribute('data-ready-count', '2');
+  await expect(staleElement).toHaveAttribute('data-walkability-applications', '0');
+  expect(
+    await staleElement.evaluate(
+      (element) =>
+        (element as HTMLElement & { viewer: { walkability: unknown } }).viewer.walkability,
+    ),
+  ).toBeNull();
+
+  await sourceElements.first().evaluate((element) => element.remove());
+  await expect(sourceElements).toHaveCount(1);
+  await expect(sourceElements).toHaveAttribute('data-triangles', '2');
   expect(errors).toEqual([]);
 });

@@ -337,6 +337,37 @@ defineWorldViewElement();
 <world-view game-base-url="/games/valve/" src="maps/c1a0.bsp"></world-view>
 ```
 
+For application-owned assets, assign one canonical `WorldSource` before or after connection. One
+assignment produces one logical map load, and functions such as authenticated `resolveWad` remain
+inside the same atomic boundary:
+
+```ts
+import { WorldViewElement, defineWorldViewElement } from '@jackharrhy/worldview/element';
+
+defineWorldViewElement();
+
+const map = document.querySelector<WorldViewElement>('world-view')!;
+map.source = {
+  bsp: '/api/maps/c1a0.bsp',
+  palette: '/api/games/id1/gfx/palette.lmp',
+  wads: ['/api/wads/halflife.wad'],
+  resolveWad: ({ basename }) => `/api/wads/${basename}`,
+};
+map.walkabilitySource = '/api/maps/c1a0.worldview-walkability.json';
+map.walkabilityVisible = true;
+```
+
+`source` uses the existing `WorldSource` type; setting it to `null` returns to the declarative URL
+attributes. `walkabilitySource` accepts any `BinarySource`, with `walkability-src` available for URL
+markup and `null` likewise returning to that attribute. `walkabilityVisible` reflects
+`walkability-visible` and delegates to the viewer without installing a host keybinding.
+
+The element's `ready` event means the BSP is rendered and interactive. Optional walkability starts
+afterward, continues to emit the `walkability` progress phase without reopening the blocking status,
+and reports application or visibility through the mirrored `walkabilitychange` event. An invalid
+sidecar emits an `asset-warning` while leaving the map usable. Replacing the world, replacing the
+sidecar, or disconnecting the element aborts stale derived work before it can apply.
+
 The standalone browser module registers the element for pages without a build step:
 
 ```html

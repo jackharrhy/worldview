@@ -2,6 +2,52 @@ function align4(value) {
   return (value + 3) & ~3;
 }
 
+function walkabilityFingerprint(world) {
+  const FNV_OFFSET = 0x811c_9dc5;
+  const FNV_PRIME = 0x0100_0193;
+  const mixByte = (hash, value) => Math.imul(hash ^ value, FNV_PRIME) >>> 0;
+  const mixString = (hash, value) => {
+    for (const byte of new TextEncoder().encode(value)) hash = mixByte(hash, byte);
+    return hash;
+  };
+  const mixNumber = (hash, value, integer) => {
+    const bytes = new Uint8Array(8);
+    const view = new DataView(bytes.buffer);
+    if (integer) view.setInt32(0, value, true);
+    else view.setFloat64(0, value, true);
+    for (let index = 0; index < (integer ? 4 : 8); index += 1) {
+      hash = mixByte(hash, bytes[index]);
+    }
+    return hash;
+  };
+  let hash = mixString(FNV_OFFSET, `${world.format}:${world.version}`);
+  for (const value of [...world.bounds.min, ...world.bounds.max]) {
+    hash = mixNumber(hash, value, false);
+  }
+  hash = mixNumber(hash, world.vertices.length, true);
+  hash = mixNumber(hash, world.indices.length, true);
+  if (world.collision) {
+    for (const value of world.collision.planes) hash = mixNumber(hash, value, false);
+    for (const value of world.collision.clipnodes) hash = mixNumber(hash, value, true);
+  }
+  for (const model of world.models) {
+    for (const value of [...model.bounds.min, ...model.bounds.max]) {
+      hash = mixNumber(hash, value, false);
+    }
+    for (const headnode of model.headnodes) hash = mixNumber(hash, headnode, true);
+    hash = mixByte(hash, model.collidable ? 1 : 0);
+  }
+  for (const entity of world.entities) {
+    for (const key of Object.keys(entity).toSorted()) {
+      hash = mixString(hash, key);
+      const value = entity[key];
+      if (value === undefined) continue;
+      for (const part of Array.isArray(value) ? value : [value]) hash = mixString(hash, part);
+    }
+  }
+  return `wv1-${hash.toString(16).padStart(8, '0')}`;
+}
+
 function mipTexture() {
   const offsets = [40, 296, 360, 376];
   const pixelEnd = 380;
@@ -107,30 +153,212 @@ await customElements.whenDefined('world-view');
 const bspUrl = URL.createObjectURL(
   new Blob([syntheticGoldSrcBsp()], { type: 'application/octet-stream' }),
 );
+const worldSource = () => ({
+  bsp: bspUrl,
+  wads: [],
+  resolveWad: () => null,
+});
 let readyCount = 0;
+const elements = [];
+const readyPromises = [];
 for (let index = 0; index < 2; index += 1) {
   const element = document.createElement('world-view');
+  element.dataset.kind = 'source';
+  elements.push(element);
   element.setAttribute('controls', 'none');
   if (index === 0) {
     element.setAttribute('audio', 'false');
     element.setAttribute('audio-volume', '0.35');
     element.setAttribute('music-volume', '0.45');
   }
-  element.addEventListener(
-    'ready',
-    (event) => {
-      element.dataset.triangles = String(event.detail.diagnostics.triangles);
-      element.dataset.audioVolume = String(element.viewer.audio.volume);
-      element.dataset.audioEnabled = String(element.viewer.audio.enabled);
-      element.dataset.musicVolume = String(element.viewer.audio.musicVolume);
-      readyCount += 1;
-      document.body.dataset.ready = String(readyCount);
-    },
-    { once: true },
+  readyPromises.push(
+    new Promise((resolve) => {
+      element.addEventListener('ready', (event) => {
+        const elementReadyCount = Number(element.dataset.readyCount ?? 0) + 1;
+        element.dataset.readyCount = String(elementReadyCount);
+        if (elementReadyCount > 1) return;
+        element.dataset.triangles = String(event.detail.diagnostics.triangles);
+        element.dataset.audioVolume = String(element.viewer.audio.volume);
+        element.dataset.audioEnabled = String(element.viewer.audio.enabled);
+        element.dataset.musicVolume = String(element.viewer.audio.musicVolume);
+        readyCount += 1;
+        document.body.dataset.ready = String(readyCount);
+        resolve();
+      });
+    }),
   );
   element.addEventListener('error', (event) => {
     document.body.dataset.error = event.detail.error.message;
   });
+  if (index === 0) element.source = worldSource();
   document.body.append(element);
-  element.setAttribute('src', bspUrl);
+  if (index === 1) element.source = worldSource();
 }
+
+await Promise.all(readyPromises);
+
+const world = elements[0].viewer.world;
+const walkability = {
+  format: 'worldview-walkability',
+  version: 1,
+  worldFingerprint: walkabilityFingerprint(world),
+  parameters: {
+    spacing: 32,
+    mergeDistance: 10,
+    directions: 4,
+    maximumNodes: 1,
+    allowJump: false,
+    jumpSeconds: 0.4,
+    fixedDeltaSeconds: 0.01,
+    movement: {
+      gravity: 800,
+      stopSpeed: 100,
+      maxSpeed: 320,
+      accelerate: 10,
+      airAccelerate: 10,
+      friction: 4,
+      edgeFriction: 2,
+      stepSize: 18,
+    },
+  },
+  seeds: [],
+  nodes: [],
+  edges: [],
+  boundaries: [],
+  statistics: {
+    nodes: 0,
+    edges: 0,
+    walkEdges: 0,
+    jumpEdges: 0,
+    dropEdges: 0,
+    boundaries: 0,
+    components: 0,
+    truncated: false,
+  },
+};
+const serializedWalkability = `${JSON.stringify(walkability)}\n`;
+
+const sidecarElement = document.createElement('world-view');
+sidecarElement.dataset.kind = 'sidecar';
+sidecarElement.setAttribute('controls', 'none');
+sidecarElement.source = worldSource();
+sidecarElement.walkabilitySource = new Blob([serializedWalkability], {
+  type: 'application/json',
+});
+const sidecarEvents = [];
+const sidecarReady = new Promise((resolve) => {
+  sidecarElement.addEventListener('ready', () => {
+    sidecarEvents.push('ready');
+    resolve();
+  });
+});
+const sidecarApplied = new Promise((resolve) => {
+  sidecarElement.addEventListener('walkabilitychange', (event) => {
+    if (!event.detail.walkability) return;
+    if (event.detail.visible) sidecarEvents.push('visible');
+    else if (!sidecarEvents.includes('applied')) {
+      sidecarEvents.push('applied');
+      resolve();
+    }
+  });
+});
+sidecarElement.addEventListener('progress', (event) => {
+  if (event.detail.phase === 'walkability' && !sidecarEvents.includes('progress')) {
+    sidecarEvents.push('progress');
+  }
+});
+document.body.append(sidecarElement);
+await Promise.all([sidecarReady, sidecarApplied]);
+sidecarElement.walkabilityVisible = true;
+document.body.dataset.sidecarOrder = sidecarEvents.join(',');
+document.body.dataset.sidecarReady = 'true';
+
+const invalidElement = document.createElement('world-view');
+invalidElement.dataset.kind = 'invalid-sidecar';
+invalidElement.setAttribute('controls', 'none');
+invalidElement.setAttribute('walkability-visible', '');
+invalidElement.setAttribute('src', bspUrl);
+invalidElement.setAttribute(
+  'walkability-src',
+  `data:application/json,${encodeURIComponent('not valid walkability')}`,
+);
+const invalidReady = new Promise((resolve) => {
+  invalidElement.addEventListener('ready', resolve, { once: true });
+});
+const invalidWarning = new Promise((resolve) => {
+  invalidElement.addEventListener(
+    'warning',
+    (event) => {
+      invalidElement.dataset.warningCode = event.detail.code;
+      resolve();
+    },
+    { once: true },
+  );
+});
+invalidElement.addEventListener('error', (event) => {
+  invalidElement.dataset.error = event.detail.error.message;
+});
+document.body.append(invalidElement);
+await Promise.all([invalidReady, invalidWarning]);
+invalidElement.dataset.ready = 'true';
+
+const originalFetch = globalThis.fetch.bind(globalThis);
+const delayedSidecarUrl = 'https://worldview.test/delayed-walkability';
+let releaseDelayedSidecar;
+let markDelayedRequested;
+let markDelayedSettled;
+const delayedRequested = new Promise((resolve) => {
+  markDelayedRequested = resolve;
+});
+const delayedSettled = new Promise((resolve) => {
+  markDelayedSettled = resolve;
+});
+globalThis.fetch = (input, init) => {
+  if (String(input) !== delayedSidecarUrl) return originalFetch(input, init);
+  return new Promise((resolve, reject) => {
+    markDelayedRequested();
+    const signal = init?.signal;
+    const settle = () => markDelayedSettled();
+    const abort = () => {
+      settle();
+      reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+    };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener('abort', abort, { once: true });
+    releaseDelayedSidecar = () => {
+      signal?.removeEventListener('abort', abort);
+      settle();
+      resolve(new Response(serializedWalkability, { status: 200 }));
+    };
+  });
+};
+
+const staleElement = document.createElement('world-view');
+staleElement.dataset.kind = 'stale-sidecar';
+staleElement.setAttribute('controls', 'none');
+staleElement.source = worldSource();
+staleElement.walkabilitySource = delayedSidecarUrl;
+let staleReadyCount = 0;
+let staleApplications = 0;
+const staleReloaded = new Promise((resolve) => {
+  staleElement.addEventListener('ready', () => {
+    staleReadyCount += 1;
+    if (staleReadyCount === 2) resolve();
+  });
+});
+staleElement.addEventListener('walkabilitychange', (event) => {
+  if (event.detail.walkability) staleApplications += 1;
+});
+document.body.append(staleElement);
+await delayedRequested;
+staleElement.walkabilitySource = null;
+staleElement.source = worldSource();
+releaseDelayedSidecar?.();
+await Promise.all([delayedSettled, staleReloaded]);
+globalThis.fetch = originalFetch;
+staleElement.dataset.readyCount = String(staleReadyCount);
+staleElement.dataset.walkabilityApplications = String(staleApplications);
+document.body.dataset.elementContractReady = 'true';

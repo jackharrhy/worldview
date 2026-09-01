@@ -1,5 +1,10 @@
 import { createWorldview } from '../viewer/viewer.js';
-import type { BinarySource, WorldSource, WorldviewViewer } from '../viewer/types.js';
+import type {
+  BinarySource,
+  WorldSource,
+  WorldviewEventMap,
+  WorldviewViewer,
+} from '../viewer/types.js';
 
 const template = document.createElement('template');
 template.innerHTML = `
@@ -74,16 +79,19 @@ export class WorldViewElement extends HTMLElement {
     'audio-volume',
     'music-volume',
     'max-dpr',
+    'walkability-src',
+    'walkability-visible',
   ];
 
   private readonly canvasElement: HTMLCanvasElement;
   private readonly statusElement: HTMLDivElement;
   private activeViewer: WorldviewViewer | null = null;
   private controller: AbortController | null = null;
-  private explicitWads: readonly BinarySource[] = [];
-  private explicitSprites: Readonly<Record<string, BinarySource>> = {};
-  private explicitSounds: Readonly<Record<string, BinarySource>> = {};
+  private sidecarController: AbortController | null = null;
+  private assignedSource: WorldSource | undefined;
+  private assignedWalkabilitySource: BinarySource | undefined;
   private generation = 0;
+  private walkabilityGeneration = 0;
 
   public constructor() {
     super();
@@ -97,31 +105,74 @@ export class WorldViewElement extends HTMLElement {
     return this.activeViewer;
   }
 
-  public get wads(): readonly BinarySource[] {
-    return this.explicitWads;
+  public override addEventListener<K extends keyof WorldviewEventMap>(
+    type: K,
+    listener: (this: WorldViewElement, event: WorldviewEventMap[K]) => void,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  public override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  public override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    super.addEventListener(type, listener, options);
   }
 
-  public set wads(value: readonly BinarySource[]) {
-    this.explicitWads = [...value];
+  public override removeEventListener<K extends keyof WorldviewEventMap>(
+    type: K,
+    listener: (this: WorldViewElement, event: WorldviewEventMap[K]) => void,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  public override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  public override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    super.removeEventListener(type, listener, options);
+  }
+
+  /** The canonical atomic world configuration. URL attributes are used when this is null. */
+  public get source(): WorldSource | null {
+    return this.assignedSource ?? this.declarativeSource();
+  }
+
+  public set source(value: WorldSource | null) {
+    this.assignedSource = value ?? undefined;
     if (this.isConnected) void this.initialize();
   }
 
-  public get sprites(): Readonly<Record<string, BinarySource>> {
-    return this.explicitSprites;
+  /** Optional persisted walkability loaded after the world becomes interactive. */
+  public get walkabilitySource(): BinarySource | null {
+    return this.assignedWalkabilitySource ?? this.getAttribute('walkability-src');
   }
 
-  public set sprites(value: Readonly<Record<string, BinarySource>>) {
-    this.explicitSprites = { ...value };
-    if (this.isConnected) void this.initialize();
+  public set walkabilitySource(value: BinarySource | null) {
+    this.assignedWalkabilitySource = value ?? undefined;
+    if (this.isConnected) this.refreshWalkability();
   }
 
-  public get sounds(): Readonly<Record<string, BinarySource>> {
-    return this.explicitSounds;
+  public get walkabilityVisible(): boolean {
+    return (
+      this.activeViewer?.walkabilityVisible ?? booleanAttribute(this, 'walkability-visible', false)
+    );
   }
 
-  public set sounds(value: Readonly<Record<string, BinarySource>>) {
-    this.explicitSounds = { ...value };
-    if (this.isConnected) void this.initialize();
+  public set walkabilityVisible(value: boolean) {
+    if (this.hasAttribute('walkability-visible') === value) {
+      this.activeViewer?.setWalkabilityVisible(value);
+      return;
+    }
+    this.toggleAttribute('walkability-visible', value);
   }
 
   public connectedCallback(): void {
@@ -130,6 +181,9 @@ export class WorldViewElement extends HTMLElement {
 
   public disconnectedCallback(): void {
     this.generation += 1;
+    this.walkabilityGeneration += 1;
+    this.sidecarController?.abort(new DOMException('Element disconnected', 'AbortError'));
+    this.sidecarController = null;
     this.controller?.abort(new DOMException('Element disconnected', 'AbortError'));
     this.controller = null;
     this.activeViewer?.dispose();
@@ -142,6 +196,16 @@ export class WorldViewElement extends HTMLElement {
     value: string | null,
   ): void {
     if (!this.isConnected || previous === value) return;
+    if (name === 'walkability-visible') {
+      this.activeViewer?.setWalkabilityVisible(
+        booleanAttribute(this, 'walkability-visible', false),
+      );
+      return;
+    }
+    if (name === 'walkability-src') {
+      if (this.assignedWalkabilitySource === undefined) this.refreshWalkability();
+      return;
+    }
     if (this.activeViewer && (name === 'audio-volume' || name === 'music-volume')) {
       const parsed = Number(value);
       if (Number.isFinite(parsed)) {
@@ -150,12 +214,23 @@ export class WorldViewElement extends HTMLElement {
       }
       return;
     }
+    if (this.assignedSource && WorldViewElement.sourceAttributes.has(name)) return;
     void this.initialize();
   }
 
-  private source(): WorldSource | undefined {
+  private static readonly sourceAttributes = new Set([
+    'src',
+    'game-base-url',
+    'palette-src',
+    'wad-base-url',
+    'skybox-base-url',
+    'sprite-base-url',
+    'sound-base-url',
+  ]);
+
+  private declarativeSource(): WorldSource | null {
     const bsp = this.getAttribute('src');
-    if (!bsp) return undefined;
+    if (!bsp) return null;
     const gameBaseUrl = this.getAttribute('game-base-url');
     const palette = this.getAttribute('palette-src');
     const wadBaseUrl = this.getAttribute('wad-base-url');
@@ -170,20 +245,20 @@ export class WorldViewElement extends HTMLElement {
       ...(skyboxBaseUrl ? { skyboxBaseUrl } : {}),
       ...(spriteBaseUrl ? { spriteBaseUrl } : {}),
       ...(soundBaseUrl ? { soundBaseUrl } : {}),
-      ...(this.explicitWads.length > 0 ? { wads: this.explicitWads } : {}),
-      ...(Object.keys(this.explicitSprites).length > 0 ? { sprites: this.explicitSprites } : {}),
-      ...(Object.keys(this.explicitSounds).length > 0 ? { sounds: this.explicitSounds } : {}),
     };
   }
 
   private async initialize(): Promise<void> {
     const generation = ++this.generation;
+    this.walkabilityGeneration += 1;
+    this.sidecarController?.abort(new DOMException('Element world source changed', 'AbortError'));
+    this.sidecarController = null;
     this.controller?.abort(new DOMException('Element attributes changed', 'AbortError'));
     this.activeViewer?.dispose();
     this.activeViewer = null;
     const controller = new AbortController();
     this.controller = controller;
-    const source = this.source();
+    const source = this.source;
     this.show(source ? 'Initializing WebGPU' : 'Waiting for a BSP source');
 
     try {
@@ -211,7 +286,14 @@ export class WorldViewElement extends HTMLElement {
       }
       this.activeViewer = viewer;
       this.mirrorEvents(viewer);
-      if (source) await viewer.load(source, { signal: controller.signal });
+      if (booleanAttribute(this, 'walkability-visible', false)) {
+        viewer.setWalkabilityVisible(true);
+      }
+      if (source) {
+        await viewer.load(source, { signal: controller.signal });
+        if (generation !== this.generation || this.activeViewer !== viewer) return;
+        this.refreshWalkability();
+      }
     } catch (error) {
       if (controller.signal.aborted) return;
       const message = error instanceof Error ? error.message : String(error);
@@ -230,7 +312,9 @@ export class WorldViewElement extends HTMLElement {
 
   private mirrorEvents(viewer: WorldviewViewer): void {
     viewer.addEventListener('progress', (event) => {
-      this.show(`${event.detail.phase}: ${event.detail.label ?? 'loading'}`);
+      if (event.detail.phase !== 'walkability' || !viewer.world) {
+        this.show(`${event.detail.phase}: ${event.detail.label ?? 'loading'}`);
+      }
       this.redispatch('progress', event.detail);
     });
     viewer.addEventListener('ready', (event) => {
@@ -242,10 +326,49 @@ export class WorldViewElement extends HTMLElement {
     viewer.addEventListener('movementchange', (event) =>
       this.redispatch('movementchange', event.detail),
     );
+    viewer.addEventListener('walkabilitychange', (event) =>
+      this.redispatch('walkabilitychange', event.detail),
+    );
     viewer.addEventListener('error', (event) => {
       this.show(event.detail.error.message);
       this.redispatch('error', event.detail);
     });
+  }
+
+  private refreshWalkability(): void {
+    const generation = ++this.walkabilityGeneration;
+    this.sidecarController?.abort(
+      new DOMException('Element walkability source changed', 'AbortError'),
+    );
+    this.sidecarController = null;
+    const viewer = this.activeViewer;
+    if (!viewer?.world) return;
+    const source = this.walkabilitySource;
+    if (viewer.walkability) viewer.setWalkability(null);
+    if (!source) {
+      return;
+    }
+    const controller = new AbortController();
+    this.sidecarController = controller;
+    void viewer
+      .loadWalkability(source, { signal: controller.signal })
+      .catch((error: unknown) => {
+        if (
+          controller.signal.aborted ||
+          generation !== this.walkabilityGeneration ||
+          viewer !== this.activeViewer
+        ) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        this.redispatch('warning', {
+          code: 'asset-warning',
+          message: `walkability sidecar could not be loaded: ${message}`,
+        });
+      })
+      .finally(() => {
+        if (this.sidecarController === controller) this.sidecarController = null;
+      });
   }
 
   private redispatch(type: string, detail: unknown): void {

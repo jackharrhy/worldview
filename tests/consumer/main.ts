@@ -29,6 +29,11 @@ const sprite = spriteReference('sprites/consumer.spr');
 // These assignments keep the public type surface in the consumer compilation without constructing
 // GPU resources. The browser smoke assertion below covers the runtime exports.
 const source: WorldSource = { bsp: new ArrayBuffer(0) };
+const elementContract = document.createElement(consumerTag) as WorldViewElement;
+elementContract.source = source;
+elementContract.walkabilitySource = new Blob(['{}'], { type: 'application/json' });
+elementContract.walkabilityVisible = true;
+elementContract.addEventListener('walkabilitychange', (event) => void event.detail.visible);
 const viewerFactory: (options: Parameters<typeof createWorldview>[0]) => Promise<WorldviewViewer> =
   createWorldview;
 const parsedWorld: ParsedWorld | null = null;
@@ -66,3 +71,6 @@ document.body.dataset.walkability = String(
 );
 document.body.dataset.error = String(new WorldviewError('invalid-data', 'consumer').code);
 document.body.dataset.runtime = String(new SnapshotStore('ready').getSnapshot() === 'ready');
+document.body.dataset.elementContract = String(
+  elementContract.source === source && elementContract.walkabilityVisible,
+);
