@@ -154,8 +154,8 @@ describe('Quake II BSP38', () => {
     expect(parseBsp(makeBsp38({ surfaceFlags: 0x80 })).materials[0]?.kind).toBe('tool');
   });
 
-  it('omits lightmaps from Quake II sky, warp, and translucent surfaces', () => {
-    for (const surfaceFlags of [0x04, 0x08, 0x10, 0x20]) {
+  it('omits lightmaps from Quake II sky, warp, translucent, and nodraw surfaces', () => {
+    for (const surfaceFlags of [0x04, 0x08, 0x10, 0x20, 0x80]) {
       const world = parseBsp(makeBsp38({ surfaceFlags }));
       expect(world.faces[0]?.lightmap).toMatchObject({ pageIndex: -1, samples: null });
     }
@@ -164,7 +164,7 @@ describe('Quake II BSP38', () => {
   it('rejects invalid IBSP versions and truncated lightmaps', () => {
     const unsupported = makeBsp38();
     new DataView(unsupported.buffer).setUint32(4, 46, true);
-    expect(() => parseBsp(unsupported)).toThrow(/IBSP version 38/);
+    expect(() => parseBsp(unsupported)).toThrow(/IBSP and QBSP version 38/);
     expect(() => parseBsp(makeBsp38({ lightOffset: 8 }))).toThrow(/light samples/);
   });
 });
@@ -368,6 +368,15 @@ describe('WAD and MIPTEX', () => {
     expect(decoded.levels[0]?.rgba.slice(0, 4)).toEqual(new Uint8Array([0, 255, 0, 255]));
   });
 
+  it('rejects decoded textures wider than the portable WebGPU limit', () => {
+    const texture = makeMipTexture(29);
+    const view = new DataView(texture.buffer, texture.byteOffset, texture.byteLength);
+    view.setUint32(16, 8_193, true);
+    view.setUint32(20, 1, true);
+
+    expect(() => decodeMipTexture(texture, makePalette())).toThrow(/portable WebGPU texture/u);
+  });
+
   it('splits Quake sky textures into opaque and transparent scrolling layers', () => {
     const texture = makeMipTexture(29, 'sky_test');
     texture[40] = 0;
@@ -390,12 +399,12 @@ describe('TGA', () => {
     );
   });
 
-  it('rejects images that exceed the decoded pixel budget before allocating them', () => {
+  it('rejects images that exceed the portable WebGPU dimensions before allocating them', () => {
     const oversized = makeTga();
     const view = new DataView(oversized.buffer, oversized.byteOffset, oversized.byteLength);
     view.setUint16(12, 65_535, true);
     view.setUint16(14, 65_535, true);
-    expect(() => decodeTga(oversized)).toThrow(/decoded image limit/);
+    expect(() => decodeTga(oversized)).toThrow(/portable WebGPU texture/u);
   });
 });
 

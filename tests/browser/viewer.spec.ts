@@ -5,12 +5,22 @@ import { readFile } from 'node:fs/promises';
 const quake2CorpusMap =
   'apps/viewer/public/local/steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1.bsp';
 const quakeCorpusMap = 'apps/viewer/public/local/steam-corpus/4484420/loose/id1/maps/dm1.bsp';
+const compatibilityCorpusMaps = [
+  'apps/viewer/public/local/steam-corpus/60/loose/ricochet/maps/rc_arena.bsp',
+  'apps/viewer/public/local/steam-corpus/130/loose/bshift/maps/ba_canal1.bsp',
+  'apps/viewer/public/local/steam-corpus/2320/archives/rerelease/baseq2/pak0.pak/maps/mgu1m1.bsp',
+] as const;
 const quake2Fixtures = [
   'steam-corpus/thirty-flights-of-loving/bar1',
   'steam-corpus/gravity-bone/hof1',
   'steam-corpus/thirty-flights-of-loving/lob1',
   'steam-corpus/gravity-bone/parlo1',
   'steam-corpus/thirty-flights-of-loving/vidroom',
+] as const;
+const compatibilityFixtures = [
+  ['steam-corpus/ricochet/rc_arena', 'goldsrc-bsp30 / BSP30'],
+  ['steam-corpus/blue-shift/ba_canal1', 'goldsrc-bsp30 / BSP30'],
+  ['steam-corpus/quake-ii/mgu1m1', 'quake2-bsp38 / BSP38'],
 ] as const;
 
 async function requireWebGpu(page: Page): Promise<void> {
@@ -294,6 +304,52 @@ test('local fixture loader switches from Quake II to Quake with the correct pale
   await expect(page.locator('[data-format]')).toContainText('quake-bsp29 / BSP29');
   await page.getByRole('button', { name: 'Map', exact: true }).click();
   await expect(page.locator('[data-warnings]')).not.toHaveValue(/palette/iu);
+  expect(errors).toEqual([]);
+});
+
+test('local compatibility corpus renders Ricochet, Blue Shift, and rerelease QBSP', async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    compatibilityCorpusMaps.some((filename) => !existsSync(filename)),
+    'ignored commercial corpus is unavailable',
+  );
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+
+  for (const [fixture, format] of compatibilityFixtures) {
+    await page.goto(`/?fixture=${encodeURIComponent(fixture)}`);
+    await requireWebGpu(page);
+    await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 60_000 });
+    await expect(page.locator('[data-format]')).toContainText(format);
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await expect(page.locator('[data-warnings]')).not.toHaveValue(
+      /missing-skybox|skybox .*could not/iu,
+    );
+    if (fixture.includes('ricochet') || fixture.includes('blue-shift')) {
+      await expect(page.locator('[data-warnings]')).not.toHaveValue(
+        /WAD .*failed|not found in (?:loaded|the supplied) WADs|missing texture/iu,
+      );
+    } else {
+      await expect(page.locator('[data-warnings]')).not.toHaveValue(
+        /Quake II texture .*not found/iu,
+      );
+    }
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    const screenshot = await page
+      .locator('canvas')
+      .screenshot({ path: testInfo.outputPath(`${fixture.split('/').at(-1)}.png`) });
+    expect(screenshot.byteLength).toBeGreaterThan(10_000);
+  }
+
   expect(errors).toEqual([]);
 });
 

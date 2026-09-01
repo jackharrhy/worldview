@@ -18,6 +18,8 @@ interface FixtureOptions {
 }
 
 interface Bsp38FixtureOptions {
+  readonly qbsp?: boolean;
+  readonly decoupledLightmap?: boolean;
   readonly surfaceFlags?: number;
   readonly surfaceValue?: number;
   readonly textureName?: string;
@@ -84,6 +86,7 @@ export function makePcxPalette(): Uint8Array {
   result[0] = 0x0a;
   result[2] = 1;
   result[3] = 8;
+  result[65] = 1;
   result[128] = 0x0c;
   result.set(palette, 129);
   return result;
@@ -537,20 +540,33 @@ export function makeBsp38(options: Bsp38FixtureOptions = {}): Uint8Array {
   texinfoView.setInt32(36, options.surfaceValue ?? 0, true);
   new TextEncoder().encodeInto(options.textureName ?? 'e1u1/fixture', texinfo.subarray(40, 72));
   texinfoView.setInt32(72, options.nextMaterialIndex ?? -1, true);
-  const face = new Uint8Array(20);
+  const face = new Uint8Array(options.qbsp ? 28 : 20);
   const faceView = new DataView(face.buffer);
-  faceView.setInt32(4, 0, true);
-  faceView.setInt16(8, 4, true);
-  faceView.setInt16(10, 0, true);
-  faceView.setUint8(12, 0);
-  faceView.setUint8(13, 255);
-  faceView.setUint8(14, 255);
-  faceView.setUint8(15, 255);
-  faceView.setInt32(16, options.lightOffset ?? 0, true);
+  const firstEdgeOffset = options.qbsp ? 8 : 4;
+  const edgeCountOffset = options.qbsp ? 12 : 8;
+  const mappingIndexOffset = options.qbsp ? 16 : 10;
+  const stylesOffset = options.qbsp ? 20 : 12;
+  const lightOffset = options.qbsp ? 24 : 16;
+  faceView.setInt32(firstEdgeOffset, 0, true);
+  if (options.qbsp) {
+    faceView.setInt32(edgeCountOffset, 4, true);
+    faceView.setInt32(mappingIndexOffset, 0, true);
+  } else {
+    faceView.setInt16(edgeCountOffset, 4, true);
+    faceView.setInt16(mappingIndexOffset, 0, true);
+  }
+  faceView.setUint8(stylesOffset, 0);
+  faceView.setUint8(stylesOffset + 1, 255);
+  faceView.setUint8(stylesOffset + 2, 255);
+  faceView.setUint8(stylesOffset + 3, 255);
+  faceView.setInt32(lightOffset, options.decoupledLightmap ? -1 : (options.lightOffset ?? 0), true);
   const lighting = new Uint8Array(12).fill(128);
-  const edges = new Uint8Array(16);
+  const edges = new Uint8Array(options.qbsp ? 32 : 16);
   const edgeView = new DataView(edges.buffer);
-  [0, 1, 1, 2, 2, 3, 3, 0].forEach((value, index) => edgeView.setUint16(index * 2, value, true));
+  [0, 1, 1, 2, 2, 3, 3, 0].forEach((value, index) => {
+    if (options.qbsp) edgeView.setUint32(index * 4, value, true);
+    else edgeView.setUint16(index * 2, value, true);
+  });
   const surfedges = new Uint8Array(16);
   const surfedgeView = new DataView(surfedges.buffer);
   [0, 1, 2, 3].forEach((value, index) => surfedgeView.setInt32(index * 4, value, true));
@@ -578,9 +594,11 @@ export function makeBsp38(options: Bsp38FixtureOptions = {}): Uint8Array {
     size += lump.length;
     return offset;
   });
-  const result = new Uint8Array(size);
+  const bspxHeaderOffset = align4(size);
+  const bspxDataOffset = bspxHeaderOffset + 40;
+  const result = new Uint8Array(options.decoupledLightmap ? bspxDataOffset + 40 : size);
   const view = new DataView(result.buffer);
-  new TextEncoder().encodeInto('IBSP', result.subarray(0, 4));
+  new TextEncoder().encodeInto(options.qbsp ? 'QBSP' : 'IBSP', result.subarray(0, 4));
   view.setUint32(4, 38, true);
   lumps.forEach((lump, index) => {
     const offset = offsets[index] ?? headerSize;
@@ -588,5 +606,20 @@ export function makeBsp38(options: Bsp38FixtureOptions = {}): Uint8Array {
     view.setUint32(12 + index * 8, lump.length, true);
     result.set(lump, offset);
   });
+  if (options.decoupledLightmap) {
+    new TextEncoder().encodeInto('BSPX', result.subarray(bspxHeaderOffset, bspxHeaderOffset + 4));
+    view.setUint32(bspxHeaderOffset + 4, 1, true);
+    new TextEncoder().encodeInto(
+      'DECOUPLED_LM',
+      result.subarray(bspxHeaderOffset + 8, bspxHeaderOffset + 32),
+    );
+    view.setUint32(bspxHeaderOffset + 32, bspxDataOffset, true);
+    view.setUint32(bspxHeaderOffset + 36, 40, true);
+    view.setUint16(bspxDataOffset, 2, true);
+    view.setUint16(bspxDataOffset + 2, 2, true);
+    view.setInt32(bspxDataOffset + 4, options.lightOffset ?? 0, true);
+    view.setFloat32(bspxDataOffset + 8, 1 / 16, true);
+    view.setFloat32(bspxDataOffset + 28, 1 / 16, true);
+  }
   return result;
 }

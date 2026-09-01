@@ -13,6 +13,7 @@ import {
 } from './project-workspace.js';
 
 const MAX_CONCURRENT_IMAGE_DECODES = 8;
+const MAX_CONCURRENT_GAME_ASSET_READS = 8;
 const REPLACEMENT_PRIORITY = new Map([
   ['jpeg', 0],
   ['jpg', 1],
@@ -23,6 +24,28 @@ const REPLACEMENT_PRIORITY = new Map([
 interface LoadedGameAsset {
   readonly sourcePath: string;
   readonly data: ArrayBuffer;
+}
+
+async function mapConcurrent<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  worker: (value: T, index: number) => Promise<R>,
+): Promise<readonly R[]> {
+  const results: R[] = [];
+  results.length = values.length;
+  let nextIndex = 0;
+  const run = async (): Promise<void> => {
+    while (nextIndex < values.length) {
+      const index = nextIndex++;
+      const value = values[index];
+      if (value === undefined) return;
+      results[index] = await worker(value, index);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, async () => run()),
+  );
+  return results;
 }
 
 export interface LoadedProjectResources {
@@ -41,7 +64,7 @@ async function explicitPalette(
   const path = workspace.manifest.resources.palette;
   if (!path) return undefined;
   const bytes = new Uint8Array(await (await projectFile(workspace.handle, path)).arrayBuffer());
-  if (bytes[0] === 0x0a) return readPcxPalette(bytes);
+  if (path.toLowerCase().endsWith('.pcx')) return readPcxPalette(bytes);
   if (bytes.byteLength < 768) {
     throw new Error(`${path} is not a 768-byte Quake palette or PCX palette`);
   }
@@ -50,9 +73,15 @@ async function explicitPalette(
 
 async function readGameAssets(
   workspace: WorldviewProjectWorkspace,
+  signal: AbortSignal,
 ): Promise<Map<string, LoadedGameAsset>> {
   const files = await loadProjectGameAssets(workspace);
-  const data = await Promise.all(files.map(async ({ file }) => file.arrayBuffer()));
+  const data = await mapConcurrent(files, MAX_CONCURRENT_GAME_ASSET_READS, async ({ file }) => {
+    signal.throwIfAborted();
+    const bytes = await file.arrayBuffer();
+    signal.throwIfAborted();
+    return bytes;
+  });
   const assets = new Map<string, LoadedGameAsset>();
   for (const [index, asset] of files.entries()) {
     const bytes = data[index];
@@ -91,50 +120,47 @@ async function decodeReplacementMaterials(
   readonly messages: readonly string[];
 }> {
   const entries = [...selectedReplacements(assets)];
-  const materials = Array.from<EditorMaterial | undefined>({ length: entries.length });
-  const messages = Array.from<string | undefined>({ length: entries.length });
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(MAX_CONCURRENT_IMAGE_DECODES, entries.length) }, async () => {
-      while (next < entries.length) {
-        const index = next++;
-        const entry = entries[index];
-        if (!entry) return;
-        const [name, replacement] = entry;
-        try {
-          signal.throwIfAborted();
-          const image = await decodeProjectMaterialImage(replacement.logicalPath, replacement.data);
-          const companionWal = assets.get(`textures/${name}.wal`);
-          let walHeader: ReturnType<typeof readWalTextureHeader> | null = null;
-          if (companionWal) {
-            try {
-              walHeader = readWalTextureHeader(companionWal.data);
-            } catch (error) {
-              messages[index] =
-                `${companionWal.sourcePath}: ${error instanceof Error ? error.message : String(error)}`;
-            }
+  const decoded = await mapConcurrent(
+    entries,
+    MAX_CONCURRENT_IMAGE_DECODES,
+    async ([name, replacement]) => {
+      try {
+        signal.throwIfAborted();
+        const image = await decodeProjectMaterialImage(replacement.logicalPath, replacement.data);
+        signal.throwIfAborted();
+        const companionWal = assets.get(`textures/${name}.wal`);
+        let walHeader: ReturnType<typeof readWalTextureHeader> | null = null;
+        let message: string | undefined;
+        if (companionWal) {
+          try {
+            walHeader = readWalTextureHeader(companionWal.data);
+          } catch (error) {
+            message = `${companionWal.sourcePath}: ${error instanceof Error ? error.message : String(error)}`;
           }
-          materials[index] = {
-            name: walHeader?.name ?? name,
-            sourceName: replacement.sourcePath,
-            width: image.width,
-            height: image.height,
-            logicalWidth: walHeader?.width ?? image.width,
-            logicalHeight: walHeader?.height ?? image.height,
-            rgba: image.rgba,
-            alphaTest: false,
-          };
-        } catch (error) {
-          signal.throwIfAborted();
-          messages[index] =
-            `${replacement.sourcePath}: ${error instanceof Error ? error.message : String(error)}`;
         }
+        const material: EditorMaterial = {
+          name: walHeader?.name ?? name,
+          sourceName: replacement.sourcePath,
+          width: image.width,
+          height: image.height,
+          logicalWidth: walHeader?.width ?? image.width,
+          logicalHeight: walHeader?.height ?? image.height,
+          rgba: image.rgba,
+          alphaTest: false,
+        };
+        return { material, message };
+      } catch (error) {
+        signal.throwIfAborted();
+        return {
+          material: undefined,
+          message: `${replacement.sourcePath}: ${error instanceof Error ? error.message : String(error)}`,
+        };
       }
-    }),
+    },
   );
   return {
-    materials: materials.filter((material): material is EditorMaterial => Boolean(material)),
-    messages: messages.filter((message): message is string => Boolean(message)),
+    materials: decoded.flatMap(({ material }) => (material ? [material] : [])),
+    messages: decoded.flatMap(({ message }) => (message ? [message] : [])),
   };
 }
 
@@ -149,7 +175,7 @@ export async function loadWorkspaceResources(
     Promise.all(
       wadPaths.map(async (path) => (await projectFile(workspace.handle, path)).arrayBuffer()),
     ),
-    readGameAssets(workspace),
+    readGameAssets(workspace, signal),
     loadProjectEntityDefinitions(workspace),
     loadProjectSprites(workspace),
   ]);

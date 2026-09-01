@@ -78,6 +78,7 @@ function quake2PalettePcx(): Uint8Array {
   bytes[0] = 0x0a;
   bytes[2] = 1;
   bytes[3] = 8;
+  bytes[65] = 1;
   bytes[128] = 0x0c;
   for (let index = 0; index < 768; index += 1) bytes[129 + index] = index & 0xff;
   return bytes;

@@ -1272,18 +1272,25 @@ describe('compiler coordination', () => {
     expect(selectMapLaunchProfile(capabilities, 'quake2')?.id).toBe('quake2');
   });
 
-  it('reads classic and IBSP compiled-map versions without conflating the magic word', () => {
+  it('reads classic, BSP2, IBSP, and QBSP compiled-map versions without conflating magic words', () => {
     const classic = new ArrayBuffer(4);
     new DataView(classic).setInt32(0, 29, true);
     const ibsp = new ArrayBuffer(8);
     new DataView(ibsp).setInt32(0, 0x50534249, true);
     new DataView(ibsp).setInt32(4, 38, true);
+    const qbsp = ibsp.slice(0);
+    new DataView(qbsp).setInt32(0, 0x50534251, true);
+    const bsp2 = new TextEncoder().encode('BSP2').buffer;
 
     expect(compiledBspVersion(classic)).toBe(29);
+    expect(compiledBspVersion(bsp2)).toBe('BSP2');
     expect(compiledBspVersion(ibsp)).toBe(38);
+    expect(compiledBspVersion(qbsp)).toBe(38);
     expect(compiledBspVersion(new ArrayBuffer(3))).toBeNull();
     expect(supportsCompiledBspPreview(classic)).toBe(true);
+    expect(supportsCompiledBspPreview(bsp2)).toBe(true);
     expect(supportsCompiledBspPreview(ibsp)).toBe(true);
+    expect(supportsCompiledBspPreview(qbsp)).toBe(true);
     new DataView(ibsp).setInt32(4, 46, true);
     expect(supportsCompiledBspPreview(ibsp)).toBe(false);
   });

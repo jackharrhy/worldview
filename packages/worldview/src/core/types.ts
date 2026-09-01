@@ -90,6 +90,12 @@ export type BspWarning =
       readonly modelIndex: number;
       readonly hullIndex: number;
       readonly headNode: number;
+    }
+  | {
+      readonly code: 'noncanonical-inverted-model-bounds';
+      readonly message: string;
+      readonly modelIndex: number;
+      readonly axes: readonly ('x' | 'y' | 'z')[];
     };
 
 export interface ParsedLightmap {

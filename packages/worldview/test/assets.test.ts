@@ -30,6 +30,19 @@ describe('asset resolution', () => {
     ).rejects.toMatchObject({ code: 'missing-palette' });
   });
 
+  it('does not misclassify a raw palette whose first byte matches the PCX manufacturer', async () => {
+    const palette = new Uint8Array(900);
+    palette.set(makePalette());
+    palette[0] = 0x0a;
+
+    const loaded = await loadWorldAssets(
+      { bsp: makeBsp({ version: 29 }), palette },
+      assetContext(),
+    );
+
+    expect(loaded.palette).toEqual(palette.slice(0, 768));
+  });
+
   it('starts independent sprite and sound resolvers concurrently', async () => {
     const started = new Set<string>();
     let release!: () => void;
@@ -253,6 +266,35 @@ describe('asset resolution', () => {
     );
     expect(loaded.skybox).toMatchObject({ name: 'unit1_' });
     expect(loaded.missingTextures).toEqual([]);
+  });
+
+  it('starts independent Quake II skybox face lookups concurrently', async () => {
+    const started = new Set<string>();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const loading = loadWorldAssets(
+      {
+        bsp: makeBsp38(),
+        resolveGameAsset: async ({ path }) => {
+          if (path === 'pics/colormap.pcx') return makePcxPalette();
+          if (path === 'textures/e1u1/fixture.wal') return makeWal();
+          if (/^env\/.+\.png$/u.test(path)) {
+            started.add(path);
+            await gate;
+            return null;
+          }
+          if (/^env\/.+\.tga$/u.test(path)) return makeTga();
+          return null;
+        },
+      },
+      assetContext(),
+    );
+
+    await vi.waitFor(() => expect(started.size).toBe(6));
+    release();
+    await expect(loading).resolves.toMatchObject({ skybox: { name: 'unit1_' } });
   });
 
   it('prefers a Quake II replacement image while preserving companion WAL dimensions', async () => {

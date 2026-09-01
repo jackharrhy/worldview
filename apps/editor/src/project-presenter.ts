@@ -40,6 +40,7 @@ import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './docume
 import type { ProjectActionId } from './project-build-ui-state.js';
 import type { DetachedHostedMap } from './collaboration-outbox.js';
 import { loadWorkspaceResources } from './project-resource-loader.js';
+import type { LoadedProjectResources } from './project-resource-loader.js';
 
 type ProjectUi = Pick<
   EditorShellState,
@@ -117,6 +118,7 @@ interface ProjectViewportWorkspaceCommands {
 
 export class ProjectPresenter {
   private recoverySnapshots = new Map<string, DocumentRecoverySnapshot>();
+  private projectOpenController: AbortController | null = null;
 
   public constructor(
     private readonly state: ProjectState,
@@ -150,6 +152,7 @@ export class ProjectPresenter {
   }
 
   public dispose(): void {
+    this.cancelProjectOpen();
     this.ui.projectToolbar.unbind();
     this.ui.recoveryVersions.unbind();
     this.ui.projectUi.unbind();
@@ -163,6 +166,7 @@ export class ProjectPresenter {
   }
 
   private detachProjectContext(): void {
+    this.cancelProjectOpen();
     if (!this.state.projectWorkspace) return;
     this.state.projectWorkspace = null;
     this.state.projectKey = null;
@@ -330,12 +334,10 @@ export class ProjectPresenter {
     });
   }
 
-  public async loadProjectResources(workspace: WorldviewProjectWorkspace): Promise<void> {
-    const resources = await loadWorkspaceResources(
-      workspace,
-      this.state.builtInMaterials,
-      this.signal,
-    );
+  private applyProjectResources(
+    workspace: WorldviewProjectWorkspace,
+    resources: LoadedProjectResources,
+  ): void {
     this.state.materialCatalog.clear();
     for (const material of resources.catalog.materials()) this.state.materialCatalog.set(material);
     this.state.loadedWadSources.clear();
@@ -371,42 +373,63 @@ export class ProjectPresenter {
   }
 
   public async openProjectDirectory(handle: EditorDirectoryHandle): Promise<void> {
-    const workspace = await openWorldviewProject(handle);
-    this.signal.throwIfAborted();
-    await this.loadProjectResources(workspace);
-    this.signal.throwIfAborted();
-    this.state.projectWorkspace = workspace;
-    this.state.projectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
-    const remembered = await this.state.projectLocalState.remember(
-      this.state.projectKey,
-      handle,
-      workspace.manifest.name,
-    );
-    this.signal.throwIfAborted();
-    if (remembered) this.state.projectKey = remembered.projectKey;
-    this.state.workspaceId = remembered?.workspaceId ?? `project:${this.state.projectKey}`;
-    this.state.activeGameProfile = workspace.manifest.game;
-    this.ui.projectToolbar.set({
-      maps: workspace.maps.map(({ path }) => ({ id: path, label: path })),
-      selectedMapId: null,
-      buildProfiles: workspace.manifest.buildProfiles.map((profile) => ({
-        id: profile.id,
-        label: `${profile.label} · ${profile.quality}`,
-      })),
-      selectedBuildProfileId:
-        workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? null,
-    });
-    await this.build.checkCompilerService();
-    this.signal.throwIfAborted();
-    const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
-    if (remembered === null) {
-      const warning =
-        'The project is open, but its directory binding could not be saved; choose the directory again after reload.';
-      this.ui.resourceSettings.update({ message: warning, tone: 'error' });
-      this.ui.statusMessage.set(`${summary} ${warning}`);
-      return;
+    this.cancelProjectOpen();
+    const controller = new AbortController();
+    this.projectOpenController = controller;
+    const signal = AbortSignal.any([this.signal, controller.signal]);
+    try {
+      const workspace = await openWorldviewProject(handle);
+      signal.throwIfAborted();
+      const resources = await loadWorkspaceResources(
+        workspace,
+        this.state.builtInMaterials,
+        signal,
+      );
+      signal.throwIfAborted();
+      const provisionalProjectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
+      const remembered = await this.state.projectLocalState.remember(
+        provisionalProjectKey,
+        handle,
+        workspace.manifest.name,
+      );
+      signal.throwIfAborted();
+
+      this.applyProjectResources(workspace, resources);
+      this.state.projectWorkspace = workspace;
+      this.state.projectKey = remembered?.projectKey ?? provisionalProjectKey;
+      this.state.workspaceId = remembered?.workspaceId ?? `project:${this.state.projectKey}`;
+      this.state.activeGameProfile = workspace.manifest.game;
+      this.ui.projectToolbar.set({
+        maps: workspace.maps.map(({ path }) => ({ id: path, label: path })),
+        selectedMapId: null,
+        buildProfiles: workspace.manifest.buildProfiles.map((profile) => ({
+          id: profile.id,
+          label: `${profile.label} · ${profile.quality}`,
+        })),
+        selectedBuildProfileId:
+          workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? null,
+      });
+      await this.build.checkCompilerService();
+      signal.throwIfAborted();
+      const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
+      if (remembered === null) {
+        const warning =
+          'The project is open, but its directory binding could not be saved; choose the directory again after reload.';
+        this.ui.resourceSettings.update({ message: warning, tone: 'error' });
+        this.ui.statusMessage.set(`${summary} ${warning}`);
+        return;
+      }
+      this.ui.statusMessage.set(summary);
+    } finally {
+      if (this.projectOpenController === controller) this.projectOpenController = null;
     }
-    this.ui.statusMessage.set(summary);
+  }
+
+  private cancelProjectOpen(): void {
+    this.projectOpenController?.abort(
+      new DOMException('Project open was superseded by a newer editor action', 'AbortError'),
+    );
+    this.projectOpenController = null;
   }
 
   public createNewMap(
@@ -648,6 +671,7 @@ export class ProjectPresenter {
         );
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       this.ui.statusMessage.set(
         `Project open failed: ${error instanceof Error ? error.message : String(error)}`,
       );

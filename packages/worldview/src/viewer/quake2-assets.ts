@@ -3,6 +3,7 @@ import {
   decodeWalTexture,
   readPcxPalette,
   readWalTextureHeader,
+  validateTextureDimensions,
   type DecodedMipTexture,
   type ParsedWorld,
 } from '../core/index.js';
@@ -28,7 +29,6 @@ interface DecodedImage {
 const replacementExtensions = ['png', 'tga', 'jpg', 'jpeg'] as const;
 const skyboxSuffixes: readonly SkyboxSuffix[] = ['rt', 'bk', 'lf', 'ft', 'up', 'dn'];
 const MAX_CONCURRENT_TEXTURE_LOADS = 8;
-const MAX_DECODED_IMAGE_PIXELS = 16_777_216;
 
 function imageMediaType(extension: (typeof replacementExtensions)[number]): string {
   if (extension === 'png') return 'image/png';
@@ -47,9 +47,7 @@ async function decodeBrowserImage(
   const bitmap = await createImageBitmap(new Blob([bytes], { type: mediaType }));
   abortIfNeeded(context.signal);
   try {
-    if (bitmap.width * bitmap.height > MAX_DECODED_IMAGE_PIXELS) {
-      throw new Error(`${mediaType} texture dimensions exceed the decoded image limit`);
-    }
+    validateTextureDimensions(bitmap.width, bitmap.height, `${mediaType} texture`);
     const canvas =
       typeof OffscreenCanvas === 'function'
         ? new OffscreenCanvas(bitmap.width, bitmap.height)
@@ -91,18 +89,17 @@ export async function loadQuake2Skybox(
   context: LoadAssetContext,
 ): Promise<LoadedSkybox | undefined> {
   const normalizedName = skyName.replace(/\.[^/.]+$/u, '');
-  const decoded = new Map<SkyboxSuffix, DecodedImage>();
-  for (const suffix of skyboxSuffixes) {
-    let side: DecodedImage | undefined;
-    for (const extension of replacementExtensions) {
-      const bytes = await loader.read(`env/${normalizedName}${suffix}.${extension}`, 'skybox');
-      if (!bytes) continue;
-      side = await decodeQuake2Image(bytes, extension, context);
-      break;
-    }
-    if (!side) return undefined;
-    decoded.set(suffix, side);
-  }
+  const entries = await Promise.all(
+    skyboxSuffixes.map(async (suffix) => {
+      for (const extension of replacementExtensions) {
+        const bytes = await loader.read(`env/${normalizedName}${suffix}.${extension}`, 'skybox');
+        if (bytes) return [suffix, await decodeQuake2Image(bytes, extension, context)] as const;
+      }
+      return null;
+    }),
+  );
+  if (entries.some((entry) => entry === null)) return undefined;
+  const decoded = new Map(entries.filter((entry) => entry !== null));
   const sides: LoadedSkybox['sides'] = {
     rt: decoded.get('rt')!,
     bk: decoded.get('bk')!,
@@ -145,6 +142,7 @@ async function firstReplacement(
       try {
         return { image: await decodeQuake2Image(bytes, extension, context), path };
       } catch (error) {
+        abortIfNeeded(context.signal);
         warnings.push({
           code: 'asset-warning',
           message: `${path} could not be decoded: ${error instanceof Error ? error.message : String(error)}`,

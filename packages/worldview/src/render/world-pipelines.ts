@@ -6,6 +6,7 @@
 import type { TgpuRoot } from 'typegpu';
 
 import { isQuakePaletteFormat, type DrawBatch, type ParsedWorld } from '../core/index.js';
+import { RENDER_SAMPLE_COUNT } from './constants.js';
 import {
   additiveFragment,
   alphaFragment,
@@ -21,8 +22,6 @@ import {
   worldVertex,
 } from './shaders.js';
 import { worldVertexLayout } from './schemas.js';
-
-export const WORLD_SAMPLE_COUNT = 4;
 
 function surfacePrimitive(cullMode: GPUCullMode): GPUPrimitiveState {
   return { topology: 'triangle-list', frontFace: 'cw', cullMode };
@@ -58,7 +57,7 @@ export function createWorldPipelines(root: TgpuRoot, format: GPUTextureFormat) {
   const common = {
     attribs,
     vertex: worldVertex,
-    multisample: { count: WORLD_SAMPLE_COUNT },
+    multisample: { count: RENDER_SAMPLE_COUNT },
   };
   const skyboxCommon = { ...common, vertex: skyboxVertex };
   const surface = (

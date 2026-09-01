@@ -15,6 +15,7 @@ export function readPcxPalette(input: ArrayBuffer | ArrayBufferView): Uint8Array
   invariant(source.u8(0) === 0x0a, 'PCX file has an invalid manufacturer byte');
   invariant(source.u8(2) === 1, 'PCX file does not use RLE encoding');
   invariant(source.u8(3) === 8, 'PCX file does not use 8-bit color planes');
+  invariant(source.u8(65) === 1, 'PCX file does not contain one color plane');
   const markerOffset = source.byteLength - PCX_PALETTE_SIZE - 1;
   invariant(
     source.u8(markerOffset) === PCX_PALETTE_MARKER,

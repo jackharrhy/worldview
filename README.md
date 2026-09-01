@@ -2,8 +2,8 @@
 
 Worldview renders static Quake, GoldSrc, and Quake II maps in ordinary web pages.
 
-It supports Quake BSP29 and sanitized BSP2, GoldSrc BSP30, and Quake II BSP38 through WebGPU and
-TypeGPU.
+It supports Quake BSP29 and sanitized BSP2, GoldSrc BSP30, and Quake II IBSP/QBSP version 38
+through WebGPU and TypeGPU.
 
 [Open the viewer](https://jackharrhy.github.io/worldview/?fixture=goldsrc) or load your own BSP from
 the **Load → Local files** control.
@@ -28,17 +28,19 @@ Maintainers can find the local npm release process in [docs/releasing.md](docs/r
 - Quake BSP29, sanitized BSP2, and GoldSrc BSP30 include static world and brush-model geometry,
   textures, lightmaps, visibility, collision, walking and fly navigation, entities, skyboxes,
   sprites, sounds, and map overviews where the source map provides them. The earlier `2PSB` layout
-  and Hexen II's game-specific model layout are not supported.
+  and Hexen II's game-specific model layout are not supported. Blue Shift's BSP30 variant with
+  exchanged entity and plane directory entries is detected from its lump contents.
 - Recoverable Quake-family compatibility defects are surfaced through typed `BspWarning` values.
   This includes bounded but noncanonical MIPTEX dimensions, unusable individual texture records,
   isolated faces with fewer than three edges, overlong visibility runs, and one-past-end empty
   collision-hull sentinels. Structural lump, offset, index, and buffer validation remains fatal.
-- Quake II BSP38 includes static world and brush-model geometry, entities, RGB lightmaps, animated
-  texinfo chains, flowing and turbulent surfaces, translucent surface flags, PCX palettes, WAL
-  textures, PNG/TGA/JPEG replacements with WAL-sized UVs, and `env/` skyboxes. `WorldSource`
-  accepts explicit game-root files, an async logical-asset resolver, or a game base URL. Direct
-  PAK/PK3 mounting, BSP38 collision/PVS, and Quake II alias-model or sound playback remain pending;
-  fly navigation remains available while walking does not.
+- Quake II BSP38 includes classic `IBSP` and rerelease `QBSP` geometry, entities, classic RGB
+  lightmaps and rerelease BSPX `DECOUPLED_LM` lightmaps, animated texinfo chains, flowing and
+  turbulent surfaces, translucent surface flags, PCX palettes, WAL textures, PNG/TGA/JPEG
+  replacements with WAL-sized UVs, and `env/` skyboxes.
+  `WorldSource` accepts explicit game-root files, an async logical-asset resolver, or a game base
+  URL. Direct PAK/PK3 mounting, BSP38 collision/PVS, and Quake II alias-model or sound playback
+  remain pending; fly navigation remains available while walking does not.
 
 The detailed Quake II implementation evidence and remaining acceptance work live in
 [docs/quake2-compatibility.md](docs/quake2-compatibility.md).

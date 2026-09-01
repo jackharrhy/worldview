@@ -7,6 +7,7 @@ function pcxPalette(): Uint8Array {
   result[0] = 0x0a;
   result[2] = 1;
   result[3] = 8;
+  result[65] = 1;
   result[128] = 0x0c;
   for (let index = 0; index < 768; index += 1) result[129 + index] = index & 0xff;
   return result;
@@ -24,5 +25,8 @@ describe('PCX palettes', () => {
     const missingMarker = pcxPalette();
     missingMarker[128] = 0;
     expect(() => readPcxPalette(missingMarker)).toThrow(/trailing 256-color palette/);
+    const multiplePlanes = pcxPalette();
+    multiplePlanes[65] = 3;
+    expect(() => readPcxPalette(multiplePlanes)).toThrow(/one color plane/u);
   });
 });

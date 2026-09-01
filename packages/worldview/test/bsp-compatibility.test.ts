@@ -1,9 +1,133 @@
 import { describe, expect, it } from 'vitest';
 
 import { decodeMipTexture, parseBsp, visibleWorldFaceMask } from '../src/core/index.js';
-import { makeBsp, makeBsp2, makeMipTexture, makePalette } from './fixtures.js';
+import { makeBsp, makeBsp2, makeBsp38, makeMipTexture, makePalette } from './fixtures.js';
 
 describe('Quake-family BSP compatibility', () => {
+  it('recognizes Blue Shift BSP30 files with exchanged entity and plane directory entries', () => {
+    const bytes = makeBsp({ version: 30 });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const entities = [view.getUint32(4, true), view.getUint32(8, true)] as const;
+    const planes = [view.getUint32(12, true), view.getUint32(16, true)] as const;
+    view.setUint32(4, planes[0], true);
+    view.setUint32(8, planes[1], true);
+    view.setUint32(12, entities[0], true);
+    view.setUint32(16, entities[1], true);
+
+    const world = parseBsp(bytes);
+
+    expect(world.format).toBe('goldsrc-bsp30');
+    expect(world.entities[0]?.classname).toBe('worldspawn');
+    expect(world.indices).toEqual(new Uint32Array([0, 1, 2, 0, 2, 3]));
+  });
+
+  it('parses Quake II rerelease QBSP widened faces and edges', () => {
+    const world = parseBsp(makeBsp38({ qbsp: true, surfaceValue: -12 }));
+
+    expect(world).toMatchObject({
+      format: 'quake2-bsp38',
+      version: 38,
+      skyName: 'unit1_',
+    });
+    expect(world.indices).toEqual(new Uint32Array([0, 1, 2, 0, 2, 3]));
+    expect(world.materials[0]).toMatchObject({
+      name: 'e1u1/fixture',
+      surfaceValue: -12,
+    });
+    expect(world.lightmapPages[0]?.lightmaps[0]?.samples).toHaveLength(12);
+  });
+
+  it('keeps QBSP widened face ranges strictly bounded', () => {
+    const bytes = makeBsp38({ qbsp: true });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const faceOffset = view.getUint32(8 + 6 * 8, true);
+    view.setInt32(faceOffset + 12, 2_147_483_647, true);
+
+    expect(() => parseBsp(bytes)).toThrow(/face 0 surfedge range is invalid/);
+  });
+
+  it('uses BSPX decoupled lightmap dimensions, offsets, and projections', () => {
+    const world = parseBsp(makeBsp38({ qbsp: true, decoupledLightmap: true }));
+
+    expect(world.lightmapPages[0]?.lightmaps[0]).toMatchObject({
+      width: 2,
+      height: 2,
+      styles: [0],
+    });
+    expect(world.lightmapPages[0]?.lightmaps[0]?.samples).toHaveLength(12);
+    expect(Array.from(world.vertices.slice(5, 7))).toEqual([0.5, 0.5]);
+    expect(Array.from(world.vertices.slice(12, 14))).toEqual([1.5, 0.5]);
+    expect(Array.from(world.vertices.slice(19, 21))).toEqual([1.5, 1.5]);
+  });
+
+  it('rejects a partial BSPX decoupled-lightmap record', () => {
+    const bytes = makeBsp38({ qbsp: true, decoupledLightmap: true });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const bspxHeaderOffset = bytes.length - 80;
+    view.setUint32(bspxHeaderOffset + 36, 39, true);
+
+    expect(() => parseBsp(bytes)).toThrow(/DECOUPLED_LM record count/);
+  });
+
+  it('rejects incomplete BSPX decoupled-lightmap dimensions', () => {
+    const bytes = makeBsp38({ qbsp: true, decoupledLightmap: true });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const bspxDataOffset = bytes.length - 40;
+    view.setUint16(bspxDataOffset, 0, true);
+
+    expect(() => parseBsp(bytes)).toThrow(/incomplete zero dimensions/u);
+  });
+
+  it('rejects non-finite BSP geometry before it reaches render buffers', () => {
+    for (const bytes of [makeBsp(), makeBsp38()]) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const quake2 = bytes[0] === 0x49;
+      const vertexLump = view.getUint32(quake2 ? 8 + 2 * 8 : 4 + 3 * 8, true);
+      view.setFloat32(vertexLump, Number.NaN, true);
+      expect(() => parseBsp(bytes)).toThrow(/vertex 0 x is not finite/u);
+    }
+  });
+
+  it('normalizes inverted model bounds with a typed compatibility warning', () => {
+    for (const bytes of [makeBsp(), makeBsp38()]) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const quake2 = bytes[0] === 0x49;
+      const modelLump = view.getUint32(quake2 ? 8 + 13 * 8 : 4 + 14 * 8, true);
+      view.setFloat32(modelLump, 32, true);
+      view.setFloat32(modelLump + 12, 16, true);
+      const world = parseBsp(bytes);
+      expect(world.bounds.min[0]).toBe(16);
+      expect(world.bounds.max[0]).toBe(32);
+      expect(world.warnings).toContainEqual({
+        code: 'noncanonical-inverted-model-bounds',
+        message: 'model 0 has inverted X bounds; the axis endpoints were safely reordered',
+        modelIndex: 0,
+        axes: ['x'],
+      });
+    }
+  });
+
+  it('rejects finite source values whose texture mapping overflows', () => {
+    for (const bytes of [makeBsp(), makeBsp38()]) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const quake2 = bytes[0] === 0x49;
+      const vertexLump = view.getUint32(quake2 ? 8 + 2 * 8 : 4 + 3 * 8, true);
+      const texinfoLump = view.getUint32(quake2 ? 8 + 5 * 8 : 4 + 6 * 8, true);
+      view.setFloat32(vertexLump, 3e38, true);
+      view.setFloat32(texinfoLump, 3e38, true);
+      expect(() => parseBsp(bytes)).toThrow(/face 0 has invalid UVs/u);
+    }
+  });
+
+  it('rejects MIPTEX dimensions that would require an excessive decoded allocation', () => {
+    const bytes = makeMipTexture(29, 'oversized', 16, 16);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    view.setUint32(16, 8192, true);
+    view.setUint32(20, 8192, true);
+
+    expect(() => decodeMipTexture(bytes, makePalette())).toThrow(/decoded image limit/u);
+  });
+
   it('decodes bounded noncanonical mip dimensions', () => {
     const decoded = decodeMipTexture(makeMipTexture(29, 'porta72', 93, 207), makePalette());
     expect(decoded).toMatchObject({ name: 'porta72', width: 93, height: 207 });
@@ -75,7 +199,10 @@ describe('Quake-family BSP compatibility', () => {
 
     const world = parseBsp(bytes);
 
-    expect(world.materials[0]).toEqual({ name: 'somemissingtext', kind: 'opaque' });
+    expect(world.materials[0]).toEqual({
+      name: 'somemissingtext',
+      kind: 'opaque',
+    });
     expect(world.warnings).toEqual([
       {
         code: 'unusable-miptex',
@@ -105,7 +232,10 @@ describe('Quake-family BSP compatibility', () => {
     expect(world.materials[0]).toEqual({ name: 'broken', kind: 'opaque' });
     expect(world.materials[1]?.embeddedTexture?.name).toBe('sound');
     expect(world.warnings).toContainEqual(
-      expect.objectContaining({ code: 'unusable-miptex', textureName: 'broken' }),
+      expect.objectContaining({
+        code: 'unusable-miptex',
+        textureName: 'broken',
+      }),
     );
   });
 

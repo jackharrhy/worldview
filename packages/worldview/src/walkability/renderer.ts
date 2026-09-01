@@ -1,10 +1,10 @@
 import type { TgpuBindGroup, TgpuRoot } from 'typegpu';
 
+import { RENDER_SAMPLE_COUNT } from '../render/constants.js';
 import type { WalkabilityMap, WalkabilityTraversal } from './types.js';
 import { walkabilityVertexLayout } from './schemas.js';
 import { walkabilityFragment, walkabilityVertex } from './shaders.js';
 
-const SAMPLE_COUNT = 4;
 const FLOATS_PER_VERTEX = 7;
 
 type Color = readonly [number, number, number, number];
@@ -90,7 +90,7 @@ export class TypeGpuWalkabilityRenderer {
         depthWriteEnabled: false,
         depthCompare: 'less-equal',
       },
-      multisample: { count: SAMPLE_COUNT },
+      multisample: { count: RENDER_SAMPLE_COUNT },
     });
   }
 

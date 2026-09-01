@@ -22,6 +22,7 @@ import {
 } from '../walkability/index.js';
 import { TypeGpuWalkabilityRenderer } from '../walkability/renderer.js';
 import type { LoadedMaterialTexture, RenderWorldAssets } from './assets.js';
+import { RENDER_SAMPLE_COUNT } from './constants.js';
 import type { CameraState, TextureFiltering } from './types.js';
 import {
   MaterialUniform,
@@ -37,7 +38,6 @@ import {
   isTranslucentWorldBatch,
   selectedWorldPipeline,
   translucentBatchRank,
-  WORLD_SAMPLE_COUNT,
   type WorldPipelines,
 } from './world-pipelines.js';
 
@@ -215,7 +215,8 @@ export class TypeGpuWorldRenderer {
   private readonly textures: TgpuTexture[] = [];
   private readonly uploadedMaterials = new Map<number, UploadedMaterial>();
   private readonly lightmapTextures = new Map<number, UploadedTexture>();
-  private readonly materialBindings = new Map<string, MaterialBinding>();
+  private readonly materialBindings = new Map<DrawBatch, ReadonlyMap<number, MaterialBinding>>();
+  private readonly materialAnimations = new Map<number, readonly number[]>();
   private readonly batchCenters = new Map<DrawBatch, readonly [number, number, number]>();
   private readonly facesBySourceIndex: ReadonlyMap<number, ParsedWorld['faces'][number]>;
   private readonly lightstyles = new LightstyleState();
@@ -337,14 +338,14 @@ export class TypeGpuWorldRenderer {
       .createTexture({
         size: [width, height],
         format: this.format,
-        sampleCount: WORLD_SAMPLE_COUNT,
+        sampleCount: RENDER_SAMPLE_COUNT,
       })
       .$usage('render');
     this.depthTexture = this.root
       .createTexture({
         size: [width, height],
         format: 'depth24plus',
-        sampleCount: WORLD_SAMPLE_COUNT,
+        sampleCount: RENDER_SAMPLE_COUNT,
       })
       .$usage('render');
     this.msaaView = this.root.unwrap(this.msaaTexture).createView();
@@ -394,14 +395,14 @@ export class TypeGpuWorldRenderer {
       label: 'Worldview overview MSAA',
       size: [settings.width, settings.height],
       format: this.format,
-      sampleCount: WORLD_SAMPLE_COUNT,
+      sampleCount: RENDER_SAMPLE_COUNT,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     const depth = this.device.createTexture({
       label: 'Worldview overview depth',
       size: [settings.width, settings.height],
       format: 'depth24plus',
-      sampleCount: WORLD_SAMPLE_COUNT,
+      sampleCount: RENDER_SAMPLE_COUNT,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     const bytesPerRow = (settings.width * 4 + 255) & ~255;
@@ -711,10 +712,16 @@ export class TypeGpuWorldRenderer {
       this.uploadedMaterials.set(materialIndex, uploaded);
     }
 
+    const sharedBindings = new Map<string, MaterialBinding>();
     for (const batch of this.loaded.world.batches) {
+      const batchBindings = new Map<number, MaterialBinding>();
       for (const materialIndex of this.animationMaterialIndices(batch.materialIndex)) {
-        const key = this.bindingKey(batch, materialIndex);
-        if (this.materialBindings.has(key)) continue;
+        const key = `${batch.modelIndex}:${materialIndex}:${batch.lightmapPage}`;
+        const shared = sharedBindings.get(key);
+        if (shared) {
+          batchBindings.set(materialIndex, shared);
+          continue;
+        }
         const model = this.loaded.world.models[batch.modelIndex];
         const parsedMaterial = this.loaded.world.materials[materialIndex];
         const loadedTexture = this.loaded.materialTextures.get(materialIndex);
@@ -753,8 +760,11 @@ export class TypeGpuWorldRenderer {
           textureSampler: this.sampler,
           skyboxSampler: this.skyboxSampler,
         });
-        this.materialBindings.set(key, { group });
+        const binding = { group };
+        sharedBindings.set(key, binding);
+        batchBindings.set(materialIndex, binding);
       }
+      this.materialBindings.set(batch, batchBindings);
     }
   }
 
@@ -882,7 +892,7 @@ export class TypeGpuWorldRenderer {
     pipelines: WorldPipelines,
     sceneGroup: TgpuBindGroup,
   ): void {
-    const binding = this.materialBindings.get(this.bindingKey(batch));
+    const binding = this.materialBindings.get(batch)?.get(batch.materialIndex);
     if (!binding) return;
     const pipeline = isQuakePaletteFormat(this.loaded.world.format)
       ? pipelines.quakeSkyBackground
@@ -904,9 +914,9 @@ export class TypeGpuWorldRenderer {
     pipelines: WorldPipelines,
     sceneGroup: TgpuBindGroup,
   ): void {
-    const binding = this.materialBindings.get(
-      this.bindingKey(batch, this.animatedMaterialIndex(batch.materialIndex)),
-    );
+    const binding = this.materialBindings
+      .get(batch)
+      ?.get(this.animatedMaterialIndex(batch.materialIndex));
     if (!binding) return;
     selectedWorldPipeline(pipelines, this.loaded.world, batch)
       .with(worldVertexLayout, this.vertexBuffer)
@@ -918,6 +928,8 @@ export class TypeGpuWorldRenderer {
   }
 
   private animationMaterialIndices(first: number): readonly number[] {
+    const cached = this.materialAnimations.get(first);
+    if (cached) return cached;
     const indices: number[] = [];
     const seen = new Set<number>();
     let current = first;
@@ -928,15 +940,12 @@ export class TypeGpuWorldRenderer {
       if (next === null || next === undefined) break;
       current = next;
     }
+    this.materialAnimations.set(first, indices);
     return indices;
   }
 
   private animatedMaterialIndex(first: number): number {
     const indices = this.animationMaterialIndices(first);
     return indices[Math.floor(this.timeSeconds * 2) % indices.length] ?? first;
-  }
-
-  private bindingKey(batch: DrawBatch, materialIndex = batch.materialIndex): string {
-    return `${batch.modelIndex}:${materialIndex}:${batch.lightmapPage}`;
   }
 }

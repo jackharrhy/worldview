@@ -1,4 +1,4 @@
-import { decodeTga } from '@jackharrhy/worldview/core';
+import { decodeTga, validateTextureDimensions } from '@jackharrhy/worldview/core';
 
 export interface DecodedProjectMaterialImage {
   readonly width: number;
@@ -7,7 +7,6 @@ export interface DecodedProjectMaterialImage {
 }
 
 const MATERIAL_IMAGE_EXTENSION = /\.(png|jpe?g|tga)$/iu;
-const MAX_DECODED_IMAGE_PIXELS = 16_777_216;
 
 export function projectMaterialName(logicalPath: string): string | null {
   const match = /^textures\/(.+)\.(?:wal|png|jpe?g|tga)$/iu.exec(logicalPath);
@@ -27,9 +26,7 @@ export async function decodeProjectMaterialImage(
   const mediaType = extension === 'png' ? 'image/png' : 'image/jpeg';
   const bitmap = await createImageBitmap(new Blob([bytes], { type: mediaType }));
   try {
-    if (bitmap.width * bitmap.height > MAX_DECODED_IMAGE_PIXELS) {
-      throw new Error(`${logicalPath} exceeds the decoded image limit`);
-    }
+    validateTextureDimensions(bitmap.width, bitmap.height, logicalPath);
     const canvas =
       typeof OffscreenCanvas === 'function'
         ? new OffscreenCanvas(bitmap.width, bitmap.height)

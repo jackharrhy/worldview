@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 
 import { parseBsp } from '@jackharrhy/worldview/core';
 
@@ -9,11 +9,28 @@ function increment(counts, key) {
   counts[key] = (counts[key] ?? 0) + 1;
 }
 
+function corpusFile(root, relativePath) {
+  if (
+    typeof relativePath !== 'string' ||
+    !relativePath ||
+    isAbsolute(relativePath) ||
+    relativePath.includes('\\')
+  ) {
+    throw new Error(`unsafe corpus outputPath: ${String(relativePath)}`);
+  }
+  const filename = resolve(root, normalize(relativePath));
+  if (!filename.startsWith(`${root}${sep}`)) {
+    throw new Error(`corpus outputPath escapes the manifest directory: ${relativePath}`);
+  }
+  return filename;
+}
+
 const manifestPath = resolve(
   process.argv[2] ?? 'apps/viewer/public/local/steam-corpus/manifest.json',
 );
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 if (!Array.isArray(manifest.records)) throw new Error('corpus manifest has no records array');
+const corpusRoot = dirname(manifestPath);
 
 const formats = {};
 const warnings = {};
@@ -23,7 +40,7 @@ for (const record of manifest.records) {
     throw new Error('corpus manifest record has no outputPath');
   }
   try {
-    const world = parseBsp(await readFile(record.outputPath));
+    const world = parseBsp(await readFile(corpusFile(corpusRoot, record.outputPath)));
     increment(formats, world.format);
     for (const warning of world.warnings) increment(warnings, warning.code);
   } catch (error) {

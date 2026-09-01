@@ -1,13 +1,12 @@
 import { BinaryView } from './binary.js';
 import { invalidData, invariant } from './errors.js';
+import { validateTextureDimensions } from './texture-limits.js';
 
 export interface DecodedTga {
   readonly width: number;
   readonly height: number;
   readonly rgba: Uint8Array;
 }
-
-const MAX_TGA_PIXELS = 16_777_216;
 
 export function decodeTga(input: ArrayBuffer | ArrayBufferView): DecodedTga {
   const source = new BinaryView(input);
@@ -18,14 +17,12 @@ export function decodeTga(input: ArrayBuffer | ArrayBufferView): DecodedTga {
   invariant(imageType === 2 || imageType === 10, `unsupported TGA image type ${imageType}`);
   const width = source.u16(12);
   const height = source.u16(14);
-  invariant(width > 0 && height > 0, 'TGA dimensions must be positive');
+  validateTextureDimensions(width, height, 'TGA');
   const pixelDepth = source.u8(16);
   invariant(pixelDepth === 24 || pixelDepth === 32, `unsupported TGA depth ${pixelDepth}`);
   const descriptor = source.u8(17);
   const bytesPerPixel = pixelDepth / 8;
   const pixelCount = width * height;
-  invariant(Number.isSafeInteger(pixelCount), 'TGA dimensions overflow');
-  invariant(pixelCount <= MAX_TGA_PIXELS, 'TGA dimensions exceed the decoded image limit');
   let offset = 18 + idLength;
   source.require(offset, 0, 'TGA image data');
   const rgba = new Uint8Array(pixelCount * 4);

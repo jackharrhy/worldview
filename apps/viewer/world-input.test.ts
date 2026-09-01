@@ -18,6 +18,12 @@ function wal(name: string): Uint8Array {
   return bytes;
 }
 
+function skyboxSet(name: string): readonly File[] {
+  return ['rt', 'bk', 'lf', 'ft', 'up', 'dn'].map(
+    (suffix) => new File([new Uint8Array([1])], `${name}${suffix}.tga`),
+  );
+}
+
 describe('viewer local file source', () => {
   it('maps Quake II assets through their game paths and WAL headers', async () => {
     const bsp = new File([new Uint8Array(8)], 'sample.bsp');
@@ -37,5 +43,36 @@ describe('viewer local file source', () => {
       'textures/e1u1/metal.wal': namedWal,
       'textures/e1u1/wall.jpg': replacement,
     });
+  });
+
+  it('does not invent a game path for an uncontained replacement image', async () => {
+    const bsp = new File([new Uint8Array(8)], 'sample.bsp');
+    const image = new File([new Uint8Array([1])], 'wall.jpg');
+
+    const source = await sourceFromFiles(fileList([bsp, image]));
+
+    expect(source?.gameAssets).toBeUndefined();
+  });
+
+  it('preserves file-list precedence after concurrent WAL header reads', async () => {
+    const bsp = new File([new Uint8Array(8)], 'sample.bsp');
+    const first = new File([wal('e1u1/metal')], 'first.wal');
+    const second = new File([wal('e1u1/metal')], 'second.wal');
+
+    const source = await sourceFromFiles(fileList([bsp, first, second]));
+
+    expect(source?.gameAssets?.['textures/e1u1/metal.wal']).toBe(second);
+  });
+
+  it('only creates an explicit skybox from one complete, consistently named set', async () => {
+    const bsp = new File([new Uint8Array(8)], 'sample.bsp');
+
+    const source = await sourceFromFiles(fileList([bsp, ...skyboxSet('dusk')]));
+    expect(source?.skybox?.rt).toHaveProperty('name', 'duskrt.tga');
+
+    const ambiguous = await sourceFromFiles(
+      fileList([bsp, ...skyboxSet('dusk'), ...skyboxSet('space')]),
+    );
+    expect(ambiguous?.skybox).toBeUndefined();
   });
 });

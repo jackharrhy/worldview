@@ -81,7 +81,15 @@ function withWadProgress(detail: ProgressDetail, progress: WadProgressTracker): 
 
 function parsePalette(bytes: ArrayBuffer): Uint8Array {
   const palette = new Uint8Array(bytes);
-  if (palette[0] === 0x0a) return readPcxPalette(palette);
+  if (
+    palette.byteLength >= 128 + 1 + 256 * 3 &&
+    palette[0] === 0x0a &&
+    palette[2] === 1 &&
+    palette[3] === 8 &&
+    palette[65] === 1
+  ) {
+    return readPcxPalette(palette);
+  }
   if (palette.byteLength < 768) {
     throw new WorldviewError('missing-palette', 'Quake palette must contain at least 768 bytes');
   }

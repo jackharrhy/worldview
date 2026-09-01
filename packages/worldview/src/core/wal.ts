@@ -1,5 +1,6 @@
 import { BinaryView } from './binary.js';
 import { invariant } from './errors.js';
+import { validateTextureDimensions } from './texture-limits.js';
 import type { DecodedMipLevel } from './types.js';
 
 const WAL_HEADER_SIZE = 100;
@@ -26,8 +27,7 @@ export function readWalTextureHeader(input: ArrayBuffer | ArrayBufferView): WalT
   const name = source.string(0, 32, true);
   const width = source.u32(32);
   const height = source.u32(36);
-  invariant(width > 0 && height > 0, `WAL ${name} has zero dimensions`);
-  invariant(width <= 16_384 && height <= 16_384, `WAL ${name} dimensions are unreasonable`);
+  validateTextureDimensions(width, height, `WAL ${name}`);
   invariant(width % 8 === 0 && height % 8 === 0, `WAL ${name} dimensions are not mip-compatible`);
   const offsets = [source.u32(40), source.u32(44), source.u32(48), source.u32(52)] as const;
   return {

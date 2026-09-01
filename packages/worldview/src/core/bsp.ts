@@ -1,5 +1,11 @@
 import { BinaryView } from './binary.js';
-import { parseBsp38 } from './bsp38.js';
+import {
+  bspRecordCount,
+  checkedBspProduct,
+  finiteBspFloat,
+  normalizeBspBounds,
+} from './bsp-binary.js';
+import { isBsp38Magic, parseBsp38 } from './bsp38.js';
 import {
   buildBspRenderGeometry,
   type BspRenderFace,
@@ -79,15 +85,12 @@ interface MutableAllocation {
   pageY: number;
 }
 
-function recordCount(lump: BinaryView, size: number, label: string): number {
-  invariant(lump.byteLength % size === 0, `${label} lump has a partial record`);
-  return lump.byteLength / size;
-}
-
-function checkedProduct(left: number, right: number, label: string): number {
-  const product = left * right;
-  invariant(Number.isSafeInteger(product) && product >= 0, `${label} allocation overflows`);
-  return product;
+function startsWithEntityBlock(lump: BinaryView): boolean {
+  for (const byte of lump.bytes) {
+    if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) continue;
+    return byte === 0x7b;
+  }
+  return false;
 }
 
 function parseTrace(
@@ -102,8 +105,8 @@ function parseTrace(
     planes.byteLength > 0 && nodeLump.byteLength > 0 && leafLump.byteLength > 0,
     'BSP trace lumps must either all be present or all be empty',
   );
-  const nodeCount = recordCount(nodeLump, layout.nodeSize, 'node');
-  const leafCount = recordCount(leafLump, layout.leafSize, 'leaf');
+  const nodeCount = bspRecordCount(nodeLump, layout.nodeSize, 'node');
+  const leafCount = bspRecordCount(leafLump, layout.leafSize, 'leaf');
   const nodes = new Int32Array(nodeCount * 3);
   for (let index = 0; index < nodeCount; index += 1) {
     const targetOffset = index * 3;
@@ -153,9 +156,9 @@ function parseVisibility(
   if (visLeafCount === 0 || visibilityLump.byteLength === 0) {
     return { visibility: null, clippedRun: false };
   }
-  const leafCount = recordCount(leafLump, layout.leafSize, 'leaf');
+  const leafCount = bspRecordCount(leafLump, layout.leafSize, 'leaf');
   invariant(visLeafCount < leafCount, 'world visibility references missing leaves');
-  const markSurfaceCount = recordCount(markSurfaceLump, layout.marksurfaceSize, 'marksurface');
+  const markSurfaceCount = bspRecordCount(markSurfaceLump, layout.marksurfaceSize, 'marksurface');
   const leafVisOffsets = new Int32Array(leafCount);
   const leafMarkSurfaceStarts = new Uint32Array(leafCount);
   const leafMarkSurfaceCounts = new Uint32Array(leafCount);
@@ -208,15 +211,17 @@ function parseVisibility(
 }
 
 function parsePlanes(lump: BinaryView): Float32Array {
-  const planeCount = recordCount(lump, 20, 'plane');
+  const planeCount = bspRecordCount(lump, 20, 'plane');
   const planes = new Float32Array(planeCount * 4);
   for (let index = 0; index < planeCount; index += 1) {
     const sourceOffset = index * 20;
     const targetOffset = index * 4;
     for (let component = 0; component < 4; component += 1) {
-      const value = lump.f32(sourceOffset + component * 4);
-      invariant(Number.isFinite(value), `plane ${index} contains a non-finite value`);
-      planes[targetOffset + component] = value;
+      planes[targetOffset + component] = finiteBspFloat(
+        lump,
+        sourceOffset + component * 4,
+        `plane ${index} component ${component}`,
+      );
     }
   }
   return planes;
@@ -230,7 +235,7 @@ function parseCollision(
 ): ParsedBspCollision | null {
   if (lump.byteLength === 0) return null;
   invariant(planes.length > 0, 'BSP clipnodes require planes');
-  const nodeCount = recordCount(lump, layout.clipnodeSize, 'clipnode');
+  const nodeCount = bspRecordCount(lump, layout.clipnodeSize, 'clipnode');
   const clipnodes = new Int32Array(nodeCount * 3);
   for (let index = 0; index < nodeCount; index += 1) {
     const targetOffset = index * 3;
@@ -364,7 +369,7 @@ export function parseBsp(
   options: ParseBspOptions = {},
 ): ParsedWorld {
   const source = new BinaryView(input);
-  if (source.byteLength >= 8 && source.u32(0) === 0x50534249) {
+  if (source.byteLength >= 8 && isBsp38Magic(source.u32(0))) {
     return parseBsp38(input, options);
   }
   invariant(source.byteLength >= HEADER_SIZE, 'BSP header is truncated');
@@ -391,6 +396,18 @@ export function parseBsp(
     source.require(offset, length, `BSP lump ${type}`);
     return source.slice(offset, length);
   });
+  // Gearbox's Blue Shift tools wrote BSP30 with the entity and plane directory entries
+  // exchanged. Detect the contents rather than applying a game-specific filename heuristic.
+  if (
+    layout.version === 30 &&
+    !startsWithEntityBlock(lumps[LumpType.Entities]!) &&
+    startsWithEntityBlock(lumps[LumpType.Planes]!)
+  ) {
+    [lumps[LumpType.Entities], lumps[LumpType.Planes]] = [
+      lumps[LumpType.Planes]!,
+      lumps[LumpType.Entities]!,
+    ];
+  }
   const lump = (type: LumpType): BinaryView => lumps[type]!;
 
   const entityLump = lump(LumpType.Entities);
@@ -411,7 +428,7 @@ export function parseBsp(
   const warnings: BspWarning[] = [...parsedTextureWarnings];
 
   const texinfoLump = lump(LumpType.Texinfo);
-  const texinfoCount = recordCount(texinfoLump, 40, 'texinfo');
+  const texinfoCount = bspRecordCount(texinfoLump, 40, 'texinfo');
   const mappings: TextureMapping[] = [];
   for (let index = 0; index < texinfoCount; index += 1) {
     const offset = index * 40;
@@ -422,35 +439,35 @@ export function parseBsp(
     );
     mappings.push({
       s: [
-        texinfoLump.f32(offset),
-        texinfoLump.f32(offset + 4),
-        texinfoLump.f32(offset + 8),
-        texinfoLump.f32(offset + 12),
+        finiteBspFloat(texinfoLump, offset, `texinfo ${index} s[0]`),
+        finiteBspFloat(texinfoLump, offset + 4, `texinfo ${index} s[1]`),
+        finiteBspFloat(texinfoLump, offset + 8, `texinfo ${index} s[2]`),
+        finiteBspFloat(texinfoLump, offset + 12, `texinfo ${index} s[3]`),
       ],
       t: [
-        texinfoLump.f32(offset + 16),
-        texinfoLump.f32(offset + 20),
-        texinfoLump.f32(offset + 24),
-        texinfoLump.f32(offset + 28),
+        finiteBspFloat(texinfoLump, offset + 16, `texinfo ${index} t[0]`),
+        finiteBspFloat(texinfoLump, offset + 20, `texinfo ${index} t[1]`),
+        finiteBspFloat(texinfoLump, offset + 24, `texinfo ${index} t[2]`),
+        finiteBspFloat(texinfoLump, offset + 28, `texinfo ${index} t[3]`),
       ],
       materialIndex,
     });
   }
 
   const vertexLump = lump(LumpType.Vertices);
-  const vertexCount = recordCount(vertexLump, 12, 'vertex');
+  const vertexCount = bspRecordCount(vertexLump, 12, 'vertex');
   const positions: Vec3Tuple[] = [];
   for (let index = 0; index < vertexCount; index += 1) {
     const offset = index * 12;
     positions.push([
-      vertexLump.f32(offset),
-      vertexLump.f32(offset + 4),
-      vertexLump.f32(offset + 8),
+      finiteBspFloat(vertexLump, offset, `vertex ${index} x`),
+      finiteBspFloat(vertexLump, offset + 4, `vertex ${index} y`),
+      finiteBspFloat(vertexLump, offset + 8, `vertex ${index} z`),
     ]);
   }
 
   const edgeLump = lump(LumpType.Edges);
-  const edgeCount = recordCount(edgeLump, layout.edgeSize, 'edge');
+  const edgeCount = bspRecordCount(edgeLump, layout.edgeSize, 'edge');
   const edges: Array<readonly [number, number]> = [];
   for (let index = 0; index < edgeCount; index += 1) {
     const [first, second] = readQuakeEdge(edgeLump, index, layout);
@@ -462,7 +479,7 @@ export function parseBsp(
   }
 
   const surfedgeLump = lump(LumpType.Surfedges);
-  const surfedgeCount = recordCount(surfedgeLump, 4, 'surfedge');
+  const surfedgeCount = bspRecordCount(surfedgeLump, 4, 'surfedge');
   const surfaceVertexIndices = new Uint32Array(surfedgeCount);
   for (let index = 0; index < surfedgeCount; index += 1) {
     const value = surfedgeLump.i32(index * 4);
@@ -475,16 +492,34 @@ export function parseBsp(
   }
 
   const modelLump = lump(LumpType.Models);
-  const modelCount = recordCount(modelLump, 64, 'model');
+  const modelCount = bspRecordCount(modelLump, 64, 'model');
   invariant(modelCount > 0, 'BSP has no world model');
   const rawModels: RawModel[] = [];
   for (let index = 0; index < modelCount; index += 1) {
     const offset = index * 64;
+    const bounds: Bounds = {
+      min: [
+        finiteBspFloat(modelLump, offset, `model ${index} min x`),
+        finiteBspFloat(modelLump, offset + 4, `model ${index} min y`),
+        finiteBspFloat(modelLump, offset + 8, `model ${index} min z`),
+      ],
+      max: [
+        finiteBspFloat(modelLump, offset + 12, `model ${index} max x`),
+        finiteBspFloat(modelLump, offset + 16, `model ${index} max y`),
+        finiteBspFloat(modelLump, offset + 20, `model ${index} max z`),
+      ],
+    };
+    const normalizedBounds = normalizeBspBounds(bounds);
+    if (normalizedBounds.invertedAxes.length > 0) {
+      warnings.push({
+        code: 'noncanonical-inverted-model-bounds',
+        message: `model ${index} has inverted ${normalizedBounds.invertedAxes.map((axis) => axis.toUpperCase()).join('/')} bounds; the axis endpoints were safely reordered`,
+        modelIndex: index,
+        axes: normalizedBounds.invertedAxes,
+      });
+    }
     rawModels.push({
-      bounds: {
-        min: [modelLump.f32(offset), modelLump.f32(offset + 4), modelLump.f32(offset + 8)],
-        max: [modelLump.f32(offset + 12), modelLump.f32(offset + 16), modelLump.f32(offset + 20)],
-      },
+      bounds: normalizedBounds.bounds,
       headnodes: [
         modelLump.i32(offset + 36),
         modelLump.i32(offset + 40),
@@ -497,7 +532,7 @@ export function parseBsp(
     });
   }
   const collisionLump = lump(LumpType.Clipnodes);
-  const collisionNodeCount = recordCount(collisionLump, layout.clipnodeSize, 'clipnode');
+  const collisionNodeCount = bspRecordCount(collisionLump, layout.clipnodeSize, 'clipnode');
   rawModels.forEach((model, modelIndex) => {
     const headnodes = model.headnodes.map((headNode, hullIndex) => {
       if (hullIndex === 0 || headNode < collisionNodeCount) return headNode;
@@ -532,7 +567,7 @@ export function parseBsp(
   );
 
   const faceLump = lump(LumpType.Faces);
-  const faceCount = recordCount(faceLump, layout.faceSize, 'face');
+  const faceCount = bspRecordCount(faceLump, layout.faceSize, 'face');
   const visibilityResult = parseVisibility(
     lump(LumpType.Leaves),
     lump(LumpType.Marksurfaces),
@@ -614,6 +649,7 @@ export function parseBsp(
       invariant(position !== undefined, `face ${sourceIndex} references a missing vertex`);
       const s = dotMapping(position, mapping.s);
       const t = dotMapping(position, mapping.t);
+      invariant(Number.isFinite(s) && Number.isFinite(t), `face ${sourceIndex} has invalid UVs`);
       minimumS = Math.min(minimumS, s);
       minimumT = Math.min(minimumT, t);
       maximumS = Math.max(maximumS, s);
@@ -622,7 +658,10 @@ export function parseBsp(
 
     const width = Math.ceil(maximumS / 16) - Math.floor(minimumS / 16) + 1;
     const height = Math.ceil(maximumT / 16) - Math.floor(minimumT / 16) + 1;
-    invariant(width > 0 && height > 0, `face ${sourceIndex} has invalid lightmap dimensions`);
+    invariant(
+      Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 0 && height > 0,
+      `face ${sourceIndex} has invalid lightmap dimensions`,
+    );
     const styles: number[] = [];
     for (const value of face.styles) {
       if (value === 255) break;
@@ -639,8 +678,8 @@ export function parseBsp(
     };
     if (lightOffset !== -1 && styles.length > 0) {
       invariant(lightOffset >= 0, `face ${sourceIndex} has an invalid light offset`);
-      const sampleLength = checkedProduct(
-        checkedProduct(width, height, `face ${sourceIndex} lightmap`),
+      const sampleLength = checkedBspProduct(
+        checkedBspProduct(width, height, `face ${sourceIndex} lightmap`),
         styles.length * layout.lightmapBytesPerTexel,
         `face ${sourceIndex} styled lightmap`,
       );
@@ -667,9 +706,14 @@ export function parseBsp(
       firstEdge,
       edgeCount: edgeCountForFace,
       mapping,
+      lightmapMapping: {
+        s: mapping.s,
+        t: mapping.t,
+        scale: 1 / 16,
+        minimumS: Math.floor(minimumS / 16),
+        minimumT: Math.floor(minimumT / 16),
+      },
       lightmap,
-      minimumS,
-      minimumT,
     });
   }
 

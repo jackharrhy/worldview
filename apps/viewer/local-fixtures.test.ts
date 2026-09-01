@@ -14,6 +14,27 @@ async function temporaryRoot(): Promise<string> {
   return directory;
 }
 
+async function writeSteamManifest(
+  fixtureRoot: string,
+  records: readonly string[],
+  assets: readonly { readonly appId: string; readonly logicalPath: string }[] = [],
+): Promise<void> {
+  await writeFile(
+    path.join(fixtureRoot, 'manifest.json'),
+    JSON.stringify({
+      records: records.map((outputPath) => ({
+        appId: outputPath.split('/')[0],
+        outputPath,
+      })),
+      assets: assets.map(({ appId, logicalPath }) => ({
+        appId,
+        logicalPath,
+        outputPath: `${appId}/game/${logicalPath}`,
+      })),
+    }),
+  );
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories
@@ -35,17 +56,21 @@ describe('local fixture discovery', () => {
     await expect(discoverLocalFixtures(root)).resolves.toEqual([
       {
         aliases: [],
-        bsp: 'maps/alpha.bsp',
-        gameBaseUrl: '/local/mod_a/',
         id: 'mod_a',
         label: 'alpha.bsp (local)',
+        source: {
+          bsp: 'maps/alpha.bsp',
+          gameBaseUrl: '/local/mod_a/',
+        },
       },
       {
         aliases: [],
-        bsp: 'beta.bsp',
-        gameBaseUrl: '/local/mod_b/',
         id: 'mod_b',
         label: 'beta.bsp (local)',
+        source: {
+          bsp: 'beta.bsp',
+          gameBaseUrl: '/local/mod_b/',
+        },
       },
     ]);
   });
@@ -60,7 +85,12 @@ describe('local fixture discovery', () => {
       JSON.stringify({
         label: 'Sample room',
         aliases: ['sample'],
-        camera: { position: [1, 2, 3], yawDegrees: 90, pitchDegrees: -5, fieldOfView: 80 },
+        camera: {
+          position: [1, 2, 3],
+          yawDegrees: 90,
+          pitchDegrees: -5,
+          fieldOfView: 80,
+        },
       }),
     );
     await writeFile(path.join(mapDirectory, 'sample.worldview-walkability.json'), '{}');
@@ -68,16 +98,18 @@ describe('local fixture discovery', () => {
     await expect(discoverLocalFixtures(root)).resolves.toEqual([
       {
         aliases: ['sample'],
-        bsp: 'maps/sample.bsp',
         camera: {
           fieldOfView: 80,
           pitchDegrees: -5,
           position: [1, 2, 3],
           yawDegrees: 90,
         },
-        gameBaseUrl: '/local/mod/',
         id: 'mod',
         label: 'Sample room',
+        source: {
+          bsp: 'maps/sample.bsp',
+          gameBaseUrl: '/local/mod/',
+        },
         walkability: '/local/mod/maps/sample.worldview-walkability.json',
       },
     ]);
@@ -92,25 +124,75 @@ describe('local fixture discovery', () => {
     await mkdir(path.join(fixtureRoot, '214700', 'game', 'textures', 'e1u1'), {
       recursive: true,
     });
-    await mkdir(path.join(fixtureRoot, '214700', 'game', 'pics'), { recursive: true });
+    await mkdir(path.join(fixtureRoot, '214700', 'game', 'pics'), {
+      recursive: true,
+    });
     await writeFile(path.join(mapDirectory, 'bar1.bsp'), '');
     await writeFile(path.join(fixtureRoot, '214700', 'game', 'textures', 'e1u1', 'wall.jpg'), '');
     await writeFile(path.join(fixtureRoot, '214700', 'game', 'pics', 'colormap.pcx'), '');
+    await writeFile(path.join(fixtureRoot, '214700', 'game', 'fixture.wad'), '');
+    await writeSteamManifest(
+      fixtureRoot,
+      ['214700/archives/baseq2/pak0.pk3/maps/bar1.bsp'],
+      [
+        { appId: '214700', logicalPath: 'fixture.wad' },
+        { appId: '214700', logicalPath: 'pics/colormap.pcx' },
+        { appId: '214700', logicalPath: 'textures/e1u1/wall.jpg' },
+      ],
+    );
 
     await expect(discoverLocalFixtures(root)).resolves.toEqual([
       {
         aliases: [],
-        bsp: '/local/steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1.bsp',
-        gameBaseUrl: '/local/steam-corpus/214700/game/',
-        gameAssets: {
-          'pics/colormap.pcx': '/local/steam-corpus/214700/game/pics/colormap.pcx',
-          'textures/e1u1/wall.jpg': '/local/steam-corpus/214700/game/textures/e1u1/wall.jpg',
-        },
         id: 'steam-corpus/thirty-flights-of-loving/bar1',
         label: 'bar1.bsp',
         namespace: 'Thirty Flights of Loving',
+        source: {
+          bsp: '/local/steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1.bsp',
+          gameAssets: {
+            'fixture.wad': '/local/steam-corpus/214700/game/fixture.wad',
+            'pics/colormap.pcx': '/local/steam-corpus/214700/game/pics/colormap.pcx',
+            'textures/e1u1/wall.jpg': '/local/steam-corpus/214700/game/textures/e1u1/wall.jpg',
+          },
+          gameBaseUrl: '/local/steam-corpus/214700/game/',
+        },
       },
     ]);
+  });
+
+  it('gives the Quake II rerelease anchor a useful authored camera', async () => {
+    const root = await temporaryRoot();
+    const corpusRoot = path.join(root, 'steam-corpus', '2320');
+    const mapDirectory = path.join(
+      corpusRoot,
+      'archives',
+      'rerelease',
+      'baseq2',
+      'pak0.pak',
+      'maps',
+    );
+    await mkdir(mapDirectory, { recursive: true });
+    await mkdir(path.join(corpusRoot, 'game', 'pics'), { recursive: true });
+    await writeFile(path.join(mapDirectory, 'mgu1m1.bsp'), '');
+    await writeFile(path.join(corpusRoot, 'game', 'pics', 'colormap.pcx'), '');
+    await writeSteamManifest(
+      path.join(root, 'steam-corpus'),
+      ['2320/archives/rerelease/baseq2/pak0.pak/maps/mgu1m1.bsp'],
+      [{ appId: '2320', logicalPath: 'pics/colormap.pcx' }],
+    );
+
+    const fixtures = await discoverLocalFixtures(root);
+
+    expect(fixtures).toHaveLength(1);
+    expect(fixtures[0]).toMatchObject({
+      camera: {
+        fieldOfView: 75,
+        pitchDegrees: 0,
+        position: [1032, -256, 46],
+        yawDegrees: -30,
+      },
+      id: 'steam-corpus/quake-ii/mgu1m1',
+    });
   });
 
   it('indexes an extracted Quake palette and ignores raw Steam install maps', async () => {
@@ -125,20 +207,29 @@ describe('local fixture discovery', () => {
     await Promise.all([
       writeFile(path.join(corpusRoot, 'loose', 'id1', 'maps', 'dm1.bsp'), ''),
       writeFile(path.join(corpusRoot, 'game', 'gfx', 'palette.lmp'), ''),
+      writeFile(path.join(corpusRoot, 'loose', 'id1', 'maps', 'stale.bsp'), ''),
       writeFile(path.join(installRoot, 'duplicate.bsp'), ''),
     ]);
+    await writeSteamManifest(
+      path.join(root, 'steam-corpus'),
+      ['4484420/loose/id1/maps/dm1.bsp'],
+      [{ appId: '4484420', logicalPath: 'gfx/palette.lmp' }],
+    );
 
     await expect(discoverLocalFixtures(root)).resolves.toEqual([
       {
         aliases: [],
-        bsp: '/local/steam-corpus/4484420/loose/id1/maps/dm1.bsp',
-        gameBaseUrl: '/local/steam-corpus/4484420/game/',
-        gameAssets: {
-          'gfx/palette.lmp': '/local/steam-corpus/4484420/game/gfx/palette.lmp',
-        },
         id: 'steam-corpus/fleshcancer/dm1',
         label: 'dm1.bsp',
         namespace: 'FLESHCANCER',
+        source: {
+          bsp: '/local/steam-corpus/4484420/loose/id1/maps/dm1.bsp',
+          gameAssets: {
+            'gfx/palette.lmp': '/local/steam-corpus/4484420/game/gfx/palette.lmp',
+          },
+          gameBaseUrl: '/local/steam-corpus/4484420/game/',
+          palette: '/local/steam-corpus/4484420/game/gfx/palette.lmp',
+        },
       },
     ]);
   });
@@ -168,6 +259,7 @@ describe('local fixture discovery', () => {
         await writeFile(filename, '');
       }),
     );
+    await writeSteamManifest(corpusRoot, files);
 
     const first = await discoverLocalFixtures(root);
     const second = await discoverLocalFixtures(root);
@@ -179,7 +271,7 @@ describe('local fixture discovery', () => {
     );
     expect(first.filter(({ namespace }) => namespace === 'FLESHCANCER')).toHaveLength(3);
     expect(first.map(({ id }) => id)).toContain('steam-corpus/fleshcancer/dm1');
-    expect(first.some(({ bsp }) => /b_shell|meat|ARMOR/u.test(bsp))).toBe(false);
+    expect(first.some(({ source }) => /b_shell|meat|ARMOR/u.test(String(source.bsp)))).toBe(false);
   });
 
   it('does not sample shared Half-Life maps as maps from another GoldSrc game', async () => {
@@ -192,11 +284,27 @@ describe('local fixture discovery', () => {
       mkdir(path.dirname(sharedHalfLifeMap), { recursive: true }),
     ]);
     await Promise.all([writeFile(counterStrikeMap, ''), writeFile(sharedHalfLifeMap, '')]);
+    await writeSteamManifest(path.join(root, 'steam-corpus'), [
+      '10/loose/cstrike/maps/de_dust.bsp',
+      '10/loose/valve/maps/c1a0.bsp',
+    ]);
 
     const fixtures = await discoverLocalFixtures(root);
 
     expect(fixtures.map(({ id }) => id)).toEqual(['steam-corpus/counter-strike/de_dust']);
     expect(fixtures[0]?.namespace).toBe('Counter-Strike');
+  });
+
+  it('rejects corpus manifests that escape their fixture root', async () => {
+    const root = await temporaryRoot();
+    const fixtureRoot = path.join(root, 'steam-corpus');
+    await mkdir(fixtureRoot, { recursive: true });
+    await writeFile(
+      path.join(fixtureRoot, 'manifest.json'),
+      JSON.stringify({ records: [{ appId: '60', outputPath: '../outside.bsp' }], assets: [] }),
+    );
+
+    await expect(discoverLocalFixtures(root)).rejects.toThrow(/relative POSIX path/u);
   });
 
   it('does not offer BSPs rejected by the compatibility corpus check', async () => {
@@ -207,9 +315,13 @@ describe('local fixture discovery', () => {
     const compatibleMap = path.join(mapDirectory, 'e1m1.bsp');
     await mkdir(mapDirectory, { recursive: true });
     await Promise.all([writeFile(incompatibleMap, ''), writeFile(compatibleMap, '')]);
+    await writeSteamManifest(fixtureRoot, [
+      '4484420/loose/id1/maps/dm1.bsp',
+      '4484420/loose/id1/maps/e1m1.bsp',
+    ]);
     await writeFile(
       path.join(fixtureRoot, 'compatibility-report.json'),
-      JSON.stringify({ failures: [{ outputPath: incompatibleMap }] }),
+      JSON.stringify({ failures: [{ outputPath: '4484420/loose/id1/maps/dm1.bsp' }] }),
     );
 
     const fixtures = await discoverLocalFixtures(root);

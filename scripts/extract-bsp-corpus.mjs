@@ -19,8 +19,9 @@ function usage() {
   node scripts/extract-bsp-corpus.mjs --output DIRECTORY --source APP_ID=DIRECTORY [...]
 
 Discovers loose BSP files and extracts BSP entries from ZIP/PK3 and Quake PACK archives. It also
-materializes Quake palettes plus Quake II palettes, textures, and skyboxes beneath each app's game
-root. The output preserves source provenance and includes a manifest with SHA-256 hashes.`);
+materializes GoldSrc WADs, Quake palettes, and Quake II palettes, textures, and skyboxes beneath
+each app's game root. The output preserves source provenance and includes a manifest with SHA-256
+hashes.`);
 }
 
 function parseArguments(arguments_) {
@@ -87,6 +88,7 @@ function outputPath(outputRoot, ...parts) {
 
 function gameAssetPath(entry) {
   const normalized = safeArchiveEntry(entry).toLowerCase();
+  if (extname(normalized) === '.wad') return posix.basename(normalized);
   if (normalized === 'gfx/palette.lmp' || normalized.endsWith('/gfx/palette.lmp')) {
     return 'gfx/palette.lmp';
   }
@@ -95,7 +97,8 @@ function gameAssetPath(entry) {
     (part) => part === 'textures' || part === 'pics' || part === 'env',
   );
   if (rootIndex < 0) return null;
-  const logical = parts.slice(rootIndex).join('/');
+  const isGoldSrcSkybox = parts[rootIndex] === 'env' && parts[rootIndex - 1] === 'gfx';
+  const logical = parts.slice(isGoldSrcSkybox ? rootIndex - 1 : rootIndex).join('/');
   const extension = extname(logical);
   if (logical === 'pics/colormap.pcx') return logical;
   if (
@@ -104,12 +107,19 @@ function gameAssetPath(entry) {
   ) {
     return logical;
   }
-  if (logical.startsWith('env/') && REPLACEMENT_TEXTURE_EXTENSIONS.has(extension)) return logical;
+  if (
+    (logical.startsWith('env/') || logical.startsWith('gfx/env/')) &&
+    REPLACEMENT_TEXTURE_EXTENSIONS.has(extension)
+  ) {
+    return logical;
+  }
   return null;
 }
 
 async function capture(command, arguments_) {
-  const child = spawn(command, arguments_, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(command, arguments_, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   const output = [];
   const errors = [];
   let byteLength = 0;
@@ -135,7 +145,9 @@ async function capture(command, arguments_) {
 async function commandToFile(command, arguments_, target) {
   await mkdir(dirname(target), { recursive: true });
   const temporary = `${target}.part-${process.pid}`;
-  const child = spawn(command, arguments_, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(command, arguments_, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   const errors = [];
   child.stderr.on('data', (chunk) => errors.push(chunk));
   try {
@@ -163,26 +175,26 @@ async function hashFile(path) {
   return hash.digest('hex');
 }
 
-async function recordExtraction(records, details) {
+async function recordExtraction(records, outputRoot, details) {
   const information = await stat(details.outputPath);
   records.push({
     appId: details.appId,
     container: details.container,
     entry: details.entry,
-    outputPath: details.outputPath,
+    outputPath: relative(outputRoot, details.outputPath).replaceAll(sep, '/'),
     size: information.size,
     sha256: await hashFile(details.outputPath),
   });
 }
 
-async function recordAssetExtraction(assets, details) {
+async function recordAssetExtraction(assets, outputRoot, details) {
   const information = await stat(details.outputPath);
   assets.set(`${details.appId}/${details.logicalPath}`, {
     appId: details.appId,
     container: details.container,
     entry: details.entry,
     logicalPath: details.logicalPath,
-    outputPath: details.outputPath,
+    outputPath: relative(outputRoot, details.outputPath).replaceAll(sep, '/'),
     size: information.size,
     sha256: await hashFile(details.outputPath),
   });
@@ -202,7 +214,7 @@ async function extractZip(records, assets, options) {
         ...normalized.split('/'),
       );
       await commandToFile('unzip', ['-p', options.archivePath, entry], target);
-      await recordExtraction(records, {
+      await recordExtraction(records, options.outputRoot, {
         appId: options.appId,
         container: options.archivePath,
         entry: normalized,
@@ -218,7 +230,7 @@ async function extractZip(records, assets, options) {
         ...logicalPath.split('/'),
       );
       await commandToFile('unzip', ['-p', options.archivePath, entry], target);
-      await recordAssetExtraction(assets, {
+      await recordAssetExtraction(assets, options.outputRoot, {
         appId: options.appId,
         container: options.archivePath,
         entry: normalized,
@@ -247,7 +259,10 @@ async function extractPak(records, assets, options) {
       throw new Error(`invalid PACK directory in ${options.archivePath}`);
     }
     const directory = Buffer.alloc(directoryLength);
-    const directoryRead = await handle.read({ buffer: directory, position: directoryOffset });
+    const directoryRead = await handle.read({
+      buffer: directory,
+      position: directoryOffset,
+    });
     if (directoryRead.bytesRead !== directory.length) {
       throw new Error(`truncated PACK directory in ${options.archivePath}`);
     }
@@ -287,14 +302,14 @@ async function extractPak(records, assets, options) {
         );
       }
       if (isBsp) {
-        await recordExtraction(records, {
+        await recordExtraction(records, options.outputRoot, {
           appId: options.appId,
           container: options.archivePath,
           entry,
           outputPath: target,
         });
       } else {
-        await recordAssetExtraction(assets, {
+        await recordAssetExtraction(assets, options.outputRoot, {
           appId: options.appId,
           container: options.archivePath,
           entry,
@@ -319,7 +334,7 @@ async function extractSource(records, assets, source, outputRoot) {
       const target = outputPath(outputRoot, source.appId, 'loose', ...entry.split(sep));
       await mkdir(dirname(target), { recursive: true });
       await copyFile(path, target);
-      await recordExtraction(records, {
+      await recordExtraction(records, outputRoot, {
         appId: source.appId,
         container: null,
         entry: entry.replaceAll(sep, '/'),
@@ -333,7 +348,7 @@ async function extractSource(records, assets, source, outputRoot) {
       const target = outputPath(outputRoot, source.appId, 'game', ...logicalPath.split('/'));
       await mkdir(dirname(target), { recursive: true });
       await copyFile(path, target);
-      await recordAssetExtraction(assets, {
+      await recordAssetExtraction(assets, outputRoot, {
         appId: source.appId,
         container: null,
         entry,

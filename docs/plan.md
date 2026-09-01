@@ -219,9 +219,12 @@ paths asynchronously with `resolveGameAsset`, or expose an extracted game direct
 WAL remains the texture-coordinate authority. The browser package does not own archive or game
 installation policy.
 
-The GPU-independent parser recognizes Quake BSP29, sanitized `BSP2`, GoldSrc BSP30, and Quake II
-BSP38. Sanitized BSP2 widens edges, faces, nodes, leaves, clipnodes, and marksurfaces independently;
-the earlier `2PSB` layout remains an explicit unsupported format. `ParsedWorld.warnings` retains
+The GPU-independent parser recognizes Quake BSP29, sanitized `BSP2`, GoldSrc BSP30 including Blue
+Shift's content-detected exchanged entity/plane directory entries, and Quake II classic `IBSP` plus
+rerelease `QBSP` version 38. Sanitized BSP2 widens edges, faces, nodes, leaves, clipnodes, and
+marksurfaces independently; QBSP widens its face and edge records through its own layout and may
+source its RGB lightmaps and texture-space projections from trailing BSPX `DECOUPLED_LM` records.
+The earlier `2PSB` layout remains an explicit unsupported format. `ParsedWorld.warnings` retains
 typed context for safe compatibility repairs while structural lump ranges, record boundaries,
 indices, and source buffers remain strict. Render faces retain their original source face indices
 when a degenerate face is omitted, so visibility, models, picking, and draw batches continue to
@@ -665,7 +668,7 @@ implies the other.
 | 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 6. Collaboration foundation       | Complete    | Typed domain operations, seeded three-replica convergence, bounded typed IndexedDB outbox with durable local detachment, multi-tab and reconnect transport, conditional personalized undo, ticketed hosted-map UI, participant presence, Yjs/Automerge/custom bake-off, and a bounded SQLite-backed hibernating `MapCell` pass local Workers-runtime gates plus a live celld/Azurite deploy, WebSocket operation, `SIGKILL`, empty-local-state recovery drill; multi-node/outage/backup fleet hardening remains; solo mode has no service dependency                                                                                                                                                     |
 | 7. Hosted project foundation      | In progress | Newport deployment, 4orm identity, short readable project/map references, owner-only editor/viewer membership management for Worldview-known users, role-matrix integration tests, single-authority MapCell source/checkpoints, signed hosted-map access, Artbin pinned mounts and cached WAD loading, editor-integrated hosted BSP builds with authenticated content-addressed artifacts, persistent per-user/global build admission, bounded queues/payloads/artifacts, ingress throttles, collaboration socket/frame/edit limits, and compiler cgroup/time limits are delivered; folder/history UI and multi-node map-fleet hardening remain                                                          |
-| 8. Format expansion               | In progress | Sanitized BSP2 widened geometry/visibility/collision and typed compatibility warnings are delivered. The Quake II profile now spans source semantics, DEF/ENT definitions, ordered game roots, q2tools compilation, strict BSP38 geometry/RGB lightmaps, PCX/WAL/replacement/skybox assets, animated/flowing/warped/translucent surfaces, revision-safe preview, and five-map real-browser corpus evidence. Early `2PSB`, Hexen II, BSP38 collision/PVS, direct PAK/PK3 mounting, Quake II runtime models/audio, Quake III, and VMF remain unsupported                                                                                                                                                   |
+| 8. Format expansion               | In progress | Sanitized BSP2 widened geometry/visibility/collision and typed compatibility warnings are delivered. GoldSrc preview recognizes Blue Shift's exchanged entity/plane directory. The Quake II profile now spans source semantics, DEF/ENT definitions, ordered game roots, q2tools compilation, strict classic IBSP and rerelease QBSP geometry, classic and BSPX-decoupled RGB lightmaps, PCX/WAL/replacement/skybox assets, animated/flowing/warped/translucent surfaces, revision-safe preview, and real-browser corpus evidence. Early `2PSB`, Hexen II, BSP38 collision/PVS, direct PAK/PK3 mounting, Quake II runtime models/audio, Quake III, and VMF remain unsupported                            |
 | 9. After dependable solo          | Deferred    | Collision-aware editor walk mode and the remaining explicitly deferred features listed under Product boundaries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 Worker parsing/catalog work and list virtualization remain available optimizations rather than
@@ -713,15 +716,23 @@ empty collision hulls. The sole rejection is a Hexen II test map whose version-2
 different game-specific model record; Worldview rejects it instead of misinterpreting it as Quake.
 `npm run corpus:steam` reproducibly downloads owned, high-signal Quake-family games through an
 interactive SteamCMD login and extracts loose, PK3/ZIP, and Quake PACK BSPs into the ignored local
-fixture directory. It materializes the Quake palette and, for Quake II, a bounded game root
-containing WAL and replacement textures, the PCX palette, and skybox faces. Raw Steam install roots
-remain corpus inputs rather than duplicate viewer fixtures. The development loader groups a stable,
-bounded level sample by game, restricts shared GoldSrc installs to each game's own mod directory,
-and excludes Quake pickup/prop BSPs and compatibility-check failures from selectable fixtures while
-the manifest retains them for parser evidence. The focused preset covers Thirty Flights of Loving,
-Gravity Bone, and FLESHCANCER; broader presets add the supported id Tech and GoldSrc games and
-optionally WRATH. Five TFOL/Gravity Bone BSP38 maps pass the optional headless-WebGPU asset render
-smoke. No BSP, WAD, WAL, PAK, palette, or other game data from this local corpus is committed.
+fixture directory. It materializes GoldSrc WADs and `gfx/env/` skybox faces, the Quake palette, and
+a bounded Quake II game root containing WAL and replacement textures, the PCX palette, and `env/`
+skybox faces. Raw Steam install roots remain corpus inputs rather than duplicate viewer fixtures.
+The development loader groups a stable, bounded level sample by game, restricts shared GoldSrc
+installs to each game's own mod directory, and excludes Quake pickup/prop BSPs and
+compatibility-check failures from selectable fixtures while the manifest retains them for parser
+evidence. The focused preset covers Thirty Flights of Loving, Gravity Bone, and FLESHCANCER;
+broader presets add the supported id Tech and GoldSrc games and optionally WRATH. On 2026-09-01, all
+2,242 extracted BSPs passed the parser sweep: 379 BSP29, 66
+sanitized BSP2, 1,461 BSP30, and 336 BSP38, including Blue Shift's BSP30 variant and twelve Quake II
+rerelease QBSP maps. All 28 Quake II rerelease campaign maps expose and load BSPX decoupled
+lightmaps (twelve QBSP and sixteen IBSP). The sweep also retains typed compatibility evidence for
+122 compiler-emitted model bounds whose reversed axes were safely reordered; non-finite geometry
+and overflowing GPU coordinates remain rejected. Focused headless-WebGPU asset smoke covers Ricochet, Blue
+Shift, rerelease QBSP, and five TFOL/Gravity Bone maps. No BSP, WAD, WAL, PAK, palette, or other game
+data from this local corpus is committed. The viewer's Vite integration serves the corpus only in
+development and excludes the entire local fixture root from production artifacts.
 
 GoldSrc coverage includes 42 maps from the MIT-licensed
 [Half-Life Unified SDK assets](https://github.com/twhl-community/halflife-unified-sdk-assets/tree/38d1718cae8a1b867fa0f1e65a11f6ec74a1dc2f)

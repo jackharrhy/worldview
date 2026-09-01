@@ -23,7 +23,7 @@ export class GameAssetLoader {
   public async read(path: string, kind: GameAssetKind): Promise<ArrayBuffer | null> {
     const normalizedPath = normalizeGameAssetPath(path);
     const explicit = this.explicit.get(normalizedPath);
-    if (explicit) return this.readSource(explicit, normalizedPath, kind);
+    if (explicit !== undefined) return this.readSource(explicit, normalizedPath, kind);
 
     if (this.source.resolveGameAsset) {
       let resolved;
@@ -34,7 +34,9 @@ export class GameAssetLoader {
         throw error;
       }
       abortIfNeeded(this.context.signal);
-      if (resolved) return this.readSource(resolved, normalizedPath, kind);
+      if (resolved !== null && resolved !== undefined) {
+        return this.readSource(resolved, normalizedPath, kind);
+      }
     }
 
     if (!this.source.gameBaseUrl) return null;

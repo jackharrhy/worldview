@@ -94,9 +94,9 @@ export type GameAssetSources = Readonly<Record<string, BinarySource>>;
 export interface WorldSource {
   readonly bsp: BinarySource;
   /**
-   * Base URL of a Quake or GoldSrc game/mod directory. Relative BSP URLs resolve beneath it;
-   * WADs resolve at the root, sprites beneath `sprites/`, skyboxes beneath `gfx/env/`, and sounds
-   * beneath `sound/`. More specific base URLs below override these derived directories.
+   * Base URL of a Quake, GoldSrc, or Quake II game/mod directory. Relative BSP URLs resolve beneath
+   * it. Quake and GoldSrc use the legacy WAD/palette/sprite/skybox/sound layout; Quake II logical
+   * assets resolve below `textures/`, `pics/`, and `env/`. More specific sources below override it.
    */
   readonly gameBaseUrl?: string | URL;
   /** Explicit game-root files. Keys use forward-slash paths and are matched case-insensitively. */

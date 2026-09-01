@@ -20,24 +20,31 @@ afterEach(async () => {
 });
 
 describe('Steam BSP corpus extractor', () => {
-  it('materializes only bounded Quake II game-root asset classes with provenance', async () => {
+  it('materializes bounded game-root asset classes with provenance', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'worldview-corpus-'));
     temporaryDirectories.push(root);
     const source = path.join(root, 'source');
     const output = path.join(root, 'output');
     await Promise.all([
       mkdir(path.join(source, 'baseq2', 'maps'), { recursive: true }),
-      mkdir(path.join(source, 'baseq2', 'textures', 'unit'), { recursive: true }),
+      mkdir(path.join(source, 'baseq2', 'textures', 'unit'), {
+        recursive: true,
+      }),
       mkdir(path.join(source, 'baseq2', 'pics'), { recursive: true }),
+      mkdir(path.join(source, 'baseq2', 'env'), { recursive: true }),
       mkdir(path.join(source, 'baseq2', 'sound'), { recursive: true }),
       mkdir(path.join(source, 'id1', 'gfx'), { recursive: true }),
+      mkdir(path.join(source, 'ricochet', 'gfx', 'env'), { recursive: true }),
     ]);
     await Promise.all([
       writeFile(path.join(source, 'baseq2', 'maps', 'sample.bsp'), 'bsp'),
       writeFile(path.join(source, 'baseq2', 'textures', 'unit', 'wall.jpg'), 'image'),
       writeFile(path.join(source, 'baseq2', 'pics', 'colormap.pcx'), 'palette'),
+      writeFile(path.join(source, 'baseq2', 'env', 'unitrt.tga'), 'quake ii sky'),
       writeFile(path.join(source, 'baseq2', 'sound', 'ignored.wav'), 'sound'),
       writeFile(path.join(source, 'id1', 'gfx', 'palette.lmp'), 'quake palette'),
+      writeFile(path.join(source, 'ricochet', 'ricochet.wad'), 'goldsrc wad'),
+      writeFile(path.join(source, 'ricochet', 'gfx', 'env', 'spacert.tga'), 'goldsrc sky'),
     ]);
 
     await execute(
@@ -53,15 +60,26 @@ describe('Steam BSP corpus extractor', () => {
     );
 
     const manifest = JSON.parse(await readFile(path.join(output, 'manifest.json'), 'utf8')) as {
-      readonly records: readonly { readonly entry: string }[];
-      readonly assets: readonly { readonly logicalPath: string; readonly sha256: string }[];
+      readonly records: readonly { readonly entry: string; readonly outputPath: string }[];
+      readonly assets: readonly {
+        readonly logicalPath: string;
+        readonly outputPath: string;
+        readonly sha256: string;
+      }[];
     };
     expect(manifest.records.map(({ entry }) => entry)).toEqual(['baseq2/maps/sample.bsp']);
+    expect(manifest.records.map(({ outputPath }) => outputPath)).toEqual([
+      '214700/loose/baseq2/maps/sample.bsp',
+    ]);
     expect(manifest.assets.map(({ logicalPath }) => logicalPath)).toEqual([
+      'env/unitrt.tga',
+      'gfx/env/spacert.tga',
       'gfx/palette.lmp',
       'pics/colormap.pcx',
+      'ricochet.wad',
       'textures/unit/wall.jpg',
     ]);
+    expect(manifest.assets.every(({ outputPath }) => !path.isAbsolute(outputPath))).toBe(true);
     expect(manifest.assets.every(({ sha256 }) => /^[a-f0-9]{64}$/u.test(sha256))).toBe(true);
   });
 });

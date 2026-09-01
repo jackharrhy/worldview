@@ -22,7 +22,10 @@ described in [`plan.md`](./plan.md).
 - The safe helper protocol accepts Quake II compile and launch capabilities. The local helper
   advertises Quake II only when an external `q2tool` executable is explicitly configured, and the
   editor selects compile/launch profiles only after matching the active game.
-- The DOM-free BSP core accepts `IBSP` version 38, validates its 19-lump layout, and produces static
+- The DOM-free BSP core accepts classic `IBSP` and rerelease `QBSP` version 38. It validates the
+  common 19-lump directory and reads QBSP's widened face and edge records without weakening classic
+  bounds checks. Trailing BSPX `DECOUPLED_LM` records provide the rerelease maps' independent RGB
+  lightmap dimensions, sample offsets, and texture-space projections. Both variants produce static
   world and brush-model geometry, entities, signed surface values, surface classifications, RGB
   lightmaps, draw batches, and bounds through the same renderer contract as BSP29/30. BSP38
   artifacts install through the editor's revision-safe compiled-preview handoff.
@@ -84,10 +87,11 @@ the missing-WAL checkerboard. No GPL map or compiler output is committed.
 ## Compiled asset corpus evidence
 
 The ignored Steam corpus tooling scans owned game installs without committing their contents. It
-preserves BSP provenance and materializes only bounded render assets: Quake `gfx/palette.lmp`, plus
-Quake II WAL and PNG/TGA/JPEG files under `textures/`, `pics/colormap.pcx`, and PNG/TGA/JPEG skybox
-faces under `env/`. Loose files are applied first and archives are processed in stable path order,
-so later patch archives override earlier assets deterministically.
+preserves BSP provenance and materializes only bounded render assets: GoldSrc WADs and `gfx/env/`
+skybox faces, Quake `gfx/palette.lmp`, plus Quake II WAL and PNG/TGA/JPEG files under `textures/`,
+`pics/colormap.pcx`, and PNG/TGA/JPEG skybox faces under `env/`. Loose files are applied first and
+archives are processed in stable path order, so later patch archives override earlier assets
+deterministically.
 
 On 2026-09-01, the Thirty Flights of Loving/Gravity Bone install contributed five BSP38 maps and
 379 filtered game assets. All five maps reached `Ready` in headless Chromium with SwiftShader,
@@ -100,6 +104,18 @@ installed.
 
 The corpus extractor, discovery index, parser checks, and optional browser test are committed. The
 five BSPs, PK3s, palette, and image files remain ignored local data.
+
+The expanded owned-game sweep on 2026-09-01 parsed all 2,242 discovered BSPs: 1,461 GoldSrc BSP30,
+379 Quake BSP29, 66 sanitized BSP2, and 336 Quake II BSP38. The rerelease group has twelve `QBSP`
+and sixteen `IBSP` maps; all 28 load BSPX decoupled lightmaps. The QBSP and BSPX layouts were
+independently implemented from format behavior described by q2tools-220 and verified against the
+real files; the GPL tool remains a research oracle and no implementation code enters this package.
+The same pass reported and safely reordered 122 compiler-emitted model bounds with one or more
+reversed axes; the warning retains the model index and named axes, while non-finite geometry and
+texture-coordinate overflow remain hard failures.
+The representative `mgu1m1.bsp` produces 107,408 triangles, 48,296 lit faces, one atlas page, and
+7,444,854 RGB sample bytes. A focused headless-WebGPU smoke renders it with its real game-root WALs
+alongside Ricochet, Blue Shift, and the existing five-map BSP38 smoke.
 
 ## Next acceptance slice
 

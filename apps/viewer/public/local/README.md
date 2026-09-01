@@ -4,6 +4,9 @@ Put uncommitted game and mod directories here. The development viewer discovers 
 Vite starts and reloads when a map or sidecar changes. See the [viewer README](../../README.md) for
 the directory layout and optional `.worldview.json` sidecar format.
 
+Vite serves this directory only through the development fixture adapter. Production builds exclude
+it completely, so a local corpus cannot be copied into a deployable viewer artifact.
+
 Do not commit BSPs, WADs, palettes, textures, sprites, models, or sounds from commercial games.
 
 ## Steam compatibility corpus
