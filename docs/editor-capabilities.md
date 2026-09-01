@@ -122,8 +122,9 @@ Status terms:
 ## Intentional limits
 
 - `.map` remains authoritative; BSPs are previews and artifacts.
-- Quake and GoldSrc authoring are the dependable baseline. Quake II source and static BSP38 preview
-  are partial as described in [`quake2-compatibility.md`](./quake2-compatibility.md).
+- Quake, GoldSrc, and Quake II source authoring are delivered. Quake II static BSP38 preview resolves
+  loose game-root art; its remaining PVS, collision, archive-mount, model, and audio limits are
+  described in [`quake2-compatibility.md`](./quake2-compatibility.md).
 - Quake III editing, BSP46 preview, VMF, browser/WASM compilation, model previews, shortcut
   customization, and full game simulation follow the ordered roadmap in [`plan.md`](./plan.md).
 - Hosted team maps support short offline interruptions, not indefinite uncoordinated dirty forks.

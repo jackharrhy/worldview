@@ -4,12 +4,15 @@ import { loadWorldAssets, resolveWorldSource } from '../src/viewer/assets.js';
 import type { ProgressDetail } from '../src/viewer/types.js';
 import {
   makeBsp,
+  makeBsp38,
   makeMipTexture,
   makePalette,
+  makePcxPalette,
   makeSprite,
   makeTga,
   makeWad,
   makeWave,
+  makeWal,
 } from './fixtures.js';
 
 function assetContext() {
@@ -196,7 +199,7 @@ describe('asset resolution', () => {
       { bsp: makeBsp(), wads: [makeWad(3, replacement, 'brick')] },
       assetContext(),
     );
-    expect(loaded.textureData.get(0)?.[40]).toBe(0);
+    expect(loaded.materialTextures.get(0)?.texture.levels[0]?.rgba[0]).toBe(0);
   });
 
   it('uses explicit WADs in caller order for external textures', async () => {
@@ -211,7 +214,7 @@ describe('asset resolution', () => {
       },
       assetContext(),
     );
-    expect(loaded.textureData.get(0)?.[40]).toBe(31);
+    expect(loaded.materialTextures.get(0)?.texture.levels[0]?.rgba[0]).toBe(31);
     expect(loaded.missingTextures).toEqual([]);
   });
 
@@ -226,6 +229,107 @@ describe('asset resolution', () => {
     );
     expect(loaded.skybox).toMatchObject({ name: 'space' });
     expect(loaded.skybox?.sides.up).toMatchObject({ width: 2, height: 1 });
+  });
+
+  it('loads Quake II WALs, PCX palette, and env skyboxes from logical game assets', async () => {
+    const face = makeTga();
+    const gameAssets = Object.fromEntries([
+      ['PICS/COLORMAP.PCX', makePcxPalette()],
+      ['TEXTURES/E1U1/FIXTURE.WAL', makeWal()],
+      ...(['rt', 'bk', 'lf', 'ft', 'up', 'dn'] as const).map(
+        (suffix) => [`ENV/UNIT1_${suffix}.TGA`, face] as const,
+      ),
+    ]);
+    const loaded = await loadWorldAssets({ bsp: makeBsp38(), gameAssets }, assetContext());
+
+    expect(loaded.palette).toEqual(makePalette());
+    expect(loaded.materialTextures.get(0)).toMatchObject({
+      logicalWidth: 16,
+      logicalHeight: 16,
+      texture: { width: 16, height: 16 },
+    });
+    expect(loaded.materialTextures.get(0)?.texture.levels[0]?.rgba.slice(0, 4)).toEqual(
+      new Uint8Array([7, 248, 49, 255]),
+    );
+    expect(loaded.skybox).toMatchObject({ name: 'unit1_' });
+    expect(loaded.missingTextures).toEqual([]);
+  });
+
+  it('prefers a Quake II replacement image while preserving companion WAL dimensions', async () => {
+    const loaded = await loadWorldAssets(
+      {
+        bsp: makeBsp38(),
+        gameAssets: {
+          'pics/colormap.pcx': makePcxPalette(),
+          'textures/e1u1/fixture.wal': makeWal(),
+          'textures/e1u1/fixture.tga': makeTga(),
+        },
+      },
+      assetContext(),
+    );
+
+    expect(loaded.materialTextures.get(0)).toMatchObject({
+      logicalWidth: 16,
+      logicalHeight: 16,
+      texture: { width: 2, height: 1 },
+    });
+  });
+
+  it('warns about a malformed replacement and falls back to a valid WAL', async () => {
+    const loaded = await loadWorldAssets(
+      {
+        bsp: makeBsp38(),
+        gameAssets: {
+          'pics/colormap.pcx': makePcxPalette(),
+          'textures/e1u1/fixture.wal': makeWal(),
+          'textures/e1u1/fixture.tga': new Uint8Array([1, 2, 3]),
+        },
+      },
+      assetContext(),
+    );
+
+    expect(loaded.materialTextures.get(0)?.texture.width).toBe(16);
+    expect(loaded.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'asset-warning',
+          message: expect.stringContaining('fixture.tga could not be decoded'),
+        }),
+      ]),
+    );
+  });
+
+  it('resolves Quake II assets through the storage-neutral logical resolver', async () => {
+    const requests: Array<{ readonly path: string; readonly kind: string }> = [];
+    const loaded = await loadWorldAssets(
+      {
+        bsp: makeBsp38(),
+        resolveGameAsset: (reference) => {
+          requests.push(reference);
+          if (reference.path === 'pics/colormap.pcx') return makePcxPalette();
+          if (reference.path === 'textures/e1u1/fixture.wal') return makeWal();
+          if (/^env\/unit1_(?:rt|bk|lf|ft|up|dn)\.tga$/u.test(reference.path)) {
+            return makeTga();
+          }
+          return null;
+        },
+      },
+      assetContext(),
+    );
+
+    expect(loaded.missingTextures).toEqual([]);
+    expect(requests).toContainEqual({ path: 'pics/colormap.pcx', kind: 'palette' });
+    expect(requests).toContainEqual({ path: 'textures/e1u1/fixture.wal', kind: 'texture' });
+    expect(requests).toContainEqual({ path: 'env/unit1_up.tga', kind: 'skybox' });
+  });
+
+  it('rejects game asset keys that escape the logical game root', async () => {
+    await expect(
+      loadWorldAssets(
+        { bsp: makeBsp38(), gameAssets: { '../pics/colormap.pcx': makePcxPalette() } },
+        assetContext(),
+      ),
+    ).rejects.toThrow(/unsafe game asset path/);
   });
 
   it('resolves and parses sprite entities from explicit caller assets', async () => {

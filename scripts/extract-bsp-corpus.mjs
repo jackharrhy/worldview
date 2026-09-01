@@ -12,13 +12,15 @@ const PAK_DIRECTORY_RECORD_SIZE = 64;
 const PAK_NAME_SIZE = 56;
 const MAX_PAK_RECORDS = 1_000_000;
 const MAX_ARCHIVE_LIST_BYTES = 16 * 1024 * 1024;
+const REPLACEMENT_TEXTURE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.tga']);
 
 function usage() {
   console.log(`Usage:
   node scripts/extract-bsp-corpus.mjs --output DIRECTORY --source APP_ID=DIRECTORY [...]
 
-Discovers loose BSP files and extracts BSP entries from ZIP/PK3 and Quake PACK archives. The
-output preserves the app, container, and entry paths and includes a manifest with SHA-256 hashes.`);
+Discovers loose BSP files and extracts BSP entries from ZIP/PK3 and Quake PACK archives. It also
+materializes Quake II palettes, textures, and skyboxes beneath each app's game root. The output
+preserves source provenance and includes a manifest with SHA-256 hashes.`);
 }
 
 function parseArguments(arguments_) {
@@ -81,6 +83,26 @@ function outputPath(outputRoot, ...parts) {
     throw new Error(`output path escapes the corpus: ${path}`);
   }
   return path;
+}
+
+function gameAssetPath(entry) {
+  const normalized = safeArchiveEntry(entry).toLowerCase();
+  const parts = normalized.split('/');
+  const rootIndex = parts.findIndex(
+    (part) => part === 'textures' || part === 'pics' || part === 'env',
+  );
+  if (rootIndex < 0) return null;
+  const logical = parts.slice(rootIndex).join('/');
+  const extension = extname(logical);
+  if (logical === 'pics/colormap.pcx') return logical;
+  if (
+    logical.startsWith('textures/') &&
+    (extension === '.wal' || REPLACEMENT_TEXTURE_EXTENSIONS.has(extension))
+  ) {
+    return logical;
+  }
+  if (logical.startsWith('env/') && REPLACEMENT_TEXTURE_EXTENSIONS.has(extension)) return logical;
+  return null;
 }
 
 async function capture(command, arguments_) {
@@ -150,29 +172,61 @@ async function recordExtraction(records, details) {
   });
 }
 
-async function extractZip(records, options) {
+async function recordAssetExtraction(assets, details) {
+  const information = await stat(details.outputPath);
+  assets.set(`${details.appId}/${details.logicalPath}`, {
+    appId: details.appId,
+    container: details.container,
+    entry: details.entry,
+    logicalPath: details.logicalPath,
+    outputPath: details.outputPath,
+    size: information.size,
+    sha256: await hashFile(details.outputPath),
+  });
+}
+
+async function extractZip(records, assets, options) {
   const listing = await capture('unzip', ['-Z1', options.archivePath]);
-  const entries = listing.split(/\r?\n/u).filter((entry) => entry.toLowerCase().endsWith('.bsp'));
+  const entries = listing.split(/\r?\n/u).filter(Boolean);
   for (const entry of entries) {
     const normalized = safeArchiveEntry(entry);
-    const target = outputPath(
-      options.outputRoot,
-      options.appId,
-      'archives',
-      ...relative(options.sourceRoot, options.archivePath).split(sep),
-      ...normalized.split('/'),
-    );
-    await commandToFile('unzip', ['-p', options.archivePath, entry], target);
-    await recordExtraction(records, {
-      appId: options.appId,
-      container: options.archivePath,
-      entry: normalized,
-      outputPath: target,
-    });
+    if (normalized.toLowerCase().endsWith('.bsp')) {
+      const target = outputPath(
+        options.outputRoot,
+        options.appId,
+        'archives',
+        ...relative(options.sourceRoot, options.archivePath).split(sep),
+        ...normalized.split('/'),
+      );
+      await commandToFile('unzip', ['-p', options.archivePath, entry], target);
+      await recordExtraction(records, {
+        appId: options.appId,
+        container: options.archivePath,
+        entry: normalized,
+        outputPath: target,
+      });
+    }
+    const logicalPath = gameAssetPath(normalized);
+    if (logicalPath) {
+      const target = outputPath(
+        options.outputRoot,
+        options.appId,
+        'game',
+        ...logicalPath.split('/'),
+      );
+      await commandToFile('unzip', ['-p', options.archivePath, entry], target);
+      await recordAssetExtraction(assets, {
+        appId: options.appId,
+        container: options.archivePath,
+        entry: normalized,
+        logicalPath,
+        outputPath: target,
+      });
+    }
   }
 }
 
-async function extractPak(records, options) {
+async function extractPak(records, assets, options) {
   const information = await stat(options.archivePath);
   const handle = await open(options.archivePath, 'r');
   try {
@@ -201,19 +255,23 @@ async function extractPak(records, options) {
           ? terminator
           : offset + PAK_NAME_SIZE;
       const entry = safeArchiveEntry(directory.toString('utf8', offset, nameEnd));
-      if (!entry.toLowerCase().endsWith('.bsp')) continue;
+      const isBsp = entry.toLowerCase().endsWith('.bsp');
+      const logicalPath = gameAssetPath(entry);
+      if (!isBsp && !logicalPath) continue;
       const dataOffset = directory.readUInt32LE(offset + PAK_NAME_SIZE);
       const dataLength = directory.readUInt32LE(offset + PAK_NAME_SIZE + 4);
       if (dataOffset + dataLength > information.size) {
         throw new Error(`PACK entry ${entry} exceeds ${options.archivePath}`);
       }
-      const target = outputPath(
-        options.outputRoot,
-        options.appId,
-        'archives',
-        ...relative(options.sourceRoot, options.archivePath).split(sep),
-        ...entry.split('/'),
-      );
+      const target = isBsp
+        ? outputPath(
+            options.outputRoot,
+            options.appId,
+            'archives',
+            ...relative(options.sourceRoot, options.archivePath).split(sep),
+            ...entry.split('/'),
+          )
+        : outputPath(options.outputRoot, options.appId, 'game', ...logicalPath.split('/'));
       await mkdir(dirname(target), { recursive: true });
       if (dataLength === 0) await writeFile(target, Buffer.alloc(0));
       else {
@@ -225,20 +283,33 @@ async function extractPak(records, options) {
           createWriteStream(target),
         );
       }
-      await recordExtraction(records, {
-        appId: options.appId,
-        container: options.archivePath,
-        entry,
-        outputPath: target,
-      });
+      if (isBsp) {
+        await recordExtraction(records, {
+          appId: options.appId,
+          container: options.archivePath,
+          entry,
+          outputPath: target,
+        });
+      } else {
+        await recordAssetExtraction(assets, {
+          appId: options.appId,
+          container: options.archivePath,
+          entry,
+          logicalPath,
+          outputPath: target,
+        });
+      }
     }
   } finally {
     await handle.close();
   }
 }
 
-async function extractSource(records, source, outputRoot) {
-  for await (const path of walk(source.path)) {
+async function extractSource(records, assets, source, outputRoot) {
+  const paths = [];
+  for await (const path of walk(source.path)) paths.push(path);
+  const archives = [];
+  for (const path of paths) {
     const extension = extname(path).toLowerCase();
     if (extension === '.bsp') {
       const entry = relative(source.path, path);
@@ -251,30 +322,42 @@ async function extractSource(records, source, outputRoot) {
         entry: entry.replaceAll(sep, '/'),
         outputPath: target,
       });
-    } else if (ZIP_EXTENSIONS.has(extension)) {
-      await extractZip(records, {
+    } else if (ZIP_EXTENSIONS.has(extension) || extension === '.pak') archives.push(path);
+    else {
+      const entry = relative(source.path, path).replaceAll(sep, '/');
+      const logicalPath = gameAssetPath(entry);
+      if (!logicalPath) continue;
+      const target = outputPath(outputRoot, source.appId, 'game', ...logicalPath.split('/'));
+      await mkdir(dirname(target), { recursive: true });
+      await copyFile(path, target);
+      await recordAssetExtraction(assets, {
         appId: source.appId,
-        archivePath: path,
-        sourceRoot: source.path,
-        outputRoot,
-      });
-    } else if (extension === '.pak') {
-      await extractPak(records, {
-        appId: source.appId,
-        archivePath: path,
-        sourceRoot: source.path,
-        outputRoot,
+        container: null,
+        entry,
+        logicalPath,
+        outputPath: target,
       });
     }
+  }
+  for (const archivePath of archives.toSorted((left, right) => left.localeCompare(right))) {
+    const extension = extname(archivePath).toLowerCase();
+    const extraction = ZIP_EXTENSIONS.has(extension) ? extractZip : extractPak;
+    await extraction(records, assets, {
+      appId: source.appId,
+      archivePath,
+      sourceRoot: source.path,
+      outputRoot,
+    });
   }
 }
 
 const options = parseArguments(process.argv.slice(2));
 await mkdir(options.output, { recursive: true });
 const records = [];
+const assets = new Map();
 for (const source of options.sources) {
   console.log(`Scanning Steam app ${source.appId}: ${source.path}`);
-  await extractSource(records, source, options.output);
+  await extractSource(records, assets, source, options.output);
 }
 records.sort((left, right) =>
   `${left.appId}/${left.container ?? ''}/${left.entry}`.localeCompare(
@@ -283,6 +366,8 @@ records.sort((left, right) =>
 );
 await writeFile(
   join(options.output, 'manifest.json'),
-  `${JSON.stringify({ generatedAt: new Date().toISOString(), records }, null, 2)}\n`,
+  `${JSON.stringify({ generatedAt: new Date().toISOString(), records, assets: [...assets.values()] }, null, 2)}\n`,
 );
-console.log(`Extracted ${records.length} BSP files into ${options.output}`);
+console.log(
+  `Extracted ${records.length} BSP files and ${assets.size} game assets into ${options.output}`,
+);

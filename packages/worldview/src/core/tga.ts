@@ -7,6 +7,8 @@ export interface DecodedTga {
   readonly rgba: Uint8Array;
 }
 
+const MAX_TGA_PIXELS = 16_777_216;
+
 export function decodeTga(input: ArrayBuffer | ArrayBufferView): DecodedTga {
   const source = new BinaryView(input);
   invariant(source.byteLength >= 18, 'TGA header is truncated');
@@ -23,6 +25,7 @@ export function decodeTga(input: ArrayBuffer | ArrayBufferView): DecodedTga {
   const bytesPerPixel = pixelDepth / 8;
   const pixelCount = width * height;
   invariant(Number.isSafeInteger(pixelCount), 'TGA dimensions overflow');
+  invariant(pixelCount <= MAX_TGA_PIXELS, 'TGA dimensions exceed the decoded image limit');
   let offset = 18 + idLength;
   source.require(offset, 0, 'TGA image data');
   const rgba = new Uint8Array(pixelCount * 4);

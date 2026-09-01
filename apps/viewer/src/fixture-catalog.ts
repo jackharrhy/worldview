@@ -114,7 +114,12 @@ const localFixtures: readonly ViewerFixture[] = localFixtureDefinitions.map((fix
     label: fixture.label,
     aliases: fixture.aliases,
     selectable: true,
-    source: { bsp: fixture.bsp, gameBaseUrl: fixture.gameBaseUrl },
+    source: {
+      bsp: fixture.bsp,
+      ...(fixture.gameAssets
+        ? { gameAssets: fixture.gameAssets }
+        : { gameBaseUrl: fixture.gameBaseUrl }),
+    },
   };
   const camera = cameraState(fixture.camera);
   return Object.assign(result, {

@@ -52,6 +52,27 @@ interface MutableAllocation {
   pageY: number;
 }
 
+const Q2_SURF_SKY = 0x04;
+const Q2_SURF_WARP = 0x08;
+const Q2_SURF_TRANS33 = 0x10;
+const Q2_SURF_TRANS66 = 0x20;
+const Q2_SURF_FLOWING = 0x40;
+
+function surfaceOpacity(flags: number): number {
+  if ((flags & Q2_SURF_TRANS33) !== 0) return 0.33;
+  if ((flags & Q2_SURF_TRANS66) !== 0) return 0.66;
+  return 1;
+}
+
+function surfaceScrollSpeed(flags: number): number {
+  if ((flags & Q2_SURF_FLOWING) === 0) return 0;
+  return (flags & Q2_SURF_WARP) !== 0 ? 32 : 1.6;
+}
+
+function surfaceUsesLightmap(flags: number): boolean {
+  return (flags & (Q2_SURF_SKY | Q2_SURF_WARP | Q2_SURF_TRANS33 | Q2_SURF_TRANS66)) === 0;
+}
+
 function recordCount(lump: BinaryView, size: number, label: string): number {
   invariant(lump.byteLength % size === 0, `${label} lump has a partial record`);
   return lump.byteLength / size;
@@ -141,10 +162,22 @@ export function parseBsp38(
   for (let index = 0; index < recordCount(texinfoLump, 76, 'texinfo'); index += 1) {
     const offset = index * 76;
     const flags = texinfoLump.u32(offset + 32);
+    const value = texinfoLump.i32(offset + 36);
     const name = texinfoLump.string(offset + 40, 32, true);
+    const nextMaterialIndex = texinfoLump.i32(offset + 72);
+    invariant(
+      nextMaterialIndex === -1 ||
+        (nextMaterialIndex >= 0 && nextMaterialIndex < texinfoLump.byteLength / 76),
+      `texinfo ${index} has an invalid animation link`,
+    );
     materials.push({
       name,
       kind: classifyMaterial(name, 'quake2-bsp38', flags),
+      opacity: surfaceOpacity(flags),
+      scrollSpeed: surfaceScrollSpeed(flags),
+      nextMaterialIndex: nextMaterialIndex < 0 ? null : nextMaterialIndex,
+      surfaceFlags: flags,
+      surfaceValue: value,
     });
     mappings.push({
       s: [
@@ -254,7 +287,13 @@ export function parseBsp38(
       pageX: 0,
       pageY: 0,
     };
-    if (lighting.byteLength > 0 && lightOffset !== -1 && styles.length > 0) {
+    const surfaceFlags = material.surfaceFlags ?? 0;
+    if (
+      surfaceUsesLightmap(surfaceFlags) &&
+      lighting.byteLength > 0 &&
+      lightOffset !== -1 &&
+      styles.length > 0
+    ) {
       invariant(lightOffset >= 0, `face ${sourceIndex} has an invalid light offset`);
       const sampleLength = checkedProduct(
         checkedProduct(width, height, `face ${sourceIndex} lightmap`),

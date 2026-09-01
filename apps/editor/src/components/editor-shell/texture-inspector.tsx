@@ -504,7 +504,7 @@ function MaterialGrid({
                       data-material-name={material.name}
                       aria-pressed={cell.active}
                       aria-label={material.name}
-                      aria-description={`${material.width}×${material.height}, ${usage}, ${material.sourceName}`}
+                      aria-description={`${material.logicalWidth ?? material.width}×${material.logicalHeight ?? material.height}, ${usage}, ${material.sourceName}`}
                       onFocus={() => setFocusedMaterial(material.name)}
                       onPress={() =>
                         shellState.materialBrowser.invoke('activateMaterial', material.name)

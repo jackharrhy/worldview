@@ -7,8 +7,6 @@ import type { TgpuBindGroup, TgpuRoot, TgpuTexture } from 'typegpu';
 
 import {
   buildLightmapPage,
-  decodeMipTexture,
-  decodeQuakeSky,
   findBspLeaf,
   isQuakePaletteFormat,
   LightstyleState,
@@ -23,22 +21,8 @@ import {
   type WalkabilityMap,
 } from '../walkability/index.js';
 import { TypeGpuWalkabilityRenderer } from '../walkability/renderer.js';
-import type { RenderWorldAssets } from './assets.js';
+import type { LoadedMaterialTexture, RenderWorldAssets } from './assets.js';
 import type { CameraState, TextureFiltering } from './types.js';
-import {
-  additiveFragment,
-  alphaFragment,
-  opaqueFragment,
-  quakeSkyFragment,
-  skyboxVertex,
-  translucentColorFragment,
-  translucentTextureFragment,
-  unlitAlphaFragment,
-  unlitFragment,
-  unlitSkyFragment,
-  waterFragment,
-  worldVertex,
-} from './shaders.js';
 import {
   MaterialUniform,
   materialLayout,
@@ -47,8 +31,17 @@ import {
   worldVertexLayout,
 } from './schemas.js';
 import { TypeGpuSpriteRenderer } from './sprite-renderer.js';
+import {
+  createWorldPipelines,
+  goldSrcTextureScrollSpeed,
+  isTranslucentWorldBatch,
+  selectedWorldPipeline,
+  translucentBatchRank,
+  WORLD_SAMPLE_COUNT,
+  type WorldPipelines,
+} from './world-pipelines.js';
 
-const SAMPLE_COUNT = 4;
+export { goldSrcBrushPipeline, goldSrcTextureScrollSpeed } from './world-pipelines.js';
 
 interface UploadedTexture {
   readonly texture: TgpuTexture;
@@ -174,194 +167,42 @@ function skyboxGeometry(): { vertices: Float32Array; indices: Uint32Array } {
   };
 }
 
-function surfacePrimitive(cullMode: GPUCullMode): GPUPrimitiveState {
-  return {
-    topology: 'triangle-list',
-    frontFace: 'cw',
-    cullMode,
-  };
-}
-
-function surfaceDepthStencil(
-  depthWriteEnabled: boolean,
-  biased: boolean,
-  depthCompare: GPUCompareFunction = 'less',
-): GPUDepthStencilState {
-  return {
-    format: 'depth24plus',
-    depthWriteEnabled,
-    depthCompare,
-    ...(biased ? { depthBias: -2, depthBiasSlopeScale: -0.5 } : {}),
-  };
-}
-
-function createPipelines(root: TgpuRoot, format: GPUTextureFormat) {
-  const attribs = {
-    position: worldVertexLayout.attrib.position,
-    diffuseUv: worldVertexLayout.attrib.diffuseUv,
-    lightmapUv: worldVertexLayout.attrib.lightmapUv,
-  };
-  const alphaBlend: GPUBlendState = {
-    color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-    alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-  };
-  const additiveBlend: GPUBlendState = {
-    color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-    alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-  };
-  const common = {
-    attribs,
-    vertex: worldVertex,
-    multisample: { count: SAMPLE_COUNT },
-  };
-  const skyboxCommon = { ...common, vertex: skyboxVertex };
-  const surface = (
-    fragment: typeof opaqueFragment,
-    options: {
-      readonly brush?: boolean;
-      readonly cullMode?: GPUCullMode;
-      readonly blend?: GPUBlendState;
-      readonly depthWrite?: boolean;
-      readonly depthCompare?: GPUCompareFunction;
-    } = {},
-  ) =>
-    root.createRenderPipeline({
-      ...common,
-      fragment,
-      targets: { format, ...(options.blend ? { blend: options.blend } : {}) },
-      primitive: surfacePrimitive(options.cullMode ?? 'back'),
-      depthStencil: surfaceDepthStencil(
-        options.depthWrite ?? true,
-        options.brush ?? false,
-        options.depthCompare,
-      ),
-    });
-  return {
-    opaque: surface(opaqueFragment),
-    opaqueBrush: surface(opaqueFragment, { brush: true }),
-    unlit: surface(unlitFragment),
-    unlitBrush: surface(unlitFragment, { brush: true }),
-    alpha: surface(alphaFragment),
-    alphaBrush: surface(alphaFragment, { brush: true }),
-    unlitAlpha: surface(unlitAlphaFragment),
-    unlitAlphaBrush: surface(unlitAlphaFragment, { brush: true }),
-    water: surface(waterFragment, { cullMode: 'none' }),
-    waterBrush: surface(waterFragment, { brush: true, cullMode: 'none' }),
-    translucentTexture: surface(translucentTextureFragment, {
-      brush: true,
-      blend: alphaBlend,
-      depthWrite: false,
-    }),
-    translucentWater: surface(waterFragment, {
-      brush: true,
-      cullMode: 'none',
-      blend: alphaBlend,
-      depthWrite: false,
-    }),
-    translucentColor: surface(translucentColorFragment, {
-      brush: true,
-      blend: alphaBlend,
-      depthWrite: false,
-    }),
-    additive: surface(additiveFragment, {
-      brush: true,
-      blend: additiveBlend,
-      depthWrite: false,
-    }),
-    unlitSky: root.createRenderPipeline({
-      ...common,
-      fragment: unlitSkyFragment,
-      targets: { format },
-      primitive: surfacePrimitive('none'),
-      depthStencil: surfaceDepthStencil(true, false),
-    }),
-    unlitSkyBackground: root.createRenderPipeline({
-      ...skyboxCommon,
-      fragment: unlitSkyFragment,
-      targets: { format },
-      primitive: surfacePrimitive('none'),
-      depthStencil: surfaceDepthStencil(true, false, 'always'),
-    }),
-    quakeSky: root.createRenderPipeline({
-      ...common,
-      fragment: quakeSkyFragment,
-      targets: { format },
-      primitive: surfacePrimitive('none'),
-      depthStencil: surfaceDepthStencil(true, false),
-    }),
-    quakeSkyBackground: root.createRenderPipeline({
-      ...skyboxCommon,
-      fragment: quakeSkyFragment,
-      targets: { format },
-      primitive: surfacePrimitive('none'),
-      depthStencil: surfaceDepthStencil(true, false, 'always'),
-    }),
-  };
-}
-
-type Pipelines = ReturnType<typeof createPipelines>;
-
-export function goldSrcBrushPipeline(
-  renderMode: number,
-  surfaceKind: DrawBatch['kind'],
-): 'translucentColor' | 'translucentTexture' | 'translucentWater' | 'additive' | null {
-  if (renderMode === 1) return 'translucentColor';
-  if (renderMode === 2) return surfaceKind === 'water' ? 'translucentWater' : 'translucentTexture';
-  // Glow sprites have their own depth behavior; brush models use the translucent surface path.
-  if (renderMode === 3) return 'translucentTexture';
-  if (renderMode === 5) return 'additive';
-  return null;
-}
-
-export function goldSrcTextureScrollSpeed(world: ParsedWorld, batch: DrawBatch): number {
-  if (world.version !== 30 || batch.modelIndex === 0) return 0;
-  const material = world.materials[batch.materialIndex];
-  if (!material?.name.toLowerCase().startsWith('scroll')) return 0;
-  return world.models[batch.modelIndex]?.textureScrollSpeed ?? 0;
-}
-
-function selectedPipeline(
-  pipelines: Pipelines,
-  world: ParsedWorld,
-  batch: DrawBatch,
-): Pipelines[keyof Pipelines] {
-  if (batch.kind === 'sky') {
-    return isQuakePaletteFormat(world.format) ? pipelines.quakeSky : pipelines.unlitSky;
+function batchCenter(world: ParsedWorld, batch: DrawBatch): readonly [number, number, number] {
+  let minimumX = Number.POSITIVE_INFINITY;
+  let minimumY = Number.POSITIVE_INFINITY;
+  let minimumZ = Number.POSITIVE_INFINITY;
+  let maximumX = Number.NEGATIVE_INFINITY;
+  let maximumY = Number.NEGATIVE_INFINITY;
+  let maximumZ = Number.NEGATIVE_INFINITY;
+  for (let offset = batch.firstIndex; offset < batch.firstIndex + batch.indexCount; offset += 1) {
+    const vertexIndex = world.indices[offset];
+    if (vertexIndex === undefined) continue;
+    const vertexOffset = vertexIndex * 7;
+    const x = world.vertices[vertexOffset];
+    const y = world.vertices[vertexOffset + 1];
+    const z = world.vertices[vertexOffset + 2];
+    if (x === undefined || y === undefined || z === undefined) continue;
+    minimumX = Math.min(minimumX, x);
+    minimumY = Math.min(minimumY, y);
+    minimumZ = Math.min(minimumZ, z);
+    maximumX = Math.max(maximumX, x);
+    maximumY = Math.max(maximumY, y);
+    maximumZ = Math.max(maximumZ, z);
   }
-  const model = world.models[batch.modelIndex];
-  const brush = batch.modelIndex > 0;
-  if (world.version === 30 && brush) {
-    const renderPipeline = goldSrcBrushPipeline(model?.renderMode ?? 0, batch.kind);
-    if (renderPipeline) return pipelines[renderPipeline];
+  if (Number.isFinite(minimumX)) {
+    return [(minimumX + maximumX) * 0.5, (minimumY + maximumY) * 0.5, (minimumZ + maximumZ) * 0.5];
   }
-  if (batch.kind === 'water') return brush ? pipelines.waterBrush : pipelines.water;
-  const alpha = batch.kind === 'alpha-test' || (world.version === 30 && model?.renderMode === 4);
-  const lightmapped = batch.lightmapPage >= 0;
-  if (alpha) {
-    if (lightmapped) return brush ? pipelines.alphaBrush : pipelines.alpha;
-    return brush ? pipelines.unlitAlphaBrush : pipelines.unlitAlpha;
-  }
-  if (lightmapped) return brush ? pipelines.opaqueBrush : pipelines.opaque;
-  return brush ? pipelines.unlitBrush : pipelines.unlit;
-}
-
-function isTranslucent(world: ParsedWorld, batch: DrawBatch): boolean {
-  if (world.version !== 30 || batch.modelIndex === 0) return false;
-  const mode = world.models[batch.modelIndex]?.renderMode;
-  return mode === 1 || mode === 2 || mode === 3 || mode === 5;
-}
-
-function translucentRank(world: ParsedWorld, batch: DrawBatch): number {
-  const mode = world.models[batch.modelIndex]?.renderMode;
-  if (mode === 2) return 1;
-  if (mode === 5) return 2;
-  if (mode === 3) return 3;
-  return 0;
+  const bounds = world.models[batch.modelIndex]?.bounds ?? world.bounds;
+  return [
+    (bounds.min[0] + bounds.max[0]) * 0.5,
+    (bounds.min[1] + bounds.max[1]) * 0.5,
+    (bounds.min[2] + bounds.max[2]) * 0.5,
+  ];
 }
 
 export class TypeGpuWorldRenderer {
   private readonly device: GPUDevice;
-  private readonly pipelines: Pipelines;
+  private readonly pipelines: WorldPipelines;
   private readonly vertexBuffer: GPUBuffer;
   private readonly indexBuffer: GPUBuffer;
   private readonly skyboxVertexBuffer: GPUBuffer;
@@ -375,10 +216,12 @@ export class TypeGpuWorldRenderer {
   private readonly uploadedMaterials = new Map<number, UploadedMaterial>();
   private readonly lightmapTextures = new Map<number, UploadedTexture>();
   private readonly materialBindings = new Map<string, MaterialBinding>();
+  private readonly batchCenters = new Map<DrawBatch, readonly [number, number, number]>();
   private readonly facesBySourceIndex: ReadonlyMap<number, ParsedWorld['faces'][number]>;
   private readonly lightstyles = new LightstyleState();
   private readonly spriteRenderer: TypeGpuSpriteRenderer;
   private readonly walkabilityRenderer: TypeGpuWalkabilityRenderer;
+  private timeSeconds = 0;
   private readonly animatedPages = new Set<number>();
   private lastLightstyleFrame = -1;
   private msaaTexture: TgpuTexture | null = null;
@@ -403,7 +246,10 @@ export class TypeGpuWorldRenderer {
     this.facesBySourceIndex = new Map(
       loaded.world.faces.map((face) => [face.sourceIndex, face] as const),
     );
-    this.pipelines = createPipelines(root, format);
+    for (const batch of loaded.world.batches) {
+      this.batchCenters.set(batch, batchCenter(loaded.world, batch));
+    }
+    this.pipelines = createWorldPipelines(root, format);
     this.vertexBuffer = createRawBuffer(this.device, loaded.world.vertices, GPUBufferUsage.VERTEX);
     this.indexBuffer = createRawBuffer(this.device, loaded.world.indices, GPUBufferUsage.INDEX);
     const skybox = skyboxGeometry();
@@ -474,7 +320,9 @@ export class TypeGpuWorldRenderer {
           this.loaded.world.models[batch.modelIndex]?.visible &&
           (batch.kind === 'water' ||
             (batch.kind === 'sky' && isQuakePaletteFormat(this.loaded.world.format)) ||
-            goldSrcTextureScrollSpeed(this.loaded.world, batch) !== 0),
+            goldSrcTextureScrollSpeed(this.loaded.world, batch) !== 0 ||
+            (this.loaded.world.materials[batch.materialIndex]?.scrollSpeed ?? 0) !== 0 ||
+            this.loaded.world.materials[batch.materialIndex]?.nextMaterialIndex != null),
       )
     );
   }
@@ -486,10 +334,18 @@ export class TypeGpuWorldRenderer {
     this.msaaTexture?.destroy();
     this.depthTexture?.destroy();
     this.msaaTexture = this.root
-      .createTexture({ size: [width, height], format: this.format, sampleCount: SAMPLE_COUNT })
+      .createTexture({
+        size: [width, height],
+        format: this.format,
+        sampleCount: WORLD_SAMPLE_COUNT,
+      })
       .$usage('render');
     this.depthTexture = this.root
-      .createTexture({ size: [width, height], format: 'depth24plus', sampleCount: SAMPLE_COUNT })
+      .createTexture({
+        size: [width, height],
+        format: 'depth24plus',
+        sampleCount: WORLD_SAMPLE_COUNT,
+      })
       .$usage('render');
     this.msaaView = this.root.unwrap(this.msaaTexture).createView();
     this.depthView = this.root.unwrap(this.depthTexture).createView();
@@ -538,14 +394,14 @@ export class TypeGpuWorldRenderer {
       label: 'Worldview overview MSAA',
       size: [settings.width, settings.height],
       format: this.format,
-      sampleCount: SAMPLE_COUNT,
+      sampleCount: WORLD_SAMPLE_COUNT,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     const depth = this.device.createTexture({
       label: 'Worldview overview depth',
       size: [settings.width, settings.height],
       format: 'depth24plus',
-      sampleCount: SAMPLE_COUNT,
+      sampleCount: WORLD_SAMPLE_COUNT,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     const bytesPerRow = (settings.width * 4 + 255) & ~255;
@@ -640,6 +496,7 @@ export class TypeGpuWorldRenderer {
     target: RenderTarget,
     options: FrameOptions,
   ): void {
+    this.timeSeconds = timeSeconds;
     this.sceneUniform.write({
       projectionView,
       eyeTime: [camera.position[0], camera.position[1], camera.position[2], timeSeconds],
@@ -691,22 +548,23 @@ export class TypeGpuWorldRenderer {
     );
     const sky = visible.filter((batch) => batch.kind === 'sky');
     const main = visible.filter(
-      (batch) => batch.kind !== 'sky' && !isTranslucent(this.loaded.world, batch),
+      (batch) => batch.kind !== 'sky' && !isTranslucentWorldBatch(this.loaded.world, batch),
     );
     const translucent = visible
-      .filter((batch) => batch.kind !== 'sky' && isTranslucent(this.loaded.world, batch))
+      .filter((batch) => batch.kind !== 'sky' && isTranslucentWorldBatch(this.loaded.world, batch))
       .toSorted((left, right) => {
         const distance = (batch: DrawBatch) => {
-          const bounds = this.loaded.world.models[batch.modelIndex]?.bounds;
-          if (!bounds) return 0;
-          const x = (bounds.min[0] + bounds.max[0]) * 0.5 - camera.position[0];
-          const y = (bounds.min[1] + bounds.max[1]) * 0.5 - camera.position[1];
-          const z = (bounds.min[2] + bounds.max[2]) * 0.5 - camera.position[2];
+          const center = this.batchCenters.get(batch);
+          if (!center) return 0;
+          const x = center[0] - camera.position[0];
+          const y = center[1] - camera.position[1];
+          const z = center[2] - camera.position[2];
           return x * x + y * y + z * z;
         };
         return (
           distance(right) - distance(left) ||
-          translucentRank(this.loaded.world, left) - translucentRank(this.loaded.world, right)
+          translucentBatchRank(this.loaded.world, left) -
+            translucentBatchRank(this.loaded.world, right)
         );
       });
     const encoder = this.device.createCommandEncoder({ label: 'Worldview frame' });
@@ -824,73 +682,79 @@ export class TypeGpuWorldRenderer {
       }
     }
 
-    const materialIndices = new Set(this.loaded.world.batches.map((batch) => batch.materialIndex));
-    for (const materialIndex of materialIndices) {
+    const uploadedByTexture = new Map<LoadedMaterialTexture, UploadedMaterial>();
+    for (const [materialIndex, loadedMaterial] of this.loaded.materialTextures) {
       const material = this.loaded.world.materials[materialIndex];
-      const bytes = this.loaded.textureData.get(materialIndex);
-      if (!material || !bytes) {
-        this.uploadedMaterials.set(materialIndex, { diffuse: missing, skyAlpha: missing });
+      if (!material) continue;
+      const existing = uploadedByTexture.get(loadedMaterial);
+      if (existing) {
+        this.uploadedMaterials.set(materialIndex, existing);
         continue;
       }
-      if (
-        isQuakePaletteFormat(this.loaded.world.format) &&
-        material.kind === 'sky' &&
-        this.loaded.palette
-      ) {
-        const decoded = decodeQuakeSky(bytes, this.loaded.palette);
-        this.uploadedMaterials.set(materialIndex, {
+      let uploaded: UploadedMaterial;
+      if (loadedMaterial.quakeSky) {
+        const decoded = loadedMaterial.quakeSky;
+        uploaded = {
           diffuse: this.uploadRgba(`${decoded.name}-solid`, decoded.width, decoded.height, [
             decoded.solid,
           ]),
           skyAlpha: this.uploadRgba(`${decoded.name}-alpha`, decoded.width, decoded.height, [
             decoded.alpha,
           ]),
-        });
+        };
       } else {
-        const decoded = decodeMipTexture(
-          bytes,
-          isQuakePaletteFormat(this.loaded.world.format) ? this.loaded.palette : undefined,
-        );
+        const decoded = loadedMaterial.texture;
         const diffuse = this.uploadDecoded(decoded);
-        this.uploadedMaterials.set(materialIndex, { diffuse, skyAlpha: diffuse });
+        uploaded = { diffuse, skyAlpha: diffuse };
       }
+      uploadedByTexture.set(loadedMaterial, uploaded);
+      this.uploadedMaterials.set(materialIndex, uploaded);
     }
 
     for (const batch of this.loaded.world.batches) {
-      const key = this.bindingKey(batch);
-      if (this.materialBindings.has(key)) continue;
-      const model = this.loaded.world.models[batch.modelIndex];
-      const material = this.uploadedMaterials.get(batch.materialIndex) ?? {
-        diffuse: missing,
-        skyAlpha: missing,
-      };
-      const lightmap = this.lightmapTextures.get(batch.lightmapPage) ?? white;
-      const uniform = this.root.createUniform(MaterialUniform, {
-        sizes: [material.diffuse.width, material.diffuse.height, lightmap.width, lightmap.height],
-        options: [
-          isQuakePaletteFormat(this.loaded.world.format) ? 1 : 0,
-          this.loaded.skybox ? 1 : 0,
-          0,
-          goldSrcTextureScrollSpeed(this.loaded.world, batch),
-        ],
-        renderColor: [
-          (model?.renderColor[0] ?? 255) / 255,
-          (model?.renderColor[1] ?? 255) / 255,
-          (model?.renderColor[2] ?? 255) / 255,
-          (model?.renderAmount ?? 255) / 255,
-        ],
-      });
-      this.buffers.push(uniform.buffer);
-      const group = this.root.createBindGroup(materialLayout, {
-        material: uniform,
-        diffuse: material.diffuse.view,
-        lightmap: lightmap.view,
-        skyAlpha: material.skyAlpha.view,
-        skybox: skybox.view,
-        textureSampler: this.sampler,
-        skyboxSampler: this.skyboxSampler,
-      });
-      this.materialBindings.set(key, { group });
+      for (const materialIndex of this.animationMaterialIndices(batch.materialIndex)) {
+        const key = this.bindingKey(batch, materialIndex);
+        if (this.materialBindings.has(key)) continue;
+        const model = this.loaded.world.models[batch.modelIndex];
+        const parsedMaterial = this.loaded.world.materials[materialIndex];
+        const loadedTexture = this.loaded.materialTextures.get(materialIndex);
+        const uploaded = this.uploadedMaterials.get(materialIndex) ?? {
+          diffuse: missing,
+          skyAlpha: missing,
+        };
+        const lightmap = this.lightmapTextures.get(batch.lightmapPage) ?? white;
+        const uniform = this.root.createUniform(MaterialUniform, {
+          sizes: [
+            loadedTexture?.logicalWidth ?? uploaded.diffuse.width,
+            loadedTexture?.logicalHeight ?? uploaded.diffuse.height,
+            lightmap.width,
+            lightmap.height,
+          ],
+          options: [
+            isQuakePaletteFormat(this.loaded.world.format) ? 1 : 0,
+            this.loaded.skybox ? 1 : 0,
+            this.loaded.world.format === 'quake2-bsp38' ? 1 : 0,
+            parsedMaterial?.scrollSpeed ?? goldSrcTextureScrollSpeed(this.loaded.world, batch),
+          ],
+          renderColor: [
+            (model?.renderColor[0] ?? 255) / 255,
+            (model?.renderColor[1] ?? 255) / 255,
+            (model?.renderColor[2] ?? 255) / 255,
+            ((model?.renderAmount ?? 255) / 255) * (parsedMaterial?.opacity ?? 1),
+          ],
+        });
+        this.buffers.push(uniform.buffer);
+        const group = this.root.createBindGroup(materialLayout, {
+          material: uniform,
+          diffuse: uploaded.diffuse.view,
+          lightmap: lightmap.view,
+          skyAlpha: uploaded.skyAlpha.view,
+          skybox: skybox.view,
+          textureSampler: this.sampler,
+          skyboxSampler: this.skyboxSampler,
+        });
+        this.materialBindings.set(key, { group });
+      }
     }
   }
 
@@ -982,7 +846,7 @@ export class TypeGpuWorldRenderer {
     pass: GPURenderPassEncoder,
     batch: DrawBatch,
     worldFaceVisibility: Uint8Array | null,
-    pipelines: Pipelines,
+    pipelines: WorldPipelines,
     sceneGroup: TgpuBindGroup,
   ): void {
     if (batch.modelIndex !== 0 || !worldFaceVisibility) {
@@ -1015,7 +879,7 @@ export class TypeGpuWorldRenderer {
   private drawSkyboxBackground(
     pass: GPURenderPassEncoder,
     batch: DrawBatch,
-    pipelines: Pipelines,
+    pipelines: WorldPipelines,
     sceneGroup: TgpuBindGroup,
   ): void {
     const binding = this.materialBindings.get(this.bindingKey(batch));
@@ -1037,12 +901,14 @@ export class TypeGpuWorldRenderer {
     batch: DrawBatch,
     firstIndex: number,
     indexCount: number,
-    pipelines: Pipelines,
+    pipelines: WorldPipelines,
     sceneGroup: TgpuBindGroup,
   ): void {
-    const binding = this.materialBindings.get(this.bindingKey(batch));
+    const binding = this.materialBindings.get(
+      this.bindingKey(batch, this.animatedMaterialIndex(batch.materialIndex)),
+    );
     if (!binding) return;
-    selectedPipeline(pipelines, this.loaded.world, batch)
+    selectedWorldPipeline(pipelines, this.loaded.world, batch)
       .with(worldVertexLayout, this.vertexBuffer)
       .withIndexBuffer(this.indexBuffer, 'uint32')
       .with(sceneGroup)
@@ -1051,7 +917,26 @@ export class TypeGpuWorldRenderer {
       .drawIndexed(indexCount, 1, firstIndex);
   }
 
-  private bindingKey(batch: DrawBatch): string {
-    return `${batch.modelIndex}:${batch.materialIndex}:${batch.lightmapPage}`;
+  private animationMaterialIndices(first: number): readonly number[] {
+    const indices: number[] = [];
+    const seen = new Set<number>();
+    let current = first;
+    while (!seen.has(current)) {
+      seen.add(current);
+      indices.push(current);
+      const next = this.loaded.world.materials[current]?.nextMaterialIndex;
+      if (next === null || next === undefined) break;
+      current = next;
+    }
+    return indices;
+  }
+
+  private animatedMaterialIndex(first: number): number {
+    const indices = this.animationMaterialIndices(first);
+    return indices[Math.floor(this.timeSeconds * 2) % indices.length] ?? first;
+  }
+
+  private bindingKey(batch: DrawBatch, materialIndex = batch.materialIndex): string {
+    return `${batch.modelIndex}:${materialIndex}:${batch.lightmapPage}`;
   }
 }

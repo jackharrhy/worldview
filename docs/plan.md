@@ -29,8 +29,8 @@ delivered interactions lives in [`editor-capabilities.md`](./editor-capabilities
 - `worldview.project.json` is optional, portable project configuration, not a geometry container.
 - Chromium provides the full directory-handle workflow. Other WebGPU browsers keep safe
   import/download and IndexedDB recovery fallbacks.
-- Quake and GoldSrc are the only delivered game profiles. Quake II is the next profile expansion;
-  Quake III and Source follow through the staged format roadmap below.
+- Quake, GoldSrc, and Quake II are delivered game profiles. Quake III and Source follow through the
+  staged format roadmap below.
 - Browser-only/WASM compilation, Quake/GoldSrc model previews, three-way external source merge,
   native editor-owned geometry containers, and format support beyond the staged Quake II, Quake III,
   and VMF work are deferred. Optional local-first collaboration does not alter the solo editor
@@ -211,6 +211,13 @@ through `resolveWad` or a WAD base URL remain parse-dependent because their name
 Per-transfer progress retains byte-oriented `loaded` and `total` values; WAD events also expose
 `phaseProgress` once the complete candidate count is known, so concurrent transfers have one stable
 completed/total item count.
+
+Quake II uses the same storage-neutral source contract through logical game-root assets. Callers may
+provide a case-insensitive `gameAssets` table, resolve individual `textures/`, `pics/`, and `env/`
+paths asynchronously with `resolveGameAsset`, or expose an extracted game directory through
+`gameBaseUrl`. Replacement PNG/TGA/JPEG images take precedence over WAL pixels while an available
+WAL remains the texture-coordinate authority. The browser package does not own archive or game
+installation policy.
 
 The GPU-independent parser recognizes Quake BSP29, sanitized `BSP2`, GoldSrc BSP30, and Quake II
 BSP38. Sanitized BSP2 widens edges, faces, nodes, leaves, clipnodes, and marksurfaces independently;
@@ -452,7 +459,7 @@ safely reanchored. **Export normalized copy** is separate and never overwrites t
 
 `WorldviewProjectManifest`, `parseWorldviewProject`, and `serializeWorldviewProject` define
 versioned `worldview.project.json` files. Version 1 contains project name, `quake`, `goldsrc`, or
-`quake2` profile, relative map roots, ordered relative WADs and loose material roots, optional
+`quake2` profile, relative map roots, ordered relative WADs and game-directory roots, optional
 palette/sprite roots, ordered FGD/DEF/ENT definition files, logical preview/final build profiles,
 and defaults.
 
@@ -483,10 +490,11 @@ parallel, but catalog imports and returned sprite order still follow manifest pr
 Available GoldSrc SPR2 resources render in source view. Missing or corrupt sprites fall back to
 definition-colored bounds. Quake MDL and GoldSrc studio-model rendering remain deferred.
 
-Version 1 projects resolve loose WADs, palettes, definition files, and sprite roots. They do not
-mount PAK archives or extract textures embedded in BSPs. A project built from an installed Quake
-game therefore needs a loose mapper WAD or an explicit external extraction step; that limitation
-must stay visible rather than being mistaken for a missing-texture parsing failure.
+Version 1 projects resolve loose WADs, palettes, definition files, sprites, and ordered Quake II
+game roots. A Quake II root contributes bounded `textures/` WAL and PNG/TGA/JPEG files,
+`pics/colormap.pcx`, and `env/` skybox faces to source rendering and compiled preview. Projects do
+not mount PAK/PK3 archives or extract textures embedded in BSPs; archive extraction remains an
+explicit external step and missing assets stay visible diagnostics.
 
 ### Builds and launch
 
@@ -611,12 +619,11 @@ implies the other.
 
 ### Ordered delivery
 
-1. **Quake II profile and source compatibility.** Add Quake II surface/content/value semantics,
-   entity definitions, texture/resource conventions, project defaults, compiler profiles, and
-   licensed corpus fixtures. Reuse the Quake-map codec unless evidence requires a distinct syntax;
-   do not create a nominal codec for a game-profile difference. Acceptance requires exact no-op
-   saves, normalized reparse, representative editable brushes, resource resolution, and a configured
-   compile/preview loop.
+1. **Quake II profile and source compatibility (delivered).** Quake II surface/content/value
+   semantics, entity definitions, ordered game roots, compiler profiles, exact source round trips,
+   WAL/replacement/skybox resolution, and configured BSP38 preview share the Quake-map codec. The
+   remaining BSP38 PVS/collision and runtime entity work is viewer depth, not a missing authoring
+   profile.
 2. **Quake III source authoring.** Add the Quake III profile, shader/material discovery, definitions,
    project/build conventions, and corpus coverage. Promote patches and brush definitions into honest
    editor objects: picking, selection, transforms, duplication, deletion, visibility/locking,
@@ -653,12 +660,12 @@ implies the other.
 | --------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1. Architecture hardening         | In progress | The Vanilla-to-React shell translation, Strict Mode roots, effect-free callback-ref lifetimes, React Query command state, typed shell snapshots/commands, focused presenter state/command ports, isolated input adapters, collaboration lifecycle/session ownership, tool-controller registry, composed viewport gesture routing, shared frame/camera runtime, composed `EditorSession` command domains, named retained scene contributions, declarative runtime schemas, one typed browser database, bounded hosted detachment, route-isolated optional loading, split document/CSS/TSX, and architecture gates are delivered; remaining file-level decomposition continues through the cleanup backlog |
 | 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 3. Game-aware authoring           | Complete    | Quake, GoldSrc, and Quake II profiles; ordered WAD/game-root resources; FGD/DEF/ENT catalogs; typed inspectors/browser; definition bounds/colors; SPR2 previews                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 5. Scale and dependable-solo gate | Complete    | Indexed document queries, per-viewport invalidation, incremental solid-buffer reuse, frustum culling, dense-grid limits, runtime measures, generated 8,000-brush CPU and Chromium gates                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 6. Collaboration foundation       | Complete    | Typed domain operations, seeded three-replica convergence, bounded typed IndexedDB outbox with durable local detachment, multi-tab and reconnect transport, conditional personalized undo, ticketed hosted-map UI, participant presence, Yjs/Automerge/custom bake-off, and a bounded SQLite-backed hibernating `MapCell` pass local Workers-runtime gates plus a live celld/Azurite deploy, WebSocket operation, `SIGKILL`, empty-local-state recovery drill; multi-node/outage/backup fleet hardening remains; solo mode has no service dependency                                                                                                                                                     |
 | 7. Hosted project foundation      | In progress | Newport deployment, 4orm identity, short readable project/map references, owner-only editor/viewer membership management for Worldview-known users, role-matrix integration tests, single-authority MapCell source/checkpoints, signed hosted-map access, Artbin pinned mounts and cached WAD loading, editor-integrated hosted BSP builds with authenticated content-addressed artifacts, persistent per-user/global build admission, bounded queues/payloads/artifacts, ingress throttles, collaboration socket/frame/edit limits, and compiler cgroup/time limits are delivered; folder/history UI and multi-node map-fleet hardening remain                                                          |
-| 8. Format expansion               | In progress | Sanitized BSP2 widened geometry/visibility/collision, typed Quake-family compatibility warnings, the Quake II profile, WAL decoding/resource resolution, profile-aware surface authoring, project material roots, DEF/ENT loading, q2tools helper compilation, DOM-free BSP38 static geometry/lightmaps/materials, revision-safe compiled preview, synthetic WebGPU coverage, and pinned local corpus smokes are delivered. Early `2PSB`, Hexen II, BSP38 collision/PVS, and packaged WAL lookup remain unsupported; Quake III authoring, BSP46 preview, and VMF follow in the ordered stages above                                                                                                      |
+| 8. Format expansion               | In progress | Sanitized BSP2 widened geometry/visibility/collision and typed compatibility warnings are delivered. The Quake II profile now spans source semantics, DEF/ENT definitions, ordered game roots, q2tools compilation, strict BSP38 geometry/RGB lightmaps, PCX/WAL/replacement/skybox assets, animated/flowing/warped/translucent surfaces, revision-safe preview, and five-map real-browser corpus evidence. Early `2PSB`, Hexen II, BSP38 collision/PVS, direct PAK/PK3 mounting, Quake II runtime models/audio, Quake III, and VMF remain unsupported                                                                                                                                                   |
 | 9. After dependable solo          | Deferred    | Collision-aware editor walk mode and the remaining explicitly deferred features listed under Product boundaries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 Worker parsing/catalog work and list virtualization remain available optimizations rather than
@@ -706,9 +713,11 @@ empty collision hulls. The sole rejection is a Hexen II test map whose version-2
 different game-specific model record; Worldview rejects it instead of misinterpreting it as Quake.
 `npm run corpus:steam` reproducibly downloads owned, high-signal Quake-family games through an
 interactive SteamCMD login and extracts loose, PK3/ZIP, and Quake PACK BSPs into the ignored local
-fixture directory. The focused preset covers Thirty Flights of Loving/Gravity Bone and
-FLESHCANCER; broader presets add the supported id Tech and GoldSrc games and optionally WRATH. No
-BSP, WAD, PAK, palette, or other game data from this local corpus is committed.
+fixture directory. For Quake II it also materializes a bounded game root containing WAL and
+replacement textures, the PCX palette, and skybox faces. The focused preset covers Thirty Flights
+of Loving/Gravity Bone and FLESHCANCER; broader presets add the supported id Tech and GoldSrc games
+and optionally WRATH. Five TFOL/Gravity Bone BSP38 maps pass the optional headless-WebGPU asset
+render smoke. No BSP, WAD, WAL, PAK, palette, or other game data from this local corpus is committed.
 
 GoldSrc coverage includes 42 maps from the MIT-licensed
 [Half-Life Unified SDK assets](https://github.com/twhl-community/halflife-unified-sdk-assets/tree/38d1718cae8a1b867fa0f1e65a11f6ec74a1dc2f)

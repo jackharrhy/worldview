@@ -14,6 +14,8 @@ const svgOwnershipAllowlist = new Set([
 const imperativeDomConstructionAllowlist = new Set([
   // Focused renderer boundary: React owns the SVG root and this module owns its drawing children.
   'apps/editor/src/uv-editor.ts',
+  // Detached canvas fallback used only to decode project PNG/JPEG material pixels.
+  'apps/editor/src/project-material-assets.ts',
   // Non-visible CSS/WebGPU color resolution probes.
   'apps/editor/src/render-theme.ts',
   // Ephemeral native download transport; the anchor is never attached to visible UI.

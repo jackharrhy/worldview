@@ -81,6 +81,15 @@ export interface GoldSrcSkyboxSources {
 
 export type SpriteSources = Readonly<Record<string, BinarySource>>;
 export type SoundSources = Readonly<Record<string, BinarySource>>;
+export type GameAssetKind = 'palette' | 'texture' | 'skybox';
+
+export interface GameAssetReference {
+  /** Normalized game-root path, such as `textures/e1u1/metal.wal`. */
+  readonly path: string;
+  readonly kind: GameAssetKind;
+}
+
+export type GameAssetSources = Readonly<Record<string, BinarySource>>;
 
 export interface WorldSource {
   readonly bsp: BinarySource;
@@ -90,6 +99,12 @@ export interface WorldSource {
    * beneath `sound/`. More specific base URLs below override these derived directories.
    */
   readonly gameBaseUrl?: string | URL;
+  /** Explicit game-root files. Keys use forward-slash paths and are matched case-insensitively. */
+  readonly gameAssets?: GameAssetSources;
+  /** Resolves a logical game-root path from a directory, archive mount, or remote asset service. */
+  readonly resolveGameAsset?: (
+    reference: GameAssetReference,
+  ) => BinarySource | null | undefined | Promise<BinarySource | null | undefined>;
   readonly palette?: BinarySource;
   readonly wads?: readonly BinarySource[];
   readonly wadBaseUrl?: string | URL;

@@ -85,6 +85,7 @@ export {
   type WalTextureHeader,
 } from './wal.js';
 export { decodeTga, type DecodedTga } from './tga.js';
+export { readPcxPalette } from './pcx.js';
 export {
   findBspLeaf,
   traceWorldSegment,

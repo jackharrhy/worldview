@@ -1,5 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+
+const quake2CorpusMap =
+  'apps/viewer/public/local/steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1.bsp';
+const quake2Fixtures = [
+  'steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1',
+  'steam-corpus/214700/archives/baseq2/pak1.pk3/maps/hof1',
+  'steam-corpus/214700/archives/baseq2/pak0.pk3/maps/lob1',
+  'steam-corpus/214700/archives/baseq2/pak1.pk3/maps/parlo1',
+  'steam-corpus/214700/archives/baseq2/pak0.pk3/maps/vidroom',
+] as const;
 
 async function requireWebGpu(page: Page): Promise<void> {
   expect(
@@ -206,6 +217,45 @@ test('alpha-test, water, sky, and BSP2 fixtures submit without GPU errors', asyn
     );
   }
   await expect(page.locator('[data-format]')).toContainText('quake-bsp2 / BSP2');
+  expect(errors).toEqual([]);
+});
+
+test('local Quake II corpus resolves game assets and renders without GPU errors', async ({
+  page,
+}, testInfo) => {
+  test.skip(!existsSync(quake2CorpusMap), 'ignored commercial corpus is unavailable');
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+
+  for (const fixture of quake2Fixtures) {
+    await page.goto(`/?fixture=${encodeURIComponent(fixture)}`);
+    await requireWebGpu(page);
+    await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 30_000 });
+    await expect(page.locator('[data-format]')).toContainText('quake2-bsp38 / BSP38');
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    if (!fixture.endsWith('/hof1')) {
+      await expect(page.locator('[data-warnings]')).not.toHaveValue(/Quake II texture .*not found/);
+    }
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    if (fixture.endsWith('/bar1')) {
+      const screenshot = await page
+        .locator('canvas')
+        .screenshot({ path: testInfo.outputPath('quake2-bar1.png') });
+      expect(screenshot.byteLength).toBeGreaterThan(10_000);
+    }
+  }
+  const screenshot = await page
+    .locator('canvas')
+    .screenshot({ path: testInfo.outputPath('quake2-vidroom.png') });
+  expect(screenshot.byteLength).toBeGreaterThan(10_000);
   expect(errors).toEqual([]);
 });
 

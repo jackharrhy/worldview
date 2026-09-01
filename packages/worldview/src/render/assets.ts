@@ -1,10 +1,20 @@
 import type {
+  DecodedMipTexture,
+  DecodedQuakeSky,
   DecodedTga,
   ParsedGoldSrcSprite,
   ParsedWorld,
   SpriteReference,
   Vec3Tuple,
 } from '../core/index.js';
+
+export interface LoadedMaterialTexture {
+  readonly texture: DecodedMipTexture;
+  /** Dimensions used to normalize BSP texture-space coordinates. */
+  readonly logicalWidth: number;
+  readonly logicalHeight: number;
+  readonly quakeSky?: DecodedQuakeSky;
+}
 
 export interface LoadedSpriteEntity {
   readonly entityIndex: number;
@@ -32,8 +42,7 @@ export interface LoadedSkybox {
 /** GPU resources required to render a loaded world, separate from fetching and Web Audio. */
 export interface RenderWorldAssets {
   readonly world: ParsedWorld;
-  readonly palette?: Uint8Array;
-  readonly textureData: ReadonlyMap<number, Uint8Array>;
+  readonly materialTextures: ReadonlyMap<number, LoadedMaterialTexture>;
   readonly skybox?: LoadedSkybox;
   readonly sprites: readonly LoadedSpriteEntity[];
 }

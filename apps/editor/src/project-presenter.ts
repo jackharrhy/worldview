@@ -6,18 +6,13 @@ import {
   type EditorFileHandle,
 } from './project-files.js';
 import {
-  loadProjectEntityDefinitions,
-  loadProjectSprites,
-  loadProjectWalFiles,
   openWorldviewProject,
   pickProjectDirectory,
-  projectFile,
   ensureProjectDirectoryPermission,
   type EditorDirectoryHandle,
   type WorldviewProjectWorkspace,
 } from './project-workspace.js';
 import {
-  EditorMaterialCatalog,
   EntityDefinitionCatalog,
   BUILTIN_POINT_ENTITY_DEFINITIONS,
   createEmptyDocument,
@@ -44,6 +39,7 @@ import type { EditorStatePort } from './editor-state-port.js';
 import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
 import type { ProjectActionId } from './project-build-ui-state.js';
 import type { DetachedHostedMap } from './collaboration-outbox.js';
+import { loadWorkspaceResources } from './project-resource-loader.js';
 
 type ProjectUi = Pick<
   EditorShellState,
@@ -68,6 +64,7 @@ type ProjectState = EditorStatePort<
   | 'lastDiskFingerprint'
   | 'lastRecoveryLabel'
   | 'loadedWadSources'
+  | 'loadedGameAssets'
   | 'materialCatalog'
   | 'projectKey'
   | 'projectLocalState'
@@ -180,6 +177,7 @@ export class ProjectPresenter {
     this.state.materialCatalog.clear();
     for (const material of this.state.builtInMaterials) this.state.materialCatalog.set(material);
     this.state.loadedWadSources.clear();
+    this.state.loadedGameAssets.clear();
     this.state.quakePalette = undefined;
     this.state.renderer?.setEntityDefinitions(this.state.entityDefinitions);
     this.state.renderer?.setSprites([]);
@@ -333,73 +331,42 @@ export class ProjectPresenter {
   }
 
   public async loadProjectResources(workspace: WorldviewProjectWorkspace): Promise<void> {
-    const stagedCatalog = new EditorMaterialCatalog();
-    const stagedWads = new Map<string, ArrayBuffer>();
-    let stagedPalette: Uint8Array | undefined;
-    for (const material of this.state.builtInMaterials) stagedCatalog.set(material);
-    const palettePath = workspace.manifest.resources.palette;
-    if (palettePath) {
-      const bytes = new Uint8Array(
-        await (await projectFile(workspace.handle, palettePath)).arrayBuffer(),
-      );
-      if (bytes.byteLength < 768) throw new Error(`${palettePath} is not a 768-byte Quake palette`);
-      stagedPalette = bytes.slice(0, 768);
-    }
-    const resourceMessages: string[] = [];
-    const wadPaths = workspace.manifest.resources.wads;
-    const wadData = await Promise.all(
-      wadPaths.map(async (path) => (await projectFile(workspace.handle, path)).arrayBuffer()),
+    const resources = await loadWorkspaceResources(
+      workspace,
+      this.state.builtInMaterials,
+      this.signal,
     );
-    for (const [index, path] of wadPaths.entries()) {
-      const data = wadData[index];
-      if (!data) throw new Error(`${path} could not be read`);
-      const result = stagedCatalog.importWad(path, data, stagedPalette);
-      stagedWads.set(path, data);
-      resourceMessages.push(`${path}: ${result.added} added, ${result.replaced} replaced`);
-      const error = result.diagnostics.find(({ severity }) => severity === 'error');
-      if (error) throw new Error(error.message);
-    }
-    const walFiles = await loadProjectWalFiles(workspace);
-    if (walFiles.length > 0) {
-      if (!stagedPalette) {
-        throw new Error('Quake II WAL material roots require a 768-byte palette resource');
-      }
-      const walPalette = stagedPalette;
-      for (const { path, file } of walFiles) {
-        const result = stagedCatalog.importWal(path, await file.arrayBuffer(), walPalette);
-        resourceMessages.push(`${path}: ${result.added} added, ${result.replaced} replaced`);
-        resourceMessages.push(...result.diagnostics.map(({ message }) => `${path}: ${message}`));
-      }
-    }
-    const [definitions, sprites] = await Promise.all([
-      loadProjectEntityDefinitions(workspace),
-      loadProjectSprites(workspace),
-    ]);
-    this.signal.throwIfAborted();
     this.state.materialCatalog.clear();
-    for (const material of stagedCatalog.materials()) this.state.materialCatalog.set(material);
+    for (const material of resources.catalog.materials()) this.state.materialCatalog.set(material);
     this.state.loadedWadSources.clear();
-    for (const [path, data] of stagedWads) this.state.loadedWadSources.set(path, data);
-    this.state.quakePalette = stagedPalette;
-    this.state.entityDefinitions = definitions.catalog;
-    this.state.projectSprites = sprites.sprites;
+    for (const [path, data] of resources.wadSources) this.state.loadedWadSources.set(path, data);
+    this.state.loadedGameAssets.clear();
+    for (const [path, data] of resources.gameAssets) this.state.loadedGameAssets.set(path, data);
+    this.state.quakePalette = resources.palette;
+    this.state.entityDefinitions = resources.definitions.catalog;
+    this.state.projectSprites = resources.sprites.sprites;
     this.state.renderer?.setEntityDefinitions(this.state.entityDefinitions);
     this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
     this.state.renderer?.setSprites(this.state.projectSprites);
     this.refreshEntityDefinitionPresets();
     this.materials.renderMaterialCatalog();
-    const definitionErrors = definitions.diagnostics.filter(({ severity }) => severity === 'error');
+    const definitionErrors = resources.definitions.diagnostics.filter(
+      ({ severity }) => severity === 'error',
+    );
     const resourceMessage = [
       `${workspace.manifest.name}: ${this.state.materialCatalog.size} textures and ${this.state.entityDefinitions.size} entity definitions`,
-      ...resourceMessages,
+      ...resources.messages,
       ...definitionErrors.map(({ message }) => message),
-      ...sprites.diagnostics,
+      ...resources.sprites.diagnostics,
     ].join(' · ');
     this.ui.resourceSettings.update({
       loadedWadCount: this.state.loadedWadSources.size,
       paletteLoaded: Boolean(this.state.quakePalette),
       message: resourceMessage,
-      tone: definitionErrors.length > 0 || sprites.diagnostics.length > 0 ? 'error' : 'normal',
+      tone:
+        definitionErrors.length > 0 || resources.sprites.diagnostics.length > 0
+          ? 'error'
+          : 'normal',
     });
   }
 

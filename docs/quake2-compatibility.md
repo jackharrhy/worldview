@@ -1,7 +1,7 @@
 # Quake II compatibility
 
-This document records evidence and remaining work for the Quake II expansion described in
-[`plan.md`](./plan.md). Quake II support is not complete merely because its source maps parse.
+This document records the delivered boundary and remaining viewer depth for the Quake II expansion
+described in [`plan.md`](./plan.md).
 
 ## Delivered source boundary
 
@@ -11,7 +11,8 @@ This document records evidence and remaining work for the Quake II expansion des
 - Face `contents flags value` integers remain lossless semantic data. The profile supplies names for
   the standard Quake II bits while unknown bits remain numeric and survive editing for compiler and
   mod compatibility.
-- Project manifests accept ordered loose-material roots independently from WAD archives.
+- Project manifests accept ordered game-directory roots independently from WAD archives. Later
+  roots override the same logical game path from earlier roots.
 - Project manifests accept the profile's existing DEF and ENT definition formats and reject
   incompatible formats at the manifest boundary. Definitions flow through the shared catalog and
   entity inspector rather than a Quake II-specific parser or UI path.
@@ -22,13 +23,21 @@ This document records evidence and remaining work for the Quake II expansion des
   advertises Quake II only when an external `q2tool` executable is explicitly configured, and the
   editor selects compile/launch profiles only after matching the active game.
 - The DOM-free BSP core accepts `IBSP` version 38, validates its 19-lump layout, and produces static
-  world and brush-model geometry, entities, Quake II surface classifications, RGB lightmaps, draw
-  batches, and bounds through the same renderer contract as BSP29/30. BSP38 artifacts install through
-  the editor's revision-safe compiled-preview handoff.
+  world and brush-model geometry, entities, signed surface values, surface classifications, RGB
+  lightmaps, draw batches, and bounds through the same renderer contract as BSP29/30. BSP38
+  artifacts install through the editor's revision-safe compiled-preview handoff.
+- The public viewer resolves case-insensitive logical game paths from explicit sources, an async
+  resolver, or a game base URL. It reads the palette from `pics/colormap.pcx`, resolves WAL pixels
+  and PNG/TGA/JPEG replacements, retains companion-WAL dimensions for UVs, loads six-face `env/`
+  skyboxes, and implements texinfo animation chains, flowing surfaces, Quake II turbulence,
+  `TRANS33`/`TRANS66`, `SKY`, `WARP`, and `NODRAW` behavior.
+- Local editor projects decode the same loose assets into the source material catalog and pass the
+  original logical files to revision-safe compiled preview. Browser file loading recognizes WAL,
+  PCX, replacement-image, and directory-relative game paths.
 - Synthetic MIT-owned tests cover exact no-op save, normalized serialize/reparse, named flag
   decoding, unknown-bit retention, and Quake II project-manifest round trips.
 
-## Local corpus evidence
+## Source corpus evidence
 
 The ignored local smoke corpus is
 [`dfsp-spirit/spirit-quake-maps-gpl`](https://github.com/dfsp-spirit/spirit-quake-maps-gpl/tree/2884ac21efb8ef9772373a749ac513f9b2e676d0),
@@ -72,9 +81,30 @@ faces, 87 draw batches, 161 texinfo-derived materials, and three models. A separ
 room was compiled with the same real helper and visibly rendered in the editor at revision 0 using
 the missing-WAL checkerboard. No GPL map or compiler output is committed.
 
+## Compiled asset corpus evidence
+
+The ignored Steam corpus tooling scans owned game installs without committing their contents. It
+preserves BSP provenance and materializes only bounded Quake II asset classes: WAL and
+PNG/TGA/JPEG files under `textures/`, `pics/colormap.pcx`, and PNG/TGA/JPEG skybox faces under
+`env/`. Loose files are applied first and archives are processed in stable path order, so later
+Quake II patch PK3s override earlier assets deterministically.
+
+On 2026-09-01, the Thirty Flights of Loving/Gravity Bone install contributed five BSP38 maps and
+379 filtered game assets. All five maps reached `Ready` in headless Chromium with SwiftShader,
+rendered their real replacement art and RGB lightmaps, and submitted frames without browser or
+WebGPU errors. Four maps resolved every referenced texture; `hof1.bsp` retains one genuine bogus
+`texturesa` reference and reports it through the normal missing-texture warning. The corpus contains
+sky, warp, flow, `TRANS33`, `TRANS66`, and `NODRAW` surfaces, so this is broader evidence than the
+synthetic shader smoke alone. The test remains optional when the ignored commercial corpus is not
+installed.
+
+The corpus extractor, discovery index, parser checks, and optional browser test are committed. The
+five BSPs, PK3s, palette, and image files remain ignored local data.
+
 ## Next acceptance slice
 
-Add BSP38 visibility and collision structures without pretending the BSP29/30 layouts apply, then
-connect browser-local WAL roots to compiled-preview texture resolution. Compiler choice and
-executable paths remain machine-local; portable projects continue to name only logical build
-profiles.
+Add BSP38 visibility and collision structures without pretending the BSP29/30 layouts apply. Direct
+browser PAK/PK3 mounting, Quake II alias models, sprites, and game audio are separate future slices;
+the current resolver contract already permits an embedding application or service to mount archives
+without coupling archive policy to the BSP core. Compiler choice and executable paths remain
+machine-local, and portable projects continue to name only logical build profiles and game roots.

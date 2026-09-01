@@ -7,7 +7,8 @@ history, and compiled BSP preview. Compile and launch capabilities are game-matc
 Hosted maps use the same build contract while the service compiles its canonical MapCell snapshot;
 the browser polls the authenticated build record and downloads membership-checked artifacts.
 Quake II uses an explicitly configured q2tools-220 capability. Successful BSP38 artifacts install
-as compiled previews; missing retail WAL textures use the visible missing-material fallback.
+as compiled previews and reuse the project's ordered game-root assets for PCX palettes, WALs,
+replacement images, and skyboxes; genuinely missing materials use the visible fallback.
 
 ## How to get to it (user POV)
 

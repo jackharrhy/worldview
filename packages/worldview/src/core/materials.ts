@@ -26,7 +26,7 @@ export function classifyMaterial(
   if (format === 'quake2-bsp38') {
     if ((surfaceFlags & 0x80) !== 0) return 'tool';
     if ((surfaceFlags & 0x04) !== 0) return 'sky';
-    if ((surfaceFlags & (0x08 | 0x10 | 0x20)) !== 0) return 'water';
+    if ((surfaceFlags & 0x08) !== 0) return 'water';
   }
   if (lower.startsWith('__invalid_') || lower.startsWith('tools/') || toolNames.has(lower))
     return 'tool';

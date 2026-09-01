@@ -42,6 +42,7 @@ type BuildState = EditorStatePort<
   | 'launchProfileId'
   | 'leakOverlayVisible'
   | 'loadedWadSources'
+  | 'loadedGameAssets'
   | 'portalOverlayVisible'
   | 'projectKey'
   | 'projectLocalState'
@@ -247,9 +248,10 @@ export class BuildPresenter {
       this.showCompiledPreview(false);
       return false;
     }
-    const needsDiagnosticPalette = bspVersion === 29 && !this.state.quakePalette;
+    const needsDiagnosticPalette =
+      (bspVersion === 29 || bspVersion === 38) && !this.state.quakePalette;
     this.state.compiledPreviewWarning = needsDiagnosticPalette
-      ? ' Using the diagnostic palette; load the map’s Quake palette for exact texture colors.'
+      ? ' Using the diagnostic palette; load the game palette for exact texture colors.'
       : null;
     this.state.compiledViewer?.dispose();
     this.state.compiledViewer = null;
@@ -261,7 +263,8 @@ export class BuildPresenter {
       source: {
         bsp: artifact.data,
         wads: [...this.state.loadedWadSources.values()],
-        ...(bspVersion === 29
+        gameAssets: Object.fromEntries(this.state.loadedGameAssets),
+        ...(bspVersion === 29 || bspVersion === 38
           ? { palette: this.state.quakePalette ?? this.state.diagnosticQuakePalette }
           : {}),
       },

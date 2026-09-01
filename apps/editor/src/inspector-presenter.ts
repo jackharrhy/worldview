@@ -144,7 +144,12 @@ export class InspectorPresenter {
               fitMode: options?.subdivide ? 'subdivide' : 'repeat',
               textureSizeForMaterial: (materialToken) => {
                 const material = this.state.materialCatalog.find(materialToken);
-                return material ? [material.width, material.height] : null;
+                return material
+                  ? [
+                      material.logicalWidth ?? material.width,
+                      material.logicalHeight ?? material.height,
+                    ]
+                  : null;
               },
             })
           ) {
@@ -205,7 +210,12 @@ export class InspectorPresenter {
       material:
         materialNames.size === 1 ? (selectedFaces[0]?.face.material ?? '') : 'Mixed materials',
       materialMixed: materialNames.size > 1,
-      materialSize: primaryMaterial ? [primaryMaterial.width, primaryMaterial.height] : null,
+      materialSize: primaryMaterial
+        ? [
+            primaryMaterial.logicalWidth ?? primaryMaterial.width,
+            primaryMaterial.logicalHeight ?? primaryMaterial.height,
+          ]
+        : null,
       offset: [offsetU, offsetV],
       scale: [scaleU, scaleV],
       rotationDegrees: rotation,

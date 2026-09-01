@@ -2,9 +2,10 @@
 
 ## Sub-features
 
-`worldview.project.json`, authorized directory traversal, map enumeration, ordered WAD and entity
-definition loading, remembered browser-local handles, project map switching, and authenticated
-content-addressed mounts for hosted projects.
+`worldview.project.json`, authorized directory traversal, map enumeration, ordered WAD, game-root,
+and entity-definition loading, remembered browser-local handles, project map switching, and
+authenticated content-addressed mounts for hosted projects. Quake II game roots expose bounded
+`textures/`, `pics/colormap.pcx`, and `env/` assets to both source materials and compiled preview.
 
 ## How to get to it (user POV)
 

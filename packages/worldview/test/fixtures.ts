@@ -19,7 +19,9 @@ interface FixtureOptions {
 
 interface Bsp38FixtureOptions {
   readonly surfaceFlags?: number;
+  readonly surfaceValue?: number;
   readonly textureName?: string;
+  readonly nextMaterialIndex?: number;
   readonly lightOffset?: number;
 }
 
@@ -74,6 +76,33 @@ export function makePalette(): Uint8Array {
     palette[index * 3 + 2] = (index * 7) & 255;
   }
   return palette;
+}
+
+export function makePcxPalette(): Uint8Array {
+  const palette = makePalette();
+  const result = new Uint8Array(128 + 1 + palette.length);
+  result[0] = 0x0a;
+  result[2] = 1;
+  result[3] = 8;
+  result[128] = 0x0c;
+  result.set(palette, 129);
+  return result;
+}
+
+export function makeWal(name = 'e1u1/fixture', paletteIndex = 7): Uint8Array {
+  const sizes = [256, 64, 16, 4];
+  const result = new Uint8Array(100 + sizes.reduce((sum, size) => sum + size, 0));
+  const view = new DataView(result.buffer);
+  new TextEncoder().encodeInto(name, result.subarray(0, 32));
+  view.setUint32(32, 16, true);
+  view.setUint32(36, 16, true);
+  let offset = 100;
+  for (const [level, size] of sizes.entries()) {
+    view.setUint32(40 + level * 4, offset, true);
+    result.fill(paletteIndex, offset, offset + size);
+    offset += size;
+  }
+  return result;
 }
 
 function riffChunk(id: string, payload: Uint8Array): Uint8Array {
@@ -505,8 +534,9 @@ export function makeBsp38(options: Bsp38FixtureOptions = {}): Uint8Array {
   texinfoView.setFloat32(0, 1, true);
   texinfoView.setFloat32(20, 1, true);
   texinfoView.setUint32(32, options.surfaceFlags ?? 0, true);
+  texinfoView.setInt32(36, options.surfaceValue ?? 0, true);
   new TextEncoder().encodeInto(options.textureName ?? 'e1u1/fixture', texinfo.subarray(40, 72));
-  texinfoView.setInt32(72, -1, true);
+  texinfoView.setInt32(72, options.nextMaterialIndex ?? -1, true);
   const face = new Uint8Array(20);
   const faceView = new DataView(face.buffer);
   faceView.setInt32(4, 0, true);

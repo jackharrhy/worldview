@@ -87,7 +87,7 @@ export function ViewerApp({ controller, readers }: ViewerAppProps) {
         data-local-files
         type="file"
         aria-label="Choose BSP and related asset files"
-        accept=".bsp,.wad,.spr,.wav,.mp3,.ogg,.lmp,.pal,.tga,application/octet-stream,audio/wav,audio/mpeg,audio/ogg"
+        accept=".bsp,.wad,.wal,.spr,.wav,.mp3,.ogg,.lmp,.pal,.pcx,.png,.jpg,.jpeg,.tga,application/octet-stream,audio/wav,audio/mpeg,audio/ogg,image/png,image/jpeg"
         multiple
         onChange={(event) => localFileMutation.mutate(event.currentTarget.files)}
       />

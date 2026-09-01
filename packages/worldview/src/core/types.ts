@@ -46,6 +46,15 @@ export interface ParsedMaterial {
   readonly name: string;
   readonly kind: MaterialKind;
   readonly embeddedTexture?: ParsedMipTexture;
+  /** Surface opacity after format-specific flags have been normalized. */
+  readonly opacity?: number;
+  /** Texture-space scrolling speed in pixels per second. */
+  readonly scrollSpeed?: number;
+  /** Quake II texinfo animation link; absent for formats without texinfo chains. */
+  readonly nextMaterialIndex?: number | null;
+  /** Raw Quake II texinfo metadata retained for diagnostics and format-specific consumers. */
+  readonly surfaceFlags?: number;
+  readonly surfaceValue?: number;
 }
 
 export type BspWarning =

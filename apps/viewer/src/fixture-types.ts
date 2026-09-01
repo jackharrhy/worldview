@@ -12,6 +12,7 @@ export interface LocalFixtureDefinition {
   readonly label: string;
   readonly bsp: string;
   readonly gameBaseUrl: string;
+  readonly gameAssets?: Readonly<Record<string, string>>;
   readonly aliases: readonly string[];
   readonly camera?: FixtureCameraDefinition;
   readonly walkability?: string;

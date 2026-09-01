@@ -83,6 +83,35 @@ describe('local fixture discovery', () => {
     ]);
   });
 
+  it('points Steam corpus maps at their app-specific materialized game root', async () => {
+    const root = await temporaryRoot();
+    const fixtureRoot = path.join(root, 'steam-corpus');
+    const mapDirectory = path.join(fixtureRoot, '214700', 'archives', 'baseq2', 'pak0.pk3', 'maps');
+    await mkdir(mapDirectory, { recursive: true });
+    await mkdir(path.join(fixtureRoot, '214700', 'game'), { recursive: true });
+    await mkdir(path.join(fixtureRoot, '214700', 'game', 'textures', 'e1u1'), {
+      recursive: true,
+    });
+    await mkdir(path.join(fixtureRoot, '214700', 'game', 'pics'), { recursive: true });
+    await writeFile(path.join(mapDirectory, 'bar1.bsp'), '');
+    await writeFile(path.join(fixtureRoot, '214700', 'game', 'textures', 'e1u1', 'wall.jpg'), '');
+    await writeFile(path.join(fixtureRoot, '214700', 'game', 'pics', 'colormap.pcx'), '');
+
+    await expect(discoverLocalFixtures(root)).resolves.toEqual([
+      {
+        aliases: [],
+        bsp: '/local/steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1.bsp',
+        gameBaseUrl: '/local/steam-corpus/214700/game/',
+        gameAssets: {
+          'pics/colormap.pcx': '/local/steam-corpus/214700/game/pics/colormap.pcx',
+          'textures/e1u1/wall.jpg': '/local/steam-corpus/214700/game/textures/e1u1/wall.jpg',
+        },
+        id: 'steam-corpus',
+        label: 'bar1.bsp (local)',
+      },
+    ]);
+  });
+
   it('rejects malformed sidecars instead of hiding configuration mistakes', async () => {
     const root = await temporaryRoot();
     const fixtureRoot = path.join(root, 'broken');

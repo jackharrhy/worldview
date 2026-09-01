@@ -203,6 +203,20 @@ export function waterFragment(input: FragmentInput): d.v4f {
     const angleS = std.mod(uv.y * 2 + time * timeScale, 256);
     const angleT = std.mod(uv.x * 2 + time * timeScale, 256);
     uv = d.vec2f(uv.x + 8 * std.sin(angleS * (PI / 128)), uv.y + 8 * std.sin(angleT * (PI / 128)));
+  } else if (materialLayout.$.material.options.z > 0.5) {
+    // Quake II turbulent surfaces use a fixed 64-unit texture domain. This behavior was checked
+    // against the pinned GPL engine oracle described in docs/quake2-compatibility.md; no code was
+    // copied from it.
+    uv = d.vec2f(
+      uv.x - time * materialLayout.$.material.options.w + 4 * std.sin(uv.y * 0.125 + time),
+      uv.y + 4 * std.sin(uv.x * 0.125 + time),
+    );
+    const diffuse = std.textureSample(
+      materialLayout.$.diffuse,
+      materialLayout.$.textureSampler,
+      uv.div(64),
+    );
+    return d.vec4f(diffuse.rgb, diffuse.a * materialLayout.$.material.renderColor.w);
   } else {
     uv = uv.mul(2.75);
     uv = d.vec2f(

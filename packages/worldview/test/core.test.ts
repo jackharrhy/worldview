@@ -110,7 +110,7 @@ describe('BSP visibility', () => {
 
 describe('Quake II BSP38', () => {
   it('parses IBSP geometry, RGB lightmaps, entities, and material identity', () => {
-    const world = parseBsp(makeBsp38());
+    const world = parseBsp(makeBsp38({ surfaceValue: -12 }));
 
     expect(world).toMatchObject({
       format: 'quake2-bsp38',
@@ -123,7 +123,17 @@ describe('Quake II BSP38', () => {
     });
     expect(world.vertices).toHaveLength(28);
     expect(world.indices).toEqual(new Uint32Array([0, 1, 2, 0, 2, 3]));
-    expect(world.materials).toMatchObject([{ name: 'e1u1/fixture', kind: 'opaque' }]);
+    expect(world.materials).toMatchObject([
+      {
+        name: 'e1u1/fixture',
+        kind: 'opaque',
+        opacity: 1,
+        scrollSpeed: 0,
+        nextMaterialIndex: null,
+        surfaceFlags: 0,
+        surfaceValue: -12,
+      },
+    ]);
     expect(world.lightmapPages).toHaveLength(1);
     expect(world.lightmapPages[0]?.lightmaps[0]?.samples).toHaveLength(12);
   });
@@ -131,7 +141,24 @@ describe('Quake II BSP38', () => {
   it('uses Quake II surface flags for render classification', () => {
     expect(parseBsp(makeBsp38({ surfaceFlags: 0x04 })).materials[0]?.kind).toBe('sky');
     expect(parseBsp(makeBsp38({ surfaceFlags: 0x08 })).materials[0]?.kind).toBe('water');
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x10 })).materials[0]).toMatchObject({
+      kind: 'opaque',
+      opacity: 0.33,
+    });
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x20 })).materials[0]).toMatchObject({
+      kind: 'opaque',
+      opacity: 0.66,
+    });
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x40 })).materials[0]?.scrollSpeed).toBe(1.6);
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x48 })).materials[0]?.scrollSpeed).toBe(32);
     expect(parseBsp(makeBsp38({ surfaceFlags: 0x80 })).materials[0]?.kind).toBe('tool');
+  });
+
+  it('omits lightmaps from Quake II sky, warp, and translucent surfaces', () => {
+    for (const surfaceFlags of [0x04, 0x08, 0x10, 0x20]) {
+      const world = parseBsp(makeBsp38({ surfaceFlags }));
+      expect(world.faces[0]?.lightmap).toMatchObject({ pageIndex: -1, samples: null });
+    }
   });
 
   it('rejects invalid IBSP versions and truncated lightmaps', () => {
@@ -362,6 +389,14 @@ describe('TGA', () => {
       new Uint8Array([10, 20, 30, 255, 10, 20, 30, 255]),
     );
   });
+
+  it('rejects images that exceed the decoded pixel budget before allocating them', () => {
+    const oversized = makeTga();
+    const view = new DataView(oversized.buffer, oversized.byteOffset, oversized.byteLength);
+    view.setUint16(12, 65_535, true);
+    view.setUint16(14, 65_535, true);
+    expect(() => decodeTga(oversized)).toThrow(/decoded image limit/);
+  });
 });
 
 describe('GoldSrc sprites', () => {
@@ -451,7 +486,7 @@ describe('lightmaps and materials', () => {
   });
 
   it('keeps glow brush models on the translucent surface path', () => {
-    expect(goldSrcBrushPipeline(3, 'alpha-test')).toBe('translucentTexture');
+    expect(goldSrcBrushPipeline(3, 'alpha-test')).toBe('translucentTextureBrush');
   });
 });
 

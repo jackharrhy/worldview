@@ -26,7 +26,7 @@ function localFixturesPlugin(): Plugin {
         if (
           !['add', 'change', 'unlink', 'addDir', 'unlinkDir'].includes(event) ||
           path.relative(localRoot, filename).startsWith('..') ||
-          !/\.(bsp|json)$/i.test(filename)
+          !/\.(bsp|json|wal|pcx|png|jpe?g|tga)$/i.test(filename)
         ) {
           return;
         }

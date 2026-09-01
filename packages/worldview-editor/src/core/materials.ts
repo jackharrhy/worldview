@@ -14,6 +14,9 @@ export interface EditorMaterial {
   readonly height: number;
   readonly rgba: Uint8Array;
   readonly alphaTest: boolean;
+  /** Texture-coordinate dimensions when a replacement image has different pixel dimensions. */
+  readonly logicalWidth?: number;
+  readonly logicalHeight?: number;
 }
 
 export interface MaterialImportDiagnostic {
@@ -236,6 +239,16 @@ export class EditorMaterialCatalog {
     }
     if (material.rgba.byteLength !== material.width * material.height * 4) {
       throw new Error(`Material ${material.name} has inconsistent RGBA dimensions`);
+    }
+    const logicalWidth = material.logicalWidth ?? material.width;
+    const logicalHeight = material.logicalHeight ?? material.height;
+    if (
+      logicalWidth <= 0 ||
+      logicalHeight <= 0 ||
+      !Number.isFinite(logicalWidth) ||
+      !Number.isFinite(logicalHeight)
+    ) {
+      throw new Error(`Material ${material.name} has invalid logical dimensions`);
     }
     const replaced = this.entries.has(key);
     this.entries.set(key, material);

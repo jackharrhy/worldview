@@ -82,6 +82,25 @@ async function bspFiles(directory: string): Promise<string[]> {
   return nested.flat();
 }
 
+const GAME_ASSET_PATH =
+  /^(?:textures\/.+\.(?:wal|png|jpe?g|tga)|env\/.+\.(?:png|jpe?g|tga)|pics\/colormap\.pcx)$/iu;
+
+async function gameAssetFiles(directory: string, prefix = ''): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const pending: Promise<string[]>[] = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const logicalPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const filename = path.join(directory, entry.name);
+    pending.push(
+      entry.isDirectory()
+        ? gameAssetFiles(filename, logicalPath)
+        : Promise.resolve(entry.isFile() && GAME_ASSET_PATH.test(logicalPath) ? [logicalPath] : []),
+    );
+  }
+  return (await Promise.all(pending)).flat();
+}
+
 async function existingFile(filename: string): Promise<boolean> {
   try {
     await access(filename);
@@ -116,6 +135,7 @@ export async function discoverLocalFixtures(localRoot: string): Promise<LocalFix
       const files = (await bspFiles(fixtureRoot)).toSorted((left, right) =>
         left.localeCompare(right),
       );
+      const assetsByApp = new Map<string, Promise<Readonly<Record<string, string>>>>();
       return Promise.all(
         files.map(async (filename) => {
           const relativeBsp = slashPath(path.relative(fixtureRoot, filename));
@@ -128,11 +148,39 @@ export async function discoverLocalFixtures(localRoot: string): Promise<LocalFix
           if (typeof label !== 'string' || !label.trim()) {
             throw new Error(`${metadataFilename}: label must be a non-empty string`);
           }
+          const firstSegment = relativeBsp.split('/')[0] ?? '';
+          const appGameRoot = path.join(fixtureRoot, firstSegment, 'game');
+          const hasAppGameRoot = /^\d+$/u.test(firstSegment) && (await existingFile(appGameRoot));
+          const publicFixtureRoot = `/local/${encodeURIComponent(directory.name)}/`;
+          let gameAssets: Readonly<Record<string, string>> | undefined;
+          if (hasAppGameRoot) {
+            let pending = assetsByApp.get(firstSegment);
+            if (!pending) {
+              const publicGameRoot = `${publicFixtureRoot}${encodeURIComponent(firstSegment)}/game/`;
+              pending = gameAssetFiles(appGameRoot).then((assets) =>
+                Object.fromEntries(
+                  assets
+                    .toSorted((left, right) => left.localeCompare(right))
+                    .map((asset) => [
+                      asset.toLowerCase(),
+                      `${publicGameRoot}${asset.split('/').map(encodeURIComponent).join('/')}`,
+                    ]),
+                ),
+              );
+              assetsByApp.set(firstSegment, pending);
+            }
+            gameAssets = await pending;
+          }
           const fixture = {
             id,
             label: label.trim(),
-            bsp: relativeBsp,
-            gameBaseUrl: `/local/${encodeURIComponent(directory.name)}/`,
+            bsp: hasAppGameRoot
+              ? `${publicFixtureRoot}${relativeBsp.split('/').map(encodeURIComponent).join('/')}`
+              : relativeBsp,
+            gameBaseUrl: hasAppGameRoot
+              ? `${publicFixtureRoot}${encodeURIComponent(firstSegment)}/game/`
+              : publicFixtureRoot,
+            ...(gameAssets ? { gameAssets } : {}),
             aliases: stringAliases(metadata.aliases, metadataFilename),
           } satisfies LocalFixtureDefinition;
           const camera = cameraDefinition(metadata.camera, metadataFilename);
