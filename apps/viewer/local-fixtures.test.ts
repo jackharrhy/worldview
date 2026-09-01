@@ -182,6 +182,41 @@ describe('local fixture discovery', () => {
     expect(first.some(({ bsp }) => /b_shell|meat|ARMOR/u.test(bsp))).toBe(false);
   });
 
+  it('does not sample shared Half-Life maps as maps from another GoldSrc game', async () => {
+    const root = await temporaryRoot();
+    const corpusRoot = path.join(root, 'steam-corpus', '10', 'loose');
+    const counterStrikeMap = path.join(corpusRoot, 'cstrike', 'maps', 'de_dust.bsp');
+    const sharedHalfLifeMap = path.join(corpusRoot, 'valve', 'maps', 'c1a0.bsp');
+    await Promise.all([
+      mkdir(path.dirname(counterStrikeMap), { recursive: true }),
+      mkdir(path.dirname(sharedHalfLifeMap), { recursive: true }),
+    ]);
+    await Promise.all([writeFile(counterStrikeMap, ''), writeFile(sharedHalfLifeMap, '')]);
+
+    const fixtures = await discoverLocalFixtures(root);
+
+    expect(fixtures.map(({ id }) => id)).toEqual(['steam-corpus/counter-strike/de_dust']);
+    expect(fixtures[0]?.namespace).toBe('Counter-Strike');
+  });
+
+  it('does not offer BSPs rejected by the compatibility corpus check', async () => {
+    const root = await temporaryRoot();
+    const fixtureRoot = path.join(root, 'steam-corpus');
+    const mapDirectory = path.join(fixtureRoot, '4484420', 'loose', 'id1', 'maps');
+    const incompatibleMap = path.join(mapDirectory, 'dm1.bsp');
+    const compatibleMap = path.join(mapDirectory, 'e1m1.bsp');
+    await mkdir(mapDirectory, { recursive: true });
+    await Promise.all([writeFile(incompatibleMap, ''), writeFile(compatibleMap, '')]);
+    await writeFile(
+      path.join(fixtureRoot, 'compatibility-report.json'),
+      JSON.stringify({ failures: [{ outputPath: incompatibleMap }] }),
+    );
+
+    const fixtures = await discoverLocalFixtures(root);
+
+    expect(fixtures.map(({ id }) => id)).toEqual(['steam-corpus/fleshcancer/e1m1']);
+  });
+
   it('rejects malformed sidecars instead of hiding configuration mistakes', async () => {
     const root = await temporaryRoot();
     const fixtureRoot = path.join(root, 'broken');

@@ -37,4 +37,6 @@ goal.
 The compatibility manifest retains every discovered BSP, including Quake pickup and prop models.
 The development loader presents only a stable sample of up to three playable levels per game,
 grouped by game name. Raw Steam install directories and BSP assets such as `maps/b_*`, `models/*`,
-and `progs/*` are not selectable fixtures.
+and `progs/*` are not selectable fixtures. GoldSrc samples are restricted to each game's own mod
+directory rather than shared `valve` content, and BSPs rejected by the compatibility check are also
+omitted from the loader.

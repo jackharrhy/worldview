@@ -92,6 +92,7 @@ interface SteamCorpusGame {
   readonly name: string;
   readonly slug: string;
   readonly anchor?: string;
+  readonly contentRoots?: readonly string[];
 }
 
 interface SteamCorpusLevel {
@@ -102,21 +103,50 @@ interface SteamCorpusLevel {
 }
 
 const steamGames: Readonly<Record<string, SteamCorpusGame>> = {
-  '10': { name: 'Counter-Strike', slug: 'counter-strike' },
-  '20': { name: 'Team Fortress Classic', slug: 'team-fortress-classic' },
-  '30': { name: 'Day of Defeat', slug: 'day-of-defeat' },
-  '40': { name: 'Deathmatch Classic', slug: 'deathmatch-classic' },
-  '50': { name: 'Half-Life: Opposing Force', slug: 'opposing-force' },
-  '60': { name: 'Ricochet', slug: 'ricochet' },
-  '70': { name: 'Half-Life', slug: 'half-life' },
-  '80': { name: 'Counter-Strike: Condition Zero', slug: 'condition-zero' },
-  '130': { name: 'Half-Life: Blue Shift', slug: 'blue-shift' },
+  '10': { name: 'Counter-Strike', slug: 'counter-strike', contentRoots: ['cstrike'] },
+  '20': {
+    name: 'Team Fortress Classic',
+    slug: 'team-fortress-classic',
+    contentRoots: ['tfc'],
+  },
+  '30': { name: 'Day of Defeat', slug: 'day-of-defeat', contentRoots: ['dod'] },
+  '40': {
+    name: 'Deathmatch Classic',
+    slug: 'deathmatch-classic',
+    contentRoots: ['dmc'],
+  },
+  '50': {
+    name: 'Half-Life: Opposing Force',
+    slug: 'opposing-force',
+    contentRoots: ['gearbox'],
+  },
+  '60': { name: 'Ricochet', slug: 'ricochet', contentRoots: ['ricochet'] },
+  '70': { name: 'Half-Life', slug: 'half-life', contentRoots: ['valve'] },
+  '80': {
+    name: 'Counter-Strike: Condition Zero',
+    slug: 'condition-zero',
+    contentRoots: ['czero'],
+  },
+  '130': { name: 'Half-Life: Blue Shift', slug: 'blue-shift', contentRoots: ['bshift'] },
   '2310': { name: 'Quake', slug: 'quake' },
   '2320': { name: 'Quake II', slug: 'quake-ii' },
-  '225840': { name: 'Sven Co-op', slug: 'sven-co-op' },
+  '225840': {
+    name: 'Sven Co-op',
+    slug: 'sven-co-op',
+    contentRoots: ['svencoop', 'svencoop_event_april'],
+  },
   '1000410': { name: 'WRATH: Aeon of Ruin', slug: 'wrath' },
-  '3191050': { name: 'BRAZILIAN DRUG DEALER 3', slug: 'brazilian-drug-dealer-3' },
-  '4484420': { name: 'FLESHCANCER', slug: 'fleshcancer', anchor: 'dm1' },
+  '3191050': {
+    name: 'BRAZILIAN DRUG DEALER 3',
+    slug: 'brazilian-drug-dealer-3',
+    contentRoots: ['id1'],
+  },
+  '4484420': {
+    name: 'FLESHCANCER',
+    slug: 'fleshcancer',
+    anchor: 'dm1',
+    contentRoots: ['id1'],
+  },
 };
 
 const thirtyFlights: SteamCorpusGame = {
@@ -152,6 +182,10 @@ function steamCorpusLevel(fixtureRoot: string, filename: string): SteamCorpusLev
   const basename = path.posix.basename(mapPath);
   if (!mapPath || basename.startsWith('b_')) return null;
   const game = corpusGame(appId, relativePath);
+  const contentRoots = game.contentRoots;
+  if (contentRoots && !parts.slice(1, mapsIndex).some((part) => contentRoots.includes(part))) {
+    return null;
+  }
   if (game.slug === 'fleshcancer' && !relativePath.includes('/loose/')) return null;
   return { filename, relativePath, mapPath, game };
 }
@@ -163,9 +197,11 @@ function sampleScore(level: SteamCorpusLevel): string {
 function sampledSteamCorpusLevels(
   fixtureRoot: string,
   files: readonly string[],
+  incompatibleFiles: ReadonlySet<string>,
 ): readonly SteamCorpusLevel[] {
   const byGame = new Map<string, Map<string, SteamCorpusLevel>>();
   for (const filename of files) {
+    if (incompatibleFiles.has(slashPath(path.relative(fixtureRoot, filename)))) continue;
     const level = steamCorpusLevel(fixtureRoot, filename);
     if (!level) continue;
     const levels = byGame.get(level.game.slug);
@@ -188,6 +224,35 @@ function sampledSteamCorpusLevels(
     (left, right) =>
       left.game.name.localeCompare(right.game.name) || left.mapPath.localeCompare(right.mapPath),
   );
+}
+
+interface CompatibilityFailure {
+  readonly outputPath?: unknown;
+}
+
+async function incompatibleCorpusFiles(fixtureRoot: string): Promise<ReadonlySet<string>> {
+  const reportPath = path.join(fixtureRoot, 'compatibility-report.json');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(reportPath, 'utf8'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Set();
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${reportPath}: ${message}`, { cause: error });
+  }
+  if (!parsed || typeof parsed !== 'object')
+    throw new Error(`${reportPath}: report must be an object`);
+  const failures = (parsed as { readonly failures?: unknown }).failures;
+  if (!Array.isArray(failures)) throw new Error(`${reportPath}: failures must be an array`);
+  const result = new Set<string>();
+  for (const failure of failures as CompatibilityFailure[]) {
+    if (!failure || typeof failure !== 'object' || typeof failure.outputPath !== 'string') {
+      throw new Error(`${reportPath}: every failure must have an outputPath`);
+    }
+    const relativePath = slashPath(path.relative(fixtureRoot, failure.outputPath));
+    if (!relativePath.startsWith('../') && relativePath !== '..') result.add(relativePath);
+  }
+  return result;
 }
 
 async function gameAssetFiles(directory: string, prefix = ''): Promise<string[]> {
@@ -243,9 +308,13 @@ export async function discoverLocalFixtures(localRoot: string): Promise<LocalFix
       const discoveredFiles = (await bspFiles(fixtureRoot)).toSorted((left, right) =>
         left.localeCompare(right),
       );
+      const incompatibleFiles =
+        directory.name === 'steam-corpus'
+          ? await incompatibleCorpusFiles(fixtureRoot)
+          : new Set<string>();
       const steamLevels =
         directory.name === 'steam-corpus'
-          ? sampledSteamCorpusLevels(fixtureRoot, discoveredFiles)
+          ? sampledSteamCorpusLevels(fixtureRoot, discoveredFiles, incompatibleFiles)
           : [];
       const steamLevelByFilename = new Map(
         steamLevels.map((level) => [level.filename, level] as const),
