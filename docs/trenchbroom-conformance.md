@@ -111,9 +111,7 @@ layout. Worldview implements an original ordered `ViewportGestureRouter`:
 | Fast/slow fly modifiers and optional vertical pan                                                    | Camera controller                |
 | Duplicate-move completion feedback                                                                   | Selection/transform presentation |
 | Context-aware shortcut preferences                                                                   | Future input preference system   |
-| Replace viewport-host inheritance and mode-specific forwarding with focused composition              | Cleanup C3                       |
-| Turn `scene-buffers.ts` into retained world/selection/tool/diagnostic/remote contributions           | Cleanup C4                       |
-| Separate `source-renderer.ts` lifecycle, spatial queries, viewport hosting, and interaction adapters | Cleanup C4/C11                   |
+| Separate `source-renderer.ts` lifecycle, spatial queries, viewport hosting, and interaction adapters | Cleanup C11                      |
 
 New conformance work must record the reference behavior and commit, implement an original
 license-compatible design, and add focused tests. A matching screenshot alone is not evidence of a

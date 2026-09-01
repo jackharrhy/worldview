@@ -17,7 +17,7 @@ import {
   translationAffineMatrix,
   unlinkEditorGroup,
 } from './linked-groups.js';
-import { applyEditorIssueFix, selectionForEditorIssue } from './issues.js';
+import { applyEditorIssueFix, deriveEditorIssues, selectionForEditorIssue } from './issues.js';
 import { isEditorLayerEntity } from './layers.js';
 import { pointEntitiesInDocument } from './point-entities.js';
 import {
@@ -41,6 +41,7 @@ import {
 import type {
   BrushId,
   BrushSelection,
+  EditorObjectViewState,
   EditorSelection,
   EntityId,
   FaceId,
@@ -52,10 +53,106 @@ import { brushesInDocument, findBrush } from './types.js';
 import {
   faceSelectionKey,
   translatedObjects,
+  type DocumentEditCandidate,
   type SelectionBrushSelectionResult,
 } from './session-common.js';
-import { EditorSessionState } from './session-state.js';
-export abstract class EditorSessionSelection extends EditorSessionState {
+import { SessionKernel } from './session-kernel.js';
+
+type SessionSelectionKernel = Pick<
+  SessionKernel,
+  | 'discardRepeatableCommands'
+  | 'document'
+  | 'editingGroupId'
+  | 'hiddenBrushIds'
+  | 'hiddenEntityIds'
+  | 'issueFixIds'
+  | 'layerId'
+  | 'lockedBrushIds'
+  | 'lockedEntityIds'
+  | 'notify'
+  | 'selection'
+  | 'snapshotObjectViewState'
+>;
+
+export interface SessionSelectionPorts {
+  readonly objectViewState: () => EditorObjectViewState;
+  readonly commitDocumentCandidate: (candidate: DocumentEditCandidate) => void;
+  readonly commitObjectViewState: (
+    label: string,
+    state: EditorObjectViewState,
+    selectionAfter: EditorSelection | null,
+  ) => boolean;
+}
+
+export class SessionSelectionCommands {
+  public constructor(
+    private readonly kernel: SessionSelectionKernel,
+    private readonly ports: SessionSelectionPorts,
+  ) {}
+
+  private get currentDocument() {
+    return this.kernel.document;
+  }
+
+  private get currentSelection() {
+    return this.kernel.selection;
+  }
+
+  private set currentSelection(selection: EditorSelection | null) {
+    this.kernel.selection = selection;
+  }
+
+  private get currentLayerId() {
+    return this.kernel.layerId;
+  }
+
+  private get editingGroupId() {
+    return this.kernel.editingGroupId;
+  }
+
+  private get issueFixIds() {
+    return this.kernel.issueFixIds;
+  }
+
+  private get issues() {
+    return deriveEditorIssues(this.currentDocument);
+  }
+
+  private get objectViewState(): EditorObjectViewState {
+    return this.ports.objectViewState();
+  }
+
+  private get canShowAll(): boolean {
+    return this.kernel.hiddenBrushIds.size + this.kernel.hiddenEntityIds.size > 0;
+  }
+
+  private get canUnlockAll(): boolean {
+    return this.kernel.lockedBrushIds.size + this.kernel.lockedEntityIds.size > 0;
+  }
+
+  private snapshotObjectViewState(): EditorObjectViewState {
+    return this.kernel.snapshotObjectViewState();
+  }
+
+  private commitObjectViewState(
+    label: string,
+    state: EditorObjectViewState,
+    selectionAfter: EditorSelection | null,
+  ): boolean {
+    return this.ports.commitObjectViewState(label, state, selectionAfter);
+  }
+
+  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
+    this.ports.commitDocumentCandidate(candidate);
+  }
+
+  private discardRepeatableCommands(): void {
+    this.kernel.discardRepeatableCommands();
+  }
+
+  private notify(kind: 'document' | 'selection' | 'history' | 'view', label: string): void {
+    this.kernel.notify(kind, label);
+  }
   public groupSelected(
     name: string,
     ids: IdFactory,
@@ -281,6 +378,15 @@ export abstract class EditorSessionSelection extends EditorSessionState {
     );
   }
 
+  /** Internal selection commit used by focused command domains that already own the label. */
+  public setSelection(selection: EditorSelection | null, label: string): EditorSelection | null {
+    if (selection) this.assertSelectionAvailable(selection);
+    this.discardRepeatableCommands();
+    this.currentSelection = selection;
+    this.notify('selection', label);
+    return selection;
+  }
+
   /** Locates every object implicated by an issue, including hidden or locked objects. */
   public selectIssue(issueId: string): EditorSelection | null {
     const issue = this.issues.find((candidate) => candidate.id === issueId);
@@ -307,17 +413,32 @@ export abstract class EditorSessionSelection extends EditorSessionState {
     return true;
   }
 
-  protected isBrushUnavailable(brushId: BrushId): boolean {
+  public isBrushUnavailable(brushId: BrushId): boolean {
     const state = this.objectViewState;
     return state.hiddenBrushIds.includes(brushId) || state.lockedBrushIds.includes(brushId);
   }
 
-  protected isEntityUnavailable(entityId: EntityId): boolean {
+  public isEntityUnavailable(entityId: EntityId): boolean {
     const state = this.objectViewState;
     return state.hiddenEntityIds.includes(entityId) || state.lockedEntityIds.includes(entityId);
   }
 
-  protected editableObjectIds(): {
+  public assertSelectionAvailable(selection: EditorSelection): void {
+    const hiddenOrLockedBrush = selectedBrushIds(selection).find((brushId) =>
+      this.isBrushUnavailable(brushId),
+    );
+    if (hiddenOrLockedBrush) {
+      throw new Error(`Cannot select hidden or locked brush ${hiddenOrLockedBrush}`);
+    }
+    const hiddenOrLockedEntity = selectedPointEntityIds(selection).find((entityId) =>
+      this.isEntityUnavailable(entityId),
+    );
+    if (hiddenOrLockedEntity) {
+      throw new Error(`Cannot select hidden or locked point entity ${hiddenOrLockedEntity}`);
+    }
+  }
+
+  public editableObjectIds(): {
     readonly brushIds: readonly BrushId[];
     readonly entityIds: readonly EntityId[];
   } {
@@ -343,7 +464,7 @@ export abstract class EditorSessionSelection extends EditorSessionState {
     };
   }
 
-  protected setObjectSelection(
+  public setObjectSelection(
     brushIds: readonly BrushId[],
     entityIds: readonly EntityId[],
     label: string,
@@ -378,7 +499,7 @@ export abstract class EditorSessionSelection extends EditorSessionState {
     );
   }
 
-  protected expandSelectionQueryGroups(
+  private expandSelectionQueryGroups(
     brushIds: readonly BrushId[],
     entityIds: readonly EntityId[],
   ): EditorSelection | null {

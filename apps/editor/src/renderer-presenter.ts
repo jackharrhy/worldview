@@ -39,6 +39,12 @@ import type {
   ViewportWorkspaceActions,
   ViewportWorkspaceLayout,
 } from './viewport-workspace-contracts.js';
+import {
+  editedBrushIds,
+  facePreviewGeometryIds,
+  facePreviewObjectIds,
+  selectedObjectIds,
+} from './preview-object-ids.js';
 
 type RendererUi = Pick<
   EditorShellState,
@@ -520,7 +526,11 @@ export class RendererPresenter {
               );
               if (event.phase === 'preview') {
                 state.duplicationCandidate = candidate;
-                state.renderer?.setDocument(candidate.document, candidate.selectionAfter);
+                state.renderer?.setPreviewDocument(
+                  candidate.document,
+                  candidate.selectionAfter,
+                  selectedObjectIds(candidate.selectionAfter),
+                );
                 app.inspector.updateInspector(candidate.document, candidate.selectionAfter);
                 ui.statusMessage.set(
                   `Duplicate-and-move preview: ${app.build.formatVector(event.delta)} (${app.build.movementDescription(event)}). Release to commit.`,
@@ -542,7 +552,11 @@ export class RendererPresenter {
             if (!candidate) return;
             if (event.phase === 'preview') {
               state.moveCandidate = candidate;
-              state.renderer?.setDocument(candidate.document, state.session.selection);
+              state.renderer?.setPreviewDocument(
+                candidate.document,
+                state.session.selection,
+                selectedObjectIds(event.selection),
+              );
               app.inspector.updateInspector(candidate.document);
               ui.statusMessage.set(
                 `Move preview: ${app.build.formatVector(event.delta)} (${app.build.movementDescription(event)}). Release to commit.`,
@@ -589,7 +603,12 @@ export class RendererPresenter {
                   : 'projected attributes';
             if (event.phase === 'preview') {
               state.faceTransferCandidate = candidate;
-              state.renderer?.setDocument(candidate.document, state.session.selection);
+              state.renderer?.setPreviewDocument(
+                candidate.document,
+                state.session.selection,
+                editedBrushIds(candidate),
+                facePreviewObjectIds(candidate, state.session.selection),
+              );
               app.inspector.updateInspector(candidate.document, state.session.selection);
               ui.statusMessage.set(
                 `Transfer preview: ${modeLabel} across ${event.targets.length} ${event.targets.length === 1 ? 'face' : 'faces'}. Release to commit.`,
@@ -683,7 +702,12 @@ export class RendererPresenter {
             if (!candidate) return;
             if (event.phase === 'preview') {
               state.faceCandidate = candidate;
-              state.renderer?.setDocument(candidate.document, state.session.selection);
+              state.renderer?.setPreviewDocument(
+                candidate.document,
+                state.session.selection,
+                facePreviewGeometryIds(candidate),
+                facePreviewObjectIds(candidate, state.session.selection),
+              );
               // The viewport is the latency-critical feedback surface during a drag. Inspector
               // values settle from the committed session change; rebuilding its derived model on
               // every snapped pointer position only competes with the next visual frame.
@@ -798,7 +822,11 @@ export class RendererPresenter {
             if (event.phase === 'preview') {
               state.creationCandidate = candidate;
               const selection = createBrushSelection(candidate.selectionAfter);
-              state.renderer?.setDocument(candidate.document, selection);
+              state.renderer?.setPreviewDocument(
+                candidate.document,
+                selection,
+                candidate.selectionAfter,
+              );
               app.inspector.updateInspector(candidate.document, selection);
               ui.simpleShapeTool.update({
                 result: `${brushes.length} ${brushes.length === 1 ? 'brush' : 'brushes'}`,

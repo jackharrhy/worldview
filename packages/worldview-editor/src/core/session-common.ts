@@ -6,7 +6,7 @@ import {
   type BrushInsertion,
 } from './document.js';
 import { type AffineMatrix } from './linked-groups.js';
-import { type BrushClipEdit, type BrushEdit } from './history.js';
+import { type BrushClipEdit, type BrushEdit, type HistoryEntry } from './history.js';
 import {
   formatEntityOrigin,
   parseEntityOrigin,
@@ -132,6 +132,14 @@ export interface DocumentEditCandidate {
   readonly document: MapDocument;
   /** Present when this candidate should join the current command-repetition sequence. */
   readonly repeatable?: EditorRepeatableCommand;
+}
+
+/** A validated domain mutation handed to the session's single history/notification commit point. */
+export interface SessionCommitMutation {
+  readonly document: MapDocument;
+  readonly selection: EditorSelection | null;
+  readonly historyEntry: HistoryEntry;
+  readonly changeKind?: EditorSessionChange['kind'];
 }
 
 export interface SweepCandidate extends BrushBatchCreationCandidate {

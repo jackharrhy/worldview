@@ -70,7 +70,7 @@ export abstract class ViewportBase {
   protected color: GPUTexture | null = null;
   protected width = 0;
   protected height = 0;
-  protected scaleOverlayScene: SceneBuffers | null = null;
+  protected scaleOverlayScene: SceneBuffers['toolPreviews'] | null = null;
   protected scaleOverlay: GPUBuffer | null = null;
   protected scaleOverlayCount = 0;
   protected disposed = false;
@@ -451,9 +451,17 @@ export abstract class ViewportBase {
     };
     // Match the source-editor convention: textured faces belong to 3D, while orthographic views
     // remain uncluttered projected wireframes.
-    if (this.kind === 'perspective' && scene.solids.length > 0) {
+    const solids = [
+      ...scene.worldSolids.value.solids,
+      ...scene.references.value.solids,
+      ...scene.localPreview.value.solids,
+    ];
+    const localSelection = scene.localPreview.value.active
+      ? scene.localPreview.value.selection
+      : scene.localSelection.value;
+    if (this.kind === 'perspective' && solids.length > 0) {
       pass.setPipeline(this.root.unwrap(this.pipelines.solid));
-      for (const batch of scene.solids) {
+      for (const batch of solids) {
         if (!boundsVisible(matrix, batch.bounds)) continue;
         bindMaterial(batch.materialName);
         pass.setVertexBuffer(0, batch.buffer);
@@ -462,10 +470,10 @@ export abstract class ViewportBase {
     }
     if (
       this.kind === 'perspective' &&
-      (scene.selectionSolids.length > 0 || scene.remoteSolids.length > 0)
+      (localSelection.solids.length > 0 || scene.remotePresence.value.solids.length > 0)
     ) {
       pass.setPipeline(this.root.unwrap(this.pipelines.selectionSolid));
-      for (const batch of [...scene.selectionSolids, ...scene.remoteSolids]) {
+      for (const batch of [...localSelection.solids, ...scene.remotePresence.value.solids]) {
         if (!boundsVisible(matrix, batch.bounds)) continue;
         pass.setVertexBuffer(0, batch.buffer);
         pass.draw(batch.count);
@@ -477,53 +485,64 @@ export abstract class ViewportBase {
       pass.setVertexBuffer(0, this.grid);
       pass.draw(6, this.gridCount / 2);
     }
-    if (this.kind === 'perspective' && scene.perspectiveGridCount > 0) {
+    if (this.kind === 'perspective' && scene.faceGrid.value.count > 0) {
       pass.setBindGroup(0, this.root.unwrap(this.gridBindGroup));
-      pass.setVertexBuffer(0, scene.perspectiveGrid);
-      pass.draw(6, scene.perspectiveGridCount / 2);
+      pass.setVertexBuffer(0, scene.faceGrid.value.buffer);
+      pass.draw(6, scene.faceGrid.value.count / 2);
     }
     pass.setBindGroup(0, this.root.unwrap(this.bindGroup));
     pass.setVertexBuffer(0, this.coordinateSystem);
     pass.draw(6, this.coordinateSystemCount / 2);
-    for (const batch of scene.lineBatches) {
+    for (const batch of [
+      ...scene.objectLines.value.batches,
+      ...scene.references.value.batches,
+      ...scene.localPreview.value.batches,
+    ]) {
       if (!boundsVisible(matrix, batch.bounds)) continue;
       pass.setVertexBuffer(0, batch.buffer);
       pass.draw(6, batch.count / 2);
     }
-    if (scene.lineCount > 0) {
-      pass.setVertexBuffer(0, scene.lines);
-      pass.draw(6, scene.lineCount / 2);
+    for (const lines of [
+      scene.objectLines.value.unbatched,
+      scene.references.value.unbatched,
+      scene.localPreview.value.unbatched,
+    ]) {
+      if (lines.count === 0) continue;
+      pass.setVertexBuffer(0, lines.buffer);
+      pass.draw(6, lines.count / 2);
     }
-    if (scene.selectionLineCount > 0 || scene.remoteLineCount > 0) {
+    if (localSelection.lineCount > 0 || scene.remotePresence.value.lineCount > 0) {
       pass.setPipeline(this.root.unwrap(this.pipelines.occludedLines));
-      if (scene.selectionLineCount > 0) {
-        pass.setVertexBuffer(0, scene.selectionLines);
-        pass.draw(6, scene.selectionLineCount / 2);
+      if (localSelection.lineCount > 0) {
+        pass.setVertexBuffer(0, localSelection.lines);
+        pass.draw(6, localSelection.lineCount / 2);
       }
-      if (scene.remoteLineCount > 0) {
-        pass.setVertexBuffer(0, scene.remoteLines);
-        pass.draw(6, scene.remoteLineCount / 2);
+      if (scene.remotePresence.value.lineCount > 0) {
+        pass.setVertexBuffer(0, scene.remotePresence.value.lines);
+        pass.draw(6, scene.remotePresence.value.lineCount / 2);
       }
       pass.setPipeline(this.root.unwrap(this.pipelines.lines));
     }
-    if (scene.selectionLineCount > 0) {
-      pass.setVertexBuffer(0, scene.selectionLines);
-      pass.draw(6, scene.selectionLineCount / 2);
+    if (localSelection.lineCount > 0) {
+      pass.setVertexBuffer(0, localSelection.lines);
+      pass.draw(6, localSelection.lineCount / 2);
     }
-    if (scene.remoteLineCount > 0) {
-      pass.setVertexBuffer(0, scene.remoteLines);
-      pass.draw(6, scene.remoteLineCount / 2);
+    if (scene.remotePresence.value.lineCount > 0) {
+      pass.setVertexBuffer(0, scene.remotePresence.value.lines);
+      pass.draw(6, scene.remotePresence.value.lineCount / 2);
     }
-    const selectionGuideVisible = this.kind === 'perspective' && scene.selectionGuideLineCount > 0;
+    const selectionGuideVisible =
+      this.kind === 'perspective' && scene.toolPreviews.value.selectionGuide.count > 0;
     if (selectionGuideVisible) {
       pass.setBindGroup(0, this.root.unwrap(this.overlayBindGroup));
-      pass.setVertexBuffer(0, scene.selectionGuideLines);
-      pass.draw(6, scene.selectionGuideLineCount / 2);
+      pass.setVertexBuffer(0, scene.toolPreviews.value.selectionGuide.buffer);
+      pass.draw(6, scene.toolPreviews.value.selectionGuide.count / 2);
     }
-    if (scene.overlayLineCount > 0) {
+    for (const lines of [scene.toolPreviews.value.lines, scene.diagnostics.value]) {
+      if (lines.count === 0) continue;
       pass.setBindGroup(0, this.root.unwrap(this.overlayBindGroup));
-      pass.setVertexBuffer(0, scene.overlayLines);
-      pass.draw(6, scene.overlayLineCount / 2);
+      pass.setVertexBuffer(0, lines.buffer);
+      pass.draw(6, lines.count / 2);
     }
     if (this.scaleOverlay && this.scaleOverlayCount > 0) {
       pass.setBindGroup(0, this.root.unwrap(this.overlayBindGroup));
@@ -580,13 +599,17 @@ export abstract class ViewportBase {
   }
 
   protected updateScaleOverlay(scene: SceneBuffers): void {
-    if (scene === this.scaleOverlayScene) return;
-    this.scaleOverlayScene = scene;
+    if (scene.toolPreviews === this.scaleOverlayScene) return;
+    this.scaleOverlayScene = scene.toolPreviews;
     this.scaleOverlay?.destroy();
     this.scaleOverlay = null;
     this.scaleOverlayCount = 0;
-    if (!scene.scaleBounds) return;
-    const vertices = scaleOverlayVertices(scene.scaleBounds, this.kind, this.theme);
+    if (!scene.toolPreviews.value.scaleBounds) return;
+    const vertices = scaleOverlayVertices(
+      scene.toolPreviews.value.scaleBounds,
+      this.kind,
+      this.theme,
+    );
     if (vertices.length === 0) return;
     this.scaleOverlay = uploadFloatBuffer(this.root.device, vertices, GPUBufferUsage.VERTEX);
     this.scaleOverlayCount = vertices.length / 6;

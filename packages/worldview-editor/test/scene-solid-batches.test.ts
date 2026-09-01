@@ -35,6 +35,9 @@ describe('SolidBatchBuilder', () => {
     expect(brushSolidSignature(laterPreview, [0, 0, 0])).toBe(
       brushSolidSignature(laterPreview, [0, 0, 0]),
     );
+    expect(brushSolidSignature(laterPreview, [0, 0, 0])).not.toBe(
+      brushSolidSignature(laterPreview, [16, 0, 0]),
+    );
   });
 
   it('discards reconstructed vertices for retained immutable sources', () => {
@@ -45,9 +48,11 @@ describe('SolidBatchBuilder', () => {
 
     const retained = new SolidBatchBuilder(before);
     const sink = retained.vertices('brick', bounds, [0, 0, 0], 'first:0');
+    expect(sink.retained).toBe(true);
     expect(sink.push(9, 9, 9, 9, 9, 9, 9, 9)).toBe(0);
     const after = retained.finish(device);
 
+    expect(after[0]).toBe(before[0]);
     expect(after[0]?.buffer).toBe(before[0]?.buffer);
     expect(after[0]?.count).toBe(1);
     expect(buffers).toHaveLength(1);

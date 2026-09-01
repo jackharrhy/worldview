@@ -69,6 +69,51 @@ for (const file of files) {
     violations.push(`${file}: ${lineCount} lines (maximum ${MAX_PRODUCTION_LINES})`);
   }
   if (
+    /^packages\/worldview-editor\/src\/core\/session-(?:organization|selection|transforms|geometry|entities|objects|clipboard|materials|commits)\.ts$/.test(
+      file,
+    ) &&
+    /\bclass\s+\w+\s+extends\s+/.test(source)
+  ) {
+    violations.push(
+      `${file}: EditorSession command domains compose through SessionKernel and may not form an inheritance chain`,
+    );
+  }
+  if (
+    file.startsWith('packages/worldview-editor/src/core/session-') &&
+    /\bthis\.constructor\b/.test(source)
+  ) {
+    violations.push(
+      `${file}: session replay must use the explicit replay target factory, not dynamic subclass reconstruction`,
+    );
+  }
+  if (
+    file.startsWith('packages/worldview-editor/src/core/session-') &&
+    file !== 'packages/worldview-editor/src/core/session-commits.ts' &&
+    /\bhistory\.record\s*\(/.test(source)
+  ) {
+    violations.push(
+      `${file}: document command domains must route history mutations through SessionCommitCommands`,
+    );
+  }
+  if (
+    file.startsWith('packages/worldview-editor/src/core/session-') &&
+    file !== 'packages/worldview-editor/src/core/session-commits.ts' &&
+    file !== 'packages/worldview-editor/src/core/session-kernel.ts' &&
+    /\bthis\.(?:kernel\.document|currentDocument)\s*=/.test(source)
+  ) {
+    violations.push(
+      `${file}: only SessionCommitCommands may replace the session document after construction`,
+    );
+  }
+  if (
+    file === 'packages/worldview-editor/src/core/session-commits.ts' &&
+    (source.match(/\bhistory\.record\s*\(/g)?.length ?? 0) !== 1
+  ) {
+    violations.push(
+      `${file}: all local document/view history must pass through the single commitMutation record point`,
+    );
+  }
+  if (
     file.endsWith('-presenter.ts') &&
     file !== 'apps/editor/src/editor-application.ts' &&
     /from ['"]\.\/editor-application\.js['"]/.test(source)
@@ -194,6 +239,56 @@ for (const file of files) {
       `${file}: editor shaders, layouts, and pipelines must use the TypeGPU renderer boundary`,
     );
   }
+  if (
+    file.startsWith('packages/worldview-editor/src/render/') &&
+    /\bdenseDocument\b|\breuse(?:World|Solid)Buffers\b/.test(source)
+  ) {
+    violations.push(
+      `${file}: retained scene invalidation must use named contribution keys, not document-size forks or broad reuse booleans`,
+    );
+  }
+  if (
+    file === 'packages/worldview-editor/src/render/source-renderer.ts' &&
+    /replaceRemotePresenceBuffer|releaseReplacedSceneBuffers/.test(source)
+  ) {
+    violations.push(
+      `${file}: remote previews and resource retirement must flow through the retained scene aggregate`,
+    );
+  }
+}
+
+const sceneTypes = await readFile('packages/worldview-editor/src/render/scene-types.ts', 'utf8');
+for (const contribution of [
+  'worldSolids',
+  'objectLines',
+  'localPreview',
+  'localSelection',
+  'toolPreviews',
+  'faceGrid',
+  'references',
+  'diagnostics',
+  'remotePresence',
+]) {
+  if (!sceneTypes.includes(`readonly ${contribution}: RetainedSceneContribution<`)) {
+    violations.push(
+      `packages/worldview-editor/src/render/scene-types.ts: missing retained ${contribution} contribution`,
+    );
+  }
+}
+
+const sourceRenderer = await readFile(
+  'packages/worldview-editor/src/render/source-renderer.ts',
+  'utf8',
+);
+if ((sourceRenderer.match(/\.createCommandEncoder\s*\(/g)?.length ?? 0) !== 1) {
+  violations.push(
+    'packages/worldview-editor/src/render/source-renderer.ts: one renderer frame must own exactly one command encoder',
+  );
+}
+if ((sourceRenderer.match(/\.queue\.submit\s*\(/g)?.length ?? 0) !== 1) {
+  violations.push(
+    'packages/worldview-editor/src/render/source-renderer.ts: all rendered viewports must share exactly one queue submission site',
+  );
 }
 
 const compositionRoot = 'apps/editor/src/main.tsx';

@@ -54,6 +54,7 @@ import { ProjectLocalStateService } from './project-local-state.js';
 import { AssetMountStateService } from './asset-mount-state.js';
 import type { WorldviewProjectWorkspace } from './project-workspace.js';
 import { TextureUvEditor } from './uv-editor.js';
+import { editedBrushIds } from './preview-object-ids.js';
 
 type EditorStateUi = Pick<EditorShellState, 'faceInspector' | 'statusMessage'>;
 
@@ -244,10 +245,10 @@ export class EditorState {
         this.uvPreviewFrame = null;
         const candidate = this.uvTextureCandidate;
         if (!candidate || signal.aborted) return;
-        this.renderer?.setDocument(
+        this.renderer?.setPreviewDocument(
           candidate.document,
           this.session.selection,
-          host().effectiveObjectViewState(candidate.document),
+          editedBrushIds(candidate),
         );
         host().updateFaceInspector(candidate.document, this.session.selection);
         host().publishCollaborationPreview(candidate.document);

@@ -1,8 +1,5 @@
 import {
   alignFaceTexture,
-  insertBrush,
-  insertBrushes,
-  replaceBrush,
   replaceBrushes,
   setBrushFaceMaterials,
   setBrushMaterial,
@@ -20,38 +17,18 @@ import {
 } from './document.js';
 import { type FaceAttributeClipboard } from './clipboard.js';
 import { deriveBrush } from './geometry.js';
-import { applyHistoryEntry, type BrushEdit } from './history.js';
-import {
-  applyCollaborationOperation,
-  type CollaborationApplyResult,
-  type CollaborationOperation,
-} from './collaboration.js';
-import {
-  createBrushSelection,
-  selectedBrushIds,
-  selectedFaceReferences,
-  selectedPointEntityIds,
-} from './selection.js';
-import type {
-  BrushId,
-  EditorObjectViewState,
-  EditorSelection,
-  FaceSelection,
-  MapBrush,
-  Vec3,
-} from './types.js';
+import { type BrushEdit } from './history.js';
+import { selectedBrushIds, selectedFaceReferences } from './selection.js';
+import type { BrushId, EditorSelection, FaceSelection, MapBrush, Vec3 } from './types.js';
 import { findBrush } from './types.js';
 import {
-  documentRevisionForApply,
   faceSelectionKey,
-  type BrushEditCandidate,
   type BrushBatchEditCandidate,
-  type BrushCreationCandidate,
-  type BrushBatchCreationCandidate,
-  type DocumentEditCandidate,
-  type EditorSessionChange,
+  type BrushEditCandidate,
 } from './session-common.js';
-import { EditorSessionObjects } from './session-objects.js';
+import { SessionKernel } from './session-kernel.js';
+
+type SessionMaterialKernel = Pick<SessionKernel, 'document' | 'selection'>;
 
 export type FaceTextureProjectionField =
   | 'offset-u'
@@ -96,17 +73,26 @@ function projectionWithField(
   };
 }
 
-export class EditorSession extends EditorSessionObjects {
-  /** Applies an already sequenced remote commit without adding it to this actor's undo stack. */
-  public applyRemoteCollaborationOperation(
-    operation: CollaborationOperation,
-  ): CollaborationApplyResult {
-    const result = applyCollaborationOperation(this.currentDocument, operation);
-    if (result.status !== 'applied') return result;
-    this.currentDocument = result.document;
-    this.discardRepeatableCommands();
-    this.notify('document', operation.label);
-    return result;
+export interface SessionMaterialPorts {
+  readonly commitCandidate: (candidate: BrushEditCandidate | BrushBatchEditCandidate) => void;
+}
+
+export class SessionMaterialCommands {
+  public constructor(
+    private readonly kernel: SessionMaterialKernel,
+    private readonly ports: SessionMaterialPorts,
+  ) {}
+
+  private get currentDocument() {
+    return this.kernel.document;
+  }
+
+  private get currentSelection() {
+    return this.kernel.selection;
+  }
+
+  private commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void {
+    this.ports.commitCandidate(candidate);
   }
 
   private createSelectedSurfaceCandidate(
@@ -641,269 +627,5 @@ export class EditorSession extends EditorSessionObjects {
       after: edit.after,
       document,
     };
-  }
-
-  public commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void {
-    if ('edits' in candidate) {
-      this.commitBatchCandidate(candidate);
-      return;
-    }
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
-      throw new Error('Cannot commit an edit candidate created from a stale document revision');
-    }
-    const current = findBrush(this.currentDocument, candidate.brushId);
-    if (!current || current.revision !== candidate.baseBrushRevision) {
-      throw new Error('Cannot commit an edit candidate created from a stale brush revision');
-    }
-    const derived = deriveBrush(candidate.after);
-    if (!derived.valid) {
-      throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
-    }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
-      this.commitDocumentCandidate({
-        label: candidate.label,
-        baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
-        after: candidate.document,
-        selectionBefore: this.currentSelection,
-        selectionAfter: this.currentSelection,
-        document: candidate.document,
-      });
-      return;
-    }
-    this.currentDocument = replaceBrush(this.currentDocument, candidate.after);
-    this.history.record({
-      kind: 'replace-brush',
-      label: candidate.label,
-      brushId: candidate.brushId,
-      before: candidate.before,
-      after: candidate.after,
-    });
-    this.notify('document', candidate.label);
-  }
-
-  protected commitBatchCandidate(candidate: BrushBatchEditCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
-      throw new Error('Cannot commit an edit candidate created from a stale document revision');
-    }
-    for (const edit of candidate.edits) {
-      const current = findBrush(this.currentDocument, edit.brushId);
-      if (!current || current.revision !== edit.baseBrushRevision) {
-        throw new Error('Cannot commit an edit candidate created from a stale brush revision');
-      }
-      const derived = deriveBrush(edit.after);
-      if (!derived.valid) {
-        throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
-      }
-    }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
-      this.commitDocumentCandidate({
-        label: candidate.label,
-        baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
-        after: candidate.document,
-        selectionBefore: this.currentSelection,
-        selectionAfter: this.currentSelection,
-        document: candidate.document,
-      });
-      return;
-    }
-    this.currentDocument = replaceBrushes(
-      this.currentDocument,
-      candidate.edits.map((edit) => edit.after),
-    );
-    this.history.record({
-      kind: 'replace-brushes',
-      label: candidate.label,
-      edits: candidate.edits,
-    });
-    this.notify('document', candidate.label);
-  }
-
-  public commitCreationCandidate(candidate: BrushCreationCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
-      throw new Error('Cannot commit a creation candidate from a stale document revision');
-    }
-    const derived = deriveBrush(candidate.brush);
-    if (!derived.valid) {
-      throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
-    }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
-      this.commitDocumentCandidate({
-        label: candidate.label,
-        baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
-        after: candidate.document,
-        selectionBefore: this.currentSelection,
-        selectionAfter: { brushId: candidate.brush.id },
-        document: candidate.document,
-      });
-      return;
-    }
-    this.currentDocument = insertBrush(
-      this.currentDocument,
-      candidate.entityId,
-      candidate.brush,
-      candidate.insertionIndex,
-    );
-    this.currentSelection = { brushId: candidate.brush.id };
-    this.history.record({
-      kind: 'create-brush',
-      label: candidate.label,
-      entityId: candidate.entityId,
-      insertionIndex: candidate.insertionIndex,
-      brush: candidate.brush,
-    });
-    this.notify('document', candidate.label);
-  }
-
-  public commitBatchCreationCandidate(candidate: BrushBatchCreationCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
-      throw new Error('Cannot commit a batch creation candidate from a stale document revision');
-    }
-    for (const insertion of candidate.insertions) {
-      const derived = deriveBrush(insertion.brush);
-      if (!derived.valid) {
-        throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
-      }
-    }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
-      this.commitDocumentCandidate({
-        label: candidate.label,
-        baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
-        after: candidate.document,
-        selectionBefore: candidate.selectionBefore,
-        selectionAfter: createBrushSelection(candidate.selectionAfter),
-        document: candidate.document,
-      });
-      return;
-    }
-    this.currentDocument = insertBrushes(this.currentDocument, candidate.insertions);
-    this.currentSelection = createBrushSelection(candidate.selectionAfter);
-    this.history.record({
-      kind: 'create-brushes',
-      label: candidate.label,
-      insertions: candidate.insertions,
-      selectionBefore: candidate.selectionBefore,
-      selectionAfter: candidate.selectionAfter,
-    });
-    this.notify('document', candidate.label);
-  }
-
-  public commitDocumentCandidate(candidate: DocumentEditCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
-      throw new Error('Cannot commit a document candidate from a stale document revision');
-    }
-    const synchronizedAfter = this.synchronizeEditingGroup(candidate.after);
-    this.currentDocument = documentRevisionForApply(this.currentDocument, synchronizedAfter);
-    this.currentSelection = candidate.selectionAfter;
-    this.history.record({
-      kind: 'replace-document',
-      label: candidate.label,
-      before: candidate.before,
-      after: synchronizedAfter,
-      selectionBefore: candidate.selectionBefore,
-      selectionAfter: candidate.selectionAfter,
-    });
-    this.recordRepeatableCommand(candidate.repeatable);
-    this.notify('document', candidate.label);
-  }
-
-  protected snapshotObjectViewState(): EditorObjectViewState {
-    return {
-      hiddenBrushIds: [...this.hiddenBrushIds].toSorted(),
-      hiddenEntityIds: [...this.hiddenEntityIds].toSorted(),
-      lockedBrushIds: [...this.lockedBrushIds].toSorted(),
-      lockedEntityIds: [...this.lockedEntityIds].toSorted(),
-    };
-  }
-
-  protected applyObjectViewState(state: EditorObjectViewState): void {
-    this.hiddenBrushIds = new Set(state.hiddenBrushIds);
-    this.hiddenEntityIds = new Set(state.hiddenEntityIds);
-    this.lockedBrushIds = new Set(state.lockedBrushIds);
-    this.lockedEntityIds = new Set(state.lockedEntityIds);
-  }
-
-  protected commitObjectViewState(
-    label: string,
-    state: EditorObjectViewState,
-    selectionAfter: EditorSelection | null,
-  ): boolean {
-    const before = this.snapshotObjectViewState();
-    this.applyObjectViewState(state);
-    const after = this.snapshotObjectViewState();
-    const unchanged =
-      before.hiddenBrushIds.join('\u0000') === after.hiddenBrushIds.join('\u0000') &&
-      before.hiddenEntityIds.join('\u0000') === after.hiddenEntityIds.join('\u0000') &&
-      before.lockedBrushIds.join('\u0000') === after.lockedBrushIds.join('\u0000') &&
-      before.lockedEntityIds.join('\u0000') === after.lockedEntityIds.join('\u0000');
-    if (unchanged) return false;
-    this.history.record({
-      kind: 'view-state',
-      label,
-      before,
-      after,
-      selectionBefore: this.currentSelection,
-      selectionAfter,
-    });
-    this.currentSelection = selectionAfter;
-    this.notify('view', label);
-    return true;
-  }
-
-  protected assertSelectionAvailable(selection: EditorSelection): void {
-    const hiddenOrLockedBrush = selectedBrushIds(selection).find((brushId) =>
-      this.isBrushUnavailable(brushId),
-    );
-    if (hiddenOrLockedBrush) {
-      throw new Error(`Cannot select hidden or locked brush ${hiddenOrLockedBrush}`);
-    }
-    const hiddenOrLockedEntity = selectedPointEntityIds(selection).find((entityId) =>
-      this.isEntityUnavailable(entityId),
-    );
-    if (hiddenOrLockedEntity) {
-      throw new Error(`Cannot select hidden or locked point entity ${hiddenOrLockedEntity}`);
-    }
-  }
-
-  protected applyHistory(direction: 'undo' | 'redo'): boolean {
-    const entry = direction === 'undo' ? this.history.takeUndo() : this.history.takeRedo();
-    if (!entry) return false;
-
-    this.discardRepeatableCommands();
-    const next = applyHistoryEntry(
-      {
-        document: this.currentDocument,
-        selection: this.currentSelection,
-        objectViewState: this.snapshotObjectViewState(),
-      },
-      entry,
-      direction,
-    );
-    this.currentDocument = next.document;
-    this.currentSelection = next.selection;
-    this.applyObjectViewState(next.objectViewState);
-
-    if (direction === 'undo') this.history.completeUndo(entry);
-    else this.history.completeRedo(entry);
-    const changeKind = entry.kind === 'view-state' ? 'view' : 'history';
-    const action = direction === 'undo' ? 'Undo' : 'Redo';
-    this.notify(changeKind, `${action} ${entry.label}`);
-    return true;
-  }
-
-  public undo(): boolean {
-    return this.applyHistory('undo');
-  }
-
-  public redo(): boolean {
-    return this.applyHistory('redo');
-  }
-
-  protected notify(kind: EditorSessionChange['kind'], label: string): void {
-    const change = { kind, label, documentRevision: this.currentDocument.revision } as const;
-    for (const listener of this.listeners) listener(change);
   }
 }

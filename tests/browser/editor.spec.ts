@@ -1900,7 +1900,7 @@ test.describe('3D source authoring', () => {
     expect(cameraDistance(panEnd.position, panStart.position)).toBeGreaterThan(1);
     await expect(page.locator('#perspective-mode')).toContainText('PAN');
 
-    await page.locator('#grid-size').selectOption('32');
+    await chooseSelectOption(page, 'Grid size', '32');
     await page.locator('.source-canvas').nth(0).focus();
     const flyStart = await perspectiveCamera(page);
     await page.keyboard.down('w');
@@ -1917,6 +1917,7 @@ test.describe('3D source authoring', () => {
       'true',
     );
 
+    await page.mouse.move(lookPoint.x, lookPoint.y);
     await page.mouse.down({ button: 'right' });
     const speedStart = await perspectiveCamera(page);
     await page.mouse.wheel(0, -180);
@@ -2636,11 +2637,11 @@ test.describe('3D source authoring', () => {
     await openEditor(page);
     await page.locator('.source-canvas').nth(1).focus();
     await page.keyboard.press('Digit6');
-    await expect(page.locator('#grid-size')).toHaveValue('32');
+    await expect(page.locator('#grid-size')).toContainText('32');
     await page.keyboard.press('BracketRight');
-    await expect(page.locator('#grid-size')).toHaveValue('64');
+    await expect(page.locator('#grid-size')).toContainText('64');
     await page.keyboard.press('BracketLeft');
-    await expect(page.locator('#grid-size')).toHaveValue('32');
+    await expect(page.locator('#grid-size')).toContainText('32');
 
     const start = await topWorldPoint(page, 269, 275);
     const end = await topWorldPoint(page, 371, 389);
@@ -2661,7 +2662,7 @@ test.describe('3D source authoring', () => {
     await page.getByRole('button', { name: 'Apply source', exact: true }).click();
     await page.locator('.source-canvas').nth(1).focus();
     await page.keyboard.press('Digit4');
-    await expect(page.locator('#grid-size')).toHaveValue('8');
+    await expect(page.locator('#grid-size')).toContainText('8');
     const brushPoint = await topWorldPoint(page, 15, 17);
     await page.mouse.click(brushPoint.x, brushPoint.y);
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
@@ -2775,7 +2776,7 @@ test.describe('3D source authoring', () => {
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(page.locator('#brush-count')).toHaveText('2');
 
-    await page.locator('#grid-size').selectOption('8');
+    await chooseSelectOption(page, 'Grid size', '8');
     await page.mouse.click(center.x, center.y);
     await page.getByRole('button', { name: 'Hollow', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('7');
@@ -2995,8 +2996,9 @@ test.describe('3D source authoring', () => {
     await page.locator('#sweep-segments').fill('3');
     await page.locator('#sweep-iterations').fill('2');
     await page.locator('#sweep-rotate-z').fill('30');
-    await page.locator('#sweep-path').selectOption('arc');
-    await page.locator('#sweep-snap').check();
+    await chooseSelectOption(page, 'Path', 'Arc');
+    await page.locator('#sweep-snap').focus();
+    await page.keyboard.press('Space');
 
     await expect(page.locator('#sweep-generated-count')).toHaveText('6 brushes');
     await expect(page.locator('#brush-count')).toHaveText('9');
@@ -4817,7 +4819,7 @@ test.describe('3D source authoring', () => {
     await openEditor(page);
     const brushPoint = await perspectivePoint(page, 0.5, 0.58);
     await page.mouse.click(brushPoint.x, brushPoint.y);
-    await page.locator('#grid-size').selectOption('64');
+    await chooseSelectOption(page, 'Grid size', '64');
     await page.getByRole('button', { name: 'Vertex' }).click();
     const start = await frontWorldPoint(page, 128, -32);
     const end = await frontWorldPoint(page, 148, -16);

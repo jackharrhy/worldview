@@ -42,9 +42,66 @@ import {
   type BrushBatchClipCandidate,
   type BrushSequenceCandidate,
   type BrushClipMode,
+  type BrushCreationCandidate,
+  type DocumentEditCandidate,
+  type SessionCommitMutation,
 } from './session-common.js';
-import { EditorSessionTransforms } from './session-transforms.js';
-export abstract class EditorSessionGeometry extends EditorSessionTransforms {
+import { SessionKernel } from './session-kernel.js';
+
+type SessionGeometryKernel = Pick<SessionKernel, 'document' | 'selection'>;
+
+export interface SessionGeometryPorts {
+  readonly commitCandidate: (candidate: BrushEditCandidate | BrushBatchEditCandidate) => void;
+  readonly commitDocumentCandidate: (candidate: DocumentEditCandidate) => void;
+  readonly commitCreationCandidate: (candidate: BrushCreationCandidate) => void;
+  readonly commitBatchCreationCandidate: (candidate: BrushBatchCreationCandidate) => void;
+  readonly createBrushCandidate: (brush: MapBrush, entityId?: EntityId) => BrushCreationCandidate;
+  readonly commitMutation: (mutation: SessionCommitMutation) => void;
+  readonly hasLinkedEditingGroup: (document?: import('./types.js').MapDocument) => boolean;
+  readonly isBrushUnavailable: (brushId: BrushId) => boolean;
+}
+
+export class SessionGeometryCommands {
+  public constructor(
+    private readonly kernel: SessionGeometryKernel,
+    private readonly ports: SessionGeometryPorts,
+  ) {}
+
+  private get currentDocument() {
+    return this.kernel.document;
+  }
+
+  private get currentSelection() {
+    return this.kernel.selection;
+  }
+
+  private commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void {
+    this.ports.commitCandidate(candidate);
+  }
+
+  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
+    this.ports.commitDocumentCandidate(candidate);
+  }
+
+  private commitCreationCandidate(candidate: BrushCreationCandidate): void {
+    this.ports.commitCreationCandidate(candidate);
+  }
+
+  private commitBatchCreationCandidate(candidate: BrushBatchCreationCandidate): void {
+    this.ports.commitBatchCreationCandidate(candidate);
+  }
+
+  private createBrushCandidate(brush: MapBrush, entityId?: EntityId): BrushCreationCandidate {
+    return this.ports.createBrushCandidate(brush, entityId);
+  }
+
+  private hasLinkedEditingGroup(document = this.currentDocument): boolean {
+    return this.ports.hasLinkedEditingGroup(document);
+  }
+
+  private isBrushUnavailable(brushId: BrushId): boolean {
+    return this.ports.isBrushUnavailable(brushId);
+  }
   public extrudeSelectedFace(distance: number): boolean {
     const faces = selectedFaceReferences(this.currentSelection);
     if (faces.length === 0 || !this.currentSelection?.faceId) return false;
@@ -451,7 +508,7 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
     };
   }
 
-  protected createClipEdit(
+  private createClipEdit(
     brushId: BrushId,
     planePoints: readonly [Vec3, Vec3, Vec3],
     mode: BrushClipMode,
@@ -517,26 +574,28 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
       });
       return;
     }
-    this.currentDocument = replaceBrushSequence(
+    const document = replaceBrushSequence(
       this.currentDocument,
       candidate.entityId,
       candidate.insertionIndex,
       [candidate.before.id],
       candidate.after,
     );
-    this.currentSelection = candidate.after[0] ? { brushId: candidate.after[0].id } : null;
-    this.history.record({
-      kind: 'clip-brush',
-      label: candidate.label,
-      entityId: candidate.entityId,
-      insertionIndex: candidate.insertionIndex,
-      before: candidate.before,
-      after: candidate.after,
+    this.ports.commitMutation({
+      document,
+      selection: candidate.after[0] ? { brushId: candidate.after[0].id } : null,
+      historyEntry: {
+        kind: 'clip-brush',
+        label: candidate.label,
+        entityId: candidate.entityId,
+        insertionIndex: candidate.insertionIndex,
+        before: candidate.before,
+        after: candidate.after,
+      },
     });
-    this.notify('document', candidate.label);
   }
 
-  protected commitBatchClipCandidate(candidate: BrushBatchClipCandidate): void {
+  private commitBatchClipCandidate(candidate: BrushBatchClipCandidate): void {
     if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
       throw new Error('Cannot commit a clip candidate created from a stale document revision');
     }
@@ -565,7 +624,7 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
       });
       return;
     }
-    this.currentDocument = replaceBrushSequences(
+    const document = replaceBrushSequences(
       this.currentDocument,
       candidate.edits.map((edit) => ({
         entityId: edit.entityId,
@@ -574,18 +633,20 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
         replacements: edit.after,
       })),
     );
-    this.currentSelection = createBrushSelection(candidate.selectionAfter);
-    this.history.record({
-      kind: 'clip-brushes',
-      label: candidate.label,
-      edits: candidate.edits,
-      selectionBefore: candidate.selectionBefore,
-      selectionAfter: candidate.selectionAfter,
+    this.ports.commitMutation({
+      document,
+      selection: createBrushSelection(candidate.selectionAfter),
+      historyEntry: {
+        kind: 'clip-brushes',
+        label: candidate.label,
+        edits: candidate.edits,
+        selectionBefore: candidate.selectionBefore,
+        selectionAfter: candidate.selectionAfter,
+      },
     });
-    this.notify('document', candidate.label);
   }
 
-  protected createSequenceCandidate(
+  private createSequenceCandidate(
     label: string,
     replacements: ReadonlyMap<BrushId, readonly MapBrush[]>,
     selectionAfter: readonly BrushId[],
@@ -662,7 +723,7 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
       });
       return;
     }
-    this.currentDocument = replaceBrushSequences(
+    const document = replaceBrushSequences(
       this.currentDocument,
       candidate.edits.map((edit) => ({
         entityId: edit.entityId,
@@ -671,15 +732,17 @@ export abstract class EditorSessionGeometry extends EditorSessionTransforms {
         replacements: edit.after,
       })),
     );
-    this.currentSelection = createBrushSelection(candidate.selectionAfter);
-    this.history.record({
-      kind: 'replace-brush-sequences',
-      label: candidate.label,
-      edits: candidate.edits,
-      selectionBefore: candidate.selectionBefore,
-      selectionAfter: candidate.selectionAfter,
+    this.ports.commitMutation({
+      document,
+      selection: createBrushSelection(candidate.selectionAfter),
+      historyEntry: {
+        kind: 'replace-brush-sequences',
+        label: candidate.label,
+        edits: candidate.edits,
+        selectionBefore: candidate.selectionBefore,
+        selectionAfter: candidate.selectionAfter,
+      },
     });
-    this.notify('document', candidate.label);
   }
 
   public csgConvexMergeSelected(ids: IdFactory, currentMaterial?: string): boolean {

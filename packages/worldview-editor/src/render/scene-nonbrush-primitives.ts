@@ -25,6 +25,7 @@ function appendBrushDefinitions(target: NonBrushPrimitiveSceneTarget): void {
     const signature = `${brushDef.id}:${brushDef.revision}:brush-def`;
     for (const face of derived.faces) {
       const solid = solidBatches?.vertices(face.material, derived.bounds, offset, signature);
+      if (solid?.retained) continue;
       for (let index = 1; index < face.vertices.length - 1; index += 1) {
         for (const vertexIndex of [0, index, index + 1]) {
           const point = face.vertices[vertexIndex]!;
@@ -66,6 +67,7 @@ function appendPatches(target: NonBrushPrimitiveSceneTarget): void {
       offset,
       `${patch.id}:${patch.revision}:patch`,
     );
+    if (solid?.retained) continue;
     for (const vertex of derived.triangles) {
       solid?.push(
         vertex.position[0] + offset[0],

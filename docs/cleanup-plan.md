@@ -19,12 +19,14 @@ diaries here.
 
 ## Completed foundations
 
-| ID  | Result                                                                                                                                                                                                                                                                                                                                                    |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C0  | One abort-owned editor lifetime disposes renderer, WebMCP, recovery, collaboration, listeners, and interrupted startup safely.                                                                                                                                                                                                                            |
-| C1  | React owns visible editor DOM through typed snapshots and commands. Runtime refs are limited to canvases, overlays, focus, measurement, resize, and native file boundaries. React Aria Components and the semantic Phosphor registry are enforced.                                                                                                        |
-| C2  | Presenters receive readonly-by-default state projections with explicit writable fields and command/query ports. Input adapters and the React route no longer reach through `EditorApplication`; document replacement, tool activation, application launch, and collaboration sessions have singular owners; collaboration uses a discriminated lifecycle. |
-| C6  | Zod 4 schemas own project, document, collaboration, ticket, hosted wire, compiler, persistence, walkability, and WebMCP ingress. `@worldview/protocol` is the shared browser/service wire contract.                                                                                                                                                       |
+| ID  | Result                                                                                                                                                                                                                                                                                                                                                                                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C0  | One abort-owned editor lifetime disposes renderer, WebMCP, recovery, collaboration, listeners, and interrupted startup safely.                                                                                                                                                                                                                                                        |
+| C1  | React owns visible editor DOM through typed snapshots and commands. Runtime refs are limited to canvases, overlays, focus, measurement, resize, and native file boundaries. React Aria Components and the semantic Phosphor registry are enforced.                                                                                                                                    |
+| C2  | Presenters receive readonly-by-default state projections with explicit writable fields and command/query ports. Input adapters and the React route no longer reach through `EditorApplication`; document replacement, tool activation, application launch, and collaboration sessions have singular owners; collaboration uses a discriminated lifecycle.                             |
+| C3  | `EditorSession` is a stable façade over a single `SessionKernel` and explicitly wired organization, selection, transform, topology, entity, object/clipboard, material, and commit domains. Direct and replayed commands use the same command surface; one coordinator owns document commits, history, notifications, and remote application.                                         |
+| C4  | Source rendering owns named retained world-solid, object-line, local-preview, local-selection, tool, face-grid, reference, diagnostic, and remote-presence contributions with structural dependency keys and explicit GPU disposal. Canonical geometry stays resident through camera, selection, and transient-preview changes; all viewport passes share one encoder and submission. |
+| C6  | Zod 4 schemas own project, document, collaboration, ticket, hosted wire, compiler, persistence, walkability, and WebMCP ingress. `@worldview/protocol` is the shared browser/service wire contract.                                                                                                                                                                                   |
 
 These are invariants, not future work. Their focused tests and architecture checks must remain green.
 
@@ -32,51 +34,12 @@ These are invariants, not future work. Their focused tests and architecture chec
 
 | ID  | Priority | Status | Workstream                                            | Depends on                    |
 | --- | -------- | ------ | ----------------------------------------------------- | ----------------------------- |
-| C3  | P1       | ready  | `EditorSession` composition                           | C2                            |
-| C4  | P1       | ready  | Retained scene contributions                          | C2                            |
 | C7  | P1       | ready  | IndexedDB infrastructure and bounded hosted reconnect | C6                            |
 | C5  | P2       | ready  | Route isolation and optional loading                  | —                             |
 | C8  | P2       | ready  | Test-suite decomposition                              | Follow changed domains        |
 | C9  | P2       | ready  | Viewer renderer decomposition                         | C5 decision                   |
 | C10 | P2       | ready  | Hosted service handler boundaries                     | C6                            |
 | C11 | P2       | ready  | Broaden architecture enforcement                      | Established C2–C10 boundaries |
-
-## C3 — `EditorSession` composition
-
-**Problem:** `EditorSession` is a large inherited implementation spread across state, selection,
-transforms, geometry, entities, objects, and history. Replay reconstructs dynamic subclass state.
-
-**Direction:**
-
-- Define a small `SessionKernel` for document, selection, history, and commit mechanics.
-- Compose topology, transforms, entities/materials, organization, clipboard, and object commands from
-  explicit kernel capabilities.
-- Use the same explicit command/state model for direct execution and history replay.
-- Keep one commit point, undo/redo stack, source-identity policy, and collaboration-operation emitter.
-
-**Done when:** Behavior no longer depends on inheritance order or `this.constructor`; domain modules
-declare their dependencies; direct and replayed commands produce identical document, selection,
-history, serialization, and collaboration results.
-
-## C4 — Retained scene contributions
-
-**Problem:** Source scene assembly still uses broad positional inputs and reuse booleans. This makes
-invalidation hard to reason about and leaves document-size special paths in performance-sensitive
-code.
-
-**Direction:**
-
-- Assemble immutable scene input from named contributions: world solids, object lines, local
-  selection, tool/face previews, grids/references, diagnostics, and remote presence/previews.
-- Give each contribution a dependency key, retained buffers, and explicit disposal.
-- Preserve one command encoder/submission per frame and the on-demand scheduler.
-- Measure camera-only, selection-only, local drag, remote preview, and document changes before and
-  after the cutover.
-
-**Done when:** Camera changes rebuild no document geometry; local and remote previews touch only
-their contribution; selection does not reconstruct world lines; the 8,000-brush stress fixture has
-no count-based behavior cliff; all four viewports retain selection, active-face, grid, reference,
-and multiplayer visuals.
 
 ## C7 — IndexedDB and hosted reconnect
 

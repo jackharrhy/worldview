@@ -45,8 +45,36 @@ import {
   type BrushBatchEditCandidate,
   type DocumentEditCandidate,
 } from './session-common.js';
-import { EditorSessionSelection } from './session-selection.js';
-export abstract class EditorSessionTransforms extends EditorSessionSelection {
+import { SessionKernel } from './session-kernel.js';
+
+type SessionTransformKernel = Pick<SessionKernel, 'document' | 'selection'>;
+
+export interface SessionTransformPorts {
+  readonly commitCandidate: (candidate: BrushEditCandidate | BrushBatchEditCandidate) => void;
+  readonly commitDocumentCandidate: (candidate: DocumentEditCandidate) => void;
+}
+
+export class SessionTransformCommands {
+  public constructor(
+    private readonly kernel: SessionTransformKernel,
+    private readonly ports: SessionTransformPorts,
+  ) {}
+
+  private get currentDocument() {
+    return this.kernel.document;
+  }
+
+  private get currentSelection() {
+    return this.kernel.selection;
+  }
+
+  private commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void {
+    this.ports.commitCandidate(candidate);
+  }
+
+  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
+    this.ports.commitDocumentCandidate(candidate);
+  }
   public snapSelectionToGrid(gridSize: number, ids: IdFactory, textureLock = true): boolean {
     if (!Number.isFinite(gridSize) || gridSize <= 0) throw new Error('Grid size must be positive');
     if (!this.currentSelection) return false;
@@ -568,7 +596,7 @@ export abstract class EditorSessionTransforms extends EditorSessionSelection {
     );
   }
 
-  protected createBrushSetVertexTransformCandidate(
+  private createBrushSetVertexTransformCandidate(
     brushIds: readonly BrushId[],
     vertices: readonly Vec3[],
     label: string,
@@ -579,7 +607,7 @@ export abstract class EditorSessionTransforms extends EditorSessionSelection {
     return this.createBrushSetTransformCandidate(targets, label, label, transform);
   }
 
-  protected createBrushSetTransformCandidate(
+  private createBrushSetTransformCandidate(
     brushIds: readonly BrushId[],
     singleLabel: string,
     batchLabel: string,
@@ -626,7 +654,7 @@ export abstract class EditorSessionTransforms extends EditorSessionSelection {
     };
   }
 
-  protected createBrushTransformCandidate(
+  private createBrushTransformCandidate(
     brushId: BrushId,
     label: string,
     transform: (brush: MapBrush) => MapBrush,
@@ -821,7 +849,7 @@ export abstract class EditorSessionTransforms extends EditorSessionSelection {
     );
   }
 
-  protected brushIdsContainingVertices(
+  private brushIdsContainingVertices(
     brushIds: readonly BrushId[],
     vertices: readonly Vec3[],
   ): readonly BrushId[] {

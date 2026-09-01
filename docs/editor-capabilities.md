@@ -116,7 +116,7 @@ Status terms:
 | --------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | WebMCP                | Delivered | The browser exposes semantic inspection, selection, creation, transform, material, entity, source, history, camera, and project-map operations against the same editor transactions. |
 | Headless verification | Delivered | `.agents/skills/verify-worldview-editor` exercises real WebMCP authoring, Playwright, visible state, map loading, undo, and headless WebGPU evidence.                                |
-| Performance gate      | Delivered | The opt-in 8,000-brush fixture measures load, selection, translate, material, undo, and frame cadence on capable hardware.                                                           |
+| Performance gate      | Delivered | The opt-in 8,000-brush fixture measures load, selection, translate, material, undo, frame cadence, and named scene-contribution invalidation on capable hardware.                    |
 | Compatibility corpora | Delivered | Ignored local Quake, LibreQuake, GoldSrc SDK, and PrimeXT corpora provide parsing, round-trip, resource, edit/undo, and renderer evidence without committing game data.              |
 
 ## Intentional limits

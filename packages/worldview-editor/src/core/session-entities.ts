@@ -6,11 +6,45 @@ import {
 import { editorLayerForSelection } from './layers.js';
 import { formatEntityOrigin, pointEntityDefinition } from './point-entities.js';
 import { createObjectSelection, selectedBrushIds, selectedPointEntityIds } from './selection.js';
-import type { EntityId, IdFactory, MapEntity, Vec3 } from './types.js';
-import { EditorSessionGeometry } from './session-geometry.js';
+import type {
+  EditorSelection,
+  EntityId,
+  IdFactory,
+  MapDocument,
+  MapEntity,
+  Vec3,
+} from './types.js';
+import type { DocumentEditCandidate } from './session-common.js';
+import { SessionKernel } from './session-kernel.js';
+
+type SessionEntityKernel = Pick<SessionKernel, 'document' | 'layerId' | 'selection'>;
+
+export interface SessionEntityPorts {
+  readonly commitDocumentCandidate: (candidate: DocumentEditCandidate) => void;
+}
 
 /** Entity creation and brush/entity ownership operations. */
-export abstract class EditorSessionEntities extends EditorSessionGeometry {
+export class SessionEntityCommands {
+  public constructor(
+    private readonly kernel: SessionEntityKernel,
+    private readonly ports: SessionEntityPorts,
+  ) {}
+
+  private get currentDocument(): MapDocument {
+    return this.kernel.document;
+  }
+
+  private get currentSelection(): EditorSelection | null {
+    return this.kernel.selection;
+  }
+
+  private get currentLayerId(): string | null {
+    return this.kernel.layerId;
+  }
+
+  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
+    this.ports.commitDocumentCandidate(candidate);
+  }
   public createPointEntity(
     classname: string,
     origin: Vec3,

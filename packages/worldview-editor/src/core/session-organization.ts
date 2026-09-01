@@ -2,7 +2,6 @@ import { type TransformAxis } from './document.js';
 import { deriveEditorGroups } from './groups.js';
 import { linkedGroupSiblings, synchronizeLinkedGroupContents } from './linked-groups.js';
 import { deriveEditorIssues, type EditorIssue } from './issues.js';
-import { EditorHistory } from './history.js';
 import {
   createEditorLayer,
   deriveEditorLayers,
@@ -18,7 +17,6 @@ import {
   type EditorLayerId,
 } from './layers.js';
 import {
-  DEFAULT_EDITOR_VIEW_FILTER_STATE,
   deriveEditorViewFilterObjectIds,
   EDITOR_SPECIAL_BRUSH_FILTER_INFO,
   entityClassFiltersInDocument,
@@ -33,7 +31,6 @@ import type {
   EditorSelection,
   EntityId,
   IdFactory,
-  MapBrush,
   MapDocument,
   MapEntity,
   Vec3,
@@ -41,25 +38,45 @@ import type {
 import { createSequentialIdFactory } from './types.js';
 import {
   repeatableCommandLabel,
-  type BrushEditCandidate,
-  type BrushBatchEditCandidate,
-  type BrushCreationCandidate,
-  type BrushBatchCreationCandidate,
   type DocumentEditCandidate,
-  type EditorSessionChange,
   type EditorRepeatableCommand,
   type ChangeListener,
 } from './session-common.js';
-export abstract class EditorSessionState {
-  public abstract select(selection: EditorSelection | null): void;
-  public abstract duplicateSelected(
+import { SessionKernel } from './session-kernel.js';
+
+type SessionOrganizationKernel = Pick<
+  SessionKernel,
+  | 'discardRepeatableCommands'
+  | 'document'
+  | 'editingGroupId'
+  | 'hiddenBrushIds'
+  | 'hiddenEntityIds'
+  | 'history'
+  | 'layerId'
+  | 'linkedSyncIds'
+  | 'lockedBrushIds'
+  | 'lockedEntityIds'
+  | 'notify'
+  | 'repeatSequence'
+  | 'repeatableCommands'
+  | 'replaceDocument'
+  | 'selection'
+  | 'snapshotObjectViewState'
+  | 'subscribe'
+  | 'viewFilters'
+>;
+
+export interface SessionReplayTarget {
+  readonly document: MapDocument;
+  readonly selection: EditorSelection | null;
+  duplicateSelected(
     ids: IdFactory,
     delta: Vec3,
     textureLock: boolean,
     targetGroupId: string | null,
   ): boolean;
-  public abstract translateSelected(delta: Vec3, textureLock?: boolean): boolean;
-  public abstract createObjectRotationCandidate(
+  translateSelected(delta: Vec3, textureLock?: boolean): boolean;
+  createObjectRotationCandidate(
     selection: EditorSelection,
     pivot: Vec3,
     axis: TransformAxis,
@@ -67,21 +84,21 @@ export abstract class EditorSessionState {
     textureLock: boolean,
     updateEntityAngles: boolean,
   ): DocumentEditCandidate | null;
-  public abstract createObjectFlipCandidate(
+  createObjectFlipCandidate(
     selection: EditorSelection,
     pivot: Vec3,
     axis: TransformAxis,
     textureLock: boolean,
     updateEntityAngles: boolean,
   ): DocumentEditCandidate | null;
-  public abstract createObjectScaleCandidate(
+  createObjectScaleCandidate(
     selection: EditorSelection,
     pivot: Vec3,
     factors: Vec3,
     textureLock: boolean,
     updateEntityAngles: boolean,
   ): DocumentEditCandidate | null;
-  public abstract createObjectShearCandidate(
+  createObjectShearCandidate(
     selection: EditorSelection,
     pivot: Vec3,
     sourceAxis: TransformAxis,
@@ -90,55 +107,108 @@ export abstract class EditorSessionState {
     textureLock: boolean,
     updateEntityAngles: boolean,
   ): DocumentEditCandidate | null;
-  public abstract commitDocumentCandidate(candidate: DocumentEditCandidate): void;
-  public abstract commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void;
-  public abstract createBrushCandidate(
-    brush: MapBrush,
-    entityId?: EntityId,
-  ): BrushCreationCandidate;
-  public abstract commitCreationCandidate(candidate: BrushCreationCandidate): void;
-  public abstract commitBatchCreationCandidate(candidate: BrushBatchCreationCandidate): void;
-  public abstract createMaterialCandidate(
-    material: string,
-    selection?: EditorSelection | null,
-  ): BrushEditCandidate | BrushBatchEditCandidate | null;
-  protected abstract snapshotObjectViewState(): EditorObjectViewState;
-  protected abstract applyObjectViewState(state: EditorObjectViewState): void;
-  protected abstract commitObjectViewState(
-    label: string,
-    state: EditorObjectViewState,
-    selectionAfter: EditorSelection | null,
-  ): boolean;
-  protected abstract assertSelectionAvailable(selection: EditorSelection): void;
-  protected abstract notify(kind: EditorSessionChange['kind'], label: string): void;
+  commitDocumentCandidate(candidate: DocumentEditCandidate): void;
+}
 
-  protected readonly listeners = new Set<ChangeListener>();
-  protected readonly history = new EditorHistory();
-  protected currentDocument: MapDocument;
-  protected currentSelection: EditorSelection | null = null;
-  protected hiddenBrushIds = new Set<BrushId>();
-  protected hiddenEntityIds = new Set<EntityId>();
-  protected lockedBrushIds = new Set<BrushId>();
-  protected lockedEntityIds = new Set<EntityId>();
-  protected editingGroupId: string | null = null;
-  protected currentLayerId: EditorLayerId = null;
-  protected readonly linkedSyncIds = createSequentialIdFactory('worldview-linked-sync');
-  protected readonly issueFixIds = createSequentialIdFactory('worldview-issue-fix');
-  protected currentViewFilters: EditorViewFilterState = DEFAULT_EDITOR_VIEW_FILTER_STATE;
-  protected repeatableCommands: EditorRepeatableCommand[] = [];
-  protected repeatSequence = 0;
-  protected suppressRepeatRecording = false;
+export interface SessionReplaySeed {
+  readonly selection: EditorSelection;
+  readonly activeLayerId: EditorLayerId;
+  readonly editingGroupId: string | null;
+}
 
-  public constructor(document: MapDocument) {
-    this.currentDocument = document;
+export interface SessionOrganizationPorts {
+  readonly select: (selection: EditorSelection | null) => void;
+  readonly commitDocumentCandidate: (candidate: DocumentEditCandidate) => void;
+  readonly createReplayTarget: (
+    document: MapDocument,
+    seed: SessionReplaySeed,
+  ) => SessionReplayTarget;
+}
+
+export class SessionOrganizationCommands {
+  public constructor(
+    private readonly kernel: SessionOrganizationKernel,
+    private readonly ports: SessionOrganizationPorts,
+  ) {}
+
+  private get currentDocument(): MapDocument {
+    return this.kernel.document;
   }
 
-  public get document(): MapDocument {
-    return this.currentDocument;
+  private get currentSelection(): EditorSelection | null {
+    return this.kernel.selection;
   }
 
-  public get selection(): EditorSelection | null {
-    return this.currentSelection;
+  private set currentSelection(selection: EditorSelection | null) {
+    this.kernel.selection = selection;
+  }
+
+  private get hiddenBrushIds(): Set<BrushId> {
+    return this.kernel.hiddenBrushIds;
+  }
+
+  private get hiddenEntityIds(): Set<EntityId> {
+    return this.kernel.hiddenEntityIds;
+  }
+
+  private get lockedBrushIds(): Set<BrushId> {
+    return this.kernel.lockedBrushIds;
+  }
+
+  private get lockedEntityIds(): Set<EntityId> {
+    return this.kernel.lockedEntityIds;
+  }
+
+  private get editingGroupId(): string | null {
+    return this.kernel.editingGroupId;
+  }
+
+  private set editingGroupId(groupId: string | null) {
+    this.kernel.editingGroupId = groupId;
+  }
+
+  private get currentLayerId(): EditorLayerId {
+    return this.kernel.layerId;
+  }
+
+  private set currentLayerId(layerId: EditorLayerId) {
+    this.kernel.layerId = layerId;
+  }
+
+  private get currentViewFilters(): EditorViewFilterState {
+    return this.kernel.viewFilters;
+  }
+
+  private set currentViewFilters(filters: EditorViewFilterState) {
+    this.kernel.viewFilters = filters;
+  }
+
+  private get repeatableCommands(): EditorRepeatableCommand[] {
+    return this.kernel.repeatableCommands;
+  }
+
+  private set repeatableCommands(commands: EditorRepeatableCommand[]) {
+    this.kernel.repeatableCommands = commands;
+  }
+
+  private get linkedSyncIds(): IdFactory {
+    return this.kernel.linkedSyncIds;
+  }
+
+  private notify(kind: 'document' | 'selection' | 'history' | 'view', label: string): void {
+    this.kernel.notify(kind, label);
+  }
+
+  private snapshotObjectViewState(): EditorObjectViewState {
+    return this.kernel.snapshotObjectViewState();
+  }
+
+  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
+    this.ports.commitDocumentCandidate(candidate);
+  }
+
+  private select(selection: EditorSelection | null): void {
+    this.ports.select(selection);
   }
 
   /** Live, deterministic diagnostics for the current document revision. */
@@ -197,7 +267,7 @@ export abstract class EditorSessionState {
     return deriveEditorViewFilterObjectIds(this.currentDocument, this.currentViewFilters);
   }
 
-  protected setViewFilters(after: EditorViewFilterState, label: string): boolean {
+  private setViewFilters(after: EditorViewFilterState, label: string): boolean {
     const normalized: EditorViewFilterState = {
       worldBrushesVisible: after.worldBrushesVisible,
       hiddenEntityClassnames: [
@@ -288,19 +358,19 @@ export abstract class EditorSessionState {
   }
 
   public get canUndo(): boolean {
-    return this.history.canUndo;
+    return this.kernel.history.canUndo;
   }
 
   public get canRedo(): boolean {
-    return this.history.canRedo;
+    return this.kernel.history.canRedo;
   }
 
   public get undoLabel(): string | null {
-    return this.history.undoLabel;
+    return this.kernel.history.undoLabel;
   }
 
   public get redoLabel(): string | null {
-    return this.history.redoLabel;
+    return this.kernel.history.redoLabel;
   }
 
   public get canRepeatCommands(): boolean {
@@ -322,8 +392,8 @@ export abstract class EditorSessionState {
     return this.repeatableCommands.map(repeatableCommandLabel);
   }
 
-  protected discardRepeatableCommands(): void {
-    this.repeatableCommands = [];
+  private discardRepeatableCommands(): void {
+    this.kernel.discardRepeatableCommands();
   }
 
   /** Explicitly starts a new macro-like command-repetition sequence. */
@@ -334,13 +404,8 @@ export abstract class EditorSessionState {
     return true;
   }
 
-  protected recordRepeatableCommand(command: EditorRepeatableCommand | undefined): void {
-    if (!command || this.suppressRepeatRecording) return;
-    this.repeatableCommands.push(command);
-  }
-
-  protected applyRepeatableCommand(
-    target: this,
+  private applyRepeatableCommand(
+    target: SessionReplayTarget,
     command: EditorRepeatableCommand,
     ids: IdFactory,
   ): boolean {
@@ -401,14 +466,13 @@ export abstract class EditorSessionState {
   public repeatLastCommands(): boolean {
     if (!this.canRepeatCommands || !this.currentSelection) return false;
     const commands = [...this.repeatableCommands];
-    const SessionConstructor = this.constructor as new (document: MapDocument) => this;
-    const replay = new SessionConstructor(this.currentDocument);
-    replay.currentSelection = this.currentSelection;
-    replay.currentLayerId = this.activeLayerId;
-    replay.editingGroupId = this.editingGroupId;
-    replay.suppressRepeatRecording = true;
+    const replay = this.ports.createReplayTarget(this.currentDocument, {
+      selection: this.currentSelection,
+      activeLayerId: this.activeLayerId,
+      editingGroupId: this.editingGroupId,
+    });
     const ids = createSequentialIdFactory(
-      `repeat-${this.currentDocument.revision}-${++this.repeatSequence}`,
+      `repeat-${this.currentDocument.revision}-${++this.kernel.repeatSequence}`,
     );
     for (const command of commands) {
       if (!this.applyRepeatableCommand(replay, command, ids)) {
@@ -430,24 +494,11 @@ export abstract class EditorSessionState {
   }
 
   public subscribe(listener: ChangeListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return this.kernel.subscribe(listener);
   }
 
   public replaceDocument(document: MapDocument, label = 'Open map'): void {
-    this.currentDocument = document;
-    this.currentSelection = null;
-    this.editingGroupId = null;
-    this.currentLayerId = null;
-    this.discardRepeatableCommands();
-    this.repeatSequence = 0;
-    this.applyObjectViewState({
-      hiddenBrushIds: [],
-      hiddenEntityIds: [],
-      lockedBrushIds: [],
-      lockedEntityIds: [],
-    });
-    this.history.clear();
+    this.kernel.replaceDocument(document);
     this.notify('document', label);
   }
 
@@ -496,7 +547,7 @@ export abstract class EditorSessionState {
     this.notify('view', `Set active layer ${findEditorLayer(this.currentDocument, layerId)!.name}`);
   }
 
-  protected activeLayerEntity(document = this.currentDocument): MapEntity {
+  public activeLayerEntity(document = this.currentDocument): MapEntity {
     const layer = findEditorLayer(document, this.currentLayerId);
     if (!layer) {
       this.currentLayerId = null;
@@ -514,7 +565,7 @@ export abstract class EditorSessionState {
     return entity;
   }
 
-  protected commitLayerChange(
+  private commitLayerChange(
     label: string,
     after: MapDocument,
     selectionAfter: EditorSelection | null = this.currentSelection,
@@ -639,13 +690,13 @@ export abstract class EditorSessionState {
     return selection;
   }
 
-  protected hasLinkedEditingGroup(document = this.currentDocument): boolean {
+  public hasLinkedEditingGroup(document = this.currentDocument): boolean {
     return Boolean(
       this.editingGroupId && linkedGroupSiblings(document, this.editingGroupId).length > 1,
     );
   }
 
-  protected synchronizeEditingGroup(document: MapDocument): MapDocument {
+  public synchronizeEditingGroup(document: MapDocument): MapDocument {
     return this.editingGroupId && linkedGroupSiblings(document, this.editingGroupId).length > 1
       ? synchronizeLinkedGroupContents(document, this.editingGroupId, this.linkedSyncIds)
       : document;

@@ -74,7 +74,41 @@ test.describe('recorded dependable-solo performance gate', () => {
         (window as typeof window & { worldviewLoadStarted: number }).worldviewLoadStarted,
     );
 
-    const selectionMilliseconds = await page.evaluate(async () => {
+    const perspective = await page
+      .locator('[data-viewport="perspective"] .source-canvas')
+      .boundingBox();
+    if (!perspective) throw new Error('Perspective viewport has no bounds');
+    await page.evaluate(() => {
+      for (const entry of performance.getEntriesByType('measure')) {
+        if (
+          entry.name.startsWith('worldview.editor.scene-contribution.') ||
+          entry.name.startsWith('worldview.editor.inspector.')
+        ) {
+          performance.clearMeasures(entry.name);
+        }
+      }
+    });
+    await page.mouse.move(
+      perspective.x + perspective.width / 2,
+      perspective.y + perspective.height / 2,
+    );
+    await page.waitForTimeout(50);
+    await page.evaluate(() => {
+      for (const entry of performance.getEntriesByType('measure')) {
+        if (entry.name.startsWith('worldview.editor.scene-contribution.')) {
+          performance.clearMeasures(entry.name);
+        }
+      }
+    });
+    await page.mouse.wheel(0, -120);
+    await page.waitForTimeout(50);
+    const cameraContributionRebuilds = await page.evaluate(() =>
+      performance
+        .getEntriesByType('measure')
+        .filter((entry) => entry.name.startsWith('worldview.editor.scene-contribution.'))
+        .map((entry) => entry.name),
+    );
+    const selectionResult = await page.evaluate(async () => {
       const tools = (
         window as typeof window & {
           worldviewPerformanceTools: Map<
@@ -91,6 +125,14 @@ test.describe('recorded dependable-solo performance gate', () => {
         kind: 'brush',
         limit: 1,
       })) as { objects: Array<{ id: string }> };
+      for (const entry of performance.getEntriesByType('measure')) {
+        if (
+          entry.name.startsWith('worldview.editor.scene-contribution.') ||
+          entry.name.startsWith('worldview.editor.inspector.')
+        ) {
+          performance.clearMeasures(entry.name);
+        }
+      }
       const started = performance.now();
       await tools.get('worldview_select')!.execute({
         expectedDocumentId: inspection.documentId,
@@ -98,7 +140,30 @@ test.describe('recorded dependable-solo performance gate', () => {
         mode: 'objects',
         brushIds: [listing.objects[0]!.id],
       });
-      return performance.now() - started;
+      const contributionMeasures = performance
+        .getEntriesByType('measure')
+        .filter((entry) => entry.name.startsWith('worldview.editor.scene-contribution.'));
+      const inspectorMeasures = performance
+        .getEntriesByType('measure')
+        .filter((entry) => entry.name.startsWith('worldview.editor.inspector.'));
+      return {
+        milliseconds: performance.now() - started,
+        contributions: contributionMeasures.map((entry) =>
+          entry.name.replace('worldview.editor.scene-contribution.', ''),
+        ),
+        contributionMilliseconds: Object.fromEntries(
+          contributionMeasures.map((entry) => [
+            entry.name.replace('worldview.editor.scene-contribution.', ''),
+            entry.duration,
+          ]),
+        ),
+        inspectorMilliseconds: Object.fromEntries(
+          inspectorMeasures.map((entry) => [
+            entry.name.replace('worldview.editor.inspector.', ''),
+            entry.duration,
+          ]),
+        ),
+      };
     });
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
     const translateMilliseconds = await page.evaluate(() => {
@@ -108,15 +173,47 @@ test.describe('recorded dependable-solo performance gate', () => {
     });
     await page.getByRole('tab', { name: 'Face' }).click();
     await page.locator('#material-name').fill('BENCHMARK_CHANGED');
-    const materialMilliseconds = await page.evaluate(() => {
+    const materialResult = await page.evaluate(() => {
+      for (const entry of performance.getEntriesByType('measure')) {
+        if (entry.name.startsWith('worldview.editor.scene-contribution.')) {
+          performance.clearMeasures(entry.name);
+        }
+      }
       const start = performance.now();
       document.querySelector<HTMLButtonElement>('[data-action="apply-material"]')!.click();
-      return performance.now() - start;
+      const contributionMeasures = performance
+        .getEntriesByType('measure')
+        .filter((entry) => entry.name.startsWith('worldview.editor.scene-contribution.'));
+      return {
+        milliseconds: performance.now() - start,
+        contributionMilliseconds: Object.fromEntries(
+          contributionMeasures.map((entry) => [
+            entry.name.replace('worldview.editor.scene-contribution.', ''),
+            entry.duration,
+          ]),
+        ),
+      };
     });
-    const undoMilliseconds = await page.evaluate(() => {
+    const undoResult = await page.evaluate(() => {
+      for (const entry of performance.getEntriesByType('measure')) {
+        if (entry.name.startsWith('worldview.editor.scene-contribution.')) {
+          performance.clearMeasures(entry.name);
+        }
+      }
       const start = performance.now();
       document.querySelector<HTMLButtonElement>('[data-action="undo"]')!.click();
-      return performance.now() - start;
+      const contributionMeasures = performance
+        .getEntriesByType('measure')
+        .filter((entry) => entry.name.startsWith('worldview.editor.scene-contribution.'));
+      return {
+        milliseconds: performance.now() - start,
+        contributionMilliseconds: Object.fromEntries(
+          contributionMeasures.map((entry) => [
+            entry.name.replace('worldview.editor.scene-contribution.', ''),
+            entry.duration,
+          ]),
+        ),
+      };
     });
 
     await page.evaluate(() => {
@@ -129,10 +226,6 @@ test.describe('recorded dependable-solo performance gate', () => {
       };
       requestAnimationFrame(frame);
     });
-    const perspective = await page
-      .locator('[data-viewport="perspective"] .source-canvas')
-      .boundingBox();
-    if (!perspective) throw new Error('Perspective viewport has no bounds');
     await page.mouse.move(
       perspective.x + perspective.width / 2,
       perspective.y + perspective.height / 2,
@@ -163,10 +256,16 @@ test.describe('recorded dependable-solo performance gate', () => {
       viewport: await page.viewportSize(),
       devicePixelRatio: await page.evaluate(() => devicePixelRatio),
       loadMilliseconds,
-      selectionMilliseconds,
+      selectionMilliseconds: selectionResult.milliseconds,
+      selectionContributions: selectionResult.contributions,
+      selectionContributionMilliseconds: selectionResult.contributionMilliseconds,
+      selectionInspectorMilliseconds: selectionResult.inspectorMilliseconds,
+      cameraContributionRebuilds,
       translateMilliseconds,
-      materialMilliseconds,
-      undoMilliseconds,
+      materialMilliseconds: materialResult.milliseconds,
+      materialContributionMilliseconds: materialResult.contributionMilliseconds,
+      undoMilliseconds: undoResult.milliseconds,
+      undoContributionMilliseconds: undoResult.contributionMilliseconds,
       p95FrameMilliseconds,
       sceneRebuildMilliseconds: await page.evaluate(() =>
         performance
@@ -191,10 +290,13 @@ test.describe('recorded dependable-solo performance gate', () => {
 
     expect(report.devicePixelRatio, metrics).toBe(1);
     expect(loadMilliseconds, metrics).toBeLessThan(3_000);
-    expect(selectionMilliseconds, metrics).toBeLessThan(50);
+    expect(selectionResult.milliseconds, metrics).toBeLessThan(50);
+    expect(cameraContributionRebuilds, metrics).toEqual([]);
+    expect(selectionResult.contributions, metrics).not.toContain('worldSolids');
+    expect(selectionResult.contributions, metrics).not.toContain('objectLines');
     expect(translateMilliseconds, metrics).toBeLessThan(100);
-    expect(materialMilliseconds, metrics).toBeLessThan(100);
-    expect(undoMilliseconds, metrics).toBeLessThan(100);
+    expect(materialResult.milliseconds, metrics).toBeLessThan(100);
+    expect(undoResult.milliseconds, metrics).toBeLessThan(100);
     expect(p95FrameMilliseconds, metrics).toBeLessThanOrEqual(33);
   });
 });

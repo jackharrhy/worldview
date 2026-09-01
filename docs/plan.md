@@ -237,21 +237,27 @@ movement is machine-local view state; projection gestures update locally on the 
 bounded collaboration previews independently, and commit exactly one `EditorSession` transaction.
 The stable UI and ownership contract lives in [`interface-system.md`](./interface-system.md).
 
-`EditorSession` is the singular transaction and history coordinator. Focused DOM-free domains own
-selection/view state, object transforms, topology, geometry/CSG, entities/materials, and
-organization. Viewport pointer input is routed through an ordered set of composed gesture
+`EditorSession` is a stable façade over one `SessionKernel`, which owns the document, selection,
+history stack, view state, repeat state, and notifications. Explicitly wired DOM-free command
+domains own organization, selection, object transforms, topology/CSG, entities, clipboard/object
+operations, and materials. One commit coordinator validates and records document mutations; command
+repetition creates an explicit replay session and invokes the same command surface as direct edits.
+Viewport pointer input is routed through an ordered set of composed gesture
 controllers for camera, clip, hull, face transfer, topology, transform, sweep, face, creation,
 entity placement, and selection. One router owns the active gesture's explicit `begin`, `update`,
 `commit`, and `cancel` lifecycle; GPU scene ownership stays outside controllers.
 Document mutations, validation, derived queries, source parsing, and serialization remain separate
 DOM-free modules.
 
-Scene construction will become an assembler over focused solid, object-line, tool, entity, and
-diagnostic contributions so invalidation can rebuild only affected buffers. Presenter construction
-is centralized in `EditorApplication`, and an architecture check prevents presenters from importing
-that composition container, the complete application state, or peer presenter types. Physical
-`viewport`, `scene`, `materials`, project/persistence, and core-domain subdirectories follow those
-ownership changes. The pinned behavior and architecture comparison is recorded in
+Scene construction is an assembler over retained world-solid, object-line, local-preview,
+local-selection, tool, face-grid, reference, diagnostic, and remote-presence contributions. Each
+owner has an immutable dependency key and explicit GPU disposal. Canonical committed geometry stays
+resident while transient candidates replace only their affected objects; preview geometry and
+preview highlighting are separate so new-only brushes do not invalidate the world. Presenter
+construction is centralized in `EditorApplication`, and an architecture check prevents presenters
+from importing that composition container, the complete application state, or peer presenter types.
+Physical `viewport`, `scene`, `materials`, project/persistence, and core-domain subdirectories follow
+those ownership changes. The pinned behavior and architecture comparison is recorded in
 [`trenchbroom-conformance.md`](./trenchbroom-conformance.md).
 
 The browser shell gives the viewports visual priority. A compact top command bar keeps frequent
@@ -324,13 +330,14 @@ control contract and ordered rollout live in [`interface-system.md`](./interface
 
 Renderer solids are partitioned by material and spatial cell. Structural-sharing signatures reuse
 unchanged GPU buffers across revisions, conservative frustum tests skip invisible batches, and an
-immutable median-split AABB index supplies broad-phase picking and region queries. Dense documents
-avoid generating unselected projected face grids. Immutable-document query indexes memoize brush,
-group, layer, and entity-link geometry. Static world edges remain resident across selection, hover,
-tool, group, link-mode, and diagnostic changes; those states draw through a separate compact overlay
-buffer. Document/reference/visibility/theme changes rebuild the scene index, but immutable per-brush
-edge and solid sources survive document revisions. The renderer repacks and uploads only the
-512-unit spatial batches containing changed brushes, then frustum-culls those batches per viewport.
+immutable median-split AABB index supplies broad-phase picking and region queries. Projected face
+grids exist only for selected or hovered faces, without document-size behavior forks.
+Immutable-document query indexes memoize brush, group, layer, and entity-link geometry. Static world
+edges remain resident across camera, selection, hover, tool, group, link-mode, diagnostic, and remote
+presence changes; those states draw through focused retained contributions. Document, reference,
+visibility, and theme changes invalidate only their named owners, while immutable per-brush edge and
+solid sources survive document revisions. The renderer repacks and uploads only the 512-unit spatial
+batches containing changed brushes, then frustum-culls those batches per viewport.
 This stays inside the native TypeGPU architecture: TypeGPU owns schemas, shaders, bind groups, and
 pipelines, while immutable batch uploads use the deliberate raw WebGPU interoperability boundary.
 Each viewport redraws only when its camera, dimensions,
@@ -350,7 +357,7 @@ during fly-camera movement. All invalidated viewport passes encode into one comm
 one queue submission per editor frame. Pipeline compilation uses WebGPU's asynchronous API, the
 editor requests the high-performance adapter preference, and unexpected device loss becomes a
 visible recoverable-by-reload error instead of a silently frozen canvas. Performance measures cover
-scene rebuild, change presentation, and material-catalog reconciliation.
+scene rebuild, each rebuilt contribution, change presentation, and material-catalog reconciliation.
 
 ## Public editor contracts
 
@@ -381,9 +388,10 @@ therefore creates one compile-time registry obligation instead of scattering pro
 checks through application code. The registry is deliberately static; runtime codec plugins are
 not part of the current product contract.
 
-Editor session behavior is layered by responsibility. Entity creation and brush/entity ownership
-live above brush geometry operations, so future non-brush primitives do not force entity-definition
-and layer policy into the geometry implementation.
+Editor session behavior is composed by responsibility rather than inherited in an order. Entity
+creation, topology, transforms, materials, organization, object/clipboard operations, and commits
+declare focused cross-domain ports, so future non-brush primitives do not force entity-definition or
+layer policy into geometry implementation.
 
 ### Source-safe map model
 
@@ -610,7 +618,7 @@ implies the other.
 
 | Milestone                         | Status      | Delivered evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | --------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Architecture hardening         | In progress | The Vanilla-to-React shell translation, Strict Mode roots, effect-free callback-ref lifetimes, React Query command state, typed shell snapshots/commands, focused presenter state/command ports, isolated input adapters, collaboration lifecycle/session ownership, tool-controller registry, composed viewport gesture routing, shared frame/camera runtime, domain modules, declarative runtime schemas, split document/CSS/TSX, and architecture gates are delivered; `EditorSession` composition and focused scene contributions remain                                                                                                    |
+| 1. Architecture hardening         | In progress | The Vanilla-to-React shell translation, Strict Mode roots, effect-free callback-ref lifetimes, React Query command state, typed shell snapshots/commands, focused presenter state/command ports, isolated input adapters, collaboration lifecycle/session ownership, tool-controller registry, composed viewport gesture routing, shared frame/camera runtime, composed `EditorSession` command domains, declarative runtime schemas, split document/CSS/TSX, and architecture gates are delivered; focused scene contributions remain                                                                                                          |
 | 2. Source and persistence safety  | Complete    | Source-backed save planner, project manifest/directory workflow, external-change guard, recovery/checkpoints, safe fallback exports                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 3. Game-aware authoring           | Complete    | Quake/GoldSrc profiles, ordered resources, FGD/DEF/ENT catalog, typed inspectors/browser, definition bounds/colors, SPR2 previews                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 4. Daily build loop               | Complete    | Safe helper capability protocol, structured diagnostics/logs, revision-safe BSP preview, leak/portal overlays, retained history, configured launch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -688,6 +696,8 @@ point rather than a replacement for the reference-hardware gate.
 A follow-up retained-edge drill measured single-brush selection in the same 8,000-brush document at
 12.0 ms versus 19.4 ms with world-buffer reuse disabled. The performance gate now records and caps
 selection independently so future scene refactors cannot hide selection latency inside load timing.
+It also asserts that camera motion creates no scene contributions and that selection never rebuilds
+world solids or object lines, while reporting per-contribution material and undo cost.
 
 On 2026-08-29, spatial source retention removed full-map edge and solid reconstruction from
 single-brush document edits. The native Linux GPU drill loaded the 8,000-brush fixture in 2.19

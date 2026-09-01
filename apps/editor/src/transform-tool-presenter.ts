@@ -24,6 +24,7 @@ import {
 
 import type { EditorShellState } from './editor-shell-state.js';
 import type { EditorStatePort } from './editor-state-port.js';
+import { selectedObjectIds } from './preview-object-ids.js';
 
 type TransformToolUi = Pick<EditorShellState, 'objectTools' | 'pointerContext' | 'statusMessage'>;
 
@@ -125,7 +126,11 @@ export class TransformToolPresenter {
       if (!candidate) return;
       if (event.phase === 'preview') {
         this.state.topologyCandidate = candidate;
-        this.state.renderer?.setDocument(candidate.document, this.state.session.selection);
+        this.state.renderer?.setPreviewDocument(
+          candidate.document,
+          this.state.session.selection,
+          selectedObjectIds(this.state.session.selection),
+        );
         this.updateInspector(candidate.document, this.state.session.selection);
         this.ui.statusMessage.set(
           `${label} preview: ${this.formatVector(event.delta)} (${event.snapMode} snap; ${this.movementDescription(event)}). Release to commit.`,
@@ -442,7 +447,11 @@ export class TransformToolPresenter {
       if (!candidate) return;
       if (event.phase === 'preview') {
         this.state.transformCandidate = candidate;
-        this.state.renderer?.setDocument(candidate.document, this.state.session.selection);
+        this.state.renderer?.setPreviewDocument(
+          candidate.document,
+          this.state.session.selection,
+          selectedObjectIds(this.state.session.selection),
+        );
         this.updateInspector(candidate.document, this.state.session.selection);
         const detail =
           event.tool === 'rotate'

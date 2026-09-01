@@ -14,32 +14,16 @@ import {
 } from './document.js';
 import { createObjectClipboardDocument } from './clipboard.js';
 import { deriveBrush } from './geometry.js';
-import {
-  deriveEditorGroups,
-  deleteEditorGroup,
-  isEditorGroupEntity,
-  selectedEditorGroup,
-} from './groups.js';
+import { deriveEditorGroups, deleteEditorGroup, selectedEditorGroup } from './groups.js';
 import {
   normalizeSingleLinkedGroups,
   setEntityPropertyProtection as setLinkedEntityPropertyProtection,
-  transformEditorGroupMetadata,
   transformEditorGroupSubtreeMetadata,
   translationAffineMatrix,
 } from './linked-groups.js';
 import { brushIdsWithMaterial, faceReferencesWithMaterial } from './material-usage.js';
-import {
-  deriveEditorLayers,
-  editorLayerForSelection,
-  findEditorLayer,
-  isEditorLayerEntity,
-  type EditorLayerId,
-} from './layers.js';
-import {
-  formatEntityOrigin,
-  parseEntityOrigin,
-  pointEntitiesInDocument,
-} from './point-entities.js';
+import { editorLayerForSelection, type EditorLayerId } from './layers.js';
+import { pointEntitiesInDocument } from './point-entities.js';
 import { sweepBrushFace, type SweepOptions, type SweepTransform } from './sweep.js';
 import {
   createFaceSelection,
@@ -60,17 +44,138 @@ import type {
   MapEntity,
   Vec3,
 } from './types.js';
-import { brushesInDocument, findBrush } from './types.js';
+import { findBrush } from './types.js';
 import {
   faceSelectionKey,
   translatedObjects,
+  type BrushEditCandidate,
+  type BrushBatchEditCandidate,
   type BrushCreationCandidate,
   type BrushBatchCreationCandidate,
   type DocumentEditCandidate,
+  type SessionCommitMutation,
   type SweepCandidate,
 } from './session-common.js';
-import { EditorSessionEntities } from './session-entities.js';
-export abstract class EditorSessionObjects extends EditorSessionEntities {
+import { SessionKernel } from './session-kernel.js';
+
+type SessionObjectKernel = Pick<
+  SessionKernel,
+  'document' | 'editingGroupId' | 'layerId' | 'selection'
+>;
+
+export interface SessionObjectPorts {
+  readonly activeLayerEntity: (document?: MapDocument) => MapEntity;
+  readonly commitCandidate: (candidate: BrushEditCandidate | BrushBatchEditCandidate) => void;
+  readonly commitDocumentCandidate: (candidate: DocumentEditCandidate) => void;
+  readonly commitBatchCreationCandidate: (candidate: BrushBatchCreationCandidate) => void;
+  readonly commitMutation: (mutation: SessionCommitMutation) => void;
+  readonly createMaterialCandidate: (
+    material: string,
+    selection?: EditorSelection | null,
+  ) => BrushEditCandidate | BrushBatchEditCandidate | null;
+  readonly createPasteCandidate: (
+    clipboard: MapDocument,
+    ids: IdFactory,
+    delta: Vec3,
+    textureLock: boolean,
+    targetGroupId: string | null,
+    targetLayerId: EditorLayerId,
+  ) => DocumentEditCandidate | null;
+  readonly hasLinkedEditingGroup: (document?: MapDocument) => boolean;
+  readonly editableObjectIds: () => {
+    readonly brushIds: readonly BrushId[];
+    readonly entityIds: readonly EntityId[];
+  };
+  readonly setObjectSelection: (
+    brushIds: readonly BrushId[],
+    entityIds: readonly EntityId[],
+    label: string,
+  ) => EditorSelection | null;
+  readonly setSelection: (
+    selection: EditorSelection | null,
+    label: string,
+  ) => EditorSelection | null;
+}
+
+export class SessionObjectCommands {
+  public constructor(
+    private readonly kernel: SessionObjectKernel,
+    private readonly ports: SessionObjectPorts,
+  ) {}
+
+  private get currentDocument(): MapDocument {
+    return this.kernel.document;
+  }
+
+  private get currentSelection(): EditorSelection | null {
+    return this.kernel.selection;
+  }
+
+  private get currentLayerId(): EditorLayerId {
+    return this.kernel.layerId;
+  }
+
+  private get editingGroupId(): string | null {
+    return this.kernel.editingGroupId;
+  }
+
+  private activeLayerEntity(document = this.currentDocument): MapEntity {
+    return this.ports.activeLayerEntity(document);
+  }
+
+  private commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void {
+    this.ports.commitCandidate(candidate);
+  }
+
+  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
+    this.ports.commitDocumentCandidate(candidate);
+  }
+
+  private commitBatchCreationCandidate(candidate: BrushBatchCreationCandidate): void {
+    this.ports.commitBatchCreationCandidate(candidate);
+  }
+
+  private createMaterialCandidate(
+    material: string,
+    selection?: EditorSelection | null,
+  ): BrushEditCandidate | BrushBatchEditCandidate | null {
+    return this.ports.createMaterialCandidate(material, selection);
+  }
+
+  private createPasteCandidate(
+    clipboard: MapDocument,
+    ids: IdFactory,
+    delta: Vec3,
+    textureLock: boolean,
+    targetGroupId: string | null,
+    targetLayerId: EditorLayerId,
+  ): DocumentEditCandidate | null {
+    return this.ports.createPasteCandidate(
+      clipboard,
+      ids,
+      delta,
+      textureLock,
+      targetGroupId,
+      targetLayerId,
+    );
+  }
+
+  private hasLinkedEditingGroup(document = this.currentDocument): boolean {
+    return this.ports.hasLinkedEditingGroup(document);
+  }
+
+  private editableObjectIds() {
+    return this.ports.editableObjectIds();
+  }
+
+  private setObjectSelection(
+    brushIds: readonly BrushId[],
+    entityIds: readonly EntityId[],
+    label: string,
+  ): EditorSelection | null {
+    return this.ports.setObjectSelection(brushIds, entityIds, label);
+  }
+
   public createBrushCandidate(brush: MapBrush, entityId?: EntityId): BrushCreationCandidate {
     const target = entityId
       ? this.currentDocument.entities.find((entity) => entity.id === entityId)
@@ -396,189 +501,6 @@ export abstract class EditorSessionObjects extends EditorSessionEntities {
     return true;
   }
 
-  /** Clones every object in a parseable clipboard map with fresh IDs as one document transaction. */
-  public createPasteCandidate(
-    clipboard: MapDocument,
-    ids: IdFactory,
-    delta: Vec3 = [0, 0, 0],
-    textureLock = true,
-    targetGroupId: string | null = null,
-    targetLayerId: EditorLayerId = this.currentLayerId,
-  ): DocumentEditCandidate | null {
-    if (!delta.every(Number.isFinite)) throw new Error('Clipboard translation must be finite');
-    const sourceWorldspawn = clipboard.entities.find(
-      (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
-    );
-    if (!sourceWorldspawn) throw new Error('Clipboard map has no worldspawn entity');
-    const destinationWorldspawn = this.currentDocument.entities.find(
-      (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
-    );
-    if (!destinationWorldspawn) throw new Error('The map has no worldspawn entity');
-    const destinationGroup = targetGroupId
-      ? deriveEditorGroups(this.currentDocument).find((group) => group.id === targetGroupId)
-      : null;
-    if (targetGroupId && !destinationGroup) throw new Error(`Unknown group ${targetGroupId}`);
-    const destinationLayer = targetGroupId
-      ? null
-      : findEditorLayer(this.currentDocument, targetLayerId);
-    if (!targetGroupId && !destinationLayer) {
-      throw new Error(
-        targetLayerId === null ? 'Default Layer is missing' : `Unknown layer ${targetLayerId}`,
-      );
-    }
-    const destinationBrushEntity = destinationGroup
-      ? this.currentDocument.entities.find((entity) => entity.id === destinationGroup.entityId)!
-      : destinationLayer?.id
-        ? this.currentDocument.entities.find((entity) => entity.id === destinationLayer.entityId)!
-        : destinationWorldspawn;
-    const pointEntities = clipboard.entities.filter(
-      (entity) =>
-        entity.id !== sourceWorldspawn.id &&
-        entity.primitives.length === 0 &&
-        !isEditorGroupEntity(entity) &&
-        !isEditorLayerEntity(entity),
-    );
-    const existingNumericGroupIds = [
-      ...deriveEditorGroups(this.currentDocument).map((group) => group.id),
-      ...deriveEditorLayers(this.currentDocument).flatMap((layer) => (layer.id ? [layer.id] : [])),
-    ]
-      .map((id) => Number.parseInt(id, 10))
-      .filter(Number.isFinite);
-    let nextGroupId =
-      (existingNumericGroupIds.length > 0 ? Math.max(...existingNumericGroupIds) : 0) + 1;
-    const groupIdMap = new Map(
-      deriveEditorGroups(clipboard).map((group) => [group.id, String(nextGroupId++)] as const),
-    );
-    const clipboardBrushes = brushesInDocument(clipboard);
-    for (const brush of clipboardBrushes) {
-      const derived = deriveBrush(brush);
-      if (!derived.valid) {
-        throw new Error(
-          `Clipboard brush ${brush.id} is invalid: ${derived.diagnostics
-            .map((diagnostic) => diagnostic.message)
-            .join('; ')}`,
-        );
-      }
-    }
-    const brushCount = clipboardBrushes.length;
-    if (brushCount + pointEntities.length === 0) return null;
-    if (brushCount + pointEntities.length > 1024) {
-      throw new Error('A clipboard may contain at most 1024 objects');
-    }
-
-    const pastedBrushIds: BrushId[] = [];
-    const pastedEntityIds: EntityId[] = [];
-    const worldBrushes = [
-      ...sourceWorldspawn.primitives,
-      ...clipboard.entities.filter(isEditorLayerEntity).flatMap((entity) => entity.primitives),
-    ]
-      .filter((primitive) => primitive.kind === 'brush')
-      .map((brush) => {
-        const clone = cloneBrush(brush, ids, delta, textureLock);
-        pastedBrushIds.push(clone.id);
-        return clone;
-      });
-    let after = insertBrushes(
-      this.currentDocument,
-      worldBrushes.map((brush, index) => ({
-        entityId: destinationBrushEntity.id,
-        insertionIndex: destinationBrushEntity.primitives.length + index,
-        brush,
-      })),
-    );
-    for (const sourceEntity of clipboard.entities) {
-      if (sourceEntity.id === sourceWorldspawn.id) continue;
-      if (isEditorLayerEntity(sourceEntity)) continue;
-      const properties = { ...sourceEntity.properties };
-      if (isEditorGroupEntity(sourceEntity)) {
-        const mappedId = groupIdMap.get(properties['_tb_id'] ?? '');
-        if (!mappedId) throw new Error(`Clipboard group ${sourceEntity.id} has no persistent ID`);
-        properties['_tb_id'] = mappedId;
-      }
-      if (properties['_tb_group']) {
-        const mappedParent = groupIdMap.get(properties['_tb_group']);
-        if (mappedParent) properties['_tb_group'] = mappedParent;
-        else if (targetGroupId) properties['_tb_group'] = targetGroupId;
-        else delete properties['_tb_group'];
-      } else if (targetGroupId) properties['_tb_group'] = targetGroupId;
-      if (properties['_tb_group']) delete properties['_tb_layer'];
-      else if (targetLayerId) properties['_tb_layer'] = targetLayerId;
-      else delete properties['_tb_layer'];
-      if ('origin' in properties) {
-        const origin = parseEntityOrigin(sourceEntity);
-        if (!origin) throw new Error(`Clipboard entity ${sourceEntity.id} has an invalid origin`);
-        properties.origin = formatEntityOrigin([
-          origin[0] + delta[0],
-          origin[1] + delta[1],
-          origin[2] + delta[2],
-        ]);
-      } else if (sourceEntity.primitives.length === 0 && !isEditorGroupEntity(sourceEntity)) {
-        throw new Error(`Clipboard point entity ${sourceEntity.id} has no origin`);
-      }
-      const brushes = sourceEntity.primitives
-        .filter((primitive) => primitive.kind === 'brush')
-        .map((brush) => {
-          const clone = cloneBrush(brush, ids, delta, textureLock);
-          pastedBrushIds.push(clone.id);
-          return clone;
-        });
-      const entity: MapEntity = {
-        id: ids.entity(),
-        properties,
-        primitives: brushes,
-      };
-      after = insertEntity(after, entity);
-      if (brushes.length === 0 && !isEditorGroupEntity(entity)) pastedEntityIds.push(entity.id);
-    }
-    for (const pastedGroupId of groupIdMap.values()) {
-      after = transformEditorGroupMetadata(after, pastedGroupId, translationAffineMatrix(delta));
-    }
-    after = normalizeSingleLinkedGroups(after);
-    after = { ...after, revision: this.currentDocument.revision + 1 };
-    let selectionAfter = createObjectSelection(
-      pastedBrushIds,
-      pastedEntityIds,
-      pastedEntityIds.length > 0
-        ? { kind: 'entity', entityId: pastedEntityIds.at(-1)! }
-        : { kind: 'brush', brushId: pastedBrushIds.at(-1)! },
-    );
-    const selectedPastedGroup = selectedEditorGroup(after, selectionAfter);
-    if (selectionAfter && selectedPastedGroup) {
-      selectionAfter = { ...selectionAfter, groupId: selectedPastedGroup.id };
-    }
-    const count = pastedBrushIds.length + pastedEntityIds.length;
-    return {
-      label: count === 1 ? 'Paste object' : 'Paste objects',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
-      after,
-      selectionBefore: this.currentSelection,
-      selectionAfter,
-      document: after,
-    };
-  }
-
-  public pasteObjects(
-    clipboard: MapDocument,
-    ids: IdFactory,
-    delta: Vec3 = [0, 0, 0],
-    textureLock = true,
-    targetGroupId: string | null = null,
-    targetLayerId: EditorLayerId = this.currentLayerId,
-  ): boolean {
-    const candidate = this.createPasteCandidate(
-      clipboard,
-      ids,
-      delta,
-      textureLock,
-      targetGroupId,
-      targetLayerId,
-    );
-    if (!candidate) return false;
-    this.commitDocumentCandidate(candidate);
-    return true;
-  }
-
   public deleteSelected(): boolean {
     if (!this.currentSelection || this.currentSelection.faceId) return false;
     const selectedGroup = selectedEditorGroup(this.currentDocument, this.currentSelection);
@@ -638,14 +560,15 @@ export abstract class EditorSessionObjects extends EditorSessionEntities {
       });
       return true;
     }
-    this.currentDocument = removeBrushes(this.currentDocument, brushIds);
-    this.currentSelection = null;
-    this.history.record({
-      kind: 'delete-brushes',
-      label: 'Delete brushes',
-      insertions,
+    this.ports.commitMutation({
+      document: removeBrushes(this.currentDocument, brushIds),
+      selection: null,
+      historyEntry: {
+        kind: 'delete-brushes',
+        label: 'Delete brushes',
+        insertions,
+      },
     });
-    this.notify('document', 'Delete brushes');
     return true;
   }
 
@@ -670,16 +593,17 @@ export abstract class EditorSessionObjects extends EditorSessionEntities {
       });
       return true;
     }
-    this.currentDocument = removeBrush(this.currentDocument, brushId);
-    if (this.currentSelection?.brushId === brushId) this.currentSelection = null;
-    this.history.record({
-      kind: 'delete-brush',
-      label: 'Delete brush',
-      entityId: owner.id,
-      insertionIndex,
-      brush,
+    this.ports.commitMutation({
+      document: removeBrush(this.currentDocument, brushId),
+      selection: this.currentSelection?.brushId === brushId ? null : this.currentSelection,
+      historyEntry: {
+        kind: 'delete-brush',
+        label: 'Delete brush',
+        entityId: owner.id,
+        insertionIndex,
+        brush,
+      },
     });
-    this.notify('document', 'Delete brush');
     return true;
   }
 
@@ -734,15 +658,17 @@ export abstract class EditorSessionObjects extends EditorSessionEntities {
       });
       return true;
     }
-    this.currentDocument = changedDocument;
-    this.history.record({
-      kind: 'replace-entity-properties',
-      label,
-      entityId,
-      before,
-      after,
+    this.ports.commitMutation({
+      document: changedDocument,
+      selection: this.currentSelection,
+      historyEntry: {
+        kind: 'replace-entity-properties',
+        label,
+        entityId,
+        before,
+        after,
+      },
     });
-    this.notify('document', label);
     return true;
   }
 
@@ -788,15 +714,13 @@ export abstract class EditorSessionObjects extends EditorSessionEntities {
   public selectFacesUsingMaterial(material: string): EditorSelection | null {
     const editableBrushIds = new Set(this.editableObjectIds().brushIds);
     const faces = faceReferencesWithMaterial(this.currentDocument, material, editableBrushIds);
-    this.discardRepeatableCommands();
-    this.currentSelection = createFaceSelection(faces);
-    this.notify(
-      'selection',
+    const selection = createFaceSelection(faces);
+    return this.ports.setSelection(
+      selection,
       faces.length > 0
         ? `Select ${faces.length} ${faces.length === 1 ? 'face' : 'faces'} using ${material.trim()}`
         : `No visible faces use ${material.trim()}`,
     );
-    return this.currentSelection;
   }
 
   /** Selects every visible, editable brush containing a material token. */

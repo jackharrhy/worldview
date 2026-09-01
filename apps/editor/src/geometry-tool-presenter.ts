@@ -278,7 +278,15 @@ export class GeometryToolPresenter {
       this.ui.objectTools.update({
         clip: { ...this.ui.objectTools.getSnapshot().clip, canApply: true },
       });
-      this.state.renderer?.setDocument(candidate.document, this.state.session.selection);
+      const affectedBrushIds =
+        'selectionBefore' in candidate
+          ? [...candidate.selectionBefore, ...candidate.selectionAfter]
+          : [candidate.before.id, ...candidate.after.map((brush) => brush.id)];
+      this.state.renderer?.setPreviewDocument(
+        candidate.document,
+        this.state.session.selection,
+        affectedBrushIds,
+      );
       this.updateInspector(candidate.document, this.state.session.selection);
       this.ui.statusMessage.set(
         `${this.state.clipMode === 'split' ? 'Split' : 'Clip'} preview ready. Press Enter or Apply clip to commit.`,
@@ -476,7 +484,17 @@ export class GeometryToolPresenter {
       );
       if (!candidate) throw new Error('Sweep did not produce a candidate');
       this.state.sweepCandidate = candidate;
-      this.state.renderer?.setDocument(candidate.document, this.state.session.selection);
+      this.state.renderer?.setPreviewDocument(
+        candidate.document,
+        this.state.session.selection,
+        candidate.selectionAfter,
+        [
+          ...new Set([
+            ...candidate.sourceFaces.map((face) => face.brushId),
+            ...candidate.selectionAfter,
+          ]),
+        ],
+      );
       this.state.renderer?.setSweepCaps(candidate.destinationCaps);
       this.ui.sweepTool.update({
         canApply: true,
