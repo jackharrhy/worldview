@@ -106,8 +106,9 @@ describe('local fixture discovery', () => {
           'pics/colormap.pcx': '/local/steam-corpus/214700/game/pics/colormap.pcx',
           'textures/e1u1/wall.jpg': '/local/steam-corpus/214700/game/textures/e1u1/wall.jpg',
         },
-        id: 'steam-corpus',
-        label: 'bar1.bsp (local)',
+        id: 'steam-corpus/thirty-flights-of-loving/bar1',
+        label: 'bar1.bsp',
+        namespace: 'Thirty Flights of Loving',
       },
     ]);
   });
@@ -135,10 +136,50 @@ describe('local fixture discovery', () => {
         gameAssets: {
           'gfx/palette.lmp': '/local/steam-corpus/4484420/game/gfx/palette.lmp',
         },
-        id: 'steam-corpus',
-        label: 'dm1.bsp (local)',
+        id: 'steam-corpus/fleshcancer/dm1',
+        label: 'dm1.bsp',
+        namespace: 'FLESHCANCER',
       },
     ]);
+  });
+
+  it('keeps a deterministic bounded level sample from every Steam corpus game', async () => {
+    const root = await temporaryRoot();
+    const corpusRoot = path.join(root, 'steam-corpus');
+    const files = [
+      '214700/archives/baseq2/pak0.pk3/maps/bar1.bsp',
+      '214700/archives/baseq2/pak0.pk3/maps/lob1.bsp',
+      '214700/archives/baseq2/pak0.pk3/maps/vidroom.bsp',
+      '214700/archives/baseq2/pak1.pk3/maps/hof1.bsp',
+      '214700/archives/baseq2/pak1.pk3/maps/parlo1.bsp',
+      '4484420/loose/id1/maps/dm1.bsp',
+      '4484420/loose/id1/maps/dm2.bsp',
+      '4484420/loose/id1/maps/e1m1.bsp',
+      '4484420/loose/id1/maps/e1m2.bsp',
+      '4484420/loose/id1/maps/e1m3.bsp',
+      '4484420/archives/id1/pak0.pak/maps/b_shell0.bsp',
+      '4484420/archives/id1/pak0.pak/maps/meat.bsp',
+      '4484420/archives/id1/pak0.pak/models/ARMOR1.bsp',
+    ];
+    await Promise.all(
+      files.map(async (relativePath) => {
+        const filename = path.join(corpusRoot, relativePath);
+        await mkdir(path.dirname(filename), { recursive: true });
+        await writeFile(filename, '');
+      }),
+    );
+
+    const first = await discoverLocalFixtures(root);
+    const second = await discoverLocalFixtures(root);
+
+    expect(second).toEqual(first);
+    expect(first).toHaveLength(8);
+    expect(new Set(first.map(({ namespace }) => namespace))).toEqual(
+      new Set(['Thirty Flights of Loving', 'Gravity Bone', 'FLESHCANCER']),
+    );
+    expect(first.filter(({ namespace }) => namespace === 'FLESHCANCER')).toHaveLength(3);
+    expect(first.map(({ id }) => id)).toContain('steam-corpus/fleshcancer/dm1');
+    expect(first.some(({ bsp }) => /b_shell|meat|ARMOR/u.test(bsp))).toBe(false);
   });
 
   it('rejects malformed sidecars instead of hiding configuration mistakes', async () => {

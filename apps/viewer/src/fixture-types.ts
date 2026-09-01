@@ -10,6 +10,7 @@ export interface FixtureCameraDefinition {
 export interface LocalFixtureDefinition {
   readonly id: string;
   readonly label: string;
+  readonly namespace?: string;
   readonly bsp: string;
   readonly gameBaseUrl: string;
   readonly gameAssets?: Readonly<Record<string, string>>;
@@ -21,6 +22,7 @@ export interface LocalFixtureDefinition {
 export interface ViewerFixture {
   readonly id: string;
   readonly label: string;
+  readonly namespace: string;
   readonly source: WorldSource;
   readonly aliases: readonly string[];
   readonly camera?: CameraState;

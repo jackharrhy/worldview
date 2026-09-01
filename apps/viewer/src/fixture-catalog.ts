@@ -30,6 +30,7 @@ const builtInFixtures: readonly ViewerFixture[] = [
   {
     id: 'goldsrc',
     label: 'GoldSrc room',
+    namespace: 'Synthetic',
     aliases: ['synthetic'],
     selectable: true,
     source: { bsp: syntheticGoldSrcBsp(), sounds: syntheticGoldSrcPlayerSounds() },
@@ -37,6 +38,7 @@ const builtInFixtures: readonly ViewerFixture[] = [
   {
     id: 'alpha',
     label: 'Alpha fence',
+    namespace: 'Synthetic',
     aliases: [],
     selectable: true,
     source: { bsp: syntheticGoldSrcBsp('{wv_fence') },
@@ -44,6 +46,7 @@ const builtInFixtures: readonly ViewerFixture[] = [
   {
     id: 'water',
     label: 'Water',
+    namespace: 'Synthetic',
     aliases: [],
     selectable: true,
     source: { bsp: syntheticGoldSrcBsp('!wv_water') },
@@ -51,6 +54,7 @@ const builtInFixtures: readonly ViewerFixture[] = [
   {
     id: 'quake',
     label: 'Quake sky',
+    namespace: 'Synthetic',
     aliases: [],
     selectable: true,
     source: { bsp: syntheticQuakeBsp(), palette: syntheticQuakePalette() },
@@ -58,6 +62,7 @@ const builtInFixtures: readonly ViewerFixture[] = [
   {
     id: 'quake-bsp2',
     label: 'Quake BSP2',
+    namespace: 'Synthetic',
     aliases: [],
     selectable: false,
     source: { bsp: syntheticQuakeBsp2(), palette: syntheticQuakePalette() },
@@ -65,6 +70,7 @@ const builtInFixtures: readonly ViewerFixture[] = [
   {
     id: 'audio',
     label: 'Audio room',
+    namespace: 'Synthetic',
     aliases: [],
     selectable: true,
     source: {
@@ -79,6 +85,7 @@ const builtInFixtures: readonly ViewerFixture[] = [
   {
     id: 'goldsrc-sky',
     label: 'GoldSrc sky test',
+    namespace: 'Synthetic',
     aliases: [],
     selectable: false,
     source: { bsp: syntheticGoldSrcSkyBsp(), skybox: syntheticGoldSrcSkybox() },
@@ -86,6 +93,7 @@ const builtInFixtures: readonly ViewerFixture[] = [
   {
     id: 'sprite',
     label: 'GoldSrc sprite test',
+    namespace: 'Synthetic',
     aliases: [],
     selectable: false,
     source: {
@@ -96,6 +104,7 @@ const builtInFixtures: readonly ViewerFixture[] = [
   {
     id: 'audio-decode-failure',
     label: 'Broken audio test',
+    namespace: 'Synthetic',
     aliases: [],
     selectable: false,
     source: {
@@ -112,6 +121,7 @@ const localFixtures: readonly ViewerFixture[] = localFixtureDefinitions.map((fix
   const result = {
     id: fixture.id,
     label: fixture.label,
+    namespace: fixture.namespace ?? 'Local',
     aliases: fixture.aliases,
     selectable: true,
     source: {

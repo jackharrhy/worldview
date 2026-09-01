@@ -6,11 +6,11 @@ const quake2CorpusMap =
   'apps/viewer/public/local/steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1.bsp';
 const quakeCorpusMap = 'apps/viewer/public/local/steam-corpus/4484420/loose/id1/maps/dm1.bsp';
 const quake2Fixtures = [
-  'steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1',
-  'steam-corpus/214700/archives/baseq2/pak1.pk3/maps/hof1',
-  'steam-corpus/214700/archives/baseq2/pak0.pk3/maps/lob1',
-  'steam-corpus/214700/archives/baseq2/pak1.pk3/maps/parlo1',
-  'steam-corpus/214700/archives/baseq2/pak0.pk3/maps/vidroom',
+  'steam-corpus/thirty-flights-of-loving/bar1',
+  'steam-corpus/gravity-bone/hof1',
+  'steam-corpus/thirty-flights-of-loving/lob1',
+  'steam-corpus/gravity-bone/parlo1',
+  'steam-corpus/thirty-flights-of-loving/vidroom',
 ] as const;
 
 async function requireWebGpu(page: Page): Promise<void> {
@@ -277,10 +277,17 @@ test('local fixture loader switches from Quake II to Quake with the correct pale
   await requireWebGpu(page);
   await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 30_000 });
   await page.getByRole('button', { name: 'Load', exact: true }).click();
+  await expect(page.locator('optgroup[label="Thirty Flights of Loving"] option')).toHaveCount(3);
+  await expect(page.locator('optgroup[label="Gravity Bone"] option')).toHaveCount(2);
+  await expect(page.locator('optgroup[label="FLESHCANCER"] option')).toHaveCount(3);
+  const fixtureIds = await page
+    .locator('[data-control-dock] select option')
+    .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value));
+  expect(fixtureIds.some((id) => /(?:\/b_|\/models\/|\/progs\/)/u.test(id))).toBe(false);
   await page
     .locator('[data-control-dock] select')
     .first()
-    .selectOption('steam-corpus/4484420/loose/id1/maps/dm1');
+    .selectOption('steam-corpus/fleshcancer/dm1');
   await page.locator('[data-fixture]').click();
 
   await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 30_000 });

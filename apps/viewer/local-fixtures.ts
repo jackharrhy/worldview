@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -85,6 +86,109 @@ async function bspFiles(directory: string): Promise<string[]> {
 const GAME_ASSET_PATH =
   /^(?:textures\/.+\.(?:wal|png|jpe?g|tga)|env\/.+\.(?:png|jpe?g|tga)|pics\/colormap\.pcx|gfx\/palette\.lmp)$/iu;
 const NON_FIXTURE_DIRECTORIES = new Set(['steam-installs']);
+const STEAM_CORPUS_SAMPLE_SIZE = 3;
+
+interface SteamCorpusGame {
+  readonly name: string;
+  readonly slug: string;
+  readonly anchor?: string;
+}
+
+interface SteamCorpusLevel {
+  readonly filename: string;
+  readonly relativePath: string;
+  readonly mapPath: string;
+  readonly game: SteamCorpusGame;
+}
+
+const steamGames: Readonly<Record<string, SteamCorpusGame>> = {
+  '10': { name: 'Counter-Strike', slug: 'counter-strike' },
+  '20': { name: 'Team Fortress Classic', slug: 'team-fortress-classic' },
+  '30': { name: 'Day of Defeat', slug: 'day-of-defeat' },
+  '40': { name: 'Deathmatch Classic', slug: 'deathmatch-classic' },
+  '50': { name: 'Half-Life: Opposing Force', slug: 'opposing-force' },
+  '60': { name: 'Ricochet', slug: 'ricochet' },
+  '70': { name: 'Half-Life', slug: 'half-life' },
+  '80': { name: 'Counter-Strike: Condition Zero', slug: 'condition-zero' },
+  '130': { name: 'Half-Life: Blue Shift', slug: 'blue-shift' },
+  '2310': { name: 'Quake', slug: 'quake' },
+  '2320': { name: 'Quake II', slug: 'quake-ii' },
+  '225840': { name: 'Sven Co-op', slug: 'sven-co-op' },
+  '1000410': { name: 'WRATH: Aeon of Ruin', slug: 'wrath' },
+  '3191050': { name: 'BRAZILIAN DRUG DEALER 3', slug: 'brazilian-drug-dealer-3' },
+  '4484420': { name: 'FLESHCANCER', slug: 'fleshcancer', anchor: 'dm1' },
+};
+
+const thirtyFlights: SteamCorpusGame = {
+  name: 'Thirty Flights of Loving',
+  slug: 'thirty-flights-of-loving',
+  anchor: 'bar1',
+};
+const gravityBone: SteamCorpusGame = {
+  name: 'Gravity Bone',
+  slug: 'gravity-bone',
+  anchor: 'hof1',
+};
+
+function corpusGame(appId: string, relativePath: string): SteamCorpusGame {
+  if (appId === '214700') {
+    if (relativePath.includes('/pak0.pk3/')) return thirtyFlights;
+    if (relativePath.includes('/pak1.pk3/')) return gravityBone;
+  }
+  return steamGames[appId] ?? { name: `Steam ${appId}`, slug: `steam-${appId}` };
+}
+
+function steamCorpusLevel(fixtureRoot: string, filename: string): SteamCorpusLevel | null {
+  const relativePath = slashPath(path.relative(fixtureRoot, filename));
+  const parts = relativePath.split('/');
+  const appId = parts[0];
+  if (!appId) return null;
+  const mapsIndex = parts.lastIndexOf('maps');
+  if (mapsIndex < 0 || mapsIndex === parts.length - 1) return null;
+  const mapPath = parts
+    .slice(mapsIndex + 1)
+    .join('/')
+    .replace(/\.bsp$/iu, '');
+  const basename = path.posix.basename(mapPath);
+  if (!mapPath || basename.startsWith('b_')) return null;
+  const game = corpusGame(appId, relativePath);
+  if (game.slug === 'fleshcancer' && !relativePath.includes('/loose/')) return null;
+  return { filename, relativePath, mapPath, game };
+}
+
+function sampleScore(level: SteamCorpusLevel): string {
+  return createHash('sha256').update(`${level.game.slug}/${level.relativePath}`).digest('hex');
+}
+
+function sampledSteamCorpusLevels(
+  fixtureRoot: string,
+  files: readonly string[],
+): readonly SteamCorpusLevel[] {
+  const byGame = new Map<string, Map<string, SteamCorpusLevel>>();
+  for (const filename of files) {
+    const level = steamCorpusLevel(fixtureRoot, filename);
+    if (!level) continue;
+    const levels = byGame.get(level.game.slug);
+    if (levels) levels.set(level.mapPath, level);
+    else byGame.set(level.game.slug, new Map([[level.mapPath, level]]));
+  }
+  const sampled: SteamCorpusLevel[] = [];
+  for (const uniqueLevels of byGame.values()) {
+    const levels = [...uniqueLevels.values()];
+    const anchor = levels.find(({ game, mapPath }) => path.posix.basename(mapPath) === game.anchor);
+    const candidates = levels
+      .filter((level) => level !== anchor)
+      .toSorted((left, right) => sampleScore(left).localeCompare(sampleScore(right)));
+    sampled.push(
+      ...(anchor ? [anchor] : []),
+      ...candidates.slice(0, STEAM_CORPUS_SAMPLE_SIZE - (anchor ? 1 : 0)),
+    );
+  }
+  return sampled.toSorted(
+    (left, right) =>
+      left.game.name.localeCompare(right.game.name) || left.mapPath.localeCompare(right.mapPath),
+  );
+}
 
 async function gameAssetFiles(directory: string, prefix = ''): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -136,9 +240,20 @@ export async function discoverLocalFixtures(localRoot: string): Promise<LocalFix
   const discovered = await Promise.all(
     directories.map(async (directory) => {
       const fixtureRoot = path.join(localRoot, directory.name);
-      const files = (await bspFiles(fixtureRoot)).toSorted((left, right) =>
+      const discoveredFiles = (await bspFiles(fixtureRoot)).toSorted((left, right) =>
         left.localeCompare(right),
       );
+      const steamLevels =
+        directory.name === 'steam-corpus'
+          ? sampledSteamCorpusLevels(fixtureRoot, discoveredFiles)
+          : [];
+      const steamLevelByFilename = new Map(
+        steamLevels.map((level) => [level.filename, level] as const),
+      );
+      const files =
+        directory.name === 'steam-corpus'
+          ? steamLevels.map(({ filename }) => filename)
+          : discoveredFiles;
       const assetsByApp = new Map<string, Promise<Readonly<Record<string, string>>>>();
       return Promise.all(
         files.map(async (filename) => {
@@ -146,9 +261,18 @@ export async function discoverLocalFixtures(localRoot: string): Promise<LocalFix
           const metadataFilename = filename.replace(/\.bsp$/i, '.worldview.json');
           const metadata = await metadataForBsp(filename);
           const stem = path.basename(filename, path.extname(filename));
-          const id =
-            files.length === 1 ? directory.name : `${directory.name}/${relativeBsp.slice(0, -4)}`;
-          const label = metadata.label === undefined ? `${stem}.bsp (local)` : metadata.label;
+          const steamLevel = steamLevelByFilename.get(filename);
+          const id = steamLevel
+            ? `${directory.name}/${steamLevel.game.slug}/${steamLevel.mapPath}`
+            : files.length === 1
+              ? directory.name
+              : `${directory.name}/${relativeBsp.slice(0, -4)}`;
+          const label =
+            metadata.label === undefined
+              ? steamLevel
+                ? `${stem}.bsp`
+                : `${stem}.bsp (local)`
+              : metadata.label;
           if (typeof label !== 'string' || !label.trim()) {
             throw new Error(`${metadataFilename}: label must be a non-empty string`);
           }
@@ -186,6 +310,7 @@ export async function discoverLocalFixtures(localRoot: string): Promise<LocalFix
               : publicFixtureRoot,
             ...(gameAssets ? { gameAssets } : {}),
             aliases: stringAliases(metadata.aliases, metadataFilename),
+            ...(steamLevel ? { namespace: steamLevel.game.name } : {}),
           } satisfies LocalFixtureDefinition;
           const camera = cameraDefinition(metadata.camera, metadataFilename);
           const walkabilityFilename = filename.replace(/\.bsp$/i, '.worldview-walkability.json');

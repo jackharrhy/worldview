@@ -33,3 +33,8 @@ Set `WORLDVIEW_STEAM_EXTRACT_ONLY=1` to rescan existing installs without contact
 extraction, the script builds the public package, parses every discovered BSP, and writes a
 `compatibility-report.json`; set `WORLDVIEW_STEAM_SKIP_CHECK=1` only when extraction is the sole
 goal.
+
+The compatibility manifest retains every discovered BSP, including Quake pickup and prop models.
+The development loader presents only a stable sample of up to three playable levels per game,
+grouped by game name. Raw Steam install directories and BSP assets such as `maps/b_*`, `models/*`,
+and `progs/*` are not selectable fixtures.
