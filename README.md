@@ -236,6 +236,13 @@ await viewer.playMusic();
 viewer.setMusicVolume(0.7);
 ```
 
+GPU-independent scheduling and external-store primitives use a separate entrypoint, so tools can
+share them without loading the BSP renderer:
+
+```ts
+import { AnimationFrameScheduler, SnapshotStore } from '@jackharrhy/worldview/runtime';
+```
+
 Caller-supplied `wads` and `palette` sources begin loading alongside the BSP. `resolveWad` remains
 parse-dependent because its references come from the BSP entity data. Progress events keep
 `loaded` and `total` scoped to the current transfer and provide stable concurrent item counts when

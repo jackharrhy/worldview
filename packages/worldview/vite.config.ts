@@ -10,6 +10,7 @@ export default defineConfig({
         index: resolve(import.meta.dirname, 'src/index.ts'),
         core: resolve(import.meta.dirname, 'src/core/index.ts'),
         element: resolve(import.meta.dirname, 'src/element/index.ts'),
+        runtime: resolve(import.meta.dirname, 'src/runtime/index.ts'),
         walkability: resolve(import.meta.dirname, 'src/walkability/index.ts'),
       },
       formats: ['es'],

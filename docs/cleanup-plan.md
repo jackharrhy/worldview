@@ -19,45 +19,27 @@ diaries here.
 
 ## Completed foundations
 
-| ID  | Result                                                                                                                                                                                                                                                                                                                                                                                |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C0  | One abort-owned editor lifetime disposes renderer, WebMCP, recovery, collaboration, listeners, and interrupted startup safely.                                                                                                                                                                                                                                                        |
-| C1  | React owns visible editor DOM through typed snapshots and commands. Runtime refs are limited to canvases, overlays, focus, measurement, resize, and native file boundaries. React Aria Components and the semantic Phosphor registry are enforced.                                                                                                                                    |
-| C2  | Presenters receive readonly-by-default state projections with explicit writable fields and command/query ports. Input adapters and the React route no longer reach through `EditorApplication`; document replacement, tool activation, application launch, and collaboration sessions have singular owners; collaboration uses a discriminated lifecycle.                             |
-| C3  | `EditorSession` is a stable façade over a single `SessionKernel` and explicitly wired organization, selection, transform, topology, entity, object/clipboard, material, and commit domains. Direct and replayed commands use the same command surface; one coordinator owns document commits, history, notifications, and remote application.                                         |
-| C4  | Source rendering owns named retained world-solid, object-line, local-preview, local-selection, tool, face-grid, reference, diagnostic, and remote-presence contributions with structural dependency keys and explicit GPU disposal. Canonical geometry stays resident through camera, selection, and transient-preview changes; all viewport passes share one encoder and submission. |
-| C6  | Zod 4 schemas own project, document, collaboration, ticket, hosted wire, compiler, persistence, walkability, and WebMCP ingress. `@worldview/protocol` is the shared browser/service wire contract.                                                                                                                                                                                   |
-| C7  | One typed `idb` database owns browser persistence. Hosted replay records elapsed disconnect time, operation count, encoded bytes, map version, and exact recovery state; exceeding a bound atomically creates a durable local map and removes the stale replay queue. Local work remains unbounded.                                                                                   |
+| ID  | Result                                                                                                                                                                                                                                                                                                                                                                                   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C0  | One abort-owned editor lifetime disposes renderer, WebMCP, recovery, collaboration, listeners, and interrupted startup safely.                                                                                                                                                                                                                                                           |
+| C1  | React owns visible editor DOM through typed snapshots and commands. Runtime refs are limited to canvases, overlays, focus, measurement, resize, and native file boundaries. React Aria Components and the semantic Phosphor registry are enforced.                                                                                                                                       |
+| C2  | Presenters receive readonly-by-default state projections with explicit writable fields and command/query ports. Input adapters and the React route no longer reach through `EditorApplication`; document replacement, tool activation, application launch, and collaboration sessions have singular owners; collaboration uses a discriminated lifecycle.                                |
+| C3  | `EditorSession` is a stable façade over a single `SessionKernel` and explicitly wired organization, selection, transform, topology, entity, object/clipboard, material, and commit domains. Direct and replayed commands use the same command surface; one coordinator owns document commits, history, notifications, and remote application.                                            |
+| C4  | Source rendering owns named retained world-solid, object-line, local-preview, local-selection, tool, face-grid, reference, diagnostic, and remote-presence contributions with structural dependency keys and explicit GPU disposal. Canonical geometry stays resident through camera, selection, and transient-preview changes; all viewport passes share one encoder and submission.    |
+| C5  | The public home graph excludes editor, renderer, WebMCP, compiler, collaboration, and editor-style entries. Shared stores/scheduling use the public `/runtime` subpath; the compiled BSP renderer remains an effective editor-owned dynamic entry. `/new-map` prewarms the editor without constructing it or requesting WebGPU. Production-manifest and browser gates enforce the split. |
+| C6  | Zod 4 schemas own project, document, collaboration, ticket, hosted wire, compiler, persistence, walkability, and WebMCP ingress. `@worldview/protocol` is the shared browser/service wire contract.                                                                                                                                                                                      |
+| C7  | One typed `idb` database owns browser persistence. Hosted replay records elapsed disconnect time, operation count, encoded bytes, map version, and exact recovery state; exceeding a bound atomically creates a durable local map and removes the stale replay queue. Local work remains unbounded.                                                                                      |
 
 These are invariants, not future work. Their focused tests and architecture checks must remain green.
 
 ## Active order
 
-| ID  | Priority | Status | Workstream                           | Depends on                    |
-| --- | -------- | ------ | ------------------------------------ | ----------------------------- |
-| C5  | P2       | ready  | Route isolation and optional loading | —                             |
-| C8  | P2       | ready  | Test-suite decomposition             | Follow changed domains        |
-| C9  | P2       | ready  | Viewer renderer decomposition        | C5 decision                   |
-| C10 | P2       | ready  | Hosted service handler boundaries    | C6                            |
-| C11 | P2       | ready  | Broaden architecture enforcement     | Established C2–C10 boundaries |
-
-## C5 — Route isolation and optional loading
-
-**Problem:** The public home route is already cheap, but shared runtime imports can defeat the
-compiled-preview dynamic import inside the editor route.
-
-**Direction:**
-
-- Keep `/` isolated from editor packages, TypeGPU/WebGPU, WebMCP, compiler, collaboration, and editor
-  assets.
-- If it remains a clean boundary, expose snapshot/scheduler primitives from a small public runtime
-  subpath so BSP parsing/rendering stays behind preview intent.
-- Preserve `/new-map` idle/intent prewarming without initializing presenters or WebGPU.
-- Measure route transfer and initialization. Do not impose an arbitrary editor chunk-size target.
-
-**Done when:** The home route remains isolated; the editor initializes reliably; the production
-build no longer reports an ineffective viewer dynamic import if the split is retained; route graphs
-and before/after measurements are recorded.
+| ID  | Priority | Status | Workstream                        | Depends on                    |
+| --- | -------- | ------ | --------------------------------- | ----------------------------- |
+| C8  | P2       | ready  | Test-suite decomposition          | Follow changed domains        |
+| C9  | P2       | ready  | Viewer renderer decomposition     | Completed C5 boundary         |
+| C10 | P2       | ready  | Hosted service handler boundaries | C6                            |
+| C11 | P2       | ready  | Broaden architecture enforcement  | Established C2–C10 boundaries |
 
 ## C8 — Test-suite decomposition
 

@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview';
+import { SnapshotStore } from '@jackharrhy/worldview/runtime';
 import type { EditorTool } from '@jackharrhy/worldview-editor';
 
 export const EDITOR_COMMAND_IDS = [

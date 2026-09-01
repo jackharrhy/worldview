@@ -13,6 +13,7 @@ import {
   type ParsedWorld,
 } from '@jackharrhy/worldview/core';
 import { WorldViewElement, defineWorldViewElement } from '@jackharrhy/worldview/element';
+import { SnapshotStore } from '@jackharrhy/worldview/runtime';
 import {
   parseWalkability,
   planWalkabilityCutaway,
@@ -64,3 +65,4 @@ document.body.dataset.walkability = String(
     typeof serializeWalkability === 'function',
 );
 document.body.dataset.error = String(new WorldviewError('invalid-data', 'consumer').code);
+document.body.dataset.runtime = String(new SnapshotStore('ready').getSnapshot() === 'ready');

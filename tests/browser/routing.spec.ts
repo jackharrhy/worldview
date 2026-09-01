@@ -3,6 +3,56 @@ import { expect, test } from '@playwright/test';
 const editorOrigin = 'http://127.0.0.1:5174';
 
 test.describe('Application routing', () => {
+  test('isolates home and prewarms the editor without initializing it @ci-smoke', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      const state = { requestAdapterCalls: 0 };
+      Object.defineProperty(window, 'worldviewRouteProbe', { value: state });
+      const gpu = navigator.gpu;
+      if (!gpu) return;
+      const prototype = Object.getPrototypeOf(gpu) as object;
+      const original = Reflect.get(prototype, 'requestAdapter') as
+        | ((...arguments_: unknown[]) => unknown)
+        | undefined;
+      if (!original) return;
+      Reflect.set(prototype, 'requestAdapter', function (this: object, ...arguments_: unknown[]) {
+        state.requestAdapterCalls += 1;
+        return Reflect.apply(original, this, arguments_);
+      });
+    });
+
+    const requestedModules: string[] = [];
+    page.on('request', (request) => requestedModules.push(new URL(request.url()).pathname));
+    await page.goto(editorOrigin);
+    await expect(page.getByRole('heading', { name: 'Worldview Editor' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+
+    expect(requestedModules.some((pathname) => pathname.includes('/editor-route'))).toBe(false);
+    await expect(page.locator('canvas')).toHaveCount(0);
+    await expect(page.locator('html')).not.toHaveAttribute('data-worldview-editor-ready', 'true');
+
+    const editorPreload = page.waitForRequest((request) =>
+      new URL(request.url()).pathname.includes('/editor-route'),
+    );
+    await page.getByRole('button', { name: 'New map' }).click();
+    await expect(page).toHaveURL(`${editorOrigin}/new-map`);
+    await editorPreload;
+
+    await expect(page.locator('canvas')).toHaveCount(0);
+    await expect(page.locator('html')).not.toHaveAttribute('data-worldview-editor-ready', 'true');
+    expect(
+      await page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              worldviewRouteProbe: { requestAdapterCalls: number };
+            }
+          ).worldviewRouteProbe.requestAdapterCalls,
+      ),
+    ).toBe(0);
+  });
+
   test('renders a designed root error boundary for unknown routes @ci-smoke', async ({ page }) => {
     await page.goto(`${editorOrigin}/not-a-worldview-route`);
 

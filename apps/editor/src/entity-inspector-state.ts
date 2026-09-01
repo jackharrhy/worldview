@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview';
+import { SnapshotStore } from '@jackharrhy/worldview/runtime';
 
 export type EntityPropertyControlKind = 'text' | 'number' | 'boolean' | 'choices' | 'flags';
 

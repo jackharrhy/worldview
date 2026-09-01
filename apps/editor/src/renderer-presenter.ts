@@ -30,7 +30,7 @@ import {
   type MapDocument,
   type SimpleShapeKind,
 } from '@jackharrhy/worldview-editor';
-import { AnimationFrameScheduler } from '@jackharrhy/worldview';
+import { AnimationFrameScheduler } from '@jackharrhy/worldview/runtime';
 
 import { resolveEditorRenderTheme } from './render-theme.js';
 import type { EditorShellState } from './editor-shell-state.js';

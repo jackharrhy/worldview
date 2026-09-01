@@ -4,12 +4,12 @@ import {
   planOverview,
   type CameraState,
   type ReadyDetail,
-  type SnapshotStore,
   type WorldSource,
   type WorldviewMovementMode,
   type WorldviewMovementUpdate,
   type WorldviewViewer,
 } from '@jackharrhy/worldview';
+import type { SnapshotStore } from '@jackharrhy/worldview/runtime';
 import { serializeWalkability, type WalkabilityMap } from '@jackharrhy/worldview/walkability';
 
 import { fixtureById } from './fixture-catalog.js';

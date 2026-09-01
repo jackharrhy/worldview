@@ -312,6 +312,7 @@ test('published subpaths bundle and execute without the TypeGPU consumer plugin'
   await expect(page.locator('body')).toHaveAttribute('data-core', 'true');
   await expect(page.locator('body')).toHaveAttribute('data-element', 'true');
   await expect(page.locator('body')).toHaveAttribute('data-walkability', 'true');
+  await expect(page.locator('body')).toHaveAttribute('data-runtime', 'true');
   await expect(page.locator('body')).toHaveAttribute('data-error', 'invalid-data');
 });
 

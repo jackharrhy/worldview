@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { useMutation } from '@tanstack/react-query';
 
-import type { SnapshotReader } from '@jackharrhy/worldview';
+import type { SnapshotReader } from '@jackharrhy/worldview/runtime';
 
 import type { ViewerController } from '../viewer-controller.js';
 import type { ViewerCameraSnapshot, ViewerControlSnapshot } from '../viewer-state.js';

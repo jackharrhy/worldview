@@ -1,4 +1,4 @@
-import { SnapshotStore, selectSnapshot, type SnapshotReader } from '@jackharrhy/worldview';
+import { SnapshotStore, selectSnapshot, type SnapshotReader } from '@jackharrhy/worldview/runtime';
 
 export interface ViewerMusicOption {
   readonly label: string;

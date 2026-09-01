@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { useMutation } from '@tanstack/react-query';
 
-import type { SnapshotReader } from '@jackharrhy/worldview';
+import type { SnapshotReader } from '@jackharrhy/worldview/runtime';
 
 import { selectableFixtures } from '../fixture-catalog.js';
 import type { ViewerController } from '../viewer-controller.js';

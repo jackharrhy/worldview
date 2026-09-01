@@ -44,6 +44,10 @@
       "types": "./dist/element/index.d.ts",
       "import": "./dist/element.js"
     },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime.js"
+    },
     "./walkability": {
       "types": "./dist/walkability/index.d.ts",
       "import": "./dist/walkability.js"
