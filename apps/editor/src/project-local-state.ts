@@ -1,9 +1,6 @@
 import type { EditorDirectoryHandle } from './project-workspace.js';
 import { z } from 'zod';
-
-const DATABASE_NAME = 'worldview-editor-local-projects';
-const DATABASE_VERSION = 2;
-const PROJECT_STORE = 'projects';
+import { EDITOR_STORES, openEditorDatabase } from './editor-database.js';
 
 export interface LocalProjectState {
   readonly version: 2;
@@ -38,50 +35,6 @@ export const LocalProjectStateSchema = z.strictObject({
   updatedAt: z.number().int().nonnegative(),
 }) satisfies z.ZodType<LocalProjectState>;
 
-function requestResult<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.addEventListener('success', () => resolve(request.result), { once: true });
-    request.addEventListener(
-      'error',
-      () => reject(request.error ?? new Error('Local project state request failed')),
-      { once: true },
-    );
-  });
-}
-
-function transactionComplete(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    transaction.addEventListener('complete', () => resolve(), { once: true });
-    transaction.addEventListener(
-      'error',
-      () => reject(transaction.error ?? new Error('Local project state transaction failed')),
-      { once: true },
-    );
-    transaction.addEventListener(
-      'abort',
-      () => reject(transaction.error ?? new Error('Local project state transaction aborted')),
-      { once: true },
-    );
-  });
-}
-
-function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.addEventListener('upgradeneeded', () => {
-      if (!request.result.objectStoreNames.contains(PROJECT_STORE)) {
-        request.result.createObjectStore(PROJECT_STORE, { keyPath: 'projectKey' });
-      }
-    });
-    request.addEventListener('success', () => resolve(request.result), { once: true });
-    request.addEventListener(
-      'error',
-      () => reject(request.error ?? new Error('Could not open local project state')),
-      { once: true },
-    );
-  });
-}
-
 export interface ProjectLocalStateStorage {
   load(projectKey: string): Promise<LocalProjectState | null>;
   list(): Promise<readonly LocalProjectState[]>;
@@ -90,46 +43,27 @@ export interface ProjectLocalStateStorage {
 
 export class IndexedDbProjectLocalStateStorage implements ProjectLocalStateStorage {
   public async load(projectKey: string): Promise<LocalProjectState | null> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(PROJECT_STORE, 'readonly');
-      const value: unknown = await requestResult(
-        transaction.objectStore(PROJECT_STORE).get(projectKey),
-      );
-      const state = LocalProjectStateSchema.safeParse(value);
-      return state.success ? state.data : null;
-    } finally {
-      database.close();
-    }
+    const value: unknown = await (
+      await openEditorDatabase()
+    ).get(EDITOR_STORES.localProjects, projectKey);
+    const state = LocalProjectStateSchema.safeParse(value);
+    return state.success ? state.data : null;
   }
 
   public async list(): Promise<readonly LocalProjectState[]> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(PROJECT_STORE, 'readonly');
-      const values: unknown[] = await requestResult(
-        transaction.objectStore(PROJECT_STORE).getAll(),
-      );
-      return values
-        .flatMap((value) => {
-          const state = LocalProjectStateSchema.safeParse(value);
-          return state.success ? [state.data] : [];
-        })
-        .toSorted((left, right) => right.updatedAt - left.updatedAt);
-    } finally {
-      database.close();
-    }
+    const values: unknown[] = await (
+      await openEditorDatabase()
+    ).getAll(EDITOR_STORES.localProjects);
+    return values
+      .flatMap((value) => {
+        const state = LocalProjectStateSchema.safeParse(value);
+        return state.success ? [state.data] : [];
+      })
+      .toSorted((left, right) => right.updatedAt - left.updatedAt);
   }
 
   public async save(state: LocalProjectState): Promise<void> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(PROJECT_STORE, 'readwrite');
-      transaction.objectStore(PROJECT_STORE).put(state);
-      await transactionComplete(transaction);
-    } finally {
-      database.close();
-    }
+    await (await openEditorDatabase()).put(EDITOR_STORES.localProjects, state);
   }
 }
 

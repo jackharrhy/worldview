@@ -1,21 +1,28 @@
-import { describe, expect, it, vi } from 'vitest';
+import 'fake-indexeddb/auto';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createBoxBrush,
   createSequentialIdFactory,
   createStarterDocument,
   EditorSession,
   insertBrush,
+  rebaseMapSource,
   serializeMap,
 } from '@jackharrhy/worldview-editor/core';
 import {
   CollaborationController,
   EditorCollaborationBridge,
   CollaborationSocketClient,
-  MemoryCollaborationOutbox,
+  IndexedDbCollaborationOutbox,
   reconcilePendingOperations,
   type CollaborationChannel,
   type CollaborationSocket,
 } from '../src/collaboration.js';
+import { deleteEditorDatabase } from '../src/editor-database.js';
+
+beforeEach(deleteEditorDatabase);
+afterEach(deleteEditorDatabase);
 
 function channel(publish: (message: unknown) => void): CollaborationChannel {
   return {
@@ -60,7 +67,7 @@ describe('CollaborationController', () => {
   });
 
   it('persists before broadcasting and clears only acknowledged operations', async () => {
-    const outbox = new MemoryCollaborationOutbox();
+    const outbox = new IndexedDbCollaborationOutbox();
     const broadcast = vi.fn();
     const controller = new CollaborationController({
       mapId: 'room',
@@ -87,6 +94,76 @@ describe('CollaborationController', () => {
     expect(await controller.pending()).toEqual([]);
   });
 
+  it('detaches an over-limit offline commit before broadcasting it', async () => {
+    const outbox = new IndexedDbCollaborationOutbox({
+      graceMilliseconds: 1_000,
+      maxOperations: 0,
+      maxEncodedBytes: 1_000_000,
+    });
+    const broadcast = vi.fn();
+    const detached = vi.fn();
+    const before = createStarterDocument();
+    const after = insertBrush(
+      before,
+      before.entities[0]!.id,
+      createBoxBrush([0, 0, 0], [64, 64, 64], 'STONE', createSequentialIdFactory('detach')),
+    );
+    const controller = new CollaborationController({
+      mapId: 'room',
+      actorId: 'alice',
+      outbox,
+      channel: channel(broadcast),
+      createId: () => 'fixed',
+      now: () => 100,
+      captureRecovery: (document, mapVersion) => ({
+        version: 1,
+        mapId: 'room',
+        documentKey: 'hosted-map:room',
+        fileName: 'detached.map',
+        profile: 'quake',
+        document,
+        source: rebaseMapSource(document, serializeMap(document)),
+        savedDocumentRevision: before.revision,
+        mapVersion,
+        updatedAt: 100,
+      }),
+      onDetached: detached,
+    });
+
+    await controller.recordCommit('Offline edit', before, after);
+
+    expect(broadcast).not.toHaveBeenCalled();
+    expect(await controller.pending()).toEqual([]);
+    expect(detached).toHaveBeenCalledWith(
+      expect.objectContaining({ fileName: 'detached.map', document: after, operationCount: 1 }),
+    );
+  });
+
+  it('never broadcasts an operation when durable outbox storage rejects it', async () => {
+    const outbox = new IndexedDbCollaborationOutbox();
+    vi.spyOn(outbox, 'put').mockRejectedValueOnce(
+      new DOMException('quota full', 'QuotaExceededError'),
+    );
+    const broadcast = vi.fn();
+    const controller = new CollaborationController({
+      mapId: 'room',
+      actorId: 'alice',
+      outbox,
+      channel: channel(broadcast),
+    });
+    const before = createStarterDocument();
+    const after = insertBrush(
+      before,
+      before.entities[0]!.id,
+      createBoxBrush([0, 0, 0], [64, 64, 64], 'STONE', createSequentialIdFactory('quota')),
+    );
+
+    await expect(controller.recordCommit('Offline edit', before, after)).rejects.toMatchObject({
+      name: 'QuotaExceededError',
+    });
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
   it('flushes the offline outbox on ready, handles ack/remote frames, and reconnects', async () => {
     const listeners = new Map<string, (event?: MessageEvent<string>) => void>();
     const sent: string[] = [];
@@ -97,7 +174,7 @@ describe('CollaborationController', () => {
       send: (data) => sent.push(data),
       close: vi.fn(),
     } as CollaborationSocket;
-    const outbox = new MemoryCollaborationOutbox();
+    const outbox = new IndexedDbCollaborationOutbox();
     const peers = vi.fn();
     const controller = new CollaborationController({
       mapId: 'room',
@@ -195,7 +272,7 @@ describe('CollaborationController', () => {
     const controller = new CollaborationController({
       mapId: 'room',
       actorId: 'alice',
-      outbox: new MemoryCollaborationOutbox(),
+      outbox: new IndexedDbCollaborationOutbox(),
       channel: channel(() => {}),
       createId: () => 'live',
     });
@@ -228,8 +305,73 @@ describe('CollaborationController', () => {
     );
     const operation = await controller.recordCommit('Live edit', before, after);
 
-    expect(sent).toHaveLength(1);
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
     expect(JSON.parse(sent[0]!).operation.operationId).toBe(operation?.operationId);
+    client.close();
+  });
+
+  it('fails a room handshake closed when its durable connected transition rejects', async () => {
+    const listeners = new Map<string, (event?: MessageEvent<string>) => void>();
+    const close = vi.fn();
+    const socket: CollaborationSocket = {
+      readyState: 1,
+      addEventListener: (type: string, listener: (event?: MessageEvent<string>) => void) =>
+        listeners.set(type, listener),
+      send: vi.fn(),
+      close,
+    } as CollaborationSocket;
+    const outbox = new IndexedDbCollaborationOutbox();
+    vi.spyOn(outbox, 'connectionChanged').mockRejectedValueOnce(
+      new DOMException('quota full', 'QuotaExceededError'),
+    );
+    const onError = vi.fn();
+    const controller = new CollaborationController({
+      mapId: 'room',
+      actorId: 'alice',
+      outbox,
+      channel: channel(() => {}),
+      createId: () => 'offline-after-failure',
+      now: () => 50,
+    });
+    const client = new CollaborationSocketClient({
+      endpoint: 'ws://localhost:8787',
+      mapId: 'room',
+      actorId: 'alice',
+      controller,
+      createSocket: () => socket,
+      onError,
+    });
+    const before = createStarterDocument();
+    client.connect();
+    listeners.get('message')?.({
+      data: JSON.stringify({
+        type: 'ready',
+        mapId: 'room',
+        mapVersion: 0,
+        document: before,
+        source: serializeMap(before),
+        sourceSha256: 'a'.repeat(64),
+      }),
+    } as MessageEvent<string>);
+
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'QuotaExceededError' }));
+
+    const after = insertBrush(
+      before,
+      before.entities[0]!.id,
+      createBoxBrush(
+        [0, 0, 0],
+        [64, 64, 64],
+        'STONE',
+        createSequentialIdFactory('offline-after-failure'),
+      ),
+    );
+    await controller.recordCommit('Offline after failed handshake', before, after);
+    expect(await outbox.inspect('room', 50)).toMatchObject({
+      status: 'replay',
+      summary: { dirtySince: 50 },
+    });
     client.close();
   });
 
@@ -244,7 +386,7 @@ describe('CollaborationController', () => {
     const controller = new CollaborationController({
       mapId: 'hosted-map',
       actorId: 'alice',
-      outbox: new MemoryCollaborationOutbox(),
+      outbox: new IndexedDbCollaborationOutbox(),
       channel: channel(() => {}),
     });
     const client = new CollaborationSocketClient({
@@ -267,7 +409,7 @@ describe('CollaborationController', () => {
   });
 
   it('bridges real EditorSession commits while keeping remote commits out of the local outbox', async () => {
-    const outbox = new MemoryCollaborationOutbox();
+    const outbox = new IndexedDbCollaborationOutbox();
     const controller = new CollaborationController({
       mapId: 'room',
       actorId: 'alice',

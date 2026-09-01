@@ -99,16 +99,16 @@ Status terms:
 
 ## Collaboration and hosted editing
 
-| Capability              | Status     | Current behavior                                                                                                                                                                        |
-| ----------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Solo mode               | Delivered  | Local projects never require the network and remain editable for an unbounded duration. Multiplayer is optional within a map.                                                           |
-| Rooms                   | Delivered  | Hosted maps use one authoritative SQLite-backed `MapCell`, ticketed WebSockets, operation receipts, persisted source/checkpoints, and hibernating presence.                             |
-| Live editing            | Delivered  | Brushes/entities, in-progress transforms, face extrusion, cursors, selections, cameras, and participant-colored previews update without waiting for commit round trips.                 |
-| Local authority         | Delivered  | The initiating client displays its candidate immediately. Remote presence and gesture previews are lossy and never enter source or undo history.                                        |
-| Undo and convergence    | Delivered  | Seeded multi-replica tests cover deterministic operation ordering, conflict handling, conditional personalized undo, reconnect, and persisted acknowledgement.                          |
-| Accountless sharing     | Superseded | Production hosted rooms require 4orm authentication and project membership. Offline/local editing remains available without an account.                                                 |
-| Bounded dirty reconnect | Partial    | The product policy is decided, but C7 still needs durable elapsed/count/byte limits and automatic quarantine into a local copy.                                                         |
-| Fleet hardening         | Deferred   | Single-node celld/Azurite persistence and kill/restore are verified. Multi-node ownership handoff, outage drills, backup/restore, and production object storage remain deployment work. |
+| Capability              | Status     | Current behavior                                                                                                                                                                             |
+| ----------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Solo mode               | Delivered  | Local projects never require the network and remain editable for an unbounded duration. Multiplayer is optional within a map.                                                                |
+| Rooms                   | Delivered  | Hosted maps use one authoritative SQLite-backed `MapCell`, ticketed WebSockets, operation receipts, persisted source/checkpoints, and hibernating presence.                                  |
+| Live editing            | Delivered  | Brushes/entities, in-progress transforms, face extrusion, cursors, selections, cameras, and participant-colored previews update without waiting for commit round trips.                      |
+| Local authority         | Delivered  | The initiating client displays its candidate immediately. Remote presence and gesture previews are lossy and never enter source or undo history.                                             |
+| Undo and convergence    | Delivered  | Seeded multi-replica tests cover deterministic operation ordering, conflict handling, conditional personalized undo, reconnect, and persisted acknowledgement.                               |
+| Accountless sharing     | Superseded | Production hosted rooms require 4orm authentication and project membership. Offline/local editing remains available without an account.                                                      |
+| Bounded dirty reconnect | Delivered  | One typed IndexedDB outbox permits indefinite clean reconnects, bounds dirty replay to 15 minutes/200 operations/4 MiB, and atomically detaches over-limit work into a reopenable local map. |
+| Fleet hardening         | Deferred   | Single-node celld/Azurite persistence and kill/restore are verified. Multi-node ownership handoff, outage drills, backup/restore, and production object storage remain deployment work.      |
 
 ## Automation and evidence
 

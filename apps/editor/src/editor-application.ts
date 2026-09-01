@@ -24,6 +24,11 @@ import { TransformToolPresenter } from './transform-tool-presenter.js';
 import { WebMcpPresenter } from './webmcp-presenter.js';
 import { ViewportWorkspacePresenter } from './viewport-workspace-presenter.js';
 import type { EditorApplicationLaunch } from './editor-application-contracts.js';
+import type { DetachedHostedMap } from './collaboration.js';
+
+export interface EditorApplicationOptions extends EditorStateOptions {
+  readonly onHostedMapDetached?: (copy: DetachedHostedMap) => void;
+}
 
 export class EditorApplication {
   private readonly state: EditorState;
@@ -55,7 +60,7 @@ export class EditorApplication {
   public constructor(
     private readonly ui: EditorShellState,
     elements: EditorElements,
-    options: EditorStateOptions = {},
+    options: EditorApplicationOptions = {},
   ) {
     const stateHost: EditorStateHost = {
       effectiveObjectViewState: (document) => this.organization.effectiveObjectViewState(document),
@@ -101,6 +106,7 @@ export class EditorApplication {
       () => this.collaboration.leave(),
       this.collaborationLifecycle,
       this.lifetime.signal,
+      options.onHostedMapDetached,
     );
     this.build = new BuildPresenter(
       this.state,
@@ -278,19 +284,31 @@ export class EditorApplication {
         this.project.createNewMap(launch.profile, launch.format, launch.name, launch.workspaceId);
         return;
       case 'hosted-map': {
+        this.state.activeGameProfile = launch.game;
+        this.state.workspaceId = `hosted:${launch.id}`;
         const source = new File([launch.source], launch.name, { type: 'text/plain' });
         await this.project.openEditorMap(source, null, launch.name, {
           throwOnError: true,
           viewportWorkspaceKey: `hosted-map:${launch.id}`,
+          documentKey: `hosted-map:${launch.id}`,
+          restoreRecovery: false,
         });
         this.signal.throwIfAborted();
         this.project.loadHostedResources(launch.resources ?? []);
-        await this.collaborationUi.joinHostedMap(launch.id, launch.actorId, launch.displayName);
+        const result = await this.collaborationUi.joinHostedMap(
+          launch.id,
+          launch.actorId,
+          launch.displayName,
+        );
+        if (result !== 'started') return;
         this.ui.statusMessage.set(
           `Opened hosted map ${launch.projectName} / ${launch.name} · live at v${launch.mapVersion}`,
         );
         return;
       }
+      case 'detached-map':
+        this.project.openDetachedHostedMap(launch.copy);
+        return;
       case 'project':
         await this.project.openProjectDirectory(launch.handle);
         return;

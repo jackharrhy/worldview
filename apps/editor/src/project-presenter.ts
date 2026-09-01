@@ -43,6 +43,7 @@ import type { EditorShellState } from './editor-shell-state.js';
 import type { EditorStatePort } from './editor-state-port.js';
 import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
 import type { ProjectActionId } from './project-build-ui-state.js';
+import type { DetachedHostedMap } from './collaboration-outbox.js';
 
 type ProjectUi = Pick<
   EditorShellState,
@@ -230,13 +231,16 @@ export class ProjectPresenter {
       assertExpectedDocument();
       let parsed = parseMapSource(text, createSequentialIdFactory(`opened-${Date.now()}`));
       const fingerprint = mapSourceFingerprint(text);
-      const documentKey = belongsToCurrentProject
-        ? `${this.state.workspaceId}:map:${logicalName.toLowerCase()}`
-        : `file:${logicalName.toLowerCase()}:${fingerprint}`;
+      const documentKey =
+        options.documentKey ??
+        (belongsToCurrentProject
+          ? `${this.state.workspaceId}:map:${logicalName.toLowerCase()}`
+          : `file:${logicalName.toLowerCase()}:${fingerprint}`);
       const viewportWorkspaceKey =
         options.viewportWorkspaceKey ??
         (belongsToCurrentProject ? documentKey : `standalone-map:${logicalName.toLowerCase()}`);
-      const recovered = await this.state.recovery.latest(documentKey);
+      const recovered =
+        options.restoreRecovery === false ? null : await this.state.recovery.latest(documentKey);
       assertExpectedDocument();
       const restoreRecovery = Boolean(
         recovered &&
@@ -465,6 +469,28 @@ export class ProjectPresenter {
     });
     this.viewportWorkspace.restore(this.state.documentKey);
     this.ui.statusMessage.set(`Created an empty ${definition.label} ${format} map.`);
+  }
+
+  public openDetachedHostedMap(copy: DetachedHostedMap): void {
+    this.viewportWorkspace.beginDocumentChange();
+    this.detachProjectContext();
+    this.state.workspaceId = `browser:${copy.id}`;
+    this.state.documentKey = copy.documentKey;
+    this.state.activeGameProfile = copy.profile;
+    this.session.replaceDocument(copy.document, `Open detached copy of ${copy.fileName}`, {
+      name: copy.fileName,
+      source: copy.source,
+      fileHandle: null,
+      diskFingerprint: null,
+      dirty: true,
+      savedRevision: -1,
+      focusView: true,
+    });
+    this.session.setEditorTool('select');
+    this.viewportWorkspace.restore(copy.documentKey);
+    this.ui.statusMessage.set(
+      `${copy.fileName} is an independent local copy. Its hosted replay queue was cleared.`,
+    );
   }
 
   public async recentProjects() {

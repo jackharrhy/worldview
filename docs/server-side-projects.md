@@ -69,13 +69,16 @@ acknowledged operations are durable, named checkpoints are explicit, and `.map` 
 Source snapshots are produced through the source-preserving save planner, so untouched source
 round-trips exactly and unsafe opaque edits remain blocked.
 
-Remote maps cache their last snapshot, map version, resource manifest, and pending operations in
-IndexedDB. Reconnection uses the existing deterministic operation/rebase rules. Resources use a
-SHA-256 browser cache and never silently update when a remote provider changes.
+While a hosted map has unacknowledged edits, the typed application database stores its pending
+operations, map version, disconnect bounds, and an exact source/document recovery snapshot.
+Reconnection uses the existing deterministic operation/rebase rules. Crossing a dirty-reconnect
+bound atomically turns that recovery state into an independent local map and removes the operations
+from hosted replay. Resources use a SHA-256 browser cache and never silently update when a remote
+provider changes.
 
-The application database never stores hosted source text, a source blob pointer, a second source
-version, or map checkpoints. Initial HTTP loads, live joins, reloads, checkpoints, and builds all
-resolve the same named MapCell and its single monotonically increasing `mapVersion`.
+These browser records are recovery data, never a second hosted authority. Initial HTTP loads, live
+joins, reloads, checkpoints, and builds resolve the same named MapCell and its single monotonically
+increasing `mapVersion`; a detached local copy no longer claims membership in that room.
 Map creation validates authorization, names, formats, and existing metadata before initializing the
 cell. The metadata row is exposed only after initialization succeeds. A rare failure after cell
 initialization can leave an unreachable cell, which is safer than publishing metadata for a map

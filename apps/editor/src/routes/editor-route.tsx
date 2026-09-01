@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useLocation } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { EditorShell } from '../components/editor-shell.js';
 import { EditorApplication } from '../editor-application.js';
 import { bindEditorElements } from '../editor-elements.js';
@@ -10,18 +10,22 @@ import { readNewMapLaunch } from './editor-navigation-state.js';
 import type { HostedMapLaunch } from './hosted-project-api.js';
 import { HostedMapBuildService } from '../hosted-map-build-service.js';
 import type { EditorApplicationLaunch } from '../editor-application-contracts.js';
+import type { DetachedHostedMap } from '../collaboration-outbox.js';
+import { detachedMapPath } from './local-map-path.js';
 
 import '../style.css';
 
 interface EditorRouteProps {
   readonly hostedMap?: HostedMapLaunch;
+  readonly detachedMap?: DetachedHostedMap;
 }
 
-export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
+export function EditorRoute({ hostedMap, detachedMap }: EditorRouteProps = {}) {
   const routeLocation = useLocation();
+  const navigate = useNavigate();
   const initialMap = useMemo(
-    () => (hostedMap ? null : readNewMapLaunch(routeLocation.state)),
-    [hostedMap, routeLocation.state],
+    () => (hostedMap || detachedMap ? null : readNewMapLaunch(routeLocation.state)),
+    [detachedMap, hostedMap, routeLocation.state],
   );
   const [shellState] = useState(createEditorShellState);
   const [queryClient] = useState(
@@ -56,6 +60,9 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
               game: hostedMap.game,
             }),
             buildServiceEnabled: true,
+            onHostedMapDetached: (copy: DetachedHostedMap) => {
+              void navigate(detachedMapPath(copy.id), { replace: true });
+            },
           }
         : {};
       const application = new EditorApplication(
@@ -67,19 +74,22 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
       delete document.documentElement.dataset.worldviewEditorReady;
       const launch: EditorApplicationLaunch | null = initialMap
         ? { kind: 'new-map', ...initialMap }
-        : hostedMap
-          ? {
-              kind: 'hosted-map',
-              id: hostedMap.id,
-              name: hostedMap.name,
-              source: hostedMap.source,
-              projectName: hostedMap.projectName,
-              mapVersion: hostedMap.mapVersion,
-              actorId: hostedMap.actorId,
-              displayName: hostedMap.displayName,
-              resources: hostedMap.resources ?? [],
-            }
-          : takePendingEditorLaunch();
+        : detachedMap
+          ? { kind: 'detached-map', copy: detachedMap }
+          : hostedMap
+            ? {
+                kind: 'hosted-map',
+                id: hostedMap.id,
+                name: hostedMap.name,
+                source: hostedMap.source,
+                projectName: hostedMap.projectName,
+                game: hostedMap.game,
+                mapVersion: hostedMap.mapVersion,
+                actorId: hostedMap.actorId,
+                displayName: hostedMap.displayName,
+                resources: hostedMap.resources ?? [],
+              }
+            : takePendingEditorLaunch();
       void (async () => {
         await application.start(launch);
         application.signal.throwIfAborted();
@@ -97,7 +107,7 @@ export function EditorRoute({ hostedMap }: EditorRouteProps = {}) {
         delete document.documentElement.dataset.worldviewEditorReady;
       };
     },
-    [hostedMap, initialMap, shellState],
+    [detachedMap, hostedMap, initialMap, navigate, shellState],
   );
   return (
     <QueryClientProvider client={queryClient}>

@@ -1,6 +1,10 @@
 import { HostedErrorResponseSchema, HostedRealtimeTicketResponseSchema } from '@worldview/protocol';
 
-import type { CollaborationPresence, JoinCollaborationOptions } from './collaboration.js';
+import type {
+  CollaborationPresence,
+  DetachedHostedMap,
+  JoinCollaborationOptions,
+} from './collaboration.js';
 import {
   CollaborationLifecycle,
   type CollaborationLifecycleSnapshot,
@@ -154,10 +158,13 @@ export class CollaborationPresenter {
 
   public constructor(
     private readonly ui: CollaborationUi,
-    private readonly joinCollaboration: (options: JoinCollaborationOptions) => Promise<void>,
+    private readonly joinCollaboration: (
+      options: JoinCollaborationOptions,
+    ) => Promise<'started' | 'detached-local'>,
     private readonly leaveCollaboration: () => void,
     private readonly lifecycle: CollaborationLifecycle,
     private readonly signal: AbortSignal,
+    private readonly onDetached: (copy: DetachedHostedMap) => void = () => undefined,
   ) {
     persist(ACTOR_KEY, this.actorId);
   }
@@ -190,7 +197,11 @@ export class CollaborationPresenter {
     });
   }
 
-  public async joinHostedMap(mapId: string, actorId: string, displayName: string): Promise<void> {
+  public async joinHostedMap(
+    mapId: string,
+    actorId: string,
+    displayName: string,
+  ): Promise<'started' | 'detached-local' | 'failed'> {
     const authorize = async (signal = this.signal) => {
       signal.throwIfAborted();
       const response = await fetch(`/api/maps/${encodeURIComponent(mapId)}/realtime-ticket`, {
@@ -211,7 +222,7 @@ export class CollaborationPresenter {
         throw new Error('Collaboration authorization returned an invalid response');
       return ticket.data.ticket;
     };
-    await this.join(mapId, { actorId, displayName, authorize });
+    return this.join(mapId, { actorId, displayName, authorize });
   }
 
   private async join(
@@ -221,7 +232,7 @@ export class CollaborationPresenter {
       readonly displayName: string;
       readonly authorize: (signal?: AbortSignal) => Promise<string>;
     },
-  ): Promise<void> {
+  ): Promise<'started' | 'detached-local' | 'failed'> {
     const { actorId, displayName } = identity;
     this.activeActorId = actorId;
     this.participants.clear();
@@ -230,7 +241,7 @@ export class CollaborationPresenter {
     this.ui.collaborationUi.update({ error: null });
     try {
       this.signal.throwIfAborted();
-      await this.joinCollaboration({
+      const result = await this.joinCollaboration({
         endpoint: collaborationEndpoint(),
         mapId,
         actorId,
@@ -249,8 +260,14 @@ export class CollaborationPresenter {
           if (state === 'connected') this.lifecycle.connected(mapId);
           else if (state === 'disconnected') this.lifecycle.disconnected(mapId);
         },
+        onDetached: (copy) => {
+          if (!this.isCurrentMap(mapId)) return;
+          this.lifecycle.detach(mapId, copy.reason);
+          this.onDetached(copy);
+        },
       });
       this.signal.throwIfAborted();
+      if (result === 'detached-local') return result;
       this.participants.set(actorId, {
         actorId,
         displayName,
@@ -261,12 +278,14 @@ export class CollaborationPresenter {
         shareLink: window.location.href,
       });
       this.renderParticipants();
+      return result;
     } catch (error) {
-      if (this.signal.aborted) return;
-      if (error instanceof DOMException && error.name === 'AbortError') return;
+      if (this.signal.aborted) return 'failed';
+      if (error instanceof DOMException && error.name === 'AbortError') return 'failed';
       this.leaveCollaboration();
       const reason = error instanceof Error ? error.message : String(error);
       if (this.isCurrentMap(mapId)) this.lifecycle.conflicted(mapId, reason);
+      return 'failed';
     }
   }
 

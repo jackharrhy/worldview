@@ -7,6 +7,7 @@ import type {
 
 import type { EditorFileHandle } from './project-files.js';
 import type { EditorDirectoryHandle } from './project-workspace.js';
+import type { DetachedHostedMap } from './collaboration-outbox.js';
 
 export interface CompileAssetEntry {
   readonly name: string;
@@ -28,6 +29,8 @@ export interface OpenEditorMapOptions {
   readonly expectedRevision?: number;
   readonly throwOnError?: boolean;
   readonly viewportWorkspaceKey?: string;
+  readonly documentKey?: string;
+  readonly restoreRecovery?: boolean;
 }
 
 export type ReplaceDocumentCommand = (
@@ -57,6 +60,7 @@ export type EditorApplicationLaunch =
       readonly name: string;
       readonly source: string;
       readonly projectName: string;
+      readonly game: WorldviewGameProfile;
       readonly mapVersion: number;
       readonly actorId: string;
       readonly displayName: string;
@@ -66,6 +70,7 @@ export type EditorApplicationLaunch =
         readonly data: ArrayBuffer;
       }[];
     }
+  | { readonly kind: 'detached-map'; readonly copy: DetachedHostedMap }
   | { readonly kind: 'project'; readonly handle: EditorDirectoryHandle }
   | { readonly kind: 'recent-project'; readonly projectKey: string }
   | { readonly kind: 'map'; readonly file: File };

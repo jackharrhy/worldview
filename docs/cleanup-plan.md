@@ -27,42 +27,19 @@ diaries here.
 | C3  | `EditorSession` is a stable façade over a single `SessionKernel` and explicitly wired organization, selection, transform, topology, entity, object/clipboard, material, and commit domains. Direct and replayed commands use the same command surface; one coordinator owns document commits, history, notifications, and remote application.                                         |
 | C4  | Source rendering owns named retained world-solid, object-line, local-preview, local-selection, tool, face-grid, reference, diagnostic, and remote-presence contributions with structural dependency keys and explicit GPU disposal. Canonical geometry stays resident through camera, selection, and transient-preview changes; all viewport passes share one encoder and submission. |
 | C6  | Zod 4 schemas own project, document, collaboration, ticket, hosted wire, compiler, persistence, walkability, and WebMCP ingress. `@worldview/protocol` is the shared browser/service wire contract.                                                                                                                                                                                   |
+| C7  | One typed `idb` database owns browser persistence. Hosted replay records elapsed disconnect time, operation count, encoded bytes, map version, and exact recovery state; exceeding a bound atomically creates a durable local map and removes the stale replay queue. Local work remains unbounded.                                                                                   |
 
 These are invariants, not future work. Their focused tests and architecture checks must remain green.
 
 ## Active order
 
-| ID  | Priority | Status | Workstream                                            | Depends on                    |
-| --- | -------- | ------ | ----------------------------------------------------- | ----------------------------- |
-| C7  | P1       | ready  | IndexedDB infrastructure and bounded hosted reconnect | C6                            |
-| C5  | P2       | ready  | Route isolation and optional loading                  | —                             |
-| C8  | P2       | ready  | Test-suite decomposition                              | Follow changed domains        |
-| C9  | P2       | ready  | Viewer renderer decomposition                         | C5 decision                   |
-| C10 | P2       | ready  | Hosted service handler boundaries                     | C6                            |
-| C11 | P2       | ready  | Broaden architecture enforcement                      | Established C2–C10 boundaries |
-
-## C7 — IndexedDB and hosted reconnect
-
-**Problem:** Recovery, project-local state, asset mounts, build history, and collaboration repeat
-native IndexedDB lifecycle code. Hosted offline policy also needs one bounded, durable owner.
-
-**Decision:** Adopt `idb` in the editor app for typed requests, transactions, and upgrades. Keep
-domain schemas, store layouts, retention, and errors in their owning services; do not add an ORM or
-generic repository layer. Small non-authoritative display and per-map viewport preferences may stay
-in validated, debounced `localStorage`.
-
-**Direction:**
-
-- Define typed `DBSchema` contracts and migrate services in focused slices.
-- Start with the collaboration outbox and record elapsed disconnect time, operation count, encoded
-  bytes, map version, and recovery metadata.
-- A clean hosted map may reconnect after a long absence. Dirty replay is bounded; exceeding the
-  elapsed/count/byte window creates a durable, editable quarantined local copy instead of pretending
-  to merge indefinitely.
-
-**Done when:** Native request/transaction boilerplate is gone; upgrades, aborts, quota failures, and
-retention are covered; crash/reload tests prove bounded replay and durable detachment; solo/local
-projects remain fully offline without time limits.
+| ID  | Priority | Status | Workstream                           | Depends on                    |
+| --- | -------- | ------ | ------------------------------------ | ----------------------------- |
+| C5  | P2       | ready  | Route isolation and optional loading | —                             |
+| C8  | P2       | ready  | Test-suite decomposition             | Follow changed domains        |
+| C9  | P2       | ready  | Viewer renderer decomposition        | C5 decision                   |
+| C10 | P2       | ready  | Hosted service handler boundaries    | C6                            |
+| C11 | P2       | ready  | Broaden architecture enforcement     | Established C2–C10 boundaries |
 
 ## C5 — Route isolation and optional loading
 

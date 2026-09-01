@@ -4,10 +4,7 @@ import {
   type WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor/core';
 import { z } from 'zod';
-
-const DATABASE_NAME = 'worldview-editor-asset-mounts';
-const DATABASE_VERSION = 1;
-const STORE = 'mounts';
+import { EDITOR_STORES, openEditorDatabase } from './editor-database.js';
 
 export type StoredAssetMount = AssetMountDescriptor & {
   readonly scopeId: string;
@@ -44,57 +41,19 @@ export interface AssetMountStorage {
   put(mount: StoredAssetMount): Promise<void>;
 }
 
-function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.addEventListener('upgradeneeded', () => {
-      if (!request.result.objectStoreNames.contains(STORE)) {
-        const store = request.result.createObjectStore(STORE, { keyPath: 'id' });
-        store.createIndex('scopeId', 'scopeId', { unique: false });
-      }
-    });
-    request.addEventListener('success', () => resolve(request.result), { once: true });
-    request.addEventListener('error', () => reject(request.error), { once: true });
-  });
-}
-
-function requestResult<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.addEventListener('success', () => resolve(request.result), { once: true });
-    request.addEventListener('error', () => reject(request.error), { once: true });
-  });
-}
-
 export class IndexedDbAssetMountStorage implements AssetMountStorage {
   public async list(scopeId: string): Promise<readonly StoredAssetMount[]> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(STORE, 'readonly');
-      const values = await requestResult<unknown[]>(
-        transaction.objectStore(STORE).index('scopeId').getAll(scopeId),
-      );
-      return values.flatMap((value) => {
-        const mount = StoredAssetMountSchema.safeParse(value);
-        return mount.success ? [mount.data] : [];
-      });
-    } finally {
-      database.close();
-    }
+    const values: unknown[] = await (
+      await openEditorDatabase()
+    ).getAllFromIndex(EDITOR_STORES.assetMounts, 'scopeId', scopeId);
+    return values.flatMap((value) => {
+      const mount = StoredAssetMountSchema.safeParse(value);
+      return mount.success ? [mount.data] : [];
+    });
   }
 
   public async put(mount: StoredAssetMount): Promise<void> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(STORE, 'readwrite');
-      transaction.objectStore(STORE).put(mount);
-      await new Promise<void>((resolve, reject) => {
-        transaction.addEventListener('complete', () => resolve(), { once: true });
-        transaction.addEventListener('error', () => reject(transaction.error), { once: true });
-        transaction.addEventListener('abort', () => reject(transaction.error), { once: true });
-      });
-    } finally {
-      database.close();
-    }
+    await (await openEditorDatabase()).put(EDITOR_STORES.assetMounts, mount);
   }
 }
 

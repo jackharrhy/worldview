@@ -12,6 +12,7 @@ import {
 import { setPendingEditorLaunch } from './editor-launch.js';
 import type { loader } from './home-loader.js';
 import { hostedProjectPath } from './hosted-route.js';
+import { detachedMapPath } from './local-map-path.js';
 
 const projects = new ProjectLocalStateService();
 
@@ -20,7 +21,7 @@ interface DirectoryPickerWindow extends Window {
 }
 
 export function Component() {
-  const { localProjects, hosted } = useLoaderData<typeof loader>();
+  const { localProjects, localMaps, hosted } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const mapInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +134,27 @@ export function Component() {
             )}
           </div>
         ) : null}
+      </section>
+      <section className="landing-recents" aria-labelledby="local-maps-title">
+        <SectionHeading title="Local maps" detail="Recovered from interrupted hosted sessions" />
+        <div className="landing-recent-list">
+          {localMaps.length === 0 ? (
+            <p className="landing-empty">No detached local maps.</p>
+          ) : (
+            localMaps.map((map) => (
+              <button
+                type="button"
+                className="landing-recent"
+                key={map.id}
+                onClick={() => void navigate(detachedMapPath(map.id))}
+              >
+                <strong>{map.name}</strong>
+                <span>{map.reason}</span>
+                <small>{new Date(map.updatedAt).toLocaleString()}</small>
+              </button>
+            ))
+          )}
+        </div>
       </section>
       <section className="landing-recents" aria-labelledby="recents-title">
         <SectionHeading title="Local projects" detail="Saved in this browser" />

@@ -73,6 +73,14 @@ const router = createBrowserRouter([
           Component: async () => (await import('./routes/editor-route.js')).Component,
         },
       },
+      {
+        path: '/local-map/:copyId',
+        HydrateFallback: RouteLoading,
+        lazy: {
+          loader: async () => (await import('./routes/local-map-loader.js')).loader,
+          Component: async () => (await import('./routes/local-map-route.js')).Component,
+        },
+      },
     ],
   },
 ]);

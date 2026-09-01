@@ -7,128 +7,29 @@ import {
   type CollaborationFailure,
   type EditorSession,
   type MapDocument,
-  CollaborationOperationSchema,
 } from '@jackharrhy/worldview-editor/core';
 import {
   parseCollaborationServerFrame,
   type CollaborationPresence,
   type CollaborationServerFrame,
 } from '@worldview/protocol';
-import { z } from 'zod';
+import {
+  IndexedDbCollaborationOutbox,
+  type CollaborationOutbox,
+  type DetachedHostedMap,
+  type HostedMapRecoverySnapshot,
+  type HostedReconnectDecision,
+} from './collaboration-outbox.js';
 
 export type { CollaborationPresence } from '@worldview/protocol';
-
-const DATABASE_NAME = 'worldview-map-outbox';
-const DATABASE_VERSION = 1;
-const OUTBOX_STORE = 'map-outbox';
 const SOCKET_OPEN = 1;
-
-export interface CollaborationOutbox {
-  put(mapId: string, operation: CollaborationOperation): Promise<void>;
-  pending(mapId: string): Promise<readonly CollaborationOperation[]>;
-  acknowledge(mapId: string, operationId: string): Promise<void>;
-}
-
-interface StoredOperation {
-  readonly key: string;
-  readonly mapId: string;
-  readonly operation: CollaborationOperation;
-}
-
-const StoredOperationSchema = z.strictObject({
-  key: z.string().min(1).max(4_096),
-  mapId: z.string().min(1).max(256),
-  operation: CollaborationOperationSchema,
-}) satisfies z.ZodType<StoredOperation>;
-
-function requestResult<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.addEventListener('success', () => resolve(request.result), {
-      once: true,
-    });
-    request.addEventListener('error', () => reject(request.error), {
-      once: true,
-    });
-  });
-}
-
-export class IndexedDbCollaborationOutbox implements CollaborationOutbox {
-  private readonly database: Promise<IDBDatabase>;
-
-  public constructor(factory: IDBFactory = indexedDB) {
-    this.database = new Promise((resolve, reject) => {
-      const request = factory.open(DATABASE_NAME, DATABASE_VERSION);
-      request.addEventListener('upgradeneeded', () => {
-        if (!request.result.objectStoreNames.contains(OUTBOX_STORE)) {
-          const store = request.result.createObjectStore(OUTBOX_STORE, {
-            keyPath: 'key',
-          });
-          store.createIndex('mapId', 'mapId');
-        }
-      });
-      request.addEventListener('success', () => resolve(request.result), {
-        once: true,
-      });
-      request.addEventListener('error', () => reject(request.error), {
-        once: true,
-      });
-    });
-  }
-
-  public async put(mapId: string, operation: CollaborationOperation): Promise<void> {
-    const database = await this.database;
-    const transaction = database.transaction(OUTBOX_STORE, 'readwrite');
-    await requestResult(
-      transaction.objectStore(OUTBOX_STORE).put({
-        key: `${mapId}\u0000${operation.operationId}`,
-        mapId,
-        operation,
-      } satisfies StoredOperation),
-    );
-  }
-
-  public async pending(mapId: string): Promise<readonly CollaborationOperation[]> {
-    const database = await this.database;
-    const transaction = database.transaction(OUTBOX_STORE, 'readonly');
-    const rows = await requestResult<unknown[]>(
-      transaction.objectStore(OUTBOX_STORE).index('mapId').getAll(mapId),
-    );
-    return rows
-      .flatMap((row) => {
-        const stored = StoredOperationSchema.safeParse(row);
-        return stored.success ? [stored.data.operation] : [];
-      })
-      .toSorted((left, right) => left.operationId.localeCompare(right.operationId));
-  }
-
-  public async acknowledge(mapId: string, operationId: string): Promise<void> {
-    const database = await this.database;
-    const transaction = database.transaction(OUTBOX_STORE, 'readwrite');
-    await requestResult(
-      transaction.objectStore(OUTBOX_STORE).delete(`${mapId}\u0000${operationId}`),
-    );
-  }
-}
-
-export class MemoryCollaborationOutbox implements CollaborationOutbox {
-  private readonly entries = new Map<string, CollaborationOperation>();
-
-  public async put(mapId: string, operation: CollaborationOperation): Promise<void> {
-    this.entries.set(`${mapId}\u0000${operation.operationId}`, operation);
-  }
-
-  public async pending(mapId: string): Promise<readonly CollaborationOperation[]> {
-    const prefix = `${mapId}\u0000`;
-    return [...this.entries]
-      .filter(([key]) => key.startsWith(prefix))
-      .map(([, operation]) => operation)
-      .toSorted((left, right) => left.operationId.localeCompare(right.operationId));
-  }
-
-  public async acknowledge(mapId: string, operationId: string): Promise<void> {
-    this.entries.delete(`${mapId}\u0000${operationId}`);
-  }
-}
+export {
+  IndexedDbCollaborationOutbox,
+  type CollaborationOutbox,
+  type DetachedHostedMap,
+  type HostedMapRecoverySnapshot,
+  type HostedReconnectDecision,
+} from './collaboration-outbox.js';
 
 export interface CollaborationChannel {
   publish(message: CollaborationOperation): void;
@@ -145,6 +46,12 @@ export interface CollaborationControllerOptions {
   readonly outbox?: CollaborationOutbox;
   readonly channel?: CollaborationChannel;
   readonly createId?: () => string;
+  readonly now?: () => number;
+  readonly captureRecovery?: (
+    document: MapDocument,
+    mapVersion: number,
+  ) => HostedMapRecoverySnapshot;
+  readonly onDetached?: (copy: DetachedHostedMap) => void;
   readonly onPeerOperation?: (operation: CollaborationOperation) => void;
   readonly onAcknowledged?: (operationId: string, mapVersion: number) => void;
 }
@@ -161,6 +68,7 @@ export interface JoinCollaborationOptions {
   readonly onLocalPresence?: (presence: CollaborationPresence) => void;
   readonly onConflict?: (operationId: string, conflicts: readonly CollaborationFailure[]) => void;
   readonly onConnectionChange?: (state: 'connecting' | 'connected' | 'disconnected') => void;
+  readonly onDetached?: (copy: DetachedHostedMap) => void;
 }
 
 export interface CollaborationReconciliation {
@@ -198,9 +106,13 @@ export interface CollaborationSocket {
 export class CollaborationController {
   private mapVersion = 0;
   private sequence = 0;
+  private connected = false;
+  private detached = false;
+  private persistenceTail: Promise<unknown> = Promise.resolve();
   private readonly outbox: CollaborationOutbox;
   private readonly channel: CollaborationChannel;
   private readonly createId: () => string;
+  private readonly now: () => number;
   private readonly localOperationListeners = new Set<(operation: CollaborationOperation) => void>();
 
   public constructor(private readonly options: CollaborationControllerOptions) {
@@ -218,6 +130,7 @@ export class CollaborationController {
         } satisfies CollaborationChannel;
       })();
     this.createId = options.createId ?? (() => crypto.randomUUID());
+    this.now = options.now ?? Date.now;
     this.channel.addEventListener('message', (event) => options.onPeerOperation?.(event.data));
   }
 
@@ -236,7 +149,8 @@ export class CollaborationController {
   ): Promise<CollaborationOperation | null> {
     const edits = collaborationEditsBetween(before, after);
     if (edits.length === 0) return null;
-    const id = `${this.options.actorId}:${++this.sequence}:${this.createId()}`;
+    const localSequence = ++this.sequence;
+    const id = `${this.options.actorId}:${localSequence}:${this.createId()}`;
     const operation: CollaborationOperation = {
       schemaVersion: COLLABORATION_SCHEMA_VERSION,
       operationId: id,
@@ -247,9 +161,8 @@ export class CollaborationController {
       edits,
       inverseEdits: inverseCollaborationEdits(before, after),
     };
-    await this.outbox.put(this.options.mapId, operation);
-    this.channel.publish(operation);
-    for (const listener of this.localOperationListeners) listener(operation);
+    const replayable = await this.persistOperation(operation, after, localSequence);
+    if (replayable) this.publish(operation);
     return operation;
   }
 
@@ -261,7 +174,26 @@ export class CollaborationController {
   }
 
   public pending(): Promise<readonly CollaborationOperation[]> {
-    return this.outbox.pending(this.options.mapId);
+    return this.serializePersistence(() => this.outbox.pending(this.options.mapId));
+  }
+
+  /** Marks server readiness, or starts the dirty reconnect clock after a disconnect. */
+  public async setConnected(connected: boolean): Promise<boolean> {
+    if (!connected) this.connected = false;
+    const decision = await this.serializePersistence(() =>
+      this.outbox.connectionChanged(this.options.mapId, this.now()),
+    );
+    const replayable = await this.resolveReconnectDecision(decision);
+    if (connected) this.connected = replayable;
+    return replayable;
+  }
+
+  /** Checks durable bounds before applying a room snapshot or replaying queued work. */
+  public async prepareReconnect(): Promise<boolean> {
+    const decision = await this.serializePersistence(() =>
+      this.outbox.inspect(this.options.mapId, this.now()),
+    );
+    return this.resolveReconnectDecision(decision);
   }
 
   public receivePeerOperation(operation: CollaborationOperation): void {
@@ -270,22 +202,28 @@ export class CollaborationController {
 
   public async acknowledge(operationId: string, mapVersion: number): Promise<void> {
     this.setMapVersion(mapVersion);
-    await this.outbox.acknowledge(this.options.mapId, operationId);
+    await this.serializePersistence(() =>
+      this.outbox.acknowledge(this.options.mapId, operationId, mapVersion),
+    );
     this.options.onAcknowledged?.(operationId, mapVersion);
   }
 
   public reject(operationId: string): Promise<void> {
-    return this.outbox.acknowledge(this.options.mapId, operationId);
+    return this.serializePersistence(() =>
+      this.outbox.acknowledge(this.options.mapId, operationId, this.mapVersion),
+    );
   }
 
   public async recordPersonalizedUndo(
     original: CollaborationOperation,
+    before?: MapDocument,
   ): Promise<CollaborationOperation> {
     if (original.actorId !== this.options.actorId) {
       throw new Error("Cannot undo another participant's operation");
     }
     if (!original.inverseEdits) throw new Error('Operation has no inverse edits');
-    const id = `${this.options.actorId}:${++this.sequence}:${this.createId()}`;
+    const localSequence = ++this.sequence;
+    const id = `${this.options.actorId}:${localSequence}:${this.createId()}`;
     const operation: CollaborationOperation = {
       schemaVersion: COLLABORATION_SCHEMA_VERSION,
       operationId: id,
@@ -296,10 +234,60 @@ export class CollaborationController {
       edits: original.inverseEdits,
       inverseEdits: original.edits,
     };
-    await this.outbox.put(this.options.mapId, operation);
+    const result = before ? applyCollaborationOperation(before, operation) : null;
+    const after = result?.status === 'applied' ? result.document : undefined;
+    const replayable = await this.persistOperation(operation, after, localSequence);
+    if (replayable) this.publish(operation);
+    return operation;
+  }
+
+  private async persistOperation(
+    operation: CollaborationOperation,
+    document?: MapDocument,
+    localSequence = 0,
+  ): Promise<boolean> {
+    if (this.detached) return false;
+    const recordedAt = this.now();
+    const decision = await this.serializePersistence(() =>
+      this.outbox.put(this.options.mapId, operation, {
+        mapVersion: this.mapVersion,
+        connected: this.connected,
+        recordedAt,
+        localSequence,
+        ...(document && this.options.captureRecovery
+          ? { recovery: this.options.captureRecovery(document, this.mapVersion) }
+          : {}),
+      }),
+    );
+    return this.resolveReconnectDecision(decision);
+  }
+
+  private publish(operation: CollaborationOperation): void {
     this.channel.publish(operation);
     for (const listener of this.localOperationListeners) listener(operation);
-    return operation;
+  }
+
+  private async resolveReconnectDecision(decision: HostedReconnectDecision): Promise<boolean> {
+    if (decision.status !== 'detach') return true;
+    if (this.detached) return false;
+    const copy = await this.serializePersistence(() =>
+      this.outbox.detach(this.options.mapId, decision.reason, this.now()),
+    );
+    if (!copy)
+      throw new Error('Offline edits exceeded their reconnect limit but have no recovery snapshot');
+    this.detached = true;
+    this.connected = false;
+    this.options.onDetached?.(copy);
+    return false;
+  }
+
+  private serializePersistence<Result>(work: () => Promise<Result>): Promise<Result> {
+    const result = this.persistenceTail.then(work, work);
+    this.persistenceTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   public close(): void {
@@ -370,6 +358,9 @@ export class CollaborationSocketClient {
     } catch (error) {
       this.options.onError?.(error);
       this.options.onConnectionChange?.('disconnected');
+      void this.options.controller
+        .setConnected(false)
+        .catch((cause) => this.options.onError?.(cause));
       this.scheduleNextReconnect();
     } finally {
       this.connecting = false;
@@ -387,16 +378,18 @@ export class CollaborationSocketClient {
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.reconnectAttempt = 0;
-      this.options.onConnectionChange?.('connected');
     });
     socket.addEventListener('message', (event) => {
       if (this.socket !== socket) return;
-      this.receiveQueue = this.receiveQueue.then(() => this.receive(event.data));
+      this.receiveQueue = this.receiveQueue.then(() => this.receive(event.data, socket));
     });
     socket.addEventListener('close', () => {
       if (this.socket === socket) this.socket = null;
       this.serverReady = false;
       this.options.onConnectionChange?.('disconnected');
+      void this.options.controller
+        .setConnected(false)
+        .catch((error) => this.options.onError?.(error));
       this.scheduleNextReconnect();
     });
   }
@@ -416,13 +409,26 @@ export class CollaborationSocketClient {
     this.socket = null;
   }
 
-  private async receive(serialized: string): Promise<void> {
+  private async receive(serialized: string, sourceSocket: CollaborationSocket): Promise<void> {
     try {
+      if (this.socket !== sourceSocket) return;
       const frame = parseCollaborationServerFrame(serialized);
       if (frame.type === 'ready') {
         this.options.controller.setMapVersion(frame.mapVersion);
+        if (!(await this.options.controller.prepareReconnect())) {
+          this.close();
+          return;
+        }
+        if (this.socket !== sourceSocket) return;
         await this.options.onReady?.(frame);
+        if (this.socket !== sourceSocket) return;
+        if (!(await this.options.controller.setConnected(true))) {
+          this.close();
+          return;
+        }
+        if (this.socket !== sourceSocket) return;
         this.serverReady = true;
+        this.options.onConnectionChange?.('connected');
         await this.flushOutbox();
       } else if (frame.type === 'ack') {
         await this.options.controller.acknowledge(frame.operationId, frame.mapVersion);
@@ -436,6 +442,7 @@ export class CollaborationSocketClient {
       } else if (frame.type === 'error') throw new Error(frame.message);
     } catch (error) {
       this.options.onError?.(error);
+      if (!this.serverReady && this.socket === sourceSocket) sourceSocket.close();
     }
   }
 
@@ -518,7 +525,7 @@ export class EditorCollaborationBridge {
   }
 
   public async undo(original: CollaborationOperation): Promise<CollaborationOperation> {
-    const inverse = await this.controller.recordPersonalizedUndo(original);
+    const inverse = await this.controller.recordPersonalizedUndo(original, this.session.document);
     this.receive(inverse);
     return inverse;
   }

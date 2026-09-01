@@ -1,6 +1,7 @@
 import { ProjectLocalStateService } from '../project-local-state.js';
 import { HostedProjectsResponseSchema, HostedSessionResponseSchema } from '@worldview/protocol';
 import { apiJson } from './hosted-project-api.js';
+import { listDetachedMapSummaries } from '../detached-map-catalog.js';
 
 const projects = new ProjectLocalStateService();
 
@@ -12,16 +13,22 @@ export async function loader({ request }: { readonly request: Request }) {
     detail: recent.lastMapPath ?? recent.handle.name,
     updatedAt: recent.updatedAt,
   }));
+  const localMaps = await listDetachedMapSummaries().catch(() => []);
   const origin = new URL(request.url).origin;
   try {
     const { user } = await apiJson(HostedSessionResponseSchema, `${origin}/api/session`);
-    if (!user) return { localProjects, hosted: { status: 'signed-out' as const, projects: [] } };
+    if (!user)
+      return { localProjects, localMaps, hosted: { status: 'signed-out' as const, projects: [] } };
     const { projects: hostedProjects } = await apiJson(
       HostedProjectsResponseSchema,
       `${origin}/api/projects`,
     );
-    return { localProjects, hosted: { status: 'ready' as const, user, projects: hostedProjects } };
+    return {
+      localProjects,
+      localMaps,
+      hosted: { status: 'ready' as const, user, projects: hostedProjects },
+    };
   } catch {
-    return { localProjects, hosted: { status: 'offline' as const, projects: [] } };
+    return { localProjects, localMaps, hosted: { status: 'offline' as const, projects: [] } };
   }
 }

@@ -84,3 +84,10 @@ virtualized material catalog. Their package distributions retain their license t
 - [`@phosphor-icons/web`](https://github.com/phosphor-icons/web) 2.1.2, copyright Phosphor Icons.
 - [`@tanstack/react-virtual`](https://github.com/TanStack/virtual) 3.14.10 and its
   `@tanstack/virtual-core` dependency, copyright Tanner Linsley and contributors.
+
+## Browser persistence dependencies
+
+Worldview's editor uses [`idb`](https://github.com/jakearchibald/idb) 8.0.3 for its typed IndexedDB
+connection, transactions, and upgrades. `idb` is distributed under the ISC License. Persistence
+tests use [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB) 6.2.5, distributed under
+the Apache License 2.0. Their package distributions retain their license texts.

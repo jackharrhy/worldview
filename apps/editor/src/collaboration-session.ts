@@ -15,8 +15,10 @@ import {
   CollaborationController,
   CollaborationSocketClient,
   EditorCollaborationBridge,
+  IndexedDbCollaborationOutbox,
   reconcilePendingOperations,
   type CollaborationPresence,
+  type DetachedHostedMap,
   type JoinCollaborationOptions,
 } from './collaboration.js';
 import type { EditorShellState } from './editor-shell-state.js';
@@ -36,7 +38,10 @@ const COLLABORATOR_RENDER_COLORS: Readonly<Record<string, readonly [number, numb
 
 type CollaborationSessionState = EditorStatePort<
   | 'activeTool'
+  | 'activeGameProfile'
+  | 'currentDocumentName'
   | 'currentMapSource'
+  | 'documentKey'
   | 'lastPointerPosition'
   | 'renderer'
   | 'savedDocumentRevision'
@@ -83,12 +88,12 @@ export class CollaborationSession {
     this.active?.schedulePresence();
   }
 
-  public async join(options: JoinCollaborationOptions): Promise<void> {
+  public async join(options: JoinCollaborationOptions): Promise<'started' | 'detached-local'> {
     this.close(false);
     const lifetime = new AbortController();
     this.attempt = lifetime;
     try {
-      await this.open(options, lifetime);
+      return await this.open(options, lifetime);
     } catch (error) {
       if (this.attempt === lifetime) this.attempt = null;
       lifetime.abort();
@@ -104,9 +109,54 @@ export class CollaborationSession {
     this.close(false);
   }
 
-  private async open(options: JoinCollaborationOptions, lifetime: AbortController): Promise<void> {
+  private async open(
+    options: JoinCollaborationOptions,
+    lifetime: AbortController,
+  ): Promise<'started' | 'detached-local'> {
     const signal = AbortSignal.any([this.signal, lifetime.signal]);
     signal.throwIfAborted();
+    let detachedCopy: DetachedHostedMap | null = null;
+    const applyDetachedCopy = (copy: DetachedHostedMap) => {
+      if (detachedCopy) return;
+      detachedCopy = copy;
+      this.document.replaceDocument(copy.document, `Open detached copy of ${copy.fileName}`, {
+        name: copy.fileName,
+        source: copy.source,
+        savedRevision: -1,
+        dirty: true,
+      });
+      options.onDetached?.(copy);
+      if (this.active?.mapId === options.mapId) this.close(false);
+    };
+    const captureRecovery = (document: MapDocument, mapVersion: number) => {
+      const plan = planMapSave(document, this.state.currentMapSource);
+      if (plan.status === 'blocked') {
+        throw new Error('Cannot preserve this hosted edit as source-safe recovery data');
+      }
+      return {
+        version: 1 as const,
+        mapId: options.mapId,
+        documentKey: this.state.documentKey,
+        fileName: this.state.currentDocumentName,
+        profile: this.state.activeGameProfile,
+        document: structuredClone(document),
+        source: rebaseMapSource(document, plan.text),
+        savedDocumentRevision: this.state.savedDocumentRevision,
+        mapVersion,
+        updatedAt: Date.now(),
+      };
+    };
+    const outbox = new IndexedDbCollaborationOutbox();
+    const preflight = await outbox.connectionChanged(options.mapId, Date.now());
+    if (preflight.status === 'detach') {
+      const copy = await outbox.detach(options.mapId, preflight.reason, Date.now());
+      if (!copy)
+        throw new Error(
+          'Offline edits exceeded their reconnect limit but have no recovery snapshot',
+        );
+      applyDetachedCopy(copy);
+      return 'detached-local';
+    }
     const roomUrl = new URL(
       `/sync/maps/${encodeURIComponent(options.mapId)}/snapshot`,
       options.endpoint,
@@ -121,10 +171,16 @@ export class CollaborationSession {
     if (!snapshotResponse.ok) throw new Error(`Cannot inspect room (${snapshotResponse.status})`);
     const snapshot = HostedMapSnapshotSchema.parse(await snapshotResponse.json());
     signal.throwIfAborted();
-    this.document.replaceDocument(snapshot.document, `Open hosted map ${options.mapId}`, {
+    const pendingAtOpen = await outbox.pending(options.mapId);
+    const initial = reconcilePendingOperations(snapshot.document, pendingAtOpen);
+    for (const conflict of initial.conflicts) {
+      options.onConflict?.(conflict.operationId, conflict.details);
+    }
+    this.document.replaceDocument(initial.document, `Open hosted map ${options.mapId}`, {
       source: rebaseMapSource(snapshot.document, snapshot.source),
-      savedRevision: snapshot.document.revision,
-      dirty: false,
+      savedRevision:
+        pendingAtOpen.length === 0 ? initial.document.revision : this.state.savedDocumentRevision,
+      dirty: pendingAtOpen.length > 0,
     });
 
     let bridge: EditorCollaborationBridge;
@@ -197,7 +253,6 @@ export class CollaborationSession {
       options.onPresence?.(presence);
     };
 
-    let controller: CollaborationController;
     let canonicalMapVersion = snapshot.mapVersion;
     const refreshSourceState = (status?: string) => {
       const plan = planMapSave(this.state.session.document, this.state.currentMapSource);
@@ -210,9 +265,12 @@ export class CollaborationSession {
         if (status) this.ui.statusMessage.set(status);
       });
     };
-    controller = new CollaborationController({
+    const controller = new CollaborationController({
       mapId: options.mapId,
       actorId: options.actorId,
+      outbox,
+      captureRecovery,
+      onDetached: applyDetachedCopy,
       onPeerOperation: (operation) => {
         if (signal.aborted) return;
         bridge.receive(operation);
@@ -378,6 +436,7 @@ export class CollaborationSession {
     };
     socket.connect();
     this.ui.statusMessage.set(`Joined collaboration room ${options.mapId}.`);
+    return 'started';
   }
 
   private close(announce: boolean): void {

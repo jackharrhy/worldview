@@ -71,14 +71,15 @@ cannot delay local feedback, and a commit/cancel clears the matching preview.
 - Local maps and projects remain fully editable offline for an unbounded duration.
 - A clean hosted tab may reconnect at any time by adopting the latest room snapshot.
 - A dirty hosted tab may reconcile only inside bounded elapsed-time, operation-count, and encoded-byte
-  limits. The intended initial time bound is 15 minutes.
-- Exceeding a bound creates a durable, editable local working copy and quarantines the stale outbox.
-  Rejoining intentionally adopts the authoritative MapCell snapshot; V0 does not promise indefinite
-  multi-master merge.
+  limits: initially 15 minutes, 200 operations, and 4 MiB of encoded operation frames.
+- The durable dirty clock uses the first observed disconnect, falling back to the oldest pending
+  edit after a crash. Reaching a WebSocket handshake does not reset it; acknowledgement removes
+  durable queue entries, and the clock disappears only when the queue is clean.
+- Exceeding a bound atomically creates a durable, editable local working copy and removes the stale
+  operations from the replay queue. The home screen and `/local-map/:copyId` route reopen that copy,
+  including later recovery snapshots. Rejoining intentionally adopts the authoritative MapCell
+  snapshot; V0 does not promise indefinite multi-master merge.
 - Leaving multiplayer retains an ordinary local `.map` working copy.
-
-The operation/outbox foundation exists. Durable enforcement of every disconnect bound and the
-automatic quarantined-copy transition remain cleanup C7.
 
 ## Replication decision
 

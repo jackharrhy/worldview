@@ -6,11 +6,8 @@ import {
   type MapSourceState,
 } from '@jackharrhy/worldview-editor/core';
 import { z } from 'zod';
+import { completeEditorTransaction, EDITOR_STORES, openEditorDatabase } from './editor-database.js';
 
-const DATABASE_NAME = 'worldview-editor-recovery';
-const DATABASE_VERSION = 1;
-const LATEST_STORE = 'documents';
-const HISTORY_STORE = 'history';
 export const DOCUMENT_RECOVERY_DEBOUNCE_MS = 500;
 export const DOCUMENT_RECOVERY_LIMIT = 20;
 
@@ -34,7 +31,7 @@ export const DocumentRecoverySnapshotSchema = z.strictObject({
   fileName: z.string().min(1).max(4_096),
   document: MapDocumentSchema,
   source: MapSourceStateSchema,
-  savedDocumentRevision: z.number().int().nonnegative(),
+  savedDocumentRevision: z.number().int().min(-1),
   updatedAt: z.number().int().nonnegative(),
   label: z.string().max(4_096),
   protected: z.boolean(),
@@ -94,124 +91,48 @@ export function recoverySourceIdFactory(snapshot: DocumentRecoverySnapshot): IdF
   };
 }
 
-function requestResult<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.addEventListener('success', () => resolve(request.result), { once: true });
-    request.addEventListener(
-      'error',
-      () => reject(request.error ?? new Error('Recovery storage request failed')),
-      { once: true },
-    );
-  });
-}
-
-function transactionComplete(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    transaction.addEventListener('complete', () => resolve(), { once: true });
-    transaction.addEventListener(
-      'error',
-      () => reject(transaction.error ?? new Error('Recovery transaction failed')),
-      { once: true },
-    );
-    transaction.addEventListener(
-      'abort',
-      () => reject(transaction.error ?? new Error('Recovery transaction aborted')),
-      { once: true },
-    );
-  });
-}
-
-function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (!globalThis.indexedDB) {
-      reject(new Error('IndexedDB is unavailable'));
-      return;
-    }
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.addEventListener('upgradeneeded', () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains(LATEST_STORE)) {
-        database.createObjectStore(LATEST_STORE, { keyPath: 'documentKey' });
-      }
-      if (!database.objectStoreNames.contains(HISTORY_STORE)) {
-        const history = database.createObjectStore(HISTORY_STORE, { keyPath: 'snapshotId' });
-        history.createIndex('documentKey', 'documentKey', { unique: false });
-      }
-    });
-    request.addEventListener('success', () => resolve(request.result), { once: true });
-    request.addEventListener(
-      'error',
-      () => reject(request.error ?? new Error('Could not open recovery storage')),
-      { once: true },
-    );
-  });
-}
-
 export class IndexedDbDocumentRecoveryStorage implements DocumentRecoveryStorage {
   public async load(documentKey: string): Promise<DocumentRecoverySnapshot | null> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(LATEST_STORE, 'readonly');
-      const value: unknown = await requestResult(
-        transaction.objectStore(LATEST_STORE).get(documentKey),
-      );
-      const snapshot = DocumentRecoverySnapshotSchema.safeParse(value);
-      return snapshot.success ? snapshot.data : null;
-    } finally {
-      database.close();
-    }
+    const value: unknown = await (
+      await openEditorDatabase()
+    ).get(EDITOR_STORES.recoveryLatest, documentKey);
+    const snapshot = DocumentRecoverySnapshotSchema.safeParse(value);
+    return snapshot.success ? snapshot.data : null;
   }
 
   public async save(snapshot: DocumentRecoverySnapshot): Promise<void> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction([LATEST_STORE, HISTORY_STORE], 'readwrite');
-      transaction.objectStore(LATEST_STORE).put(snapshot);
-      transaction.objectStore(HISTORY_STORE).put(snapshot);
-      await transactionComplete(transaction);
-    } finally {
-      database.close();
-    }
+    const database = await openEditorDatabase();
+    const transaction = database.transaction(
+      [EDITOR_STORES.recoveryLatest, EDITOR_STORES.recoveryHistory],
+      'readwrite',
+    );
+    await completeEditorTransaction(
+      transaction,
+      Promise.all([
+        transaction.objectStore(EDITOR_STORES.recoveryLatest).put(snapshot),
+        transaction.objectStore(EDITOR_STORES.recoveryHistory).put(snapshot),
+      ]).then(() => undefined),
+    );
   }
 
   public async list(documentKey: string): Promise<readonly DocumentRecoverySnapshot[]> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(HISTORY_STORE, 'readonly');
-      const values: unknown[] = await requestResult(
-        transaction.objectStore(HISTORY_STORE).index('documentKey').getAll(documentKey),
-      );
-      return values
-        .flatMap((value) => {
-          const snapshot = DocumentRecoverySnapshotSchema.safeParse(value);
-          return snapshot.success ? [snapshot.data] : [];
-        })
-        .toSorted((left, right) => right.updatedAt - left.updatedAt);
-    } finally {
-      database.close();
-    }
+    const values: unknown[] = await (
+      await openEditorDatabase()
+    ).getAllFromIndex(EDITOR_STORES.recoveryHistory, 'documentKey', documentKey);
+    return values
+      .flatMap((value) => {
+        const snapshot = DocumentRecoverySnapshotSchema.safeParse(value);
+        return snapshot.success ? [snapshot.data] : [];
+      })
+      .toSorted((left, right) => right.updatedAt - left.updatedAt);
   }
 
   public async removeSnapshot(snapshotId: string): Promise<void> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(HISTORY_STORE, 'readwrite');
-      transaction.objectStore(HISTORY_STORE).delete(snapshotId);
-      await transactionComplete(transaction);
-    } finally {
-      database.close();
-    }
+    await (await openEditorDatabase()).delete(EDITOR_STORES.recoveryHistory, snapshotId);
   }
 
   public async updateSnapshot(snapshot: DocumentRecoverySnapshot): Promise<void> {
-    const database = await openDatabase();
-    try {
-      const transaction = database.transaction(HISTORY_STORE, 'readwrite');
-      transaction.objectStore(HISTORY_STORE).put(snapshot);
-      await transactionComplete(transaction);
-    } finally {
-      database.close();
-    }
+    await (await openEditorDatabase()).put(EDITOR_STORES.recoveryHistory, snapshot);
   }
 }
 
