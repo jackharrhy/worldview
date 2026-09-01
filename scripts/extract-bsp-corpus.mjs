@@ -19,8 +19,8 @@ function usage() {
   node scripts/extract-bsp-corpus.mjs --output DIRECTORY --source APP_ID=DIRECTORY [...]
 
 Discovers loose BSP files and extracts BSP entries from ZIP/PK3 and Quake PACK archives. It also
-materializes Quake II palettes, textures, and skyboxes beneath each app's game root. The output
-preserves source provenance and includes a manifest with SHA-256 hashes.`);
+materializes Quake palettes plus Quake II palettes, textures, and skyboxes beneath each app's game
+root. The output preserves source provenance and includes a manifest with SHA-256 hashes.`);
 }
 
 function parseArguments(arguments_) {
@@ -87,6 +87,9 @@ function outputPath(outputRoot, ...parts) {
 
 function gameAssetPath(entry) {
   const normalized = safeArchiveEntry(entry).toLowerCase();
+  if (normalized === 'gfx/palette.lmp' || normalized.endsWith('/gfx/palette.lmp')) {
+    return 'gfx/palette.lmp';
+  }
   const parts = normalized.split('/');
   const rootIndex = parts.findIndex(
     (part) => part === 'textures' || part === 'pics' || part === 'env',
@@ -366,7 +369,17 @@ records.sort((left, right) =>
 );
 await writeFile(
   join(options.output, 'manifest.json'),
-  `${JSON.stringify({ generatedAt: new Date().toISOString(), records, assets: [...assets.values()] }, null, 2)}\n`,
+  `${JSON.stringify(
+    {
+      generatedAt: new Date().toISOString(),
+      records,
+      assets: [...assets.values()].toSorted((left, right) =>
+        `${left.appId}/${left.logicalPath}`.localeCompare(`${right.appId}/${right.logicalPath}`),
+      ),
+    },
+    null,
+    2,
+  )}\n`,
 );
 console.log(
   `Extracted ${records.length} BSP files and ${assets.size} game assets into ${options.output}`,

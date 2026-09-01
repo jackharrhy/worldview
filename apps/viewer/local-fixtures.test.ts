@@ -112,6 +112,35 @@ describe('local fixture discovery', () => {
     ]);
   });
 
+  it('indexes an extracted Quake palette and ignores raw Steam install maps', async () => {
+    const root = await temporaryRoot();
+    const corpusRoot = path.join(root, 'steam-corpus', '4484420');
+    const installRoot = path.join(root, 'steam-installs', '4484420', 'id1', 'maps');
+    await Promise.all([
+      mkdir(path.join(corpusRoot, 'loose', 'id1', 'maps'), { recursive: true }),
+      mkdir(path.join(corpusRoot, 'game', 'gfx'), { recursive: true }),
+      mkdir(installRoot, { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(path.join(corpusRoot, 'loose', 'id1', 'maps', 'dm1.bsp'), ''),
+      writeFile(path.join(corpusRoot, 'game', 'gfx', 'palette.lmp'), ''),
+      writeFile(path.join(installRoot, 'duplicate.bsp'), ''),
+    ]);
+
+    await expect(discoverLocalFixtures(root)).resolves.toEqual([
+      {
+        aliases: [],
+        bsp: '/local/steam-corpus/4484420/loose/id1/maps/dm1.bsp',
+        gameBaseUrl: '/local/steam-corpus/4484420/game/',
+        gameAssets: {
+          'gfx/palette.lmp': '/local/steam-corpus/4484420/game/gfx/palette.lmp',
+        },
+        id: 'steam-corpus',
+        label: 'dm1.bsp (local)',
+      },
+    ]);
+  });
+
   it('rejects malformed sidecars instead of hiding configuration mistakes', async () => {
     const root = await temporaryRoot();
     const fixtureRoot = path.join(root, 'broken');

@@ -713,11 +713,13 @@ empty collision hulls. The sole rejection is a Hexen II test map whose version-2
 different game-specific model record; Worldview rejects it instead of misinterpreting it as Quake.
 `npm run corpus:steam` reproducibly downloads owned, high-signal Quake-family games through an
 interactive SteamCMD login and extracts loose, PK3/ZIP, and Quake PACK BSPs into the ignored local
-fixture directory. For Quake II it also materializes a bounded game root containing WAL and
-replacement textures, the PCX palette, and skybox faces. The focused preset covers Thirty Flights
-of Loving/Gravity Bone and FLESHCANCER; broader presets add the supported id Tech and GoldSrc games
-and optionally WRATH. Five TFOL/Gravity Bone BSP38 maps pass the optional headless-WebGPU asset
-render smoke. No BSP, WAD, WAL, PAK, palette, or other game data from this local corpus is committed.
+fixture directory. It materializes the Quake palette and, for Quake II, a bounded game root
+containing WAL and replacement textures, the PCX palette, and skybox faces. Raw Steam install roots
+remain corpus inputs rather than duplicate viewer fixtures. The focused preset covers Thirty
+Flights of Loving/Gravity Bone and FLESHCANCER; broader presets add the supported id Tech and
+GoldSrc games and optionally WRATH. Five TFOL/Gravity Bone BSP38 maps pass the optional
+headless-WebGPU asset render smoke. No BSP, WAD, WAL, PAK, palette, or other game data from this
+local corpus is committed.
 
 GoldSrc coverage includes 42 maps from the MIT-licensed
 [Half-Life Unified SDK assets](https://github.com/twhl-community/halflife-unified-sdk-assets/tree/38d1718cae8a1b867fa0f1e65a11f6ec74a1dc2f)

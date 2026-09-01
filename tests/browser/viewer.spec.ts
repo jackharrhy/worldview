@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const quake2CorpusMap =
   'apps/viewer/public/local/steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1.bsp';
+const quakeCorpusMap = 'apps/viewer/public/local/steam-corpus/4484420/loose/id1/maps/dm1.bsp';
 const quake2Fixtures = [
   'steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1',
   'steam-corpus/214700/archives/baseq2/pak1.pk3/maps/hof1',
@@ -256,6 +257,36 @@ test('local Quake II corpus resolves game assets and renders without GPU errors'
     .locator('canvas')
     .screenshot({ path: testInfo.outputPath('quake2-vidroom.png') });
   expect(screenshot.byteLength).toBeGreaterThan(10_000);
+  expect(errors).toEqual([]);
+});
+
+test('local fixture loader switches from Quake II to Quake with the correct palette', async ({
+  page,
+}) => {
+  test.skip(
+    !existsSync(quake2CorpusMap) || !existsSync(quakeCorpusMap),
+    'ignored commercial corpus is unavailable',
+  );
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+
+  await page.goto(`/?fixture=${encodeURIComponent(quake2Fixtures[0])}`);
+  await requireWebGpu(page);
+  await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 30_000 });
+  await page.getByRole('button', { name: 'Load', exact: true }).click();
+  await page
+    .locator('[data-control-dock] select')
+    .first()
+    .selectOption('steam-corpus/4484420/loose/id1/maps/dm1');
+  await page.locator('[data-fixture]').click();
+
+  await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 30_000 });
+  await expect(page.locator('[data-format]')).toContainText('quake-bsp29 / BSP29');
+  await page.getByRole('button', { name: 'Map', exact: true }).click();
+  await expect(page.locator('[data-warnings]')).not.toHaveValue(/palette/iu);
   expect(errors).toEqual([]);
 });
 

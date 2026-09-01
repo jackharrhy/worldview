@@ -117,7 +117,12 @@ const localFixtures: readonly ViewerFixture[] = localFixtureDefinitions.map((fix
     source: {
       bsp: fixture.bsp,
       ...(fixture.gameAssets
-        ? { gameAssets: fixture.gameAssets }
+        ? {
+            gameAssets: fixture.gameAssets,
+            ...(fixture.gameAssets['gfx/palette.lmp']
+              ? { palette: fixture.gameAssets['gfx/palette.lmp'] }
+              : {}),
+          }
         : { gameBaseUrl: fixture.gameBaseUrl }),
     },
   };

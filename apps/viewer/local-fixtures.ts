@@ -83,7 +83,8 @@ async function bspFiles(directory: string): Promise<string[]> {
 }
 
 const GAME_ASSET_PATH =
-  /^(?:textures\/.+\.(?:wal|png|jpe?g|tga)|env\/.+\.(?:png|jpe?g|tga)|pics\/colormap\.pcx)$/iu;
+  /^(?:textures\/.+\.(?:wal|png|jpe?g|tga)|env\/.+\.(?:png|jpe?g|tga)|pics\/colormap\.pcx|gfx\/palette\.lmp)$/iu;
+const NON_FIXTURE_DIRECTORIES = new Set(['steam-installs']);
 
 async function gameAssetFiles(directory: string, prefix = ''): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -122,7 +123,10 @@ export async function discoverLocalFixtures(localRoot: string): Promise<LocalFix
   let directories;
   try {
     directories = (await readdir(localRoot, { withFileTypes: true })).filter(
-      (entry) => entry.isDirectory() && !entry.name.startsWith('.'),
+      (entry) =>
+        entry.isDirectory() &&
+        !entry.name.startsWith('.') &&
+        !NON_FIXTURE_DIRECTORIES.has(entry.name),
     );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];

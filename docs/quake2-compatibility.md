@@ -84,10 +84,10 @@ the missing-WAL checkerboard. No GPL map or compiler output is committed.
 ## Compiled asset corpus evidence
 
 The ignored Steam corpus tooling scans owned game installs without committing their contents. It
-preserves BSP provenance and materializes only bounded Quake II asset classes: WAL and
-PNG/TGA/JPEG files under `textures/`, `pics/colormap.pcx`, and PNG/TGA/JPEG skybox faces under
-`env/`. Loose files are applied first and archives are processed in stable path order, so later
-Quake II patch PK3s override earlier assets deterministically.
+preserves BSP provenance and materializes only bounded render assets: Quake `gfx/palette.lmp`, plus
+Quake II WAL and PNG/TGA/JPEG files under `textures/`, `pics/colormap.pcx`, and PNG/TGA/JPEG skybox
+faces under `env/`. Loose files are applied first and archives are processed in stable path order,
+so later patch archives override earlier assets deterministically.
 
 On 2026-09-01, the Thirty Flights of Loving/Gravity Bone install contributed five BSP38 maps and
 379 filtered game assets. All five maps reached `Ready` in headless Chromium with SwiftShader,

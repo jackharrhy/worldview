@@ -30,12 +30,14 @@ describe('Steam BSP corpus extractor', () => {
       mkdir(path.join(source, 'baseq2', 'textures', 'unit'), { recursive: true }),
       mkdir(path.join(source, 'baseq2', 'pics'), { recursive: true }),
       mkdir(path.join(source, 'baseq2', 'sound'), { recursive: true }),
+      mkdir(path.join(source, 'id1', 'gfx'), { recursive: true }),
     ]);
     await Promise.all([
       writeFile(path.join(source, 'baseq2', 'maps', 'sample.bsp'), 'bsp'),
       writeFile(path.join(source, 'baseq2', 'textures', 'unit', 'wall.jpg'), 'image'),
       writeFile(path.join(source, 'baseq2', 'pics', 'colormap.pcx'), 'palette'),
       writeFile(path.join(source, 'baseq2', 'sound', 'ignored.wav'), 'sound'),
+      writeFile(path.join(source, 'id1', 'gfx', 'palette.lmp'), 'quake palette'),
     ]);
 
     await execute(
@@ -56,6 +58,7 @@ describe('Steam BSP corpus extractor', () => {
     };
     expect(manifest.records.map(({ entry }) => entry)).toEqual(['baseq2/maps/sample.bsp']);
     expect(manifest.assets.map(({ logicalPath }) => logicalPath)).toEqual([
+      'gfx/palette.lmp',
       'pics/colormap.pcx',
       'textures/unit/wall.jpg',
     ]);
