@@ -1,20 +1,26 @@
 import { describe, expect, it } from 'vitest';
 
+import { loadWorkspaceResources } from '../src/project-resource-loader.js';
+
 import {
   ensureProjectDirectoryPermission,
   loadProjectEntityDefinitions,
   loadProjectSprites,
-  loadProjectWalFiles,
+  loadProjectGameAssets,
   openWorldviewProject,
   projectFile,
   type EditorDirectoryHandle,
 } from '../src/project-workspace.js';
 
-type Entry = string | Record<string, Entry>;
+type Entry = string | Uint8Array | Record<string, Entry>;
+
+function isFileEntry(value: Entry | undefined): value is string | Uint8Array {
+  return typeof value === 'string' || value instanceof Uint8Array;
+}
 
 function directory(name: string, entries: Record<string, Entry>): EditorDirectoryHandle {
   const child = (entryName: string, value: Entry) =>
-    typeof value === 'string'
+    isFileEntry(value)
       ? {
           kind: 'file' as const,
           name: entryName,
@@ -28,12 +34,12 @@ function directory(name: string, entries: Record<string, Entry>): EditorDirector
     name,
     getFileHandle: async (entryName) => {
       const value = entries[entryName];
-      if (typeof value !== 'string') throw new Error(`Missing file ${entryName}`);
+      if (!isFileEntry(value)) throw new Error(`Missing file ${entryName}`);
       return child(entryName, value) as { getFile(): Promise<File> };
     },
     getDirectoryHandle: async (entryName) => {
       const value = entries[entryName];
-      if (!value || typeof value === 'string') throw new Error(`Missing directory ${entryName}`);
+      if (!value || isFileEntry(value)) throw new Error(`Missing directory ${entryName}`);
       return directory(entryName, value);
     },
     async *entries() {
@@ -66,6 +72,39 @@ const root = directory('fixture', {
   },
   sprites: {},
 });
+
+function quake2PalettePcx(): Uint8Array {
+  const bytes = new Uint8Array(128 + 1 + 768);
+  bytes[0] = 0x0a;
+  bytes[2] = 1;
+  bytes[3] = 8;
+  bytes[65] = 1;
+  bytes[128] = 0x0c;
+  for (let index = 0; index < 768; index += 1) bytes[129 + index] = index & 0xff;
+  return bytes;
+}
+
+function quake2Wal(): Uint8Array {
+  const bytes = new Uint8Array(440);
+  const view = new DataView(bytes.buffer);
+  new TextEncoder().encodeInto('unit/wall', bytes.subarray(0, 32));
+  view.setUint32(32, 16, true);
+  view.setUint32(36, 16, true);
+  [100, 356, 420, 436].forEach((offset, index) => view.setUint32(40 + index * 4, offset, true));
+  bytes.fill(7, 100);
+  return bytes;
+}
+
+function onePixelTga(): Uint8Array {
+  const bytes = new Uint8Array(21);
+  bytes[2] = 2;
+  bytes[12] = 1;
+  bytes[14] = 1;
+  bytes[16] = 24;
+  bytes[17] = 0x20;
+  bytes.set([30, 20, 10], 18);
+  return bytes;
+}
 
 describe('project workspaces', () => {
   it('requires an explicit permission grant before reopening a revoked directory handle', async () => {
@@ -233,7 +272,7 @@ Synthetic Quake II area portal.
     });
   });
 
-  it('discovers WAL files recursively in material-root precedence order', async () => {
+  it('discovers Quake II assets recursively in game-root precedence order', async () => {
     const materialRoot = directory('materials', {
       'worldview.project.json': JSON.stringify({
         schemaVersion: 1,
@@ -242,24 +281,85 @@ Synthetic Quake II area portal.
         mapRoots: ['maps'],
         resources: {
           wads: [],
-          materialRoots: ['base', 'override'],
+          gameRoots: ['base', 'override'],
           spriteRoots: [],
           entityDefinitions: [],
         },
         buildProfiles: [],
       }),
       maps: {},
-      base: { z: { 'metal.wal': 'base' }, 'ignore.txt': '' },
-      override: { 'metal.wal': 'override', 'wall.wal': 'wall' },
+      base: {
+        textures: { 'metal.wal': 'base', 'ignore.txt': '' },
+        pics: { 'colormap.pcx': 'palette' },
+      },
+      override: {
+        textures: { 'metal.wal': 'override', 'wall.wal': 'wall', 'wall.jpg': 'replacement' },
+        env: { 'spaceup.tga': 'sky' },
+      },
     });
     const workspace = await openWorldviewProject(materialRoot);
-    const files = await loadProjectWalFiles(workspace);
+    const files = await loadProjectGameAssets(workspace);
 
     expect(files.map(({ path }) => path)).toEqual([
-      'base/z/metal.wal',
-      'override/metal.wal',
-      'override/wall.wal',
+      'base/pics/colormap.pcx',
+      'base/textures/metal.wal',
+      'override/env/spaceup.tga',
+      'override/textures/metal.wal',
+      'override/textures/wall.jpg',
+      'override/textures/wall.wal',
     ]);
+    expect(files.map(({ logicalPath }) => logicalPath)).toEqual([
+      'pics/colormap.pcx',
+      'textures/metal.wal',
+      'env/spaceup.tga',
+      'textures/metal.wal',
+      'textures/wall.jpg',
+      'textures/wall.wal',
+    ]);
+  });
+
+  it('stages Quake II PCX, WAL, and replacement assets for source and compiled preview', async () => {
+    const resourceRoot = directory('quake2-resources', {
+      'worldview.project.json': JSON.stringify({
+        schemaVersion: 1,
+        name: 'Quake II resources',
+        game: 'quake2',
+        mapRoots: ['maps'],
+        resources: {
+          wads: [],
+          gameRoots: ['baseq2'],
+          spriteRoots: [],
+          entityDefinitions: [],
+        },
+        buildProfiles: [],
+      }),
+      maps: {},
+      baseq2: {
+        pics: { 'colormap.pcx': quake2PalettePcx() },
+        textures: {
+          unit: { 'wall.wal': quake2Wal(), 'wall.tga': onePixelTga() },
+        },
+      },
+    });
+    const resources = await loadWorkspaceResources(
+      await openWorldviewProject(resourceRoot),
+      [],
+      new AbortController().signal,
+    );
+
+    expect(resources.palette).toHaveLength(768);
+    expect([...resources.gameAssets.keys()]).toEqual([
+      'pics/colormap.pcx',
+      'textures/unit/wall.tga',
+      'textures/unit/wall.wal',
+    ]);
+    expect(resources.catalog.find('unit/wall')).toMatchObject({
+      width: 1,
+      height: 1,
+      logicalWidth: 16,
+      logicalHeight: 16,
+      rgba: new Uint8Array([10, 20, 30, 255]),
+    });
   });
 
   it('reports missing sprite roots and malformed sprite assets without blocking the project', async () => {

@@ -28,7 +28,12 @@ export function createMaterialResource(
     .$name(material?.name ?? 'Missing editor material');
   texture.write(rgba);
   const settings = root.createUniform(MaterialUniform, {
-    settings: [material ? 1 : 0, material?.alphaTest ? 1 : 0, 0, 0],
+    settings: [
+      material ? 1 : 0,
+      material?.alphaTest ? 1 : 0,
+      material?.logicalWidth ?? width,
+      material?.logicalHeight ?? height,
+    ],
   });
   return {
     texture,

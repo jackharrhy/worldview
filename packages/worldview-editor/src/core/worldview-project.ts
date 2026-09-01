@@ -13,8 +13,8 @@ export interface WorldviewEntityDefinitionSource {
 export interface WorldviewProjectResources {
   /** Later entries override earlier WAD entries with the same logical texture name. */
   readonly wads: readonly string[];
-  /** Ordered roots for loose profile-native materials such as Quake II WAL files. */
-  readonly materialRoots?: readonly string[] | undefined;
+  /** Ordered game-directory roots for profile-native assets; later roots override earlier ones. */
+  readonly gameRoots?: readonly string[] | undefined;
   readonly palette?: string | undefined;
   readonly spriteRoots: readonly string[];
   readonly entityDefinitions: readonly WorldviewEntityDefinitionSource[];
@@ -80,7 +80,7 @@ const EntityDefinitionSourceSchema = z.strictObject({
 
 const ProjectResourcesSchema = z.strictObject({
   wads: uniquePaths().default([]),
-  materialRoots: uniquePaths(true).optional(),
+  gameRoots: uniquePaths(true).optional(),
   palette: relativePathSchema().optional(),
   spriteRoots: uniquePaths(true).default([]),
   entityDefinitions: z

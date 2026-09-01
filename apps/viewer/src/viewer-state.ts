@@ -151,7 +151,7 @@ export function createViewerStore(defaultFixture: string): SnapshotStore<ViewerS
     status: 'Waiting for a map',
     readySequence: 0,
     mapName: 'Worldview',
-    formatLabel: 'BSP29 and BSP30',
+    formatLabel: 'BSP29, BSP2, BSP30, and BSP38',
     metrics: '',
     dropActive: false,
     controlsDisabled: false,

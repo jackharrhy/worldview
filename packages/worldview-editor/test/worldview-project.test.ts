@@ -38,7 +38,7 @@ describe('Worldview project manifests', () => {
       game: 'quake2',
       resources: {
         wads: [],
-        materialRoots: ['textures'],
+        gameRoots: ['baseq2'],
         spriteRoots: [],
         entityDefinitions: [{ path: 'entities/quake2.def', format: 'def' }],
       },

@@ -42,6 +42,7 @@ type BuildState = EditorStatePort<
   | 'launchProfileId'
   | 'leakOverlayVisible'
   | 'loadedWadSources'
+  | 'loadedGameAssets'
   | 'portalOverlayVisible'
   | 'projectKey'
   | 'projectLocalState'
@@ -238,7 +239,9 @@ export class BuildPresenter {
     if (!artifact) throw new Error('Compiler completed without returning a BSP artifact');
     const bspVersion = compiledBspVersion(artifact.data);
     if (!supportsCompiledBspPreview(artifact.data)) {
-      this.state.compiledPreviewWarning = ` BSP${bspVersion ?? ' (truncated)'} preview is not supported yet; the compiled artifact remains available.`;
+      const versionLabel =
+        bspVersion === 'BSP2' ? bspVersion : `BSP${bspVersion ?? ' (truncated)'}`;
+      this.state.compiledPreviewWarning = ` ${versionLabel} preview is not supported yet; the compiled artifact remains available.`;
       this.state.compiledViewer?.dispose();
       this.state.compiledViewer = null;
       this.state.compiledRevision = null;
@@ -247,9 +250,10 @@ export class BuildPresenter {
       this.showCompiledPreview(false);
       return false;
     }
-    const needsDiagnosticPalette = bspVersion === 29 && !this.state.quakePalette;
+    const needsDiagnosticPalette =
+      (bspVersion === 29 || bspVersion === 38 || bspVersion === 'BSP2') && !this.state.quakePalette;
     this.state.compiledPreviewWarning = needsDiagnosticPalette
-      ? ' Using the diagnostic palette; load the map’s Quake palette for exact texture colors.'
+      ? ' Using the diagnostic palette; load the game palette for exact texture colors.'
       : null;
     this.state.compiledViewer?.dispose();
     this.state.compiledViewer = null;
@@ -261,7 +265,8 @@ export class BuildPresenter {
       source: {
         bsp: artifact.data,
         wads: [...this.state.loadedWadSources.values()],
-        ...(bspVersion === 29
+        gameAssets: Object.fromEntries(this.state.loadedGameAssets),
+        ...(bspVersion === 29 || bspVersion === 38 || bspVersion === 'BSP2'
           ? { palette: this.state.quakePalette ?? this.state.diagnosticQuakePalette }
           : {}),
       },

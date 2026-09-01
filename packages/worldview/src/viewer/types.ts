@@ -1,5 +1,7 @@
 import type {
   BspFormat,
+  BspVersion,
+  BspWarning,
   OverviewLayout,
   OverviewRotation,
   ParsedWorld,
@@ -79,15 +81,30 @@ export interface GoldSrcSkyboxSources {
 
 export type SpriteSources = Readonly<Record<string, BinarySource>>;
 export type SoundSources = Readonly<Record<string, BinarySource>>;
+export type GameAssetKind = 'palette' | 'texture' | 'skybox';
+
+export interface GameAssetReference {
+  /** Normalized game-root path, such as `textures/e1u1/metal.wal`. */
+  readonly path: string;
+  readonly kind: GameAssetKind;
+}
+
+export type GameAssetSources = Readonly<Record<string, BinarySource>>;
 
 export interface WorldSource {
   readonly bsp: BinarySource;
   /**
-   * Base URL of a Quake or GoldSrc game/mod directory. Relative BSP URLs resolve beneath it;
-   * WADs resolve at the root, sprites beneath `sprites/`, skyboxes beneath `gfx/env/`, and sounds
-   * beneath `sound/`. More specific base URLs below override these derived directories.
+   * Base URL of a Quake, GoldSrc, or Quake II game/mod directory. Relative BSP URLs resolve beneath
+   * it. Quake and GoldSrc use the legacy WAD/palette/sprite/skybox/sound layout; Quake II logical
+   * assets resolve below `textures/`, `pics/`, and `env/`. More specific sources below override it.
    */
   readonly gameBaseUrl?: string | URL;
+  /** Explicit game-root files. Keys use forward-slash paths and are matched case-insensitively. */
+  readonly gameAssets?: GameAssetSources;
+  /** Resolves a logical game-root path from a directory, archive mount, or remote asset service. */
+  readonly resolveGameAsset?: (
+    reference: GameAssetReference,
+  ) => BinarySource | null | undefined | Promise<BinarySource | null | undefined>;
   readonly palette?: BinarySource;
   readonly wads?: readonly BinarySource[];
   readonly wadBaseUrl?: string | URL;
@@ -140,7 +157,7 @@ export interface CameraUpdate {
 
 export interface MapDiagnostics {
   readonly format: BspFormat;
-  readonly version: 29 | 30 | 38;
+  readonly version: BspVersion;
   readonly vertices: number;
   readonly triangles: number;
   readonly faces: number;
@@ -190,17 +207,19 @@ export interface ReadyDetail {
   readonly diagnostics: MapDiagnostics;
 }
 
-export interface WarningDetail {
-  readonly message: string;
-  readonly code:
-    | 'missing-wad'
-    | 'missing-texture'
-    | 'missing-skybox'
-    | 'missing-sprite'
-    | 'missing-sound'
-    | 'audio-warning'
-    | 'asset-warning';
-}
+export type WarningDetail =
+  | BspWarning
+  | {
+      readonly message: string;
+      readonly code:
+        | 'missing-wad'
+        | 'missing-texture'
+        | 'missing-skybox'
+        | 'missing-sprite'
+        | 'missing-sound'
+        | 'audio-warning'
+        | 'asset-warning';
+    };
 
 export interface AudioState {
   readonly enabled: boolean;

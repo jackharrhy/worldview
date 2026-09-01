@@ -40,6 +40,7 @@ export {
   type EntitySupportReport,
 } from './entity-support.js';
 export { type WorldviewErrorCode, WorldviewError } from './errors.js';
+export { isQuakePaletteFormat } from './formats.js';
 export {
   buildLightmapPage,
   LightmapPacker,
@@ -84,6 +85,8 @@ export {
   type WalTextureHeader,
 } from './wal.js';
 export { decodeTga, type DecodedTga } from './tga.js';
+export { validateTextureDimensions } from './texture-limits.js';
+export { readPcxPalette } from './pcx.js';
 export {
   findBspLeaf,
   traceWorldSegment,
@@ -105,6 +108,8 @@ export {
 export type {
   Bounds,
   BspFormat,
+  BspVersion,
+  BspWarning,
   DecodedMipLevel,
   DecodedMipTexture,
   DecodedQuakeSky,

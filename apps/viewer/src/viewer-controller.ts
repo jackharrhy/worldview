@@ -201,14 +201,14 @@ export class ViewerController {
   }
 
   public async loadLocalFiles(files: FileList | null): Promise<void> {
-    const source = files ? sourceFromFiles(files) : undefined;
+    const source = files ? await sourceFromFiles(files) : undefined;
     if (source) await this.load(source);
     else this.setStatus('Choose at least one BSP file', 'error');
   }
 
   public async loadDroppedFiles(files: FileList | null): Promise<void> {
     this.setDropActive(false);
-    const source = files ? sourceFromFiles(files) : undefined;
+    const source = files ? await sourceFromFiles(files) : undefined;
     if (source) await this.load(source);
     else this.setStatus('The drop did not include a BSP file', 'error');
   }
@@ -472,7 +472,8 @@ export class ViewerController {
       entityIndex: track.entityIndex,
     }));
     const overview = planOverview(world);
-    const format = `${diagnostics.format} / BSP${world.version}`;
+    const version = typeof world.version === 'number' ? `BSP${world.version}` : world.version;
+    const format = `${diagnostics.format} / ${version}`;
     const triangles = diagnostics.triangles.toLocaleString();
     const faces = diagnostics.faces.toLocaleString();
     const batches = diagnostics.batches.toLocaleString();

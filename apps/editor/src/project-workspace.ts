@@ -54,8 +54,9 @@ export interface ProjectSprites {
   readonly diagnostics: readonly string[];
 }
 
-export interface ProjectMaterialFile {
+export interface ProjectGameAssetFile {
   readonly path: string;
+  readonly logicalPath: string;
   readonly file: File;
 }
 
@@ -125,16 +126,34 @@ async function spriteFilesInDirectory(
   return files;
 }
 
-async function materialFilesInDirectory(
+const GAME_ASSET_EXTENSION = /\.(?:wal|png|jpe?g|tga)$/iu;
+
+function gameAssetLogicalPath(root: string, path: string): string | null {
+  const relative = root === '.' ? path : path.slice(root.length + 1);
+  const normalized = relative.replaceAll('\\', '/').toLowerCase();
+  if (/^(?:textures|env)\//u.test(normalized)) return normalized;
+  if (normalized === 'pics/colormap.pcx') return normalized;
+  return null;
+}
+
+async function gameAssetFilesInDirectory(
   directory: EditorDirectoryHandle,
+  root: string,
   prefix: string,
-): Promise<readonly ProjectMaterialFile[]> {
-  const files: ProjectMaterialFile[] = [];
+): Promise<readonly ProjectGameAssetFile[]> {
+  const files: ProjectGameAssetFile[] = [];
   for await (const [name, handle] of directory.entries()) {
     const path = prefix ? `${prefix}/${name}` : name;
-    if (handle.kind === 'directory') files.push(...(await materialFilesInDirectory(handle, path)));
-    else if (name.toLowerCase().endsWith('.wal')) {
-      files.push({ path, file: await handle.getFile() });
+    if (handle.kind === 'directory') {
+      files.push(...(await gameAssetFilesInDirectory(handle, root, path)));
+      continue;
+    }
+    const logicalPath = gameAssetLogicalPath(root, path);
+    if (
+      logicalPath &&
+      (GAME_ASSET_EXTENSION.test(logicalPath) || logicalPath === 'pics/colormap.pcx')
+    ) {
+      files.push({ path, logicalPath, file: await handle.getFile() });
     }
   }
   return files.toSorted((left, right) => left.path.localeCompare(right.path));
@@ -257,16 +276,16 @@ export async function loadProjectSprites(
   return { sprites, diagnostics };
 }
 
-/** Discovers Quake II WAL files in manifest root order; later roots intentionally override first. */
-export async function loadProjectWalFiles(
+/** Discovers bounded profile-native assets in game-root order; later roots override first. */
+export async function loadProjectGameAssets(
   workspace: WorldviewProjectWorkspace,
-): Promise<readonly ProjectMaterialFile[]> {
-  const roots = workspace.manifest.resources.materialRoots ?? [];
-  const files: ProjectMaterialFile[] = [];
+): Promise<readonly ProjectGameAssetFile[]> {
+  const roots = workspace.manifest.resources.gameRoots ?? [];
+  const files: ProjectGameAssetFile[] = [];
   for (const root of roots) {
     const prefix = root === '.' ? '' : root;
     const directory = await directoryAt(workspace.handle, prefix ? prefix.split('/') : []);
-    files.push(...(await materialFilesInDirectory(directory, prefix)));
+    files.push(...(await gameAssetFilesInDirectory(directory, root, prefix)));
   }
   return files;
 }

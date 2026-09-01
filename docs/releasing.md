@@ -15,8 +15,8 @@ capabilities or public API changes and a patch bump for compatible fixes.
 Review and commit those changes, push the release commit, and tag it. For example:
 
 ```sh
-git tag v0.4.0
-git push origin main v0.4.0
+git tag v0.5.0
+git push origin main v0.5.0
 ```
 
 Inspect the release without contacting npm authentication:

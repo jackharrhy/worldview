@@ -82,6 +82,9 @@ function syntheticGoldSrcBsp() {
   textureView.setUint32(4, 8, true);
   textureLump.set(texture, 8);
 
+  const plane = new Uint8Array(20);
+  new DataView(plane.buffer).setFloat32(8, 1, true);
+
   const vertices = new Uint8Array(48);
   const vertexView = new DataView(vertices.buffer);
   [
@@ -120,6 +123,7 @@ function syntheticGoldSrcBsp() {
 
   const lumps = Array.from({ length: 15 }, () => new Uint8Array());
   lumps[0] = entities;
+  lumps[1] = plane;
   lumps[2] = textureLump;
   lumps[3] = vertices;
   lumps[6] = texinfo;

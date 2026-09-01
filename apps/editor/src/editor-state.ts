@@ -198,6 +198,7 @@ export class EditorState {
   ] as const;
   public readonly uvEditor: TextureUvEditor;
   public readonly loadedWadSources = new Map<string, ArrayBuffer>();
+  public readonly loadedGameAssets = new Map<string, ArrayBuffer>();
   public readonly editorClipboard: EditorClipboard;
   public quakePalette: Uint8Array | undefined;
   public activeMaterialName = '';

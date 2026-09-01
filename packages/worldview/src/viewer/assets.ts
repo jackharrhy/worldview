@@ -4,15 +4,24 @@
  */
 
 import {
+  decodeMipTexture,
+  decodeQuakeSky,
   decodeTga,
   findMipTexture,
+  isQuakePaletteFormat,
   parseBsp,
   parseWad,
+  readPcxPalette,
   WorldviewError,
   type ParsedWad,
   type ParsedWorld,
 } from '../core/index.js';
-import type { LoadedSkybox, RenderWorldAssets, SkyboxSuffix } from '../render/assets.js';
+import type {
+  LoadedMaterialTexture,
+  LoadedSkybox,
+  RenderWorldAssets,
+  SkyboxSuffix,
+} from '../render/assets.js';
 import {
   abortIfNeeded,
   readBinarySource,
@@ -24,6 +33,12 @@ import {
 } from './asset-source.js';
 import { loadSoundAssets, type LoadedMusicAsset, type LoadedSoundAsset } from './sound-assets.js';
 import { loadSpriteAssets } from './sprite-assets.js';
+import { GameAssetLoader } from './game-asset-source.js';
+import {
+  loadQuake2MaterialTextures,
+  loadQuake2Palette,
+  loadQuake2Skybox,
+} from './quake2-assets.js';
 import type { BinarySource, ProgressDetail, WarningDetail, WorldSource } from './types.js';
 
 export { readBinarySource, resolveWorldSource, type LoadAssetContext } from './asset-source.js';
@@ -31,6 +46,8 @@ export type { LoadedSkybox, LoadedSpriteEntity, SkyboxSuffix } from '../render/a
 export type { LoadedMusicAsset, LoadedSoundAsset } from './sound-assets.js';
 
 export interface LoadedWorld extends RenderWorldAssets {
+  /** Decoded palette retained for diagnostics and non-render consumers. */
+  readonly palette?: Uint8Array;
   readonly missingTextures: readonly string[];
   readonly missingSprites: readonly string[];
   readonly sounds: ReadonlyMap<string, LoadedSoundAsset>;
@@ -64,6 +81,15 @@ function withWadProgress(detail: ProgressDetail, progress: WadProgressTracker): 
 
 function parsePalette(bytes: ArrayBuffer): Uint8Array {
   const palette = new Uint8Array(bytes);
+  if (
+    palette.byteLength >= 128 + 1 + 256 * 3 &&
+    palette[0] === 0x0a &&
+    palette[2] === 1 &&
+    palette[3] === 8 &&
+    palette[65] === 1
+  ) {
+    return readPcxPalette(palette);
+  }
   if (palette.byteLength < 768) {
     throw new WorldviewError('missing-palette', 'Quake palette must contain at least 768 bytes');
   }
@@ -80,13 +106,15 @@ async function loadPaletteSource(
 async function loadDerivedPalette(
   world: ParsedWorld,
   source: WorldSource,
+  gameAssets: GameAssetLoader,
   context: LoadAssetContext,
 ): Promise<Uint8Array | undefined> {
-  if (world.version !== 29) return undefined;
+  if (world.format === 'quake2-bsp38') return loadQuake2Palette(gameAssets);
+  if (!isQuakePaletteFormat(world.format)) return undefined;
   if (!source.gameBaseUrl) {
     throw new WorldviewError(
       'missing-palette',
-      'BSP29 maps require an external 768-byte Quake palette',
+      'Quake BSP maps require an external 768-byte palette',
     );
   }
   return loadPaletteSource(sourceBelow(source.gameBaseUrl, 'gfx/palette.lmp'), context);
@@ -95,9 +123,40 @@ async function loadDerivedPalette(
 async function loadSkybox(
   world: ParsedWorld,
   source: WorldSource,
+  gameAssets: GameAssetLoader,
   context: LoadAssetContext,
 ): Promise<AssetStage<LoadedSkybox | undefined>> {
-  if (world.version !== 30 || !world.skyName || (!source.skybox && !source.skyboxBaseUrl)) {
+  if (!world.skyName) {
+    return { value: undefined, warnings: [] };
+  }
+  if (world.format === 'quake2-bsp38' && !source.skybox) {
+    try {
+      const value = await loadQuake2Skybox(world.skyName, gameAssets, context);
+      return value
+        ? { value, warnings: [] }
+        : {
+            value: undefined,
+            warnings: [
+              {
+                code: 'missing-skybox',
+                message: `Quake II skybox ${world.skyName} could not be resolved from the game assets`,
+              },
+            ],
+          };
+    } catch (error) {
+      if (context.signal.aborted) throw error;
+      return {
+        value: undefined,
+        warnings: [
+          {
+            code: 'missing-skybox',
+            message: `Quake II skybox ${world.skyName} could not be loaded: ${errorMessage(error)}`,
+          },
+        ],
+      };
+    }
+  }
+  if (world.version !== 30 || (!source.skybox && !source.skyboxBaseUrl)) {
     return { value: undefined, warnings: [] };
   }
   try {
@@ -249,13 +308,14 @@ async function loadWadCandidates(
 function resolveTextures(
   world: ParsedWorld,
   wads: readonly ParsedWad[],
+  palette: Uint8Array | undefined,
   context: LoadAssetContext,
 ): AssetStage<{
-  textureData: ReadonlyMap<number, Uint8Array>;
+  materialTextures: ReadonlyMap<number, LoadedMaterialTexture>;
   missingTextures: readonly string[];
 }> {
   const referencedMaterials = new Set(world.batches.map((batch) => batch.materialIndex));
-  const textureData = new Map<number, Uint8Array>();
+  const materialTextures = new Map<number, LoadedMaterialTexture>();
   const missingTextures: string[] = [];
   const warnings: WarningDetail[] = [];
   for (const materialIndex of referencedMaterials) {
@@ -269,8 +329,20 @@ function resolveTextures(
         if (bytes) break;
       }
     }
-    if (bytes) textureData.set(materialIndex, bytes);
-    else {
+    if (bytes) {
+      const texture = decodeMipTexture(
+        bytes,
+        isQuakePaletteFormat(world.format) ? palette : undefined,
+      );
+      materialTextures.set(materialIndex, {
+        texture,
+        logicalWidth: texture.width,
+        logicalHeight: texture.height,
+        ...(isQuakePaletteFormat(world.format) && material.kind === 'sky' && palette
+          ? { quakeSky: decodeQuakeSky(bytes, palette) }
+          : {}),
+      });
+    } else {
       missingTextures.push(material.name);
       warnings.push({
         code: 'missing-texture',
@@ -280,11 +352,11 @@ function resolveTextures(
     context.progress({
       phase: 'textures',
       label: material.name,
-      loaded: textureData.size + missingTextures.length,
+      loaded: materialTextures.size + missingTextures.length,
       total: referencedMaterials.size,
     });
   }
-  return { value: { textureData, missingTextures }, warnings };
+  return { value: { materialTextures, missingTextures }, warnings };
 }
 
 export async function loadWorldAssets(
@@ -326,6 +398,7 @@ export async function loadWorldAssets(
       loaded: bspBytes.byteLength,
       total: bspBytes.byteLength,
     });
+    const gameAssets = new GameAssetLoader(resolvedSource, loadContext);
     const referencedWadsPromise = referencedWadCandidates(world, resolvedSource, loadContext).then(
       async (candidates) => {
         wadProgress.total = explicitWadSources.length + candidates.value.length;
@@ -344,13 +417,13 @@ export async function loadWorldAssets(
       },
     );
     const palettePromise =
-      explicitPalettePromise ?? loadDerivedPalette(world, resolvedSource, loadContext);
+      explicitPalettePromise ?? loadDerivedPalette(world, resolvedSource, gameAssets, loadContext);
     const [palette, spriteAssets, soundAssets, skybox, explicitWads, referencedWads] =
       await Promise.all([
         palettePromise,
         loadSpriteAssets(world, resolvedSource, loadContext),
         loadSoundAssets(world, resolvedSource, loadContext),
-        loadSkybox(world, resolvedSource, loadContext),
+        loadSkybox(world, resolvedSource, gameAssets, loadContext),
         explicitWadsPromise,
         referencedWadsPromise,
       ]);
@@ -358,7 +431,10 @@ export async function loadWorldAssets(
       value: [...explicitWads.value, ...referencedWads.value],
       warnings: [...explicitWads.warnings, ...referencedWads.warnings],
     };
-    const textures = resolveTextures(world, wads.value, loadContext);
+    const textures =
+      world.format === 'quake2-bsp38'
+        ? await loadQuake2MaterialTextures(world, palette, gameAssets, loadContext)
+        : resolveTextures(world, wads.value, palette, loadContext);
     const baseWarnings: WarningDetail[] =
       world.envSounds.length > 0 && !world.trace
         ? [
@@ -380,9 +456,10 @@ export async function loadWorldAssets(
       playerSounds: soundAssets.playerSounds,
       missingSounds: soundAssets.missingSounds,
       missingMusic: soundAssets.missingMusic,
-      textureData: textures.value.textureData,
+      materialTextures: textures.value.materialTextures,
       missingTextures: textures.value.missingTextures,
       warnings: [
+        ...world.warnings,
         ...baseWarnings,
         ...spriteAssets.warnings,
         ...soundAssets.warnings,

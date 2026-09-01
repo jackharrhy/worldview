@@ -102,15 +102,20 @@ export function selectMapLaunchProfile(
 }
 
 const IBSP_MAGIC = 0x50534249;
+const QBSP_MAGIC = 0x50534251;
+const BSP2_MAGIC = 0x32505342;
 
-export function compiledBspVersion(data: ArrayBuffer): number | null {
+export function compiledBspVersion(data: ArrayBuffer): number | 'BSP2' | null {
   if (data.byteLength < 4) return null;
   const view = new DataView(data);
-  const first = view.getInt32(0, true);
-  return first === IBSP_MAGIC && data.byteLength >= 8 ? view.getInt32(4, true) : first;
+  const first = view.getUint32(0, true);
+  if ((first === IBSP_MAGIC || first === QBSP_MAGIC) && data.byteLength >= 8) {
+    return view.getUint32(4, true);
+  }
+  return first === BSP2_MAGIC ? 'BSP2' : view.getInt32(0, true);
 }
 
-const COMPILED_PREVIEW_BSP_VERSIONS = new Set([29, 30, 38]);
+const COMPILED_PREVIEW_BSP_VERSIONS = new Set<number | 'BSP2'>([29, 30, 38, 'BSP2']);
 
 export function supportsCompiledBspPreview(data: ArrayBuffer): boolean {
   const version = compiledBspVersion(data);

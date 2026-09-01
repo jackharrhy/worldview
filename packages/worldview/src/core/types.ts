@@ -5,7 +5,8 @@ import type { ParsedBspTrace } from './trace.js';
 import type { ParsedBspVisibility } from './visibility.js';
 
 export type Vec3Tuple = readonly [number, number, number];
-export type BspFormat = 'quake-bsp29' | 'goldsrc-bsp30' | 'quake2-bsp38';
+export type BspFormat = 'quake-bsp29' | 'quake-bsp2' | 'goldsrc-bsp30' | 'quake2-bsp38';
+export type BspVersion = 29 | 30 | 38 | 'BSP2';
 export type MaterialKind = 'opaque' | 'alpha-test' | 'water' | 'sky' | 'tool';
 export type GoldSrcRenderMode = 0 | 1 | 2 | 3 | 4 | 5;
 
@@ -45,7 +46,57 @@ export interface ParsedMaterial {
   readonly name: string;
   readonly kind: MaterialKind;
   readonly embeddedTexture?: ParsedMipTexture;
+  /** Surface opacity after format-specific flags have been normalized. */
+  readonly opacity?: number;
+  /** Texture-space scrolling speed in pixels per second. */
+  readonly scrollSpeed?: number;
+  /** Quake II texinfo animation link; absent for formats without texinfo chains. */
+  readonly nextMaterialIndex?: number | null;
+  /** Raw Quake II texinfo metadata retained for diagnostics and format-specific consumers. */
+  readonly surfaceFlags?: number;
+  readonly surfaceValue?: number;
 }
+
+export type BspWarning =
+  | {
+      readonly code: 'noncanonical-miptex-dimensions';
+      readonly message: string;
+      readonly textureIndex: number;
+      readonly textureName: string;
+      readonly width: number;
+      readonly height: number;
+    }
+  | {
+      readonly code: 'degenerate-face';
+      readonly message: string;
+      readonly faceIndex: number;
+      readonly modelIndex: number;
+      readonly edgeCount: number;
+    }
+  | {
+      readonly code: 'unusable-miptex';
+      readonly message: string;
+      readonly textureIndex: number;
+      readonly textureName: string;
+      readonly reason: string;
+    }
+  | {
+      readonly code: 'noncanonical-visibility-run';
+      readonly message: string;
+    }
+  | {
+      readonly code: 'noncanonical-collision-headnode';
+      readonly message: string;
+      readonly modelIndex: number;
+      readonly hullIndex: number;
+      readonly headNode: number;
+    }
+  | {
+      readonly code: 'noncanonical-inverted-model-bounds';
+      readonly message: string;
+      readonly modelIndex: number;
+      readonly axes: readonly ('x' | 'y' | 'z')[];
+    };
 
 export interface ParsedLightmap {
   readonly faceIndex: number;
@@ -103,7 +154,8 @@ export interface ParsedModel {
 
 export interface ParsedWorld {
   readonly format: BspFormat;
-  readonly version: 29 | 30 | 38;
+  readonly version: BspVersion;
+  readonly warnings: readonly BspWarning[];
   readonly bounds: Bounds;
   readonly entities: readonly BspEntity[];
   readonly skyName: string | null;

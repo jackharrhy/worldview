@@ -25,6 +25,8 @@
     "test:collaboration-celld-live": "npm run build --workspace @jackharrhy/worldview-editor && node scripts/test-celld-azurite.mjs",
     "test:consumer": "tsc -p tests/consumer/tsconfig.json --noEmit && vite build --config tests/consumer/vite.config.ts",
     "test:package": "node tests/consumer/node-smoke.mjs && npm pack --dry-run --workspace packages/worldview",
+    "corpus:check": "npm run build --workspace @jackharrhy/worldview && node scripts/check-bsp-corpus.mjs",
+    "corpus:steam": "bash scripts/download-steam-bsp-corpus.sh",
     "release:check": "npm run check:viewer && npm run test:browser:viewer && npm run test:package",
     "publish:dry-run": "node scripts/publish.mjs --dry-run",
     "publish": "node scripts/publish.mjs",

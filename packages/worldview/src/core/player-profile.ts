@@ -14,6 +14,7 @@ interface BspPlayerProfile {
 
 const PLAYER_PROFILES: Readonly<Record<BspFormat, BspPlayerProfile>> = {
   'quake-bsp29': { eyeHeight: 22, spawnClasses: QUAKE_PLAYER_SPAWNS },
+  'quake-bsp2': { eyeHeight: 22, spawnClasses: QUAKE_PLAYER_SPAWNS },
   'goldsrc-bsp30': { eyeHeight: 28, spawnClasses: GOLDSRC_PLAYER_SPAWNS },
   'quake2-bsp38': { eyeHeight: 22, spawnClasses: QUAKE_PLAYER_SPAWNS },
 };

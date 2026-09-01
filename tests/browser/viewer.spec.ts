@@ -1,5 +1,27 @@
 import { expect, test, type Page } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+
+const quake2CorpusMap =
+  'apps/viewer/public/local/steam-corpus/214700/archives/baseq2/pak0.pk3/maps/bar1.bsp';
+const quakeCorpusMap = 'apps/viewer/public/local/steam-corpus/4484420/loose/id1/maps/dm1.bsp';
+const compatibilityCorpusMaps = [
+  'apps/viewer/public/local/steam-corpus/60/loose/ricochet/maps/rc_arena.bsp',
+  'apps/viewer/public/local/steam-corpus/130/loose/bshift/maps/ba_canal1.bsp',
+  'apps/viewer/public/local/steam-corpus/2320/archives/rerelease/baseq2/pak0.pak/maps/mgu1m1.bsp',
+] as const;
+const quake2Fixtures = [
+  'steam-corpus/thirty-flights-of-loving/bar1',
+  'steam-corpus/gravity-bone/hof1',
+  'steam-corpus/thirty-flights-of-loving/lob1',
+  'steam-corpus/gravity-bone/parlo1',
+  'steam-corpus/thirty-flights-of-loving/vidroom',
+] as const;
+const compatibilityFixtures = [
+  ['steam-corpus/ricochet/rc_arena', 'goldsrc-bsp30 / BSP30'],
+  ['steam-corpus/blue-shift/ba_canal1', 'goldsrc-bsp30 / BSP30'],
+  ['steam-corpus/quake-ii/mgu1m1', 'quake2-bsp38 / BSP38'],
+] as const;
 
 async function requireWebGpu(page: Page): Promise<void> {
   expect(
@@ -186,14 +208,14 @@ test('walking produces player audio and exposes independent footstep volume', as
   }
 });
 
-test('alpha-test, water, and sky fixtures submit without GPU errors', async ({ page }) => {
+test('alpha-test, water, sky, and BSP2 fixtures submit without GPU errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
 
-  for (const fixture of ['alpha', 'water', 'goldsrc-sky', 'quake']) {
+  for (const fixture of ['alpha', 'water', 'goldsrc-sky', 'quake', 'quake-bsp2']) {
     await page.goto(`/?fixture=${fixture}`);
     await requireWebGpu(page);
     await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 15_000 });
@@ -205,7 +227,129 @@ test('alpha-test, water, and sky fixtures submit without GPU errors', async ({ p
         ),
     );
   }
-  await expect(page.locator('[data-format]')).toContainText('quake-bsp29');
+  await expect(page.locator('[data-format]')).toContainText('quake-bsp2 / BSP2');
+  expect(errors).toEqual([]);
+});
+
+test('local Quake II corpus resolves game assets and renders without GPU errors', async ({
+  page,
+}, testInfo) => {
+  test.skip(!existsSync(quake2CorpusMap), 'ignored commercial corpus is unavailable');
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+
+  for (const fixture of quake2Fixtures) {
+    await page.goto(`/?fixture=${encodeURIComponent(fixture)}`);
+    await requireWebGpu(page);
+    await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 30_000 });
+    await expect(page.locator('[data-format]')).toContainText('quake2-bsp38 / BSP38');
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    if (!fixture.endsWith('/hof1')) {
+      await expect(page.locator('[data-warnings]')).not.toHaveValue(/Quake II texture .*not found/);
+    }
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    if (fixture.endsWith('/bar1')) {
+      const screenshot = await page
+        .locator('canvas')
+        .screenshot({ path: testInfo.outputPath('quake2-bar1.png') });
+      expect(screenshot.byteLength).toBeGreaterThan(10_000);
+    }
+  }
+  const screenshot = await page
+    .locator('canvas')
+    .screenshot({ path: testInfo.outputPath('quake2-vidroom.png') });
+  expect(screenshot.byteLength).toBeGreaterThan(10_000);
+  expect(errors).toEqual([]);
+});
+
+test('local fixture loader switches from Quake II to Quake with the correct palette', async ({
+  page,
+}) => {
+  test.skip(
+    !existsSync(quake2CorpusMap) || !existsSync(quakeCorpusMap),
+    'ignored commercial corpus is unavailable',
+  );
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+
+  await page.goto(`/?fixture=${encodeURIComponent(quake2Fixtures[0])}`);
+  await requireWebGpu(page);
+  await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 30_000 });
+  await page.getByRole('button', { name: 'Load', exact: true }).click();
+  await expect(page.locator('optgroup[label="Thirty Flights of Loving"] option')).toHaveCount(3);
+  await expect(page.locator('optgroup[label="Gravity Bone"] option')).toHaveCount(2);
+  await expect(page.locator('optgroup[label="FLESHCANCER"] option')).toHaveCount(3);
+  const fixtureIds = await page
+    .locator('[data-control-dock] select option')
+    .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value));
+  expect(fixtureIds.some((id) => /(?:\/b_|\/models\/|\/progs\/)/u.test(id))).toBe(false);
+  await page
+    .locator('[data-control-dock] select')
+    .first()
+    .selectOption('steam-corpus/fleshcancer/dm1');
+  await page.locator('[data-fixture]').click();
+
+  await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 30_000 });
+  await expect(page.locator('[data-format]')).toContainText('quake-bsp29 / BSP29');
+  await page.getByRole('button', { name: 'Map', exact: true }).click();
+  await expect(page.locator('[data-warnings]')).not.toHaveValue(/palette/iu);
+  expect(errors).toEqual([]);
+});
+
+test('local compatibility corpus renders Ricochet, Blue Shift, and rerelease QBSP', async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    compatibilityCorpusMaps.some((filename) => !existsSync(filename)),
+    'ignored commercial corpus is unavailable',
+  );
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+
+  for (const [fixture, format] of compatibilityFixtures) {
+    await page.goto(`/?fixture=${encodeURIComponent(fixture)}`);
+    await requireWebGpu(page);
+    await expect(page.locator('[data-status]')).toContainText('Ready', { timeout: 60_000 });
+    await expect(page.locator('[data-format]')).toContainText(format);
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await expect(page.locator('[data-warnings]')).not.toHaveValue(
+      /missing-skybox|skybox .*could not/iu,
+    );
+    if (fixture.includes('ricochet') || fixture.includes('blue-shift')) {
+      await expect(page.locator('[data-warnings]')).not.toHaveValue(
+        /WAD .*failed|not found in (?:loaded|the supplied) WADs|missing texture/iu,
+      );
+    } else {
+      await expect(page.locator('[data-warnings]')).not.toHaveValue(
+        /Quake II texture .*not found/iu,
+      );
+    }
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    const screenshot = await page
+      .locator('canvas')
+      .screenshot({ path: testInfo.outputPath(`${fixture.split('/').at(-1)}.png`) });
+    expect(screenshot.byteLength).toBeGreaterThan(10_000);
+  }
+
   expect(errors).toEqual([]);
 });
 

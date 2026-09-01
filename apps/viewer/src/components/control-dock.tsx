@@ -13,6 +13,19 @@ import type {
 import { Field, PanelSection, TextField } from './form-controls.js';
 import { MapControls } from './map-controls.js';
 
+const fixtureGroups = [
+  ...selectableFixtures.reduce((groups, fixture) => {
+    const group = groups.get(fixture.namespace);
+    if (group) group.push(fixture);
+    else groups.set(fixture.namespace, [fixture]);
+    return groups;
+  }, new Map<string, (typeof selectableFixtures)[number][]>()),
+].toSorted(([left], [right]) => {
+  if (left === 'Synthetic') return -1;
+  if (right === 'Synthetic') return 1;
+  return left.localeCompare(right);
+});
+
 interface ControlDockProps {
   readonly controller: ViewerController;
   readonly store: SnapshotReader<ViewerControlSnapshot>;
@@ -68,10 +81,14 @@ export function ControlDock({
                 value={snapshot.fixture}
                 onChange={(event) => field('fixture', event.currentTarget.value)}
               >
-                {selectableFixtures.map((fixture) => (
-                  <option key={fixture.id} value={fixture.id}>
-                    {fixture.label}
-                  </option>
+                {fixtureGroups.map(([namespace, fixtures]) => (
+                  <optgroup key={namespace} label={namespace}>
+                    {fixtures.map((fixture) => (
+                      <option key={fixture.id} value={fixture.id}>
+                        {fixture.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </Field>

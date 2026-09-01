@@ -6,18 +6,13 @@ import {
   type EditorFileHandle,
 } from './project-files.js';
 import {
-  loadProjectEntityDefinitions,
-  loadProjectSprites,
-  loadProjectWalFiles,
   openWorldviewProject,
   pickProjectDirectory,
-  projectFile,
   ensureProjectDirectoryPermission,
   type EditorDirectoryHandle,
   type WorldviewProjectWorkspace,
 } from './project-workspace.js';
 import {
-  EditorMaterialCatalog,
   EntityDefinitionCatalog,
   BUILTIN_POINT_ENTITY_DEFINITIONS,
   createEmptyDocument,
@@ -44,6 +39,8 @@ import type { EditorStatePort } from './editor-state-port.js';
 import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
 import type { ProjectActionId } from './project-build-ui-state.js';
 import type { DetachedHostedMap } from './collaboration-outbox.js';
+import { loadWorkspaceResources } from './project-resource-loader.js';
+import type { LoadedProjectResources } from './project-resource-loader.js';
 
 type ProjectUi = Pick<
   EditorShellState,
@@ -68,6 +65,7 @@ type ProjectState = EditorStatePort<
   | 'lastDiskFingerprint'
   | 'lastRecoveryLabel'
   | 'loadedWadSources'
+  | 'loadedGameAssets'
   | 'materialCatalog'
   | 'projectKey'
   | 'projectLocalState'
@@ -120,6 +118,7 @@ interface ProjectViewportWorkspaceCommands {
 
 export class ProjectPresenter {
   private recoverySnapshots = new Map<string, DocumentRecoverySnapshot>();
+  private projectOpenController: AbortController | null = null;
 
   public constructor(
     private readonly state: ProjectState,
@@ -153,6 +152,7 @@ export class ProjectPresenter {
   }
 
   public dispose(): void {
+    this.cancelProjectOpen();
     this.ui.projectToolbar.unbind();
     this.ui.recoveryVersions.unbind();
     this.ui.projectUi.unbind();
@@ -166,6 +166,7 @@ export class ProjectPresenter {
   }
 
   private detachProjectContext(): void {
+    this.cancelProjectOpen();
     if (!this.state.projectWorkspace) return;
     this.state.projectWorkspace = null;
     this.state.projectKey = null;
@@ -180,6 +181,7 @@ export class ProjectPresenter {
     this.state.materialCatalog.clear();
     for (const material of this.state.builtInMaterials) this.state.materialCatalog.set(material);
     this.state.loadedWadSources.clear();
+    this.state.loadedGameAssets.clear();
     this.state.quakePalette = undefined;
     this.state.renderer?.setEntityDefinitions(this.state.entityDefinitions);
     this.state.renderer?.setSprites([]);
@@ -332,114 +334,102 @@ export class ProjectPresenter {
     });
   }
 
-  public async loadProjectResources(workspace: WorldviewProjectWorkspace): Promise<void> {
-    const stagedCatalog = new EditorMaterialCatalog();
-    const stagedWads = new Map<string, ArrayBuffer>();
-    let stagedPalette: Uint8Array | undefined;
-    for (const material of this.state.builtInMaterials) stagedCatalog.set(material);
-    const palettePath = workspace.manifest.resources.palette;
-    if (palettePath) {
-      const bytes = new Uint8Array(
-        await (await projectFile(workspace.handle, palettePath)).arrayBuffer(),
-      );
-      if (bytes.byteLength < 768) throw new Error(`${palettePath} is not a 768-byte Quake palette`);
-      stagedPalette = bytes.slice(0, 768);
-    }
-    const resourceMessages: string[] = [];
-    const wadPaths = workspace.manifest.resources.wads;
-    const wadData = await Promise.all(
-      wadPaths.map(async (path) => (await projectFile(workspace.handle, path)).arrayBuffer()),
-    );
-    for (const [index, path] of wadPaths.entries()) {
-      const data = wadData[index];
-      if (!data) throw new Error(`${path} could not be read`);
-      const result = stagedCatalog.importWad(path, data, stagedPalette);
-      stagedWads.set(path, data);
-      resourceMessages.push(`${path}: ${result.added} added, ${result.replaced} replaced`);
-      const error = result.diagnostics.find(({ severity }) => severity === 'error');
-      if (error) throw new Error(error.message);
-    }
-    const walFiles = await loadProjectWalFiles(workspace);
-    if (walFiles.length > 0) {
-      if (!stagedPalette) {
-        throw new Error('Quake II WAL material roots require a 768-byte palette resource');
-      }
-      const walPalette = stagedPalette;
-      for (const { path, file } of walFiles) {
-        const result = stagedCatalog.importWal(path, await file.arrayBuffer(), walPalette);
-        resourceMessages.push(`${path}: ${result.added} added, ${result.replaced} replaced`);
-        resourceMessages.push(...result.diagnostics.map(({ message }) => `${path}: ${message}`));
-      }
-    }
-    const [definitions, sprites] = await Promise.all([
-      loadProjectEntityDefinitions(workspace),
-      loadProjectSprites(workspace),
-    ]);
-    this.signal.throwIfAborted();
+  private applyProjectResources(
+    workspace: WorldviewProjectWorkspace,
+    resources: LoadedProjectResources,
+  ): void {
     this.state.materialCatalog.clear();
-    for (const material of stagedCatalog.materials()) this.state.materialCatalog.set(material);
+    for (const material of resources.catalog.materials()) this.state.materialCatalog.set(material);
     this.state.loadedWadSources.clear();
-    for (const [path, data] of stagedWads) this.state.loadedWadSources.set(path, data);
-    this.state.quakePalette = stagedPalette;
-    this.state.entityDefinitions = definitions.catalog;
-    this.state.projectSprites = sprites.sprites;
+    for (const [path, data] of resources.wadSources) this.state.loadedWadSources.set(path, data);
+    this.state.loadedGameAssets.clear();
+    for (const [path, data] of resources.gameAssets) this.state.loadedGameAssets.set(path, data);
+    this.state.quakePalette = resources.palette;
+    this.state.entityDefinitions = resources.definitions.catalog;
+    this.state.projectSprites = resources.sprites.sprites;
     this.state.renderer?.setEntityDefinitions(this.state.entityDefinitions);
     this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
     this.state.renderer?.setSprites(this.state.projectSprites);
     this.refreshEntityDefinitionPresets();
     this.materials.renderMaterialCatalog();
-    const definitionErrors = definitions.diagnostics.filter(({ severity }) => severity === 'error');
+    const definitionErrors = resources.definitions.diagnostics.filter(
+      ({ severity }) => severity === 'error',
+    );
     const resourceMessage = [
       `${workspace.manifest.name}: ${this.state.materialCatalog.size} textures and ${this.state.entityDefinitions.size} entity definitions`,
-      ...resourceMessages,
+      ...resources.messages,
       ...definitionErrors.map(({ message }) => message),
-      ...sprites.diagnostics,
+      ...resources.sprites.diagnostics,
     ].join(' · ');
     this.ui.resourceSettings.update({
       loadedWadCount: this.state.loadedWadSources.size,
       paletteLoaded: Boolean(this.state.quakePalette),
       message: resourceMessage,
-      tone: definitionErrors.length > 0 || sprites.diagnostics.length > 0 ? 'error' : 'normal',
+      tone:
+        definitionErrors.length > 0 || resources.sprites.diagnostics.length > 0
+          ? 'error'
+          : 'normal',
     });
   }
 
   public async openProjectDirectory(handle: EditorDirectoryHandle): Promise<void> {
-    const workspace = await openWorldviewProject(handle);
-    this.signal.throwIfAborted();
-    await this.loadProjectResources(workspace);
-    this.signal.throwIfAborted();
-    this.state.projectWorkspace = workspace;
-    this.state.projectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
-    const remembered = await this.state.projectLocalState.remember(
-      this.state.projectKey,
-      handle,
-      workspace.manifest.name,
-    );
-    this.signal.throwIfAborted();
-    if (remembered) this.state.projectKey = remembered.projectKey;
-    this.state.workspaceId = remembered?.workspaceId ?? `project:${this.state.projectKey}`;
-    this.state.activeGameProfile = workspace.manifest.game;
-    this.ui.projectToolbar.set({
-      maps: workspace.maps.map(({ path }) => ({ id: path, label: path })),
-      selectedMapId: null,
-      buildProfiles: workspace.manifest.buildProfiles.map((profile) => ({
-        id: profile.id,
-        label: `${profile.label} · ${profile.quality}`,
-      })),
-      selectedBuildProfileId:
-        workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? null,
-    });
-    await this.build.checkCompilerService();
-    this.signal.throwIfAborted();
-    const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
-    if (remembered === null) {
-      const warning =
-        'The project is open, but its directory binding could not be saved; choose the directory again after reload.';
-      this.ui.resourceSettings.update({ message: warning, tone: 'error' });
-      this.ui.statusMessage.set(`${summary} ${warning}`);
-      return;
+    this.cancelProjectOpen();
+    const controller = new AbortController();
+    this.projectOpenController = controller;
+    const signal = AbortSignal.any([this.signal, controller.signal]);
+    try {
+      const workspace = await openWorldviewProject(handle);
+      signal.throwIfAborted();
+      const resources = await loadWorkspaceResources(
+        workspace,
+        this.state.builtInMaterials,
+        signal,
+      );
+      signal.throwIfAborted();
+      const provisionalProjectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
+      const remembered = await this.state.projectLocalState.remember(
+        provisionalProjectKey,
+        handle,
+        workspace.manifest.name,
+      );
+      signal.throwIfAborted();
+
+      this.applyProjectResources(workspace, resources);
+      this.state.projectWorkspace = workspace;
+      this.state.projectKey = remembered?.projectKey ?? provisionalProjectKey;
+      this.state.workspaceId = remembered?.workspaceId ?? `project:${this.state.projectKey}`;
+      this.state.activeGameProfile = workspace.manifest.game;
+      this.ui.projectToolbar.set({
+        maps: workspace.maps.map(({ path }) => ({ id: path, label: path })),
+        selectedMapId: null,
+        buildProfiles: workspace.manifest.buildProfiles.map((profile) => ({
+          id: profile.id,
+          label: `${profile.label} · ${profile.quality}`,
+        })),
+        selectedBuildProfileId:
+          workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? null,
+      });
+      await this.build.checkCompilerService();
+      signal.throwIfAborted();
+      const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
+      if (remembered === null) {
+        const warning =
+          'The project is open, but its directory binding could not be saved; choose the directory again after reload.';
+        this.ui.resourceSettings.update({ message: warning, tone: 'error' });
+        this.ui.statusMessage.set(`${summary} ${warning}`);
+        return;
+      }
+      this.ui.statusMessage.set(summary);
+    } finally {
+      if (this.projectOpenController === controller) this.projectOpenController = null;
     }
-    this.ui.statusMessage.set(summary);
+  }
+
+  private cancelProjectOpen(): void {
+    this.projectOpenController?.abort(
+      new DOMException('Project open was superseded by a newer editor action', 'AbortError'),
+    );
+    this.projectOpenController = null;
   }
 
   public createNewMap(
@@ -681,6 +671,7 @@ export class ProjectPresenter {
         );
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       this.ui.statusMessage.set(
         `Project open failed: ${error instanceof Error ? error.message : String(error)}`,
       );

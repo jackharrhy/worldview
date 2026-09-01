@@ -199,7 +199,12 @@ export class TextureUvEditor {
   }
 
   private textureSize(state: UvEditorFaceState): Vec2 {
-    return state.material ? [state.material.width, state.material.height] : [64, 64];
+    return state.material
+      ? [
+          state.material.logicalWidth ?? state.material.width,
+          state.material.logicalHeight ?? state.material.height,
+        ]
+      : [64, 64];
   }
 
   private computeView(state: UvEditorFaceState, pivot: Vec3): UvView {

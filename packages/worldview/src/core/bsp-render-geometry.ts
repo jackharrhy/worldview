@@ -14,6 +14,14 @@ export interface BspTextureMapping {
   readonly materialIndex: number;
 }
 
+export interface BspLightmapMapping {
+  readonly s: readonly [number, number, number, number];
+  readonly t: readonly [number, number, number, number];
+  readonly scale: number;
+  readonly minimumS: number;
+  readonly minimumT: number;
+}
+
 export interface BspRenderFace {
   readonly sourceIndex: number;
   readonly modelIndex: number;
@@ -22,9 +30,8 @@ export interface BspRenderFace {
   readonly firstEdge: number;
   readonly edgeCount: number;
   readonly mapping: BspTextureMapping;
+  readonly lightmapMapping: BspLightmapMapping;
   readonly lightmap: ParsedLightmap;
-  readonly minimumS: number;
-  readonly minimumT: number;
 }
 
 export interface BspRenderGeometry {
@@ -34,12 +41,12 @@ export interface BspRenderGeometry {
   readonly batches: readonly DrawBatch[];
 }
 
-function dotMapping(position: Vec3Tuple, mapping: readonly number[]): number {
+function dotMapping(
+  position: Vec3Tuple,
+  mapping: readonly [number, number, number, number],
+): number {
   return (
-    position[0] * (mapping[0] ?? 0) +
-    position[1] * (mapping[1] ?? 0) +
-    position[2] * (mapping[2] ?? 0) +
-    (mapping[3] ?? 0)
+    position[0] * mapping[0] + position[1] * mapping[1] + position[2] * mapping[2] + mapping[3]
   );
 }
 
@@ -71,14 +78,18 @@ export function buildBspRenderGeometry(
       invariant(position !== undefined, `face ${face.sourceIndex} references a missing vertex`);
       const s = dotMapping(position, face.mapping.s);
       const t = dotMapping(position, face.mapping.t);
+      const lightmapSCoordinate =
+        dotMapping(position, face.lightmapMapping.s) * face.lightmapMapping.scale;
+      const lightmapTCoordinate =
+        dotMapping(position, face.lightmapMapping.t) * face.lightmapMapping.scale;
       const lightmapS =
         face.lightmap.pageIndex < 0
           ? 0.5
-          : face.lightmap.pageX + s / 16 - Math.floor(face.minimumS / 16) + 0.5;
+          : face.lightmap.pageX + lightmapSCoordinate - face.lightmapMapping.minimumS + 0.5;
       const lightmapT =
         face.lightmap.pageIndex < 0
           ? 0.5
-          : face.lightmap.pageY + t / 16 - Math.floor(face.minimumT / 16) + 0.5;
+          : face.lightmap.pageY + lightmapTCoordinate - face.lightmapMapping.minimumT + 0.5;
       vertexValues.push(position[0], position[1], position[2], s, t, lightmapS, lightmapT);
     }
     for (let edge = 2; edge < face.edgeCount; edge += 1) {

@@ -5,6 +5,7 @@
 
 import { BinaryView } from './binary.js';
 import { invalidData, invariant } from './errors.js';
+import { validateTextureDimensions } from './texture-limits.js';
 import type { DecodedMipLevel, DecodedMipTexture, DecodedQuakeSky } from './types.js';
 
 const MIP_LEVEL_COUNT = 4;
@@ -22,12 +23,7 @@ export function readMipTextureHeader(input: ArrayBuffer | ArrayBufferView): MipT
   const name = source.string(0, 16, true);
   const width = source.u32(16);
   const height = source.u32(20);
-  invariant(width > 0 && height > 0, `MIPTEX ${name} has zero dimensions`);
-  invariant(width <= 16_384 && height <= 16_384, `MIPTEX ${name} dimensions are unreasonable`);
-  invariant(
-    width % 8 === 0 && height % 8 === 0,
-    `MIPTEX ${name} dimensions are not mip-compatible`,
-  );
+  validateTextureDimensions(width, height, `MIPTEX ${name}`);
   const offsets = Array.from({ length: MIP_LEVEL_COUNT }, (_, index) => source.u32(24 + index * 4));
   return { name, width, height, offsets };
 }

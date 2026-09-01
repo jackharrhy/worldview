@@ -51,7 +51,11 @@ import {
 describe('overview planning', () => {
   it('fits renderable geometry with deterministic padding', () => {
     const world = parseBsp(makeBsp());
-    const overview = planOverview(world, { width: 200, height: 100, padding: 0.1 });
+    const overview = planOverview(world, {
+      width: 200,
+      height: 100,
+      padding: 0.1,
+    });
     expect(overview.bounds).toEqual({ min: [0, 0, 0], max: [16, 16, 0] });
     expect(overview.rotation).toBe(0);
     expect(overview.origin).toEqual([8, 8, 0]);
@@ -78,6 +82,7 @@ describe('overview planning', () => {
 describe('BSP player profiles', () => {
   it('keeps format-owned spawn and eye-height behavior explicit', () => {
     expect(bspPlayerProfile('quake-bsp29').eyeHeight).toBe(22);
+    expect(bspPlayerProfile('quake-bsp2')).toEqual(bspPlayerProfile('quake-bsp29'));
     expect(bspPlayerProfile('quake2-bsp38').eyeHeight).toBe(22);
     expect(bspPlayerProfile('goldsrc-bsp30').eyeHeight).toBe(28);
     expect(bspPlayerProfile('goldsrc-bsp30').spawnClasses.has('info_player_counterterrorist')).toBe(
@@ -105,7 +110,7 @@ describe('BSP visibility', () => {
 
 describe('Quake II BSP38', () => {
   it('parses IBSP geometry, RGB lightmaps, entities, and material identity', () => {
-    const world = parseBsp(makeBsp38());
+    const world = parseBsp(makeBsp38({ surfaceValue: -12 }));
 
     expect(world).toMatchObject({
       format: 'quake2-bsp38',
@@ -118,7 +123,17 @@ describe('Quake II BSP38', () => {
     });
     expect(world.vertices).toHaveLength(28);
     expect(world.indices).toEqual(new Uint32Array([0, 1, 2, 0, 2, 3]));
-    expect(world.materials).toMatchObject([{ name: 'e1u1/fixture', kind: 'opaque' }]);
+    expect(world.materials).toMatchObject([
+      {
+        name: 'e1u1/fixture',
+        kind: 'opaque',
+        opacity: 1,
+        scrollSpeed: 0,
+        nextMaterialIndex: null,
+        surfaceFlags: 0,
+        surfaceValue: -12,
+      },
+    ]);
     expect(world.lightmapPages).toHaveLength(1);
     expect(world.lightmapPages[0]?.lightmaps[0]?.samples).toHaveLength(12);
   });
@@ -126,13 +141,30 @@ describe('Quake II BSP38', () => {
   it('uses Quake II surface flags for render classification', () => {
     expect(parseBsp(makeBsp38({ surfaceFlags: 0x04 })).materials[0]?.kind).toBe('sky');
     expect(parseBsp(makeBsp38({ surfaceFlags: 0x08 })).materials[0]?.kind).toBe('water');
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x10 })).materials[0]).toMatchObject({
+      kind: 'opaque',
+      opacity: 0.33,
+    });
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x20 })).materials[0]).toMatchObject({
+      kind: 'opaque',
+      opacity: 0.66,
+    });
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x40 })).materials[0]?.scrollSpeed).toBe(1.6);
+    expect(parseBsp(makeBsp38({ surfaceFlags: 0x48 })).materials[0]?.scrollSpeed).toBe(32);
     expect(parseBsp(makeBsp38({ surfaceFlags: 0x80 })).materials[0]?.kind).toBe('tool');
+  });
+
+  it('omits lightmaps from Quake II sky, warp, translucent, and nodraw surfaces', () => {
+    for (const surfaceFlags of [0x04, 0x08, 0x10, 0x20, 0x80]) {
+      const world = parseBsp(makeBsp38({ surfaceFlags }));
+      expect(world.faces[0]?.lightmap).toMatchObject({ pageIndex: -1, samples: null });
+    }
   });
 
   it('rejects invalid IBSP versions and truncated lightmaps', () => {
     const unsupported = makeBsp38();
     new DataView(unsupported.buffer).setUint32(4, 46, true);
-    expect(() => parseBsp(unsupported)).toThrow(/IBSP version 38/);
+    expect(() => parseBsp(unsupported)).toThrow(/IBSP and QBSP version 38/);
     expect(() => parseBsp(makeBsp38({ lightOffset: 8 }))).toThrow(/light samples/);
   });
 });
@@ -177,10 +209,17 @@ describe('entities', () => {
       attenuation: 2,
       looping: true,
       activeOnLoad: true,
-      reference: { declaredPath: 'Ambience/Hum.wav', normalizedPath: 'ambience/hum.wav' },
+      reference: {
+        declaredPath: 'Ambience/Hum.wav',
+        normalizedPath: 'ambience/hum.wav',
+      },
       modulation: { runVolume: 0.5, runPitch: 120 },
     });
-    expect(world.envSounds[0]).toMatchObject({ origin: [4, 5, 6], radius: 256, roomType: 7 });
+    expect(world.envSounds[0]).toMatchObject({
+      origin: [4, 5, 6],
+      radius: 256,
+      roomType: 7,
+    });
   });
 
   it('retains numbered ambient preset IDs without inferring their modulation', () => {
@@ -240,7 +279,11 @@ describe('GoldSrc WAV and spatial audio', () => {
 
   it('decodes signed 16-bit stereo channels', () => {
     const wave = parseWave(
-      makeWave({ bitsPerSample: 16, channels: 2, frames: [-32_768, 0, 16_384] }),
+      makeWave({
+        bitsPerSample: 16,
+        channels: 2,
+        frames: [-32_768, 0, 16_384],
+      }),
     );
     const samples = new Float32Array(wave.frameCount);
     copyWaveChannel(wave, 1, samples);
@@ -325,6 +368,15 @@ describe('WAD and MIPTEX', () => {
     expect(decoded.levels[0]?.rgba.slice(0, 4)).toEqual(new Uint8Array([0, 255, 0, 255]));
   });
 
+  it('rejects decoded textures wider than the portable WebGPU limit', () => {
+    const texture = makeMipTexture(29);
+    const view = new DataView(texture.buffer, texture.byteOffset, texture.byteLength);
+    view.setUint32(16, 8_193, true);
+    view.setUint32(20, 1, true);
+
+    expect(() => decodeMipTexture(texture, makePalette())).toThrow(/portable WebGPU texture/u);
+  });
+
   it('splits Quake sky textures into opaque and transparent scrolling layers', () => {
     const texture = makeMipTexture(29, 'sky_test');
     texture[40] = 0;
@@ -345,6 +397,14 @@ describe('TGA', () => {
     expect(decodeTga(makeTga(true)).rgba).toEqual(
       new Uint8Array([10, 20, 30, 255, 10, 20, 30, 255]),
     );
+  });
+
+  it('rejects images that exceed the portable WebGPU dimensions before allocating them', () => {
+    const oversized = makeTga();
+    const view = new DataView(oversized.buffer, oversized.byteOffset, oversized.byteLength);
+    view.setUint16(12, 65_535, true);
+    view.setUint16(14, 65_535, true);
+    expect(() => decodeTga(oversized)).toThrow(/portable WebGPU texture/u);
   });
 });
 
@@ -435,7 +495,7 @@ describe('lightmaps and materials', () => {
   });
 
   it('keeps glow brush models on the translucent surface path', () => {
-    expect(goldSrcBrushPipeline(3, 'alpha-test')).toBe('translucentTexture');
+    expect(goldSrcBrushPipeline(3, 'alpha-test')).toBe('translucentTextureBrush');
   });
 });
 
@@ -483,7 +543,10 @@ describe('BSP', () => {
   it('merges compatible draw batches while retaining each face boundary', () => {
     const world = parseBsp(makeBsp({ faceCopies: 2 }));
     expect(world.batches).toHaveLength(1);
-    expect(world.batches[0]).toMatchObject({ indexCount: 12, faceIndices: [0, 1] });
+    expect(world.batches[0]).toMatchObject({
+      indexCount: 12,
+      faceIndices: [0, 1],
+    });
     expect(world.faces.map((face) => [face.sourceIndex, face.firstIndex, face.indexCount])).toEqual(
       [
         [0, 0, 6],
@@ -558,7 +621,10 @@ describe('BSP', () => {
       }),
     );
     expect(world.models[0]).toMatchObject({ collidable: true });
-    expect(world.models[1]).toMatchObject({ classname: 'func_wall', collidable: true });
+    expect(world.models[1]).toMatchObject({
+      classname: 'func_wall',
+      collidable: true,
+    });
   });
 
   it('hides moving func_water brush models from static exhibits', () => {
@@ -708,7 +774,11 @@ describe('player controls', () => {
       removeEventListener: () => undefined,
     } as unknown as HTMLCanvasElement;
     const dispatchKey = (code: string) => {
-      const event = { code, repeat: false, preventDefault: () => undefined } as KeyboardEvent;
+      const event = {
+        code,
+        repeat: false,
+        preventDefault: () => undefined,
+      } as KeyboardEvent;
       for (const listener of listeners.get('keydown') ?? []) listener(event);
     };
     const world = parseBsp(makeBsp({ collision: true }));
@@ -799,7 +869,10 @@ describe('player controls', () => {
       { mouseSensitivity: 3, mouseAcceleration: 0.04 },
     );
     vi.stubGlobal('document', { pointerLockElement: canvas });
-    listeners.get('mousemove')?.({ movementX: 10, movementY: -5 } as unknown as MouseEvent);
+    listeners.get('mousemove')?.({
+      movementX: 10,
+      movementY: -5,
+    } as unknown as MouseEvent);
     const sensitivity = 3 + Math.hypot(10, -5) * 0.04;
     const radiansPerCount = (0.022 * sensitivity * Math.PI) / 180;
     expect(look?.yaw).toBeCloseTo(-10 * radiansPerCount);

@@ -55,12 +55,13 @@ function renderableBounds(world: ParsedWorld, includeSky: boolean): Bounds {
     max: [-Infinity, -Infinity, -Infinity],
   };
   const faceIndices = new Set<number>();
+  const facesBySourceIndex = new Map(world.faces.map((face) => [face.sourceIndex, face] as const));
   for (const batch of world.batches) {
     if (!world.models[batch.modelIndex]?.visible || (!includeSky && batch.kind === 'sky')) continue;
     for (const faceIndex of batch.faceIndices) faceIndices.add(faceIndex);
   }
   for (const faceIndex of faceIndices) {
-    const face = world.faces[faceIndex];
+    const face = facesBySourceIndex.get(faceIndex);
     if (!face) continue;
     for (let offset = 0; offset < face.indexCount; offset += 1) {
       const vertexIndex = world.indices[face.firstIndex + offset];

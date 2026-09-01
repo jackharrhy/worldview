@@ -2,6 +2,7 @@ import type { TgpuBindGroup, TgpuRoot, TgpuTexture } from 'typegpu';
 
 import type { DecodedSpriteFrame, SpriteFrameSequence, Vec3Tuple } from '../core/index.js';
 import type { LoadedSpriteEntity } from './assets.js';
+import { RENDER_SAMPLE_COUNT } from './constants.js';
 import type { CameraState, TextureFiltering } from './types.js';
 import {
   spriteAdditiveFragment,
@@ -13,7 +14,6 @@ import {
 } from './shaders.js';
 import { MaterialUniform, materialLayout, worldVertexLayout } from './schemas.js';
 
-const SAMPLE_COUNT = 4;
 const FLOATS_PER_VERTEX = 7;
 const VERTICES_PER_SPRITE = 4;
 const INDICES_PER_SPRITE = 6;
@@ -88,7 +88,7 @@ function createPipelines(root: TgpuRoot, format: GPUTextureFormat) {
         depthWriteEnabled,
         depthCompare: 'less',
       },
-      multisample: { count: SAMPLE_COUNT },
+      multisample: { count: RENDER_SAMPLE_COUNT },
     });
   return {
     opaque: pipeline(spriteOpaqueFragment, true),

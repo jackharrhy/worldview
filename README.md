@@ -2,8 +2,8 @@
 
 Worldview renders static Quake, GoldSrc, and Quake II maps in ordinary web pages.
 
-It supports Quake BSP29 and GoldSrc BSP30 through WebGPU and TypeGPU. Quake II BSP38 static
-preview support is available with the limits described below.
+It supports Quake BSP29 and sanitized BSP2, GoldSrc BSP30, and Quake II IBSP/QBSP version 38
+through WebGPU and TypeGPU.
 
 [Open the viewer](https://jackharrhy.github.io/worldview/?fixture=goldsrc) or load your own BSP from
 the **Load → Local files** control.
@@ -25,13 +25,22 @@ Maintainers can find the local npm release process in [docs/releasing.md](docs/r
 
 ## Viewer format support
 
-- Quake BSP29 and GoldSrc BSP30 include static world and brush-model geometry, textures,
-  lightmaps, visibility, collision, walking and fly navigation, entities, skyboxes, sprites,
-  sounds, and map overviews where the source map provides them.
-- Quake II BSP38 currently includes static world and brush-model geometry, entities, material
-  classification, RGB lightmaps, and fly navigation. The package can decode WAL textures through
-  its core API, but `createWorldview()` does not yet resolve WAL roots. BSP38 collision and PVS are
-  also pending, so missing materials use the fallback texture and walking is unavailable.
+- Quake BSP29, sanitized BSP2, and GoldSrc BSP30 include static world and brush-model geometry,
+  textures, lightmaps, visibility, collision, walking and fly navigation, entities, skyboxes,
+  sprites, sounds, and map overviews where the source map provides them. The earlier `2PSB` layout
+  and Hexen II's game-specific model layout are not supported. Blue Shift's BSP30 variant with
+  exchanged entity and plane directory entries is detected from its lump contents.
+- Recoverable Quake-family compatibility defects are surfaced through typed `BspWarning` values.
+  This includes bounded but noncanonical MIPTEX dimensions, unusable individual texture records,
+  isolated faces with fewer than three edges, overlong visibility runs, and one-past-end empty
+  collision-hull sentinels. Structural lump, offset, index, and buffer validation remains fatal.
+- Quake II BSP38 includes classic `IBSP` and rerelease `QBSP` geometry, entities, classic RGB
+  lightmaps and rerelease BSPX `DECOUPLED_LM` lightmaps, animated texinfo chains, flowing and
+  turbulent surfaces, translucent surface flags, PCX palettes, WAL textures, PNG/TGA/JPEG
+  replacements with WAL-sized UVs, and `env/` skyboxes.
+  `WorldSource` accepts explicit game-root files, an async logical-asset resolver, or a game base
+  URL. Direct PAK/PK3 mounting, BSP38 collision/PVS, and Quake II alias-model or sound playback
+  remain pending; fly navigation remains available while walking does not.
 
 The detailed Quake II implementation evidence and remaining acceptance work live in
 [docs/quake2-compatibility.md](docs/quake2-compatibility.md).
@@ -257,6 +266,24 @@ viewer.addEventListener('progress', ({ detail }) => {
 });
 ```
 
+Quake II assets use logical paths below a game root. Pass an extracted directory with
+`gameBaseUrl`, an explicit `gameAssets` table, or a storage-owned resolver that can read from an
+archive, authenticated API, or content store without exposing that policy to the renderer:
+
+```ts
+await createWorldview({
+  canvas,
+  source: {
+    bsp: '/api/maps/bar1.bsp',
+    resolveGameAsset: ({ path, kind }) => `/api/game-assets/${kind}/${path}`,
+  },
+});
+```
+
+The resolver receives normalized lowercase paths such as `pics/colormap.pcx`,
+`textures/e1u1/wall.wal`, and `env/dusk1up.jpg`. It may return any `BinarySource` or `null` when the
+asset is absent.
+
 ## Map overviews
 
 The viewer can render a deterministic top-down overview without moving the live camera:
@@ -375,10 +402,11 @@ The standalone browser module registers the element for pages without a build st
 <world-view game-base-url="/games/id1/" src="maps/start.bsp"></world-view>
 ```
 
-`gameBaseUrl` and `game-base-url` point to a Quake or GoldSrc game/mod directory. Worldview resolves
-relative BSP paths, WAD basenames, `gfx/palette.lmp`, `gfx/env` skyboxes, sprite paths, and the
-`sound` directory from that root. The individual base URL options still work when assets live in a
-different layout.
+`gameBaseUrl` and `game-base-url` point to an extracted Quake, GoldSrc, or Quake II game/mod
+directory. Worldview resolves relative BSP paths, WAD basenames, Quake palettes, GoldSrc `gfx/env`
+skyboxes, Quake II `textures/`, `pics/colormap.pcx`, and `env/` assets, sprite paths, and the `sound`
+directory from that root. The individual source and resolver options still work when assets live in
+a different layout.
 
 Movement can be tuned at runtime with `viewer.setMovement()`. The available values include maximum
 speed, ground and air acceleration, friction, stop speed, mouse sensitivity, mouse acceleration,

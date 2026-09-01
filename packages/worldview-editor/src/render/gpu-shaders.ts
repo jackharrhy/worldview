@@ -28,7 +28,7 @@ export function solidVertex(input: SolidVertexInput) {
 }
 export function solidFragment(input: SolidFragmentInput): d.v4f {
   'use gpu';
-  const dimensions = d.vec2f(std.textureDimensions(editorMaterialLayout.$.materialTexture));
+  const dimensions = editorMaterialLayout.$.material.settings.zw;
   const sampled = std.textureSample(
     editorMaterialLayout.$.materialTexture,
     editorMaterialLayout.$.materialSampler,

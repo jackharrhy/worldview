@@ -30,8 +30,7 @@ function decompressedLeafMask(visibility: ParsedBspVisibility, offset: number): 
     invariant(source < visibility.data.length, 'BSP visibility run is truncated');
     const length = visibility.data[source++]!;
     invariant(length > 0, 'BSP visibility contains an empty zero run');
-    invariant(destination + length <= byteCount, 'BSP visibility run exceeds its row');
-    destination += length;
+    destination = Math.min(byteCount, destination + length);
   }
   return result;
 }

@@ -62,4 +62,22 @@ describe('Quake II WAL textures', () => {
       /mip 0/,
     );
   });
+
+  it('rejects WAL dimensions that would require an excessive decoded allocation', () => {
+    const bytes = syntheticWal();
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    view.setUint32(32, 8192, true);
+    view.setUint32(36, 8192, true);
+
+    expect(() => readWalTextureHeader(bytes)).toThrow(/decoded image limit/u);
+  });
+
+  it('rejects WAL dimensions wider than the portable WebGPU limit', () => {
+    const bytes = syntheticWal();
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    view.setUint32(32, 16_384, true);
+    view.setUint32(36, 8, true);
+
+    expect(() => readWalTextureHeader(bytes)).toThrow(/portable WebGPU texture/u);
+  });
 });
