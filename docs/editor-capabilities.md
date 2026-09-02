@@ -1,7 +1,7 @@
 # Worldview editor capabilities
 
 This is the current behavior reference for the editor. [`plan.md`](./plan.md) owns product scope and
-architecture; [`cleanup-plan.md`](./cleanup-plan.md) owns unfinished structural work. This document
+architecture; [`cleanup-plan.md`](./cleanup-plan.md) owns unfinished work. This document
 describes what a user can do now, without preserving the order in which features were implemented.
 
 Status terms:
@@ -126,19 +126,11 @@ Status terms:
   loose game-root art; its remaining PVS, collision, archive-mount, model, and audio limits are
   described in [`quake2-compatibility.md`](./quake2-compatibility.md).
 - Quake III editing, BSP46 preview, VMF, browser/WASM compilation, model previews, shortcut
-  customization, and full game simulation follow the ordered roadmap in [`plan.md`](./plan.md).
+  customization, and full game simulation are tracked in [the backlog](./cleanup-plan.md).
 - Hosted team maps support short offline interruptions, not indefinite uncoordinated dirty forks.
   Local projects retain full offline behavior.
 
 ## Verification entrypoints
 
-```sh
-npm run check
-npm run test:browser:ci
-npm run test:browser
-npm run test:editor-performance
-node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs
-```
-
-Commercial or shareware game data is never part of these gates. Local compatibility assets stay in
-ignored paths.
+Repository-wide commands, browser tiers, performance gates, and test-data rules live in
+[the verification guide](./verification.md).

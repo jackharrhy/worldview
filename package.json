@@ -38,7 +38,7 @@
     "check:react": "npm run doctor",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "format:check:viewer": "oxfmt --check packages/worldview apps/viewer tests/consumer tests/browser/viewer.spec.ts scripts/publish.mjs playwright.config.ts README.md docs/plan.md docs/releasing.md",
+    "format:check:viewer": "oxfmt --check packages/worldview apps/viewer tests/consumer tests/browser/viewer.spec.ts scripts/publish.mjs playwright.config.ts README.md docs/plan.md docs/releasing.md docs/viewer-api.md",
     "check:architecture": "node scripts/check-editor-architecture.mjs && node scripts/check-editor-route-boundaries.mjs --source",
     "check:editor-routes:build": "node scripts/check-editor-route-boundaries.mjs --build",
     "check:theme": "node scripts/check-editor-theme.mjs",

@@ -1,28 +1,17 @@
 # @jackharrhy/worldview
 
-Worldview is an embeddable WebGPU renderer for Quake BSP29, sanitized BSP2, and GoldSrc BSP30 maps,
-with static Quake II BSP38 previews.
-
-Documentation, examples, the custom-element setup, and development notes live in the
-[Worldview monorepo](https://github.com/jackharrhy/worldview#readme).
-
-Version 0.5 adds sanitized BSP2 geometry, visibility, and collision layouts; typed compatibility
-warnings; and asset-faithful Quake II BSP38 preview through logical PCX, WAL, replacement-image,
-and skybox resolution. Version 0.4 makes `<world-view>` the
-canonical embeddable lifecycle owner with atomic `WorldSource` assignment, non-blocking persisted
-walkability, public visibility state, and mirrored typed events.
-It also separates GPU-independent stores and scheduling under the `/runtime` entrypoint. Version 0.3
-added concurrent caller-supplied WAD/palette loading and persisted walkability through the viewer.
-Version 0.2 added BSP38 static geometry and RGB lightmaps, WAL decoding primitives, GoldSrc
-scrolling textures, stricter walkability serialization, and visibility-aware frame scheduling.
-BSP38 collision/PVS, direct archive mounting, and Quake II runtime models/audio remain outside the
-current static-preview boundary; see the
-[format support notes](https://github.com/jackharrhy/worldview#viewer-format-support).
+An embeddable WebGPU viewer for Quake BSP29, sanitized BSP2, GoldSrc BSP30, and Quake II BSP38 maps.
 
 ```sh
 npm install @jackharrhy/worldview
 ```
 
-Worldview is released under the [MIT license](./LICENSE). It does not include game assets.
-[Third-party notices and source provenance](https://github.com/jackharrhy/worldview/blob/main/THIRD_PARTY_NOTICES.md)
-are maintained in the monorepo.
+The [viewer API guide](https://github.com/jackharrhy/worldview/blob/main/docs/viewer-api.md) covers
+canvas setup, the `<world-view>` element, asset loading, map overviews, and walkability graphs.
+[Quake II format support](https://github.com/jackharrhy/worldview/blob/main/docs/quake2-compatibility.md)
+and the [project plan](https://github.com/jackharrhy/worldview/blob/main/docs/plan.md) are maintained
+in the repository.
+
+Worldview is released under the [MIT license](./LICENSE). It does not include game assets. See the
+[third-party notices](https://github.com/jackharrhy/worldview/blob/main/THIRD_PARTY_NOTICES.md) for
+source provenance.

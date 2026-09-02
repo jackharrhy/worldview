@@ -1,7 +1,7 @@
 # Quake II compatibility
 
-This document records the delivered boundary and remaining viewer depth for the Quake II expansion
-described in [`plan.md`](./plan.md).
+This document records the delivered Quake II boundary and its compatibility evidence. Unfinished
+format work is tracked only in [the backlog](./cleanup-plan.md#f1-quake-ii-viewer-depth).
 
 ## Delivered source boundary
 
@@ -117,10 +117,9 @@ The representative `mgu1m1.bsp` produces 107,408 triangles, 48,296 lit faces, on
 7,444,854 RGB sample bytes. A focused headless-WebGPU smoke renders it with its real game-root WALs
 alongside Ricochet, Blue Shift, and the existing five-map BSP38 smoke.
 
-## Next acceptance slice
+## Current limit
 
-Add BSP38 visibility and collision structures without pretending the BSP29/30 layouts apply. Direct
-browser PAK/PK3 mounting, Quake II alias models, sprites, and game audio are separate future slices;
-the current resolver contract already permits an embedding application or service to mount archives
-without coupling archive policy to the BSP core. Compiler choice and executable paths remain
-machine-local, and portable projects continue to name only logical build profiles and game roots.
+BSP38 visibility and collision, direct browser PAK/PK3 mounting, Quake II alias models, sprites, and
+game audio are not supported. The current resolver still lets an embedding application or service
+mount archives without coupling archive policy to the BSP core. Compiler choice and executable
+paths remain machine-local, and portable projects name only logical build profiles and game roots.

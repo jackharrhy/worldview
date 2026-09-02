@@ -119,28 +119,17 @@ and Traefik routing only for `/sync/maps/*`. The Worldview service mints short-l
 tickets after 4orm session and project-role authorization; the cell trusts the ticket principal and
 never client-supplied identity.
 
-This is a suitable small single-host deployment, not a qualified fleet. Remaining deployment work:
-
-- multi-node ownership handoff and split/failure behavior;
-- bucket throttling/outage and conditional-write drills;
-- backup/restore verification and documented recovery objectives;
-- upgrade drills and a qualified object store outside the same host failure domain;
-- ingress/security review for a hostile multi-tenant deployment.
+This is a suitable small single-host deployment, not a qualified fleet. Multi-node, object-store,
+recovery, upgrade, and hostile multi-tenant work is tracked in
+[the backlog](./cleanup-plan.md#h2-collaboration-fleet-hardening).
 
 Back up both `worldview_azurite` and `worldview_celld`. A future object-store adapter must not change
 the Worker or browser protocol.
 
 ## Verification
 
-```sh
-npm run test:collaboration-bakeoff
-npm run test:collaboration-celld-compat
-npm run test:collaboration-celld-live
-```
-
-The live gate starts/reuses loopback Azurite, deploys the real Worker through celld, submits a real
-WebSocket operation, kills celld, deletes local replica state, and requires recovery from blob
-storage. It remains opt-in because it needs Docker and host infrastructure.
+The collaboration commands and live-infrastructure requirements live in
+[the verification guide](./verification.md#collaboration).
 
 Collaboration is dependable only while solo editing works with the service absent, short dirty
 disconnects survive restart and reconcile within their bounds, detached work survives locally,

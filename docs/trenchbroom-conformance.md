@@ -6,7 +6,7 @@ TrenchBroom is GPL software: it is an oracle only. No implementation code or art
 Worldview's MIT sources.
 
 [`editor-capabilities.md`](./editor-capabilities.md) describes all current behavior. This file keeps
-only the TrenchBroom-derived defaults, intentional differences, and open conformance work.
+only the TrenchBroom-derived defaults, intentional differences, and current comparison status.
 
 ## Rendering defaults
 
@@ -104,15 +104,9 @@ layout. Worldview implements an original ordered `ViewportGestureRouter`:
 5. `EditorSession` remains the only document/history commit authority; render resources remain
    outside gesture controllers.
 
-## Remaining conformance and structural work
+## Follow-up ownership
 
-| Work                                                                                                 | Owner                            |
-| ---------------------------------------------------------------------------------------------------- | -------------------------------- |
-| Fast/slow fly modifiers and optional vertical pan                                                    | Camera controller                |
-| Duplicate-move completion feedback                                                                   | Selection/transform presentation |
-| Context-aware shortcut preferences                                                                   | Future input preference system   |
-| Separate `source-renderer.ts` lifecycle, spatial queries, viewport hosting, and interaction adapters | Cleanup C11                      |
-
-New conformance work must record the reference behavior and commit, implement an original
-license-compatible design, and add focused tests. A matching screenshot alone is not evidence of a
-sound ownership boundary.
+Unmatched interactions and structural work are tracked only in
+[the backlog](./cleanup-plan.md#editor-conformance). New conformance work must record the reference
+behavior and commit, implement an original license-compatible design, and add focused tests. A
+matching screenshot alone is not evidence of a sound ownership boundary.
