@@ -7,6 +7,7 @@ import {
   type ParsedWorld,
   type SpriteReference,
   type Vec3Tuple,
+  type WorldSpriteAssetPlan,
 } from '../core/index.js';
 import type { LoadedSpriteEntity } from '../render/assets.js';
 import {
@@ -51,19 +52,16 @@ function spriteRenderColor(value: string | undefined): readonly [number, number,
   return parsed.map((part) => Math.min(255, Math.max(0, part))) as [number, number, number];
 }
 
-function requestedSprites(world: ParsedWorld): RequestedSprite[] {
-  return world.entities
-    .map((entity, entityIndex) => ({ entity, entityIndex }))
-    .filter(({ entity }) => {
-      const classname = entityValue(entity, 'classname')?.toLowerCase();
-      return classname === 'env_sprite' || classname === 'env_glow';
-    })
-    .map(({ entity, entityIndex }) => ({
-      entity,
-      entityIndex,
-      reference: spriteReference(entityValue(entity, 'model') ?? ''),
-    }))
-    .filter((entry): entry is RequestedSprite => entry.reference !== undefined);
+function requestedSprites(
+  world: ParsedWorld,
+  plans: readonly WorldSpriteAssetPlan[],
+): RequestedSprite[] {
+  return plans.flatMap((plan) =>
+    plan.entityIndices.flatMap((entityIndex) => {
+      const entity = world.entities[entityIndex];
+      return entity ? [{ entity, entityIndex, reference: plan.reference }] : [];
+    }),
+  );
 }
 
 function explicitSpriteSources(source: WorldSource): Map<string, BinarySource> {
@@ -79,16 +77,13 @@ function explicitSpriteSources(source: WorldSource): Map<string, BinarySource> {
 
 export async function loadSpriteAssets(
   world: ParsedWorld,
+  plans: readonly WorldSpriteAssetPlan[],
   source: WorldSource,
   context: LoadAssetContext,
 ): Promise<LoadedSpriteAssets> {
   if (world.version !== 30) return { sprites: [], missingSprites: [], warnings: [] };
-  const requested = requestedSprites(world);
-  const references = [
-    ...new Map(
-      requested.map((entry) => [entry.reference.normalizedPath, entry.reference]),
-    ).values(),
-  ];
+  const requested = requestedSprites(world, plans);
+  const references = plans.map(({ reference }) => reference);
   const explicit = explicitSpriteSources(source);
   let completed = 0;
   const results = await Promise.all(

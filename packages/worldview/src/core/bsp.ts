@@ -1,11 +1,12 @@
 import { BinaryView } from './binary.js';
+import { identifyBsp, isBsp38Magic } from './bsp-identification.js';
 import {
   bspRecordCount,
   checkedBspProduct,
   finiteBspFloat,
   normalizeBspBounds,
 } from './bsp-binary.js';
-import { isBsp38Magic, parseBsp38 } from './bsp38.js';
+import { parseBsp38 } from './bsp38.js';
 import {
   buildBspRenderGeometry,
   type BspRenderFace,
@@ -14,11 +15,9 @@ import {
 import { parseGoldSrcAudioEntities } from './audio.js';
 import { validateBspCollision, type ParsedBspCollision } from './collision.js';
 import { entityValue, parseEntities, wadReferences } from './entities.js';
-import { invalidData, invariant, WorldviewError } from './errors.js';
+import { invalidData, invariant } from './errors.js';
 import { LightmapPacker, LIGHTMAP_PAGE_SIZE } from './lightmaps.js';
 import {
-  BSP2_2PSB_MAGIC,
-  quakeBspLayout,
   readQuakeClipnode,
   readQuakeEdge,
   readQuakeFace,
@@ -27,6 +26,7 @@ import {
   readQuakeTraceNode,
   type QuakeBspLayout,
 } from './quake-bsp-layout.js';
+import { parseQuakeBspContainer } from './quake-bsp-container.js';
 import { parseQuakeTextures } from './quake-bsp-textures.js';
 import { validateBspTrace, type ParsedBspTrace } from './trace.js';
 import type { ParsedBspVisibility } from './visibility.js';
@@ -39,27 +39,6 @@ import type {
   ParsedWorld,
   Vec3Tuple,
 } from './types.js';
-
-const enum LumpType {
-  Entities = 0,
-  Planes = 1,
-  Textures = 2,
-  Vertices = 3,
-  Visibility = 4,
-  Nodes = 5,
-  Texinfo = 6,
-  Faces = 7,
-  Lighting = 8,
-  Clipnodes = 9,
-  Leaves = 10,
-  Marksurfaces = 11,
-  Edges = 12,
-  Surfedges = 13,
-  Models = 14,
-}
-
-const LUMP_COUNT = 15;
-const HEADER_SIZE = 4 + LUMP_COUNT * 8;
 
 export interface ParseBspOptions {
   readonly lightmapPageSize?: number;
@@ -83,14 +62,6 @@ interface MutableAllocation {
   pageIndex: number;
   pageX: number;
   pageY: number;
-}
-
-function startsWithEntityBlock(lump: BinaryView): boolean {
-  for (const byte of lump.bytes) {
-    if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) continue;
-    return byte === 0x7b;
-  }
-  return false;
 }
 
 function parseTrace(
@@ -369,48 +340,16 @@ export function parseBsp(
   options: ParseBspOptions = {},
 ): ParsedWorld {
   const source = new BinaryView(input);
-  if (source.byteLength >= 8 && isBsp38Magic(source.u32(0))) {
+  const identification = identifyBsp(input);
+  if (
+    identification?.format === 'quake2-bsp38' ||
+    (source.byteLength >= 4 && isBsp38Magic(source.u32(0)))
+  ) {
     return parseBsp38(input, options);
   }
-  invariant(source.byteLength >= HEADER_SIZE, 'BSP header is truncated');
-  const version = source.u32(0);
-  const layout = quakeBspLayout(version);
-  if (!layout) {
-    if (version === BSP2_2PSB_MAGIC) {
-      throw new WorldviewError(
-        'unsupported-bsp',
-        'Worldview supports sanitized BSP2 but not the earlier 2PSB layout',
-      );
-    }
-    throw new WorldviewError(
-      'unsupported-bsp',
-      `Worldview supports BSP29, BSP30, sanitized BSP2, and Quake II BSP38; received ${version}`,
-    );
-  }
+  const { layout, lumps } = parseQuakeBspContainer(input);
 
-  const lumps = Array.from({ length: LUMP_COUNT }, (_, type) => {
-    const header = 4 + type * 8;
-    const offset = source.u32(header);
-    const length = source.u32(header + 4);
-    if (length > 0) invariant(offset >= HEADER_SIZE, `BSP lump ${type} overlaps its header`);
-    source.require(offset, length, `BSP lump ${type}`);
-    return source.slice(offset, length);
-  });
-  // Gearbox's Blue Shift tools wrote BSP30 with the entity and plane directory entries
-  // exchanged. Detect the contents rather than applying a game-specific filename heuristic.
-  if (
-    layout.version === 30 &&
-    !startsWithEntityBlock(lumps[LumpType.Entities]!) &&
-    startsWithEntityBlock(lumps[LumpType.Planes]!)
-  ) {
-    [lumps[LumpType.Entities], lumps[LumpType.Planes]] = [
-      lumps[LumpType.Planes]!,
-      lumps[LumpType.Entities]!,
-    ];
-  }
-  const lump = (type: LumpType): BinaryView => lumps[type]!;
-
-  const entityLump = lump(LumpType.Entities);
+  const entityLump = lumps.entities;
   const entities = parseEntities(entityLump.string(0, entityLump.byteLength));
   const audioEntities =
     layout.version === 30
@@ -421,13 +360,10 @@ export function parseBsp(
   );
   const skyName = entityValue(worldspawn ?? {}, 'skyname')?.trim() || null;
 
-  const { materials, warnings: parsedTextureWarnings } = parseQuakeTextures(
-    lump(LumpType.Textures),
-    layout,
-  );
+  const { materials, warnings: parsedTextureWarnings } = parseQuakeTextures(lumps.textures, layout);
   const warnings: BspWarning[] = [...parsedTextureWarnings];
 
-  const texinfoLump = lump(LumpType.Texinfo);
+  const texinfoLump = lumps.texinfo;
   const texinfoCount = bspRecordCount(texinfoLump, 40, 'texinfo');
   const mappings: TextureMapping[] = [];
   for (let index = 0; index < texinfoCount; index += 1) {
@@ -454,7 +390,7 @@ export function parseBsp(
     });
   }
 
-  const vertexLump = lump(LumpType.Vertices);
+  const vertexLump = lumps.vertices;
   const vertexCount = bspRecordCount(vertexLump, 12, 'vertex');
   const positions: Vec3Tuple[] = [];
   for (let index = 0; index < vertexCount; index += 1) {
@@ -466,7 +402,7 @@ export function parseBsp(
     ]);
   }
 
-  const edgeLump = lump(LumpType.Edges);
+  const edgeLump = lumps.edges;
   const edgeCount = bspRecordCount(edgeLump, layout.edgeSize, 'edge');
   const edges: Array<readonly [number, number]> = [];
   for (let index = 0; index < edgeCount; index += 1) {
@@ -478,7 +414,7 @@ export function parseBsp(
     edges.push([first, second]);
   }
 
-  const surfedgeLump = lump(LumpType.Surfedges);
+  const surfedgeLump = lumps.surfedges;
   const surfedgeCount = bspRecordCount(surfedgeLump, 4, 'surfedge');
   const surfaceVertexIndices = new Uint32Array(surfedgeCount);
   for (let index = 0; index < surfedgeCount; index += 1) {
@@ -491,7 +427,7 @@ export function parseBsp(
     surfaceVertexIndices[index] = value >= 0 ? edge[0] : edge[1];
   }
 
-  const modelLump = lump(LumpType.Models);
+  const modelLump = lumps.models;
   const modelCount = bspRecordCount(modelLump, 64, 'model');
   invariant(modelCount > 0, 'BSP has no world model');
   const rawModels: RawModel[] = [];
@@ -531,7 +467,7 @@ export function parseBsp(
       faceCount: modelLump.u32(offset + 60),
     });
   }
-  const collisionLump = lump(LumpType.Clipnodes);
+  const collisionLump = lumps.clipnodes;
   const collisionNodeCount = bspRecordCount(collisionLump, layout.clipnodeSize, 'clipnode');
   rawModels.forEach((model, modelIndex) => {
     const headnodes = model.headnodes.map((headNode, hullIndex) => {
@@ -551,14 +487,8 @@ export function parseBsp(
     });
     rawModels[modelIndex] = { ...model, headnodes };
   });
-  const planes = parsePlanes(lump(LumpType.Planes));
-  const trace = parseTrace(
-    planes,
-    lump(LumpType.Nodes),
-    lump(LumpType.Leaves),
-    rawModels[0]!.headnodes[0]!,
-    layout,
-  );
+  const planes = parsePlanes(lumps.planes);
+  const trace = parseTrace(planes, lumps.nodes, lumps.leaves, rawModels[0]!.headnodes[0]!, layout);
   const collision = parseCollision(
     planes,
     collisionLump,
@@ -566,12 +496,12 @@ export function parseBsp(
     layout,
   );
 
-  const faceLump = lump(LumpType.Faces);
+  const faceLump = lumps.faces;
   const faceCount = bspRecordCount(faceLump, layout.faceSize, 'face');
   const visibilityResult = parseVisibility(
-    lump(LumpType.Leaves),
-    lump(LumpType.Marksurfaces),
-    lump(LumpType.Visibility),
+    lumps.leaves,
+    lumps.marksurfaces,
+    lumps.visibility,
     rawModels[0]!.visLeafCount,
     faceCount,
     layout,
@@ -595,7 +525,7 @@ export function parseBsp(
     }
   });
 
-  const lighting = lump(LumpType.Lighting);
+  const lighting = lumps.lighting;
   const pageSize = options.lightmapPageSize ?? LIGHTMAP_PAGE_SIZE;
   invariant(
     Number.isInteger(pageSize) && pageSize > 0 && pageSize <= 65_535,

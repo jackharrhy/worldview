@@ -231,6 +231,24 @@ describe('asset resolution', () => {
     expect(loaded.missingTextures).toEqual([]);
   });
 
+  it('surfaces recoverable WAD entry warnings without rejecting the archive', async () => {
+    const wad = makeWad(3);
+    const directory = new DataView(wad.buffer).getUint32(8, true);
+    wad[directory + 13] = 1;
+    const loaded = await loadWorldAssets(
+      { bsp: makeBsp({ embeddedTexture: false }), wads: [wad] },
+      assetContext(),
+    );
+
+    expect(loaded.warnings).toContainEqual(
+      expect.objectContaining({
+        code: 'asset-warning',
+        message: expect.stringContaining('unsupported compression'),
+      }),
+    );
+    expect(loaded.warnings.some(({ code }) => code === 'missing-wad')).toBe(false);
+  });
+
   it('loads all six GoldSrc skybox faces from explicit TGA sources', async () => {
     const face = makeTga();
     const loaded = await loadWorldAssets(
@@ -339,6 +357,22 @@ describe('asset resolution', () => {
         }),
       ]),
     );
+  });
+
+  it('loads Quake II rerelease aliases from the canonical asset plan', async () => {
+    const loaded = await loadWorldAssets(
+      {
+        bsp: makeBsp38({ textureName: '+0E1U1/Fixture' }),
+        gameAssets: {
+          'pics/colormap.pcx': makePcxPalette(),
+          'textures/_0e1u1/fixture.wal': makeWal(),
+        },
+      },
+      assetContext(),
+    );
+
+    expect(loaded.materialTextures.get(0)?.logicalWidth).toBe(16);
+    expect(loaded.missingTextures).toEqual([]);
   });
 
   it('resolves Quake II assets through the storage-neutral logical resolver', async () => {

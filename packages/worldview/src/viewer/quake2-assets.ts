@@ -5,9 +5,11 @@ import {
   readWalTextureHeader,
   validateTextureDimensions,
   type DecodedMipTexture,
-  type ParsedWorld,
+  type WorldPaletteAssetPlan,
+  type WorldSkyboxAssetPlan,
+  type WorldTextureAssetPlan,
 } from '../core/index.js';
-import type { LoadedMaterialTexture, LoadedSkybox, SkyboxSuffix } from '../render/assets.js';
+import type { LoadedMaterialTexture, LoadedSkybox } from '../render/assets.js';
 import { abortIfNeeded, type LoadAssetContext } from './asset-source.js';
 import { GameAssetLoader } from './game-asset-source.js';
 import type { WarningDetail } from './types.js';
@@ -26,11 +28,10 @@ interface DecodedImage {
   readonly rgba: Uint8Array;
 }
 
-const replacementExtensions = ['png', 'tga', 'jpg', 'jpeg'] as const;
-const skyboxSuffixes: readonly SkyboxSuffix[] = ['rt', 'bk', 'lf', 'ft', 'up', 'dn'];
 const MAX_CONCURRENT_TEXTURE_LOADS = 8;
+type ReplacementExtension = 'png' | 'tga' | 'jpg' | 'jpeg';
 
-function imageMediaType(extension: (typeof replacementExtensions)[number]): string {
+function imageMediaType(extension: ReplacementExtension): string {
   if (extension === 'png') return 'image/png';
   if (extension === 'tga') return 'image/x-tga';
   return 'image/jpeg';
@@ -71,28 +72,34 @@ async function decodeBrowserImage(
 
 export async function decodeQuake2Image(
   bytes: ArrayBuffer,
-  extension: (typeof replacementExtensions)[number],
+  extension: ReplacementExtension,
   context: LoadAssetContext,
 ): Promise<DecodedImage> {
   if (extension === 'tga') return decodeTga(bytes);
   return decodeBrowserImage(bytes, imageMediaType(extension), context);
 }
 
-export async function loadQuake2Palette(loader: GameAssetLoader): Promise<Uint8Array | undefined> {
-  const bytes = await loader.read('pics/colormap.pcx', 'palette');
-  return bytes ? readPcxPalette(bytes) : undefined;
+export async function loadQuake2Palette(
+  plan: WorldPaletteAssetPlan,
+  loader: GameAssetLoader,
+): Promise<Uint8Array | undefined> {
+  for (const candidate of plan.candidates) {
+    const bytes = await loader.read(candidate, 'palette');
+    if (bytes) return readPcxPalette(bytes);
+  }
+  return undefined;
 }
 
 export async function loadQuake2Skybox(
-  skyName: string,
+  plan: WorldSkyboxAssetPlan,
   loader: GameAssetLoader,
   context: LoadAssetContext,
 ): Promise<LoadedSkybox | undefined> {
-  const normalizedName = skyName.replace(/\.[^/.]+$/u, '');
   const entries = await Promise.all(
-    skyboxSuffixes.map(async (suffix) => {
-      for (const extension of replacementExtensions) {
-        const bytes = await loader.read(`env/${normalizedName}${suffix}.${extension}`, 'skybox');
+    plan.faces.map(async ({ suffix, candidates }) => {
+      for (const path of candidates) {
+        const extension = replacementExtension(path);
+        const bytes = await loader.read(path, 'skybox');
         if (bytes) return [suffix, await decodeQuake2Image(bytes, extension, context)] as const;
       }
       return null;
@@ -110,55 +117,55 @@ export async function loadQuake2Skybox(
   };
   const first = sides.rt;
   if (
-    !skyboxSuffixes.every(
-      (suffix) => sides[suffix].width === first.width && sides[suffix].height === first.height,
+    !plan.faces.every(
+      ({ suffix }) => sides[suffix].width === first.width && sides[suffix].height === first.height,
     )
   ) {
-    throw new Error(`Quake II skybox ${skyName} faces do not have matching dimensions`);
+    throw new Error(`Quake II skybox ${plan.name} faces do not have matching dimensions`);
   }
-  return { name: skyName, sides };
+  return { name: plan.name, sides };
 }
 
-function textureNames(name: string): readonly string[] {
-  const normalized = name
-    .replaceAll('\\', '/')
-    .replace(/^textures\//iu, '')
-    .toLowerCase();
-  const rerelease = normalized.replaceAll('+', '_');
-  return rerelease === normalized ? [normalized] : [normalized, rerelease];
+function replacementExtension(path: string): ReplacementExtension {
+  const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+  switch (extension) {
+    case 'png':
+    case 'tga':
+    case 'jpg':
+    case 'jpeg':
+      return extension;
+    default:
+      throw new Error(`unsupported Quake II replacement extension in ${path}`);
+  }
 }
 
 async function firstReplacement(
-  names: readonly string[],
+  candidates: readonly string[],
   loader: GameAssetLoader,
   context: LoadAssetContext,
   warnings: WarningDetail[],
 ): Promise<{ readonly image: DecodedImage; readonly path: string } | null> {
-  for (const name of names) {
-    for (const extension of replacementExtensions) {
-      const path = `textures/${name}.${extension}`;
-      const bytes = await loader.read(path, 'texture');
-      if (!bytes) continue;
-      try {
-        return { image: await decodeQuake2Image(bytes, extension, context), path };
-      } catch (error) {
-        abortIfNeeded(context.signal);
-        warnings.push({
-          code: 'asset-warning',
-          message: `${path} could not be decoded: ${error instanceof Error ? error.message : String(error)}`,
-        });
-      }
+  for (const path of candidates) {
+    const bytes = await loader.read(path, 'texture');
+    if (!bytes) continue;
+    try {
+      return { image: await decodeQuake2Image(bytes, replacementExtension(path), context), path };
+    } catch (error) {
+      abortIfNeeded(context.signal);
+      warnings.push({
+        code: 'asset-warning',
+        message: `${path} could not be decoded: ${error instanceof Error ? error.message : String(error)}`,
+      });
     }
   }
   return null;
 }
 
 async function firstWal(
-  names: readonly string[],
+  candidates: readonly string[],
   loader: GameAssetLoader,
 ): Promise<{ readonly bytes: ArrayBuffer; readonly path: string } | null> {
-  for (const name of names) {
-    const path = `textures/${name}.wal`;
+  for (const path of candidates) {
     const bytes = await loader.read(path, 'texture');
     if (bytes) return { bytes, path };
   }
@@ -176,16 +183,15 @@ function decodedTexture(name: string, image: DecodedImage): DecodedMipTexture {
 }
 
 async function loadTexture(
-  name: string,
+  plan: WorldTextureAssetPlan,
   palette: Uint8Array | undefined,
   loader: GameAssetLoader,
   context: LoadAssetContext,
   warnings: WarningDetail[],
 ): Promise<LoadedMaterialTexture | null> {
-  const names = textureNames(name);
   const [replacement, wal] = await Promise.all([
-    firstReplacement(names, loader, context, warnings),
-    firstWal(names, loader),
+    firstReplacement(plan.imageCandidates, loader, context, warnings),
+    firstWal(plan.walCandidates, loader),
   ]);
   abortIfNeeded(context.signal);
   if (replacement) {
@@ -201,7 +207,7 @@ async function loadTexture(
       }
     }
     return {
-      texture: decodedTexture(name, replacement.image),
+      texture: decodedTexture(plan.name, replacement.image),
       logicalWidth: logical.width,
       logicalHeight: logical.height,
     };
@@ -223,40 +229,13 @@ async function loadTexture(
   }
 }
 
-function referencedMaterialIndices(world: ParsedWorld): Set<number> {
-  const initial = world.batches.map(({ materialIndex }) => materialIndex);
-  const referenced = new Set(initial);
-  for (const first of initial) {
-    let current = first;
-    const visited = new Set<number>();
-    while (!visited.has(current)) {
-      visited.add(current);
-      const next = world.materials[current]?.nextMaterialIndex;
-      if (next === null || next === undefined) break;
-      referenced.add(next);
-      current = next;
-    }
-  }
-  return referenced;
-}
-
 export async function loadQuake2MaterialTextures(
-  world: ParsedWorld,
+  plans: readonly WorldTextureAssetPlan[],
   palette: Uint8Array | undefined,
   loader: GameAssetLoader,
   context: LoadAssetContext,
 ): Promise<Quake2MaterialStage> {
-  const indices = referencedMaterialIndices(world);
-  const groups = new Map<string, { readonly name: string; readonly indices: number[] }>();
-  for (const materialIndex of indices) {
-    const material = world.materials[materialIndex];
-    if (!material) continue;
-    const key = material.name.toLowerCase();
-    const group = groups.get(key);
-    if (group) group.indices.push(materialIndex);
-    else groups.set(key, { name: material.name, indices: [materialIndex] });
-  }
-  const entries = [...groups.values()];
+  const entries = plans;
   const materialTextures = new Map<number, LoadedMaterialTexture>();
   const missingTextures = new Set<string>();
   const assetWarnings = new Map<string, readonly WarningDetail[]>();
@@ -269,10 +248,12 @@ export async function loadQuake2MaterialTextures(
         const entry = entries[next++];
         if (!entry) return;
         const entryWarnings: WarningDetail[] = [];
-        const texture = await loadTexture(entry.name, palette, loader, context, entryWarnings);
+        const texture = await loadTexture(entry, palette, loader, context, entryWarnings);
         if (entryWarnings.length > 0) assetWarnings.set(entry.name.toLowerCase(), entryWarnings);
         if (texture) {
-          for (const materialIndex of entry.indices) materialTextures.set(materialIndex, texture);
+          for (const materialIndex of entry.materialIndices) {
+            materialTextures.set(materialIndex, texture);
+          }
         } else missingTextures.add(entry.name);
         completed += 1;
         context.progress({
