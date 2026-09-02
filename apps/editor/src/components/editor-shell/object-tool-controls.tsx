@@ -622,6 +622,7 @@ export function NudgeSection({ shellState }: { readonly shellState: EditorShellS
             key={`${label}-negative`}
             type="button"
             size="compact"
+            aria-label={`Nudge ${label} negative`}
             onPress={() =>
               shellState.objectTools.dispatch({
                 type: 'nudge',
@@ -636,6 +637,7 @@ export function NudgeSection({ shellState }: { readonly shellState: EditorShellS
             key={`${label}-positive`}
             type="button"
             size="compact"
+            aria-label={`Nudge ${label} positive`}
             onPress={() =>
               shellState.objectTools.dispatch({
                 type: 'nudge',

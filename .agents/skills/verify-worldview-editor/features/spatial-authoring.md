@@ -44,9 +44,10 @@ new-map workspace restores that local view without changing the map or another p
 
 ## Driving it with Playwright
 
-Reuse the projection and selector helpers in `tests/browser/editor.spec.ts`. Seed or inspect state
-through WebMCP first, then perform only the spatial gesture with Playwright. Capture before, action,
-and result screenshots and verify the resulting source or WebMCP object state.
+Reuse the projection and selector helpers in `tests/browser/editor/support` and the focused spatial
+specs under `tests/browser/editor`. Seed or inspect state through WebMCP first, then perform only the
+spatial gesture with Playwright. Capture before, action, and result screenshots and verify the
+resulting source or WebMCP object state.
 
 ## Gotchas
 

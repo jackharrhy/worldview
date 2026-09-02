@@ -22,26 +22,9 @@ Work from the top unless another item is explicitly chosen.
 
 | ID  | Status | Workstream                        | Dependency                                  |
 | --- | ------ | --------------------------------- | ------------------------------------------- |
-| C8  | Ready  | Test-suite decomposition          | Follow the production domains               |
 | C9  | Ready  | Viewer renderer decomposition     | Preserve the editor/viewer loading boundary |
 | C10 | Ready  | Hosted service handler boundaries | Shared protocol schemas                     |
 | C11 | Ready  | Broader architecture enforcement  | Encode boundaries only after they exist     |
-
-### C8: Test-suite decomposition
-
-Several core and browser suites contain valuable coverage but have grown too large for obvious
-ownership or focused execution.
-
-- Split tests by production domain and retain a small cross-domain browser suite.
-- Extract deterministic builders and interaction helpers without hiding relevant state or actions.
-- Use `fast-check` and `@fast-check/vitest` only where generated sequences and shrinking help:
-  session commands, collaboration ordering and reconnect, inverses, schema boundaries, and
-  persistence state machines.
-- Keep GPU, visual, and performance suites explicit for capable hosts instead of weakening them for
-  lightweight CI.
-
-Done when a production change has an obvious focused test command and file, coverage is retained or
-improved, and ordinary CI remains bounded.
 
 ### C9: Viewer renderer decomposition
 

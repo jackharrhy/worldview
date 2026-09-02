@@ -15,13 +15,25 @@ It covers formatting, architecture checks, theme checks, lint, types, unit tests
 bake-off and compatibility checks, builds, route boundaries, consumer compilation, and package
 contents.
 
-Use the smallest focused workspace test while iterating. The root `package.json` is the canonical
-command list.
+Use the smallest production-domain suite while iterating:
+
+```sh
+npm test --workspace @jackharrhy/worldview-editor -- test/session-materials.test.ts
+npm test --workspace @worldview/editor -- test/project-workspace.test.ts
+npx playwright test tests/browser/editor/editor-materials.spec.ts --project=chromium --workers=1
+```
+
+Editor package tests are split by core command domain. Editor browser tests live under
+`tests/browser/editor` and share only deterministic fixture builders and spatial browser helpers.
+The root `package.json` remains the canonical command list; `npm run test:editor` runs both editor
+workspaces, while `npm run test:browser:editor` builds their dependencies and runs the complete
+editor Playwright directory serially.
 
 ## Browser editor
 
 ```sh
 npm run test:browser:ci
+npm run test:browser:editor
 npm run test:browser
 node .agents/skills/verify-worldview-editor/scripts/verify-editor.mjs
 ```
@@ -37,7 +49,9 @@ npm run test:editor-performance
 ```
 
 It exercises an 8,000-brush fixture and records load, selection, transform, material, undo, frame
-cadence, and retained-scene invalidation on a capable host.
+cadence, and retained-scene invalidation. Its fixed envelope is deliberately broad enough for the
+project's older headless Xeon workstation and is recorded in every report. Use the attached
+measurements for hardware-specific comparisons instead of silently changing the fixture.
 
 ## Viewer and package
 

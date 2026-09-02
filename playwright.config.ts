@@ -33,12 +33,16 @@ const editorWebServer = {
   reuseExistingServer: !process.env.CI,
 };
 
+const playwrightScope = process.env.WORLDVIEW_PLAYWRIGHT_SCOPE;
+
 export default defineConfig({
   testDir: './tests/browser',
   webServer:
-    process.env.WORLDVIEW_PLAYWRIGHT_SCOPE === 'viewer'
+    playwrightScope === 'viewer'
       ? viewerWebServers
-      : [...viewerWebServers, editorWebServer],
+      : playwrightScope === 'editor'
+        ? [editorWebServer]
+        : [...viewerWebServers, editorWebServer],
   use: {
     baseURL: 'http://127.0.0.1:5173',
     viewport: { width: 1440, height: 900 },

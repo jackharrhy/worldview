@@ -68,9 +68,9 @@ revision for the next edit. Prefer the query, selection, transform, create, mate
 history tools. Use `worldview_replace_map_source` to load a caller-supplied `.map`; it is
 intentionally destructive and requires `confirmDestructive: true`. Site tools never save to disk.
 
-Use the existing Playwright selectors in `tests/browser/editor.spec.ts` for UI-only paths. Prefer
-roles, labels, IDs, and `data-action` attributes; canvas coordinates are appropriate only for
-camera, picking, and direct manipulation behavior.
+Use the shared Playwright helpers under `tests/browser/editor/support` and the focused specs beside
+them for UI-only paths. Prefer roles, labels, IDs, and `data-action` attributes; canvas coordinates
+are appropriate only for camera, picking, and direct manipulation behavior.
 
 ## Evidence
 
@@ -89,7 +89,7 @@ generic helper deliberately does not claim disk writes.
 Run the narrow existing tests alongside the user-path proof when relevant:
 
 ```bash
-npx playwright test tests/browser/editor.spec.ts --project=chromium --grep 'WebMCP site authoring'
+npx playwright test tests/browser/editor/editor-application.spec.ts --project=chromium --grep 'first-class live tools'
 npm test --workspace @worldview/editor
 npm test --workspace @jackharrhy/worldview-editor
 ```
