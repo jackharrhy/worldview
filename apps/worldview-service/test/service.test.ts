@@ -43,6 +43,11 @@ describe('Worldview hosted project service', () => {
     const { cookie, user } = session(app.database);
 
     expect(await (await fetch(`${app.origin}/api/session`)).json()).toEqual({ user: null });
+    const malformedCookie = await fetch(`${app.origin}/api/session`, {
+      headers: { Cookie: 'worldview_session=%E0%A4%A' },
+    });
+    expect(malformedCookie.status).toBe(200);
+    await expect(malformedCookie.json()).resolves.toEqual({ user: null });
 
     const response: unknown = await (
       await fetch(`${app.origin}/api/session`, { headers: { Cookie: cookie } })
@@ -391,6 +396,10 @@ describe('Worldview hosted project service', () => {
       body: JSON.stringify({ quality: 'preview', expectedMapVersion: 9 }),
     });
     expect(stale.status).toBe(409);
+    await expect(stale.json()).resolves.toEqual({
+      error: 'The hosted map has not saved this revision yet; wait a moment and try again',
+    });
+    expect(app.database.listBuilds(mapId, user.id)).toEqual([]);
     const queued = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
       method: 'POST',
       headers: { Cookie: cookie, 'Content-Type': 'application/json' },

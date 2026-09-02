@@ -72,6 +72,31 @@ async function createAccessFixture() {
 }
 
 describe('hosted project access control', () => {
+  test('rejects every browser mutation before authentication or domain work when cross-origin', async () => {
+    const { app } = await createAccessFixture();
+    const mutations = [
+      ['POST', '/auth/logout'],
+      ['POST', '/api/projects'],
+      ['PUT', '/api/projects/project-1/members/user-1'],
+      ['DELETE', '/api/projects/project-1/members/user-1'],
+      ['POST', '/api/projects/project-1/maps'],
+      ['POST', '/api/projects/project-1/resources'],
+      ['POST', '/api/maps/map-1/checkpoints'],
+      ['POST', '/api/maps/map-1/realtime-ticket'],
+      ['POST', '/api/maps/map-1/builds'],
+    ] as const;
+
+    for (const [method, pathname] of mutations) {
+      const response = await fetch(`${app.origin}${pathname}`, {
+        method,
+        headers: { Origin: 'https://evil.example', 'Content-Type': 'application/json' },
+        ...(method === 'DELETE' ? {} : { body: '{}' }),
+      });
+      expect(response.status, `${method} ${pathname}`).toBe(403);
+      await expect(response.json()).resolves.toEqual({ error: 'Cross-origin mutation rejected' });
+    }
+  });
+
   test('allows project members to read hosted state without disclosing it to outsiders', async () => {
     const { app, owner, editor, viewer, outsider, project, mapId, mount } =
       await createAccessFixture();
@@ -185,6 +210,8 @@ describe('hosted project access control', () => {
         ).status,
       ).toBe(403);
     }
+    expect(app.maps.snapshots.size).toBe(3);
+    expect(app.maps.checkpoints).toHaveLength(2);
     expect(
       (
         await fetch(`${app.origin}/api/projects/${project.id}/resources`, {

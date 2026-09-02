@@ -61,7 +61,7 @@ export async function fixture(fetchImpl?: typeof fetch, compilerFetch?: typeof f
   const database = new WorldviewDatabase(join(root, 'worldview.db'));
   const maps = new FakeMapCells();
   const blobs = new FileBlobStore(join(root, 'blobs'));
-  const server = createWorldviewService({
+  const options = {
     database,
     blobs,
     oauth: {
@@ -82,7 +82,8 @@ export async function fixture(fetchImpl?: typeof fetch, compilerFetch?: typeof f
           ),
         }
       : {}),
-  });
+  };
+  const server = createWorldviewService(options);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Server has no address');
@@ -94,7 +95,7 @@ export async function fixture(fetchImpl?: typeof fetch, compilerFetch?: typeof f
     database.close();
     await rm(root, { recursive: true, force: true });
   });
-  return { origin, root, database, maps, blobs };
+  return { origin, root, database, maps, blobs, options };
 }
 
 export function session(

@@ -20,23 +20,9 @@ belong in [the architecture plan](./plan.md); delivered editor behavior belongs 
 
 Work from the top unless another item is explicitly chosen.
 
-| ID  | Status | Workstream                        | Dependency                              |
-| --- | ------ | --------------------------------- | --------------------------------------- |
-| C10 | Ready  | Hosted service handler boundaries | Shared protocol schemas                 |
-| C11 | Ready  | Broader architecture enforcement  | Encode boundaries only after they exist |
-
-### C10: Hosted service handler boundaries
-
-The hosted service still has a large regular-expression and method route chain.
-
-- Split focused route matchers and handlers without adopting a heavyweight framework.
-- Keep authentication, authorization, version checks, and database transactions visible at each
-  route boundary.
-- Reuse shared protocol schemas and typed response constructors.
-
-Done when route matching and handlers have focused tests, unauthorized and stale behavior remains
-deterministic, browser and service compile against the same contracts, and container integration
-tests pass.
+| ID  | Status | Workstream                       | Dependency                              |
+| --- | ------ | -------------------------------- | --------------------------------------- |
+| C11 | Ready  | Broader architecture enforcement | Encode boundaries only after they exist |
 
 ### C11: Architecture enforcement
 

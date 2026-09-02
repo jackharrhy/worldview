@@ -200,6 +200,13 @@ application sessions, project metadata, membership, resource mounts, build admis
 realtime tickets. It authorizes a request before touching a map cell, compiler, Artbin, or blob
 store.
 
+The service dispatches a small, named route table into focused authentication, project, resource,
+map, and build handlers. Each handler receives only its domain dependencies and keeps mutation
+origin checks, authentication, authorization, version checks, and calls into transactional
+database operations visible at the route boundary. Request and JSON response bodies use the same
+shared Zod contracts as browser consumers; binary resources and artifacts remain explicit streamed
+responses. The HTTP request context contains transport state only and is not a service locator.
+
 Each hosted map has one named SQLite-backed `MapCell`. It is the only hosted source authority and
 persists an accepted semantic operation, resulting source and document, receipt, conflict state,
 and next version before acknowledgement. Service metadata points to the cell but does not duplicate

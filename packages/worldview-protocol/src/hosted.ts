@@ -151,6 +151,7 @@ export type HostedCheckpoint = z.infer<typeof HostedCheckpointSchema>;
 
 export const HostedErrorResponseSchema = z.strictObject({ error: z.string().min(1).max(16_384) });
 export const HostedOkResponseSchema = z.strictObject({ ok: z.literal(true) });
+export const HostedHealthResponseSchema = z.strictObject({ status: z.literal('ok') });
 export const HostedSessionResponseSchema = z.strictObject({
   user: HostedSessionUserSchema.nullable(),
 });
