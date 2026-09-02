@@ -168,13 +168,6 @@ export function goldSrcBrushPipeline(
   return null;
 }
 
-export function goldSrcTextureScrollSpeed(world: ParsedWorld, batch: DrawBatch): number {
-  if (world.version !== 30 || batch.modelIndex === 0) return 0;
-  const material = world.materials[batch.materialIndex];
-  if (!material?.name.toLowerCase().startsWith('scroll')) return 0;
-  return world.models[batch.modelIndex]?.textureScrollSpeed ?? 0;
-}
-
 export function selectedWorldPipeline(
   pipelines: WorldPipelines,
   world: ParsedWorld,
@@ -205,21 +198,4 @@ export function selectedWorldPipeline(
   }
   if (lightmapped) return brush ? pipelines.opaqueBrush : pipelines.opaque;
   return brush ? pipelines.unlitBrush : pipelines.unlit;
-}
-
-export function isTranslucentWorldBatch(world: ParsedWorld, batch: DrawBatch): boolean {
-  if (world.format === 'quake2-bsp38' && (world.materials[batch.materialIndex]?.opacity ?? 1) < 1) {
-    return true;
-  }
-  if (world.version !== 30 || batch.modelIndex === 0) return false;
-  const mode = world.models[batch.modelIndex]?.renderMode;
-  return mode === 1 || mode === 2 || mode === 3 || mode === 5;
-}
-
-export function translucentBatchRank(world: ParsedWorld, batch: DrawBatch): number {
-  const mode = world.models[batch.modelIndex]?.renderMode;
-  if (mode === 2) return 1;
-  if (mode === 5) return 2;
-  if (mode === 3) return 3;
-  return 0;
 }

@@ -1,6 +1,7 @@
 import type { TgpuBindGroup, TgpuRoot } from 'typegpu';
 
 import { RENDER_SAMPLE_COUNT } from '../render/constants.js';
+import { createGpuBuffer } from '../render/gpu-buffer.js';
 import type { WalkabilityMap, WalkabilityTraversal } from './types.js';
 import { walkabilityVertexLayout } from './schemas.js';
 import { walkabilityFragment, walkabilityVertex } from './shaders.js';
@@ -14,18 +15,6 @@ const ONE_WAY_COLOR: Color = [0.96, 0.3, 0.72, 0.9];
 const JUMP_COLOR: Color = [1, 0.68, 0.18, 0.92];
 const DROP_COLOR: Color = [0.2, 0.72, 1, 0.9];
 const BOUNDARY_COLOR: Color = [1, 0.2, 0.16, 0.42];
-
-function createRawBuffer(device: GPUDevice, data: Float32Array): GPUBuffer {
-  const buffer = device.createBuffer({
-    label: 'Worldview walkability vertices',
-    size: Math.max(4, (data.byteLength + 3) & ~3),
-    usage: GPUBufferUsage.VERTEX,
-    mappedAtCreation: true,
-  });
-  new Float32Array(buffer.getMappedRange()).set(data);
-  buffer.unmap();
-  return buffer;
-}
 
 function edgeColor(traversal: WalkabilityTraversal, reverse: boolean): Color {
   if (traversal === 'jump') return JUMP_COLOR;
@@ -109,7 +98,12 @@ export class TypeGpuWalkabilityRenderer {
     if (!map) return;
     const vertices = debugVertices(map);
     if (vertices.length === 0) return;
-    this.vertexBuffer = createRawBuffer(this.root.device, vertices);
+    this.vertexBuffer = createGpuBuffer(
+      this.root.device,
+      vertices,
+      GPUBufferUsage.VERTEX,
+      'Worldview walkability vertices',
+    );
     this.vertexCount = vertices.length / FLOATS_PER_VERTEX;
   }
 

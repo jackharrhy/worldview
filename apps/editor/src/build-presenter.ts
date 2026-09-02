@@ -8,6 +8,7 @@ import {
   type EditorBrushDragEvent,
   type MapCompileResult,
 } from '@jackharrhy/worldview-editor';
+import type { CameraUpdate } from '@jackharrhy/worldview';
 
 import type { EditorShellState } from './editor-shell-state.js';
 import type { CompileAssetEntry } from './editor-application-contracts.js';
@@ -44,6 +45,7 @@ type BuildState = EditorStatePort<
   | 'loadedWadSources'
   | 'loadedGameAssets'
   | 'portalOverlayVisible'
+  | 'perspectiveCamera'
   | 'projectKey'
   | 'projectLocalState'
   | 'projectWorkspace'
@@ -120,6 +122,19 @@ export class BuildPresenter {
     });
     if (this.state.showingCompiled) this.state.compiledViewer?.start();
     else this.state.compiledViewer?.stop();
+  }
+
+  private compiledPreviewCamera(): CameraUpdate | null {
+    const camera =
+      this.state.renderer?.viewportCamera('perspective') ?? this.state.perspectiveCamera;
+    return camera
+      ? {
+          position: [camera.position[0], camera.position[1], camera.position[2]],
+          yaw: camera.yaw,
+          pitch: camera.pitch,
+          fieldOfView: camera.fieldOfViewDegrees,
+        }
+      : null;
   }
 
   public buildArtifactText(result: MapCompileResult, kind: 'leak-path' | 'portal'): string | null {
@@ -229,7 +244,10 @@ export class BuildPresenter {
     );
   }
 
-  public async installCompiledPreview(result: MapCompileResult): Promise<boolean> {
+  public async installCompiledPreview(
+    result: MapCompileResult,
+    camera: CameraUpdate | null,
+  ): Promise<boolean> {
     this.signal.throwIfAborted();
     const artifact = result.artifacts.find(
       (candidate) =>
@@ -257,7 +275,6 @@ export class BuildPresenter {
       : null;
     this.state.compiledViewer?.dispose();
     this.state.compiledViewer = null;
-    this.ui.viewportPresentation.update({ showingCompiled: true });
     const { createWorldview } = await import('@jackharrhy/worldview');
     this.signal.throwIfAborted();
     const viewer = await createWorldview({
@@ -271,24 +288,29 @@ export class BuildPresenter {
           : {}),
       },
       controls: 'fly',
-      autoStart: true,
+      autoStart: false,
       audio: false,
       textureFiltering: 'nearest',
       clearColor: resolveEditorRenderTheme().background,
     });
-    if (this.signal.aborted) {
-      viewer.dispose();
+    try {
       this.signal.throwIfAborted();
+      if (camera) viewer.setCamera(camera);
+    } catch (error) {
+      viewer.dispose();
+      throw error;
     }
     this.state.compiledViewer = viewer;
     this.state.compiledRevision = result.sourceDocumentRevision;
     this.ui.editorCommands.updateActions({ 'toggle-preview': { disabled: false } });
     this.showCompiledPreview(true);
+    viewer.resize();
     return true;
   }
 
   public async compilePreview(): Promise<void> {
     this.signal.throwIfAborted();
+    const previewCamera = this.compiledPreviewCamera();
     const quality = this.state.activeCompileQuality;
     this.ui.editorCommands.updateActions({ compile: { disabled: true } });
     this.setCompileState(`COMPILING ${quality.toUpperCase()}`, 'busy');
@@ -340,7 +362,7 @@ export class BuildPresenter {
         );
         return;
       }
-      const previewInstalled = await this.installCompiledPreview(outcome.result);
+      const previewInstalled = await this.installCompiledPreview(outcome.result, previewCamera);
       this.setCompileState(`COMPILED R${outcome.result.sourceDocumentRevision}`, 'ready');
       this.ui.statusMessage.set(
         `${previewInstalled ? 'Compiled preview installed' : 'Compile completed'} in ${Math.round(outcome.result.elapsedMilliseconds)} ms.${this.state.compiledPreviewWarning ?? ''}`,

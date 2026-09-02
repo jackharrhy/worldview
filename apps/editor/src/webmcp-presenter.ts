@@ -160,6 +160,7 @@ type WebMcpState = EditorStatePort<
   | 'activeCompileQuality'
   | 'activeGridSize'
   | 'activeTool'
+  | 'compiledViewer'
   | 'compiledRevision'
   | 'currentDocumentName'
   | 'currentMapSource'
@@ -279,6 +280,8 @@ export class WebMcpPresenter {
             profileId: this.state.activeCompileProfileId,
             quality: this.state.activeCompileQuality,
             compiledRevision: this.state.compiledRevision,
+            compiledCamera: this.state.compiledViewer?.camera ?? null,
+            compiledMovementMode: this.state.compiledViewer?.movementMode ?? null,
             showingCompiled: this.state.showingCompiled,
             latestStatus: this.state.latestBuild?.status ?? null,
           },

@@ -3,6 +3,7 @@ import type { TgpuBindGroup, TgpuRoot, TgpuTexture } from 'typegpu';
 import type { DecodedSpriteFrame, SpriteFrameSequence, Vec3Tuple } from '../core/index.js';
 import type { LoadedSpriteEntity } from './assets.js';
 import { RENDER_SAMPLE_COUNT } from './constants.js';
+import { createGpuBuffer } from './gpu-buffer.js';
 import type { CameraState, TextureFiltering } from './types.js';
 import {
   spriteAdditiveFragment,
@@ -42,20 +43,6 @@ interface SpriteResource {
   readonly sequences: readonly SequenceResource[];
   readonly pipeline: SpritePipelineKind;
   activeFrame: FrameResource;
-}
-
-function createRawBuffer(
-  device: GPUDevice,
-  data: ArrayBufferView,
-  usage: GPUBufferUsageFlags,
-): GPUBuffer {
-  const size = Math.max(4, (data.byteLength + 3) & ~3);
-  const buffer = device.createBuffer({ size, usage, mappedAtCreation: true });
-  new Uint8Array(buffer.getMappedRange()).set(
-    new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
-  );
-  buffer.unmap();
-  return buffer;
 }
 
 function createPipelines(root: TgpuRoot, format: GPUTextureFormat) {
@@ -265,7 +252,7 @@ export class TypeGpuSpriteRenderer {
     this.device = root.device;
     this.pipelines = createPipelines(root, format);
     this.vertexData = new Float32Array(entities.length * VERTICES_PER_SPRITE * FLOATS_PER_VERTEX);
-    this.vertexBuffer = createRawBuffer(
+    this.vertexBuffer = createGpuBuffer(
       this.device,
       this.vertexData,
       GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -275,7 +262,7 @@ export class TypeGpuSpriteRenderer {
       const vertex = index * VERTICES_PER_SPRITE;
       indices.set([vertex, vertex + 1, vertex + 2, vertex, vertex + 2, vertex + 3], index * 6);
     }
-    this.indexBuffer = createRawBuffer(this.device, indices, GPUBufferUsage.INDEX);
+    this.indexBuffer = createGpuBuffer(this.device, indices, GPUBufferUsage.INDEX);
     this.sampler = root.createSampler({
       addressModeU: 'clamp-to-edge',
       addressModeV: 'clamp-to-edge',

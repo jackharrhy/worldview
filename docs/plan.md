@@ -123,6 +123,12 @@ atomic source rather than assembling a second URL-only loading contract. Optiona
 fingerprinted sidecar with its own cancellation generation and does not delay the base map's ready
 state.
 
+`TypeGpuWorldRenderer` is a small lifecycle facade for one loaded world. Focused internal owners
+hold scene and material resources, canvas and capture targets, and pass encoding; GPU-independent
+frame planning decides visibility, ordering, and which passes are needed. This keeps disposal
+explicit without changing the public viewer API or merging the compiled-world and source-editor
+renderers.
+
 Quake II assets use logical, case-insensitive paths below a game root. An embedding application can
 provide explicit sources, a resolver, or a base URL. Archive mounting and installation policy stay
 outside the renderer. [Viewer API](./viewer-api.md) owns consumer examples, while
@@ -171,7 +177,9 @@ sources.
 Build requests name a source revision, fixed profile, and preview or final quality. Results carry
 logs, diagnostics, artifacts, and the source fingerprint. A stale result remains inspectable but
 cannot replace the current compiled preview. Browsers never provide arbitrary executable paths,
-commands, or hosted build source.
+commands, or hosted build source. A newly installed preview starts in fly mode from the perspective
+camera captured with the request; camera position, orientation, and field of view are applied before
+the compiled viewer's first frame and remain separate from source viewport state afterward.
 
 ### Browser persistence
 

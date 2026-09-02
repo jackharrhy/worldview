@@ -20,24 +20,10 @@ belong in [the architecture plan](./plan.md); delivered editor behavior belongs 
 
 Work from the top unless another item is explicitly chosen.
 
-| ID  | Status | Workstream                        | Dependency                                  |
-| --- | ------ | --------------------------------- | ------------------------------------------- |
-| C9  | Ready  | Viewer renderer decomposition     | Preserve the editor/viewer loading boundary |
-| C10 | Ready  | Hosted service handler boundaries | Shared protocol schemas                     |
-| C11 | Ready  | Broader architecture enforcement  | Encode boundaries only after they exist     |
-
-### C9: Viewer renderer decomposition
-
-The compiled-world renderer currently owns pipelines, materials, light styles, sprites,
-walkability, capture, visibility, and lifecycle in one class.
-
-- Extract resource and pipeline creation, material resources, pure frame planning, world-pass
-  encoding, and capture targets behind a small lifecycle facade.
-- Share only low-level runtime primitives with the editor. Do not create a universal renderer.
-
-Done when resource ownership and disposal are obvious, frame planning is GPU-independent and
-tested, and BSP29/BSP30/BSP38, light-style, sprite, transparency, overview, capture, custom-element,
-and public API coverage remains intact.
+| ID  | Status | Workstream                        | Dependency                              |
+| --- | ------ | --------------------------------- | --------------------------------------- |
+| C10 | Ready  | Hosted service handler boundaries | Shared protocol schemas                 |
+| C11 | Ready  | Broader architecture enforcement  | Encode boundaries only after they exist |
 
 ### C10: Hosted service handler boundaries
 

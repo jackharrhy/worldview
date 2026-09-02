@@ -88,14 +88,14 @@ Status terms:
 
 ## Clipboard, projects, and builds
 
-| Capability               | Status    | Current behavior                                                                                                                                                                                 |
-| ------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Object clipboard         | Delivered | Parseable map text preserves mixed brushes/entities/groups, remaps stable IDs, and inserts once. Paste Here uses the pointed perspective surface or 2D pointer/depth context.                    |
-| Filesystem safety        | Delivered | Save compares source fingerprints, blocks external-change overwrite, offers reload or copy, and never treats a download as a confirmed filesystem write.                                         |
-| Native builds            | Delivered | A capability-negotiated helper runs configured Quake, GoldSrc, and Quake II toolchains with bounded input, logs, diagnostics, artifacts, cancellation, and optional game launch.                 |
-| Hosted builds            | Delivered | Authenticated content-addressed BSP builds use bounded queues, per-user/global admission, payload/artifact limits, and compiler container limits. Only current successful results enter preview. |
-| Compiled preview         | Delivered | The public viewer renders a revision-safe BSP preview; source geometry remains authoritative.                                                                                                    |
-| Browser/WASM compilation | Deferred  | Native helper and hosted compiler paths are the supported compilation boundaries.                                                                                                                |
+| Capability               | Status    | Current behavior                                                                                                                                                                                         |
+| ------------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Object clipboard         | Delivered | Parseable map text preserves mixed brushes/entities/groups, remaps stable IDs, and inserts once. Paste Here uses the pointed perspective surface or 2D pointer/depth context.                            |
+| Filesystem safety        | Delivered | Save compares source fingerprints, blocks external-change overwrite, offers reload or copy, and never treats a download as a confirmed filesystem write.                                                 |
+| Native builds            | Delivered | A capability-negotiated helper runs configured Quake, GoldSrc, and Quake II toolchains with bounded input, logs, diagnostics, artifacts, cancellation, and optional game launch.                         |
+| Hosted builds            | Delivered | Authenticated content-addressed BSP builds use bounded queues, per-user/global admission, payload/artifact limits, and compiler container limits. Only current successful results enter preview.         |
+| Compiled preview         | Delivered | The public viewer renders a revision-safe BSP preview in fly mode, seeded before its first frame from the perspective camera captured when Compile was requested. Source geometry remains authoritative. |
+| Browser/WASM compilation | Deferred  | Native helper and hosted compiler paths are the supported compilation boundaries.                                                                                                                        |
 
 ## Collaboration and hosted editing
 
