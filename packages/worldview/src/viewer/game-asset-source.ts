@@ -1,8 +1,8 @@
+import { normalizeGameAssetPath } from '../core/index.js';
 import type { GameAssetKind, WorldSource } from './types.js';
 import {
   abortIfNeeded,
   gameAssetUrl,
-  normalizeGameAssetPath,
   readBinarySource,
   type LoadAssetContext,
 } from './asset-source.js';

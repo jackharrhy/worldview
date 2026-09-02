@@ -7,10 +7,19 @@ import {
   type WorldviewViewer,
 } from '@jackharrhy/worldview';
 import {
+  identifyBsp,
+  identifyWad,
+  normalizeGameAssetPath,
+  parseBspTextures,
   parseEntities,
   planOverview as planCoreOverview,
+  planWorldAssets,
   spriteReference,
+  type BspIdentification,
+  type ParsedBspTextures,
   type ParsedWorld,
+  type WadIdentification,
+  type WorldAssetPlan,
 } from '@jackharrhy/worldview/core';
 import { WorldViewElement, defineWorldViewElement } from '@jackharrhy/worldview/element';
 import { SnapshotStore } from '@jackharrhy/worldview/runtime';
@@ -37,6 +46,17 @@ elementContract.addEventListener('walkabilitychange', (event) => void event.deta
 const viewerFactory: (options: Parameters<typeof createWorldview>[0]) => Promise<WorldviewViewer> =
   createWorldview;
 const parsedWorld: ParsedWorld | null = null;
+const formatContracts: [
+  typeof identifyBsp,
+  typeof identifyWad,
+  typeof parseBspTextures,
+  typeof planWorldAssets,
+  typeof normalizeGameAssetPath,
+] = [identifyBsp, identifyWad, parseBspTextures, planWorldAssets, normalizeGameAssetPath];
+const bspIdentification: BspIdentification | null = null;
+const wadIdentification: WadIdentification | null = null;
+const parsedTextures: ParsedBspTextures | null = null;
+const assetPlan: WorldAssetPlan | null = null;
 const overviewOptions: OverviewCaptureOptions = {
   width: 1024,
   height: 768,
@@ -47,6 +67,11 @@ const overviewOptions: OverviewCaptureOptions = {
 void source;
 void viewerFactory;
 void parsedWorld;
+void formatContracts;
+void bspIdentification;
+void wadIdentification;
+void parsedTextures;
+void assetPlan;
 void overviewOptions;
 const walkability: WalkabilityMap | null = null;
 const loadWalkability: WorldviewViewer['loadWalkability'] | null = null;

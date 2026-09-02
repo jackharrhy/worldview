@@ -4,6 +4,7 @@ import {
   type ParsedWave,
   type ParsedWorld,
   type SoundReference,
+  type WorldSoundAssetPlan,
 } from '../core/index.js';
 import {
   abortIfNeeded,
@@ -11,7 +12,6 @@ import {
   soundUrl,
   type LoadAssetContext,
 } from './asset-source.js';
-import { GOLDSRC_PLAYER_SOUND_REFERENCES } from './player-sounds.js';
 import type { BinarySource, WarningDetail, WorldSource } from './types.js';
 
 export interface LoadedSoundAsset {
@@ -54,6 +54,7 @@ function explicitSoundSources(source: WorldSource): Map<string, BinarySource> {
 
 export async function loadSoundAssets(
   world: ParsedWorld,
+  plans: readonly WorldSoundAssetPlan[],
   source: WorldSource,
   context: LoadAssetContext,
 ): Promise<LoadedSoundAssets> {
@@ -101,20 +102,19 @@ export async function loadSoundAssets(
     }
   };
 
-  const ambientReferences = [
-    ...new Map(
-      world.ambientSounds.map((ambient) => [ambient.reference.normalizedPath, ambient.reference]),
-    ).values(),
-  ];
-  const musicReferences = [
-    ...new Map(
-      world.musicTracks.map((track) => [track.reference.normalizedPath, track.reference]),
-    ).values(),
-  ];
+  const ambientReferences = plans
+    .filter(({ usage }) => usage === 'ambient')
+    .map(({ reference }) => reference);
+  const musicReferences = plans
+    .filter(({ usage }) => usage === 'music')
+    .map(({ reference }) => reference);
+  const plannedPlayerReferences = plans
+    .filter(({ usage }) => usage === 'player')
+    .map(({ reference }) => reference);
   const playerReferences =
     source.soundBaseUrl || source.resolveSound
-      ? GOLDSRC_PLAYER_SOUND_REFERENCES
-      : GOLDSRC_PLAYER_SOUND_REFERENCES.filter(
+      ? plannedPlayerReferences
+      : plannedPlayerReferences.filter(
           (reference) => explicit.has(reference.normalizedPath) || explicit.has(reference.basename),
         );
 

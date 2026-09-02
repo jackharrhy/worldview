@@ -129,6 +129,12 @@ outside the renderer. [Viewer API](./viewer-api.md) owns consumer examples, whil
 [Quake II compatibility](./quake2-compatibility.md) owns format evidence and the exact supported
 boundary.
 
+The GPU-independent format core is also the canonical inspection layer. Cheap BSP and WAD
+identification, focused embedded-texture parsing, resilient WAD records, and external asset
+planning reuse the same parsers and lookup policy as the viewer. The viewer fetches from the
+exported asset plan; indexers and asset services may consume it without importing browser or GPU
+code. [Format core](./format-core.md) owns that public contract.
+
 The viewer and editor share only low-level, GPU-independent runtime helpers and Quake-family camera
 math. Their renderers remain separate because compiled BSP visibility, lightmaps, and entities do
 not have the same lifecycle as mutable source geometry, four editing cameras, picking, and tools.

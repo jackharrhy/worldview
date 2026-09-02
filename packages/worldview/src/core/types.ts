@@ -16,7 +16,11 @@ export interface Bounds {
 }
 
 export interface ParsedMipTexture {
+  /** Index in the BSP texture table or WAD directory that owns this record. */
+  readonly sourceIndex: number;
   readonly name: string;
+  readonly width: number;
+  readonly height: number;
   readonly data: Uint8Array;
 }
 

@@ -11,22 +11,19 @@ import {
   isQuakePaletteFormat,
   parseBsp,
   parseWad,
+  planWorldAssets,
   readPcxPalette,
   WorldviewError,
   type ParsedWad,
   type ParsedWorld,
+  type WorldAssetPlan,
+  type WorldWadAssetPlan,
 } from '../core/index.js';
-import type {
-  LoadedMaterialTexture,
-  LoadedSkybox,
-  RenderWorldAssets,
-  SkyboxSuffix,
-} from '../render/assets.js';
+import type { LoadedMaterialTexture, LoadedSkybox, RenderWorldAssets } from '../render/assets.js';
 import {
   abortIfNeeded,
   readBinarySource,
   resolveWorldSource,
-  skyboxUrl,
   sourceBelow,
   wadUrl,
   type LoadAssetContext,
@@ -57,8 +54,6 @@ export interface LoadedWorld extends RenderWorldAssets {
   readonly missingMusic: readonly string[];
   readonly warnings: readonly WarningDetail[];
 }
-
-const skyboxSuffixes: readonly SkyboxSuffix[] = ['rt', 'bk', 'lf', 'ft', 'up', 'dn'];
 
 interface AssetStage<T> {
   readonly value: T;
@@ -105,33 +100,31 @@ async function loadPaletteSource(
 
 async function loadDerivedPalette(
   world: ParsedWorld,
-  source: WorldSource,
+  plan: WorldAssetPlan,
   gameAssets: GameAssetLoader,
-  context: LoadAssetContext,
 ): Promise<Uint8Array | undefined> {
-  if (world.format === 'quake2-bsp38') return loadQuake2Palette(gameAssets);
-  if (!isQuakePaletteFormat(world.format)) return undefined;
-  if (!source.gameBaseUrl) {
-    throw new WorldviewError(
-      'missing-palette',
-      'Quake BSP maps require an external 768-byte palette',
-    );
+  if (!plan.palette) return undefined;
+  if (world.format === 'quake2-bsp38') return loadQuake2Palette(plan.palette, gameAssets);
+  for (const candidate of plan.palette.candidates) {
+    const bytes = await gameAssets.read(candidate, 'palette');
+    if (bytes) return parsePalette(bytes);
   }
-  return loadPaletteSource(sourceBelow(source.gameBaseUrl, 'gfx/palette.lmp'), context);
+  throw new WorldviewError('missing-palette', 'Quake BSP maps require an external palette');
 }
 
 async function loadSkybox(
   world: ParsedWorld,
+  plan: WorldAssetPlan,
   source: WorldSource,
   gameAssets: GameAssetLoader,
   context: LoadAssetContext,
 ): Promise<AssetStage<LoadedSkybox | undefined>> {
-  if (!world.skyName) {
+  if (!plan.skybox) {
     return { value: undefined, warnings: [] };
   }
   if (world.format === 'quake2-bsp38' && !source.skybox) {
     try {
-      const value = await loadQuake2Skybox(world.skyName, gameAssets, context);
+      const value = await loadQuake2Skybox(plan.skybox, gameAssets, context);
       return value
         ? { value, warnings: [] }
         : {
@@ -139,7 +132,7 @@ async function loadSkybox(
             warnings: [
               {
                 code: 'missing-skybox',
-                message: `Quake II skybox ${world.skyName} could not be resolved from the game assets`,
+                message: `Quake II skybox ${plan.skybox.name} could not be resolved from the game assets`,
               },
             ],
           };
@@ -150,7 +143,7 @@ async function loadSkybox(
         warnings: [
           {
             code: 'missing-skybox',
-            message: `Quake II skybox ${world.skyName} could not be loaded: ${errorMessage(error)}`,
+            message: `Quake II skybox ${plan.skybox.name} could not be loaded: ${errorMessage(error)}`,
           },
         ],
       };
@@ -159,17 +152,21 @@ async function loadSkybox(
   if (world.version !== 30 || (!source.skybox && !source.skyboxBaseUrl)) {
     return { value: undefined, warnings: [] };
   }
+  const skyboxBaseUrl = source.skyboxBaseUrl;
   try {
     const entries = await Promise.all(
-      skyboxSuffixes.map(async (suffix) => {
-        const binary =
-          source.skybox?.[suffix] ?? skyboxUrl(source.skyboxBaseUrl!, world.skyName!, suffix);
-        const bytes = await readBinarySource(
-          binary,
-          'skybox',
-          `${world.skyName}${suffix}.tga`,
-          context,
-        );
+      plan.skybox.faces.map(async ({ suffix, candidates }) => {
+        const candidate = candidates[0];
+        if (!candidate) throw new WorldviewError('invalid-data', `skybox ${suffix} has no source`);
+        const basename = candidate.slice(candidate.lastIndexOf('/') + 1);
+        let binary = source.skybox?.[suffix];
+        if (!binary) {
+          if (!skyboxBaseUrl) {
+            throw new WorldviewError('invalid-data', `skybox ${suffix} has no source`);
+          }
+          binary = sourceBelow(skyboxBaseUrl, basename);
+        }
+        const bytes = await readBinarySource(binary, 'skybox', candidate, context);
         return [suffix, decodeTga(bytes)] as const;
       }),
     );
@@ -184,13 +181,14 @@ async function loadSkybox(
     };
     const first = sides.rt;
     if (
-      !skyboxSuffixes.every(
-        (suffix) => sides[suffix].width === first.width && sides[suffix].height === first.height,
+      !plan.skybox.faces.every(
+        ({ suffix }) =>
+          sides[suffix].width === first.width && sides[suffix].height === first.height,
       )
     ) {
       throw new WorldviewError('invalid-data', 'skybox faces must have matching dimensions');
     }
-    return { value: { name: world.skyName, sides }, warnings: [] };
+    return { value: { name: plan.skybox.name, sides }, warnings: [] };
   } catch (error) {
     if (context.signal.aborted) throw error;
     return {
@@ -198,7 +196,7 @@ async function loadSkybox(
       warnings: [
         {
           code: 'missing-skybox',
-          message: `skybox ${world.skyName} could not be loaded: ${errorMessage(error)}`,
+          message: `skybox ${plan.skybox.name} could not be loaded: ${errorMessage(error)}`,
         },
       ],
     };
@@ -218,12 +216,12 @@ function explicitWadCandidates(source: WorldSource): readonly WadCandidate[] {
 }
 
 async function referencedWadCandidates(
-  world: ParsedWorld,
+  plans: readonly WorldWadAssetPlan[],
   source: WorldSource,
   context: LoadAssetContext,
 ): Promise<AssetStage<readonly WadCandidate[]>> {
   const resolved = await Promise.all(
-    world.wadReferences.map(async (reference) => {
+    plans.map(async ({ reference, candidates: plannedCandidates }) => {
       let resolverSource: BinarySource | undefined;
       let warning: WarningDetail | undefined;
       if (source.resolveWad) {
@@ -241,11 +239,14 @@ async function referencedWadCandidates(
       if (resolverSource) {
         candidates.push({ source: resolverSource, label: `resolved ${reference.basename}` });
       }
-      if (source.wadBaseUrl) {
-        candidates.push({
-          source: wadUrl(source.wadBaseUrl, reference),
-          label: reference.basename,
-        });
+      const wadBaseUrl = source.wadBaseUrl;
+      if (wadBaseUrl) {
+        candidates.push(
+          ...plannedCandidates.map((candidate) => ({
+            source: wadUrl(wadBaseUrl, candidate),
+            label: candidate,
+          })),
+        );
       }
       return { candidates, warning };
     }),
@@ -282,7 +283,13 @@ async function loadWadCandidates(
           candidate.label,
           candidateContext,
         );
-        return { wad: parseWad(bytes) };
+        const wad = parseWad(bytes);
+        return {
+          wad,
+          warnings: wad.warnings.map(
+            (warning): WarningDetail => ({ code: 'asset-warning', message: warning.message }),
+          ),
+        };
       } catch (error) {
         if (context.signal.aborted) throw error;
         return {
@@ -299,9 +306,14 @@ async function loadWadCandidates(
       }
     }),
   );
+  const warnings: WarningDetail[] = [];
+  for (const result of results) {
+    warnings.push(...(result.warnings ?? []));
+    if (result.warning) warnings.push(result.warning);
+  }
   return {
     value: results.flatMap((result) => (result.wad ? [result.wad] : [])),
-    warnings: results.flatMap((result) => (result.warning ? [result.warning] : [])),
+    warnings,
   };
 }
 
@@ -392,6 +404,7 @@ export async function loadWorldAssets(
       total: bspBytes.byteLength,
     });
     const world = parseBsp(bspBytes);
+    const assetPlan = planWorldAssets(world);
     loadContext.progress({
       phase: 'parse',
       label: 'BSP',
@@ -399,31 +412,33 @@ export async function loadWorldAssets(
       total: bspBytes.byteLength,
     });
     const gameAssets = new GameAssetLoader(resolvedSource, loadContext);
-    const referencedWadsPromise = referencedWadCandidates(world, resolvedSource, loadContext).then(
-      async (candidates) => {
-        wadProgress.total = explicitWadSources.length + candidates.value.length;
-        loadContext.progress({
-          phase: 'wad',
-          label: 'WAD files',
-          loaded: wadProgress.completed,
-          total: wadProgress.total,
-          phaseProgress: { completed: wadProgress.completed, total: wadProgress.total },
-        });
-        const loaded = await loadWadCandidates(candidates.value, loadContext, wadProgress);
-        return {
-          value: loaded.value,
-          warnings: [...candidates.warnings, ...loaded.warnings],
-        } satisfies AssetStage<readonly ParsedWad[]>;
-      },
-    );
+    const referencedWadsPromise = referencedWadCandidates(
+      assetPlan.wads,
+      resolvedSource,
+      loadContext,
+    ).then(async (candidates) => {
+      wadProgress.total = explicitWadSources.length + candidates.value.length;
+      loadContext.progress({
+        phase: 'wad',
+        label: 'WAD files',
+        loaded: wadProgress.completed,
+        total: wadProgress.total,
+        phaseProgress: { completed: wadProgress.completed, total: wadProgress.total },
+      });
+      const loaded = await loadWadCandidates(candidates.value, loadContext, wadProgress);
+      return {
+        value: loaded.value,
+        warnings: [...candidates.warnings, ...loaded.warnings],
+      } satisfies AssetStage<readonly ParsedWad[]>;
+    });
     const palettePromise =
-      explicitPalettePromise ?? loadDerivedPalette(world, resolvedSource, gameAssets, loadContext);
+      explicitPalettePromise ?? loadDerivedPalette(world, assetPlan, gameAssets);
     const [palette, spriteAssets, soundAssets, skybox, explicitWads, referencedWads] =
       await Promise.all([
         palettePromise,
-        loadSpriteAssets(world, resolvedSource, loadContext),
-        loadSoundAssets(world, resolvedSource, loadContext),
-        loadSkybox(world, resolvedSource, gameAssets, loadContext),
+        loadSpriteAssets(world, assetPlan.sprites, resolvedSource, loadContext),
+        loadSoundAssets(world, assetPlan.sounds, resolvedSource, loadContext),
+        loadSkybox(world, assetPlan, resolvedSource, gameAssets, loadContext),
         explicitWadsPromise,
         referencedWadsPromise,
       ]);
@@ -433,7 +448,7 @@ export async function loadWorldAssets(
     };
     const textures =
       world.format === 'quake2-bsp38'
-        ? await loadQuake2MaterialTextures(world, palette, gameAssets, loadContext)
+        ? await loadQuake2MaterialTextures(assetPlan.textures, palette, gameAssets, loadContext)
         : resolveTextures(world, wads.value, palette, loadContext);
     const baseWarnings: WarningDetail[] =
       world.envSounds.length > 0 && !world.trace

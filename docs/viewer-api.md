@@ -77,6 +77,11 @@ The resolver receives paths such as `pics/colormap.pcx`, `textures/e1u1/wall.wal
 `env/dusk1up.jpg`. It returns a `BinarySource`, or `null` when the asset is absent. The package does
 not mount PAK or PK3 archives itself.
 
+Asset services can inspect formats and ask for the exact candidate paths the viewer will use
+through the renderer-free `@jackharrhy/worldview/core` entrypoint. See the
+[format core guide](./format-core.md) for `identifyBsp()`, `parseBspTextures()`, strengthened WAD
+records, and `planWorldAssets()`.
+
 ## Capture a map overview
 
 `captureOverview()` renders a top-down image without moving the live camera:

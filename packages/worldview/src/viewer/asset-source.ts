@@ -1,9 +1,9 @@
 import {
   asArrayBuffer,
+  normalizeGameAssetPath,
   WorldviewError,
   type SoundReference,
   type SpriteReference,
-  type WadReference,
 } from '../core/index.js';
 import type { BinarySource, FetchLike, ProgressDetail, WorldSource } from './types.js';
 
@@ -87,21 +87,8 @@ export function sourceBelow(base: string | URL, path: string): URL {
   return new URL(path, assetDirectory(base));
 }
 
-export function wadUrl(base: string | URL, reference: WadReference): URL {
-  return new URL(encodeURIComponent(reference.basename), assetDirectory(base));
-}
-
-export function normalizeGameAssetPath(path: string): string {
-  const normalized = path.replaceAll('\\', '/').replace(/^\.\//u, '');
-  const parts = normalized.split('/');
-  if (
-    !normalized ||
-    normalized.startsWith('/') ||
-    parts.some((part) => !part || part === '.' || part === '..')
-  ) {
-    throw new WorldviewError('invalid-data', `unsafe game asset path: ${path}`);
-  }
-  return parts.join('/').toLowerCase();
+export function wadUrl(base: string | URL, basename: string): URL {
+  return new URL(encodeURIComponent(basename), assetDirectory(base));
 }
 
 function safeAssetUrl(base: string | URL, path: string): URL {

@@ -1,4 +1,5 @@
 import { BinaryView } from './binary.js';
+import { BSP38_VERSION, isBsp38Magic, QBSP_MAGIC } from './bsp-identification.js';
 import {
   bspRecordCount,
   checkedBspProduct,
@@ -25,10 +26,7 @@ import type {
   Vec3Tuple,
 } from './types.js';
 
-const IBSP_MAGIC = 0x50534249;
-const QBSP_MAGIC = 0x50534251;
 const BSPX_MAGIC = 0x58505342;
-const BSP38_VERSION = 38;
 const LUMP_COUNT = 19;
 const HEADER_SIZE = 8 + LUMP_COUNT * 8;
 const BSPX_HEADER_SIZE = 8;
@@ -144,10 +142,6 @@ function surfaceUsesLightmap(flags: number): boolean {
     (flags & (Q2_SURF_SKY | Q2_SURF_WARP | Q2_SURF_TRANS33 | Q2_SURF_TRANS66 | Q2_SURF_NODRAW)) ===
     0
   );
-}
-
-export function isBsp38Magic(value: number): boolean {
-  return value === IBSP_MAGIC || value === QBSP_MAGIC;
 }
 
 function findBspxLump(

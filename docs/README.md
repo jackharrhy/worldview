@@ -10,6 +10,7 @@ Each document has one job. Link to the owner instead of copying its contents int
 | Unfinished work and acceptance criteria         | [Backlog](./cleanup-plan.md)                    |
 | Current editor behavior                         | [Editor capabilities](./editor-capabilities.md) |
 | Published viewer usage                          | [Viewer API](./viewer-api.md)                   |
+| Reusable BSP, WAD, and asset-planning APIs      | [Format core](./format-core.md)                 |
 
 ## Focused architecture contracts
 
@@ -37,6 +38,8 @@ in the backlog.
   intentional differences.
 - [Quake II compatibility](./quake2-compatibility.md): source, BSP38, asset, and corpus evidence.
 - [Viewer API](./viewer-api.md): consumer installation and examples.
+- [Format core](./format-core.md): renderer-free BSP identification, texture and WAD inspection,
+  and external asset planning.
 
 ## Operations and local setup
 

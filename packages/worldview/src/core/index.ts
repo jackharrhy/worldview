@@ -1,4 +1,5 @@
 export { asArrayBuffer, BinaryView } from './binary.js';
+export { normalizeGameAssetPath } from './asset-path.js';
 export { cameraRight, perspectiveForward } from './camera.js';
 export { bspPlayerProfile } from './player-profile.js';
 export {
@@ -25,6 +26,8 @@ export {
   type SoundReference,
 } from './audio.js';
 export { parseBsp, type ParseBspOptions } from './bsp.js';
+export { identifyBsp, type BspIdentification } from './bsp-identification.js';
+export { parseBspTextures, type ParsedBspTextures } from './bsp-textures.js';
 export {
   entityValue,
   parseEntities,
@@ -50,6 +53,19 @@ export {
 } from './lightmaps.js';
 export { classifyMaterial } from './materials.js';
 export {
+  planWorldAssets,
+  type PlanWorldAssetsOptions,
+  type WorldAssetPlan,
+  type WorldPaletteAssetPlan,
+  type WorldSkyboxAssetPlan,
+  type WorldSkyboxFaceAssetPlan,
+  type WorldSkyboxSuffix,
+  type WorldSoundAssetPlan,
+  type WorldSpriteAssetPlan,
+  type WorldTextureAssetPlan,
+  type WorldWadAssetPlan,
+} from './world-assets.js';
+export {
   createGoldSrcMovementState,
   DEFAULT_GOLDSRC_MOVEMENT,
   moveGoldSrcPlayer,
@@ -72,11 +88,14 @@ export {
 } from './miptex.js';
 export {
   findMipTexture,
+  identifyWad,
   parseWad,
   WAD2_MIPTEX,
   WAD3_MIPTEX,
   type ParsedWad,
+  type WadIdentification,
   type WadLump,
+  type WadWarning,
 } from './wad.js';
 export {
   decodeWalTexture,
