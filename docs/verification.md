@@ -29,6 +29,34 @@ The root `package.json` remains the canonical command list; `npm run test:editor
 workspaces, while `npm run test:browser:editor` builds their dependencies and runs the complete
 editor Playwright directory serially.
 
+## Architecture contracts
+
+Run the architecture gate directly while changing package or ownership boundaries:
+
+```sh
+npm run check:architecture
+```
+
+Every failure links to its governing section in [the architecture plan](./plan.md). The gate keeps
+the checks intentionally structural:
+
+| Contract                                                             | Evidence                                                                 |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| GPU-independent viewer and editor cores                              | A DOM-free TypeScript configuration plus source-boundary checks          |
+| Public workspace entrypoints and appropriate dependency declarations | Repository import-graph and lockfile checks                              |
+| No static runtime cycles between production modules or workspaces    | Repository import-graph checks; type-only and dynamic edges are excluded |
+| React confined to applications                                       | Manifest and production-source checks                                    |
+| Renderer direction and TypeGPU resource ownership                    | Repository renderer checks plus the focused editor frame check           |
+| Lightweight public routes and isolated hosted-service routes         | Source and production route-graph checks                                 |
+| Session, presenter, DOM, and retained-renderer ownership             | Focused editor architecture checks                                       |
+| Production and named coordination-module ceilings                    | Repository and editor line ceilings                                      |
+
+Licensing, provenance, and whether a new abstraction preserves product intent remain human review
+responsibilities: syntax cannot establish where an algorithm or game asset came from. Review
+`THIRD_PARTY_NOTICES.md`, focused source comments, fixture licensing, and package contents whenever
+those areas change. Behavioral authority—authorization, `MapCell` persistence, undo, rendering,
+and collaboration—belongs in domain and browser tests rather than static architecture rules.
+
 ## Browser editor
 
 ```sh

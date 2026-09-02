@@ -1,6 +1,6 @@
 import { d } from 'typegpu';
 
-import { sceneLayout } from '../render/schemas.js';
+import { sceneLayout } from './schemas.js';
 
 interface WalkabilityVertexInput {
   readonly position: d.v3f;

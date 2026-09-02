@@ -48,9 +48,9 @@ import {
 } from './viewport-gesture-controllers.js';
 import { FlyCameraController } from './viewport/fly-camera-controller.js';
 import type { EditorRenderTheme } from './theme.js';
-import { d, type TgpuBindGroup, type TgpuRoot, type TgpuUniform } from 'typegpu';
+import { d, type TgpuBindGroup, type TgpuRoot, type TgpuTexture, type TgpuUniform } from 'typegpu';
 import { editorSceneLayout, SceneUniform } from './gpu-schemas.js';
-import { EDITOR_SAMPLE_COUNT } from './renderer-gpu.js';
+import { createViewportRenderTargets } from './viewport-render-targets.js';
 export abstract class ViewportBase {
   protected abstract connectInput(): void;
   protected abstract cancelDrag(): void;
@@ -66,8 +66,8 @@ export abstract class ViewportBase {
   protected coordinateSystem: GPUBuffer;
   protected coordinateSystemCount: number;
   protected readonly state: ViewportState;
-  protected depth: GPUTexture | null = null;
-  protected color: GPUTexture | null = null;
+  protected depth: TgpuTexture | null = null;
+  protected color: TgpuTexture | null = null;
   protected width = 0;
   protected height = 0;
   protected scaleOverlayScene: SceneBuffers['toolPreviews'] | null = null;
@@ -417,7 +417,7 @@ export abstract class ViewportBase {
       label: `Worldview ${this.kind} viewport`,
       colorAttachments: [
         {
-          view: this.color.createView(),
+          view: this.root.unwrap(this.color).createView(),
           resolveTarget: swapchainView,
           loadOp: 'clear',
           storeOp: 'store',
@@ -430,7 +430,7 @@ export abstract class ViewportBase {
         },
       ],
       depthStencilAttachment: {
-        view: this.depth.createView(),
+        view: this.root.unwrap(this.depth).createView(),
         depthLoadOp: 'clear',
         depthStoreOp: 'store',
         depthClearValue: 1,
@@ -621,24 +621,21 @@ export abstract class ViewportBase {
     const height = Math.max(1, Math.round(this.canvas.clientHeight * ratio));
     if (width === this.width && height === this.height) return;
     this.renderRequested = true;
-    this.width = width;
-    this.height = height;
+    const targets = createViewportRenderTargets(
+      this.root,
+      this.format,
+      width,
+      height,
+      `Worldview ${this.kind} viewport`,
+    );
     this.canvas.width = width;
     this.canvas.height = height;
     this.depth?.destroy();
     this.color?.destroy();
-    this.depth = this.root.device.createTexture({
-      size: [width, height],
-      format: 'depth24plus',
-      sampleCount: EDITOR_SAMPLE_COUNT,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    });
-    this.color = this.root.device.createTexture({
-      size: [width, height],
-      format: this.format,
-      sampleCount: EDITOR_SAMPLE_COUNT,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    });
+    this.depth = targets.depth;
+    this.color = targets.color;
+    this.width = width;
+    this.height = height;
   }
 
   protected projectionView(): Float32Array {

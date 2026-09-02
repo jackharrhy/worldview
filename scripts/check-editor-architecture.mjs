@@ -2,9 +2,10 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 
-const MAX_PRODUCTION_LINES = 1_000;
+const MAX_STYLESHEET_LINES = 1_000;
 const MAX_COMPOSITION_ROOT_LINES = 100;
 const MAX_APPLICATION_COMPOSITION_LINES = 350;
+const EDITOR_ARCHITECTURE_CONTRACT = 'docs/plan.md#editor-architecture';
 const roots = ['apps/editor/src', 'packages/worldview-editor/src'];
 const svgOwnershipAllowlist = new Set([
   // React owns the element; the focused UV renderer owns only this SVG's drawing children.
@@ -66,9 +67,11 @@ const files = (await Promise.all(roots.map(sourceFiles))).flat();
 const violations = [];
 for (const file of files) {
   const source = await readFile(file, 'utf8');
-  const lineCount = physicalLines(source);
-  if (lineCount > MAX_PRODUCTION_LINES) {
-    violations.push(`${file}: ${lineCount} lines (maximum ${MAX_PRODUCTION_LINES})`);
+  if (file.endsWith('.css')) {
+    const lines = physicalLines(source);
+    if (lines > MAX_STYLESHEET_LINES) {
+      violations.push(`${file}: ${lines} lines (maximum ${MAX_STYLESHEET_LINES})`);
+    }
   }
   if (
     /^packages\/worldview-editor\/src\/core\/session-(?:organization|selection|transforms|geometry|entities|objects|clipboard|materials|commits)\.ts$/.test(
@@ -233,16 +236,6 @@ for (const file of files) {
   }
   if (
     file.startsWith('packages/worldview-editor/src/render/') &&
-    /createShaderModule\s*\(|createPipelineLayout\s*\(|createBindGroupLayout\s*\(|(?:\bdevice|this\.device)\.createRenderPipeline(?:Async)?\s*\(|\/\*\s*wgsl\s*\*\//.test(
-      source,
-    )
-  ) {
-    violations.push(
-      `${file}: editor shaders, layouts, and pipelines must use the TypeGPU renderer boundary`,
-    );
-  }
-  if (
-    file.startsWith('packages/worldview-editor/src/render/') &&
     /\bdenseDocument\b|\breuse(?:World|Solid)Buffers\b/.test(source)
   ) {
     violations.push(
@@ -313,10 +306,10 @@ if (applicationCompositionLines > MAX_APPLICATION_COMPOSITION_LINES) {
 
 if (violations.length > 0) {
   console.error('Editor architecture limits failed:\n');
-  for (const violation of violations) console.error(`- ${violation}`);
+  for (const violation of violations) {
+    console.error(`- ${violation} (contract: ${EDITOR_ARCHITECTURE_CONTRACT})`);
+  }
   process.exitCode = 1;
 } else {
-  console.log(
-    `Editor architecture limits passed for ${files.length} production TS/CSS files (maximum ${MAX_PRODUCTION_LINES} lines).`,
-  );
+  console.log(`Editor-specific architecture contracts passed for ${files.length} source files.`);
 }

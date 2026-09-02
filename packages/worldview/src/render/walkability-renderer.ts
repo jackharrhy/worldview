@@ -1,10 +1,10 @@
 import type { TgpuBindGroup, TgpuRoot } from 'typegpu';
 
-import { RENDER_SAMPLE_COUNT } from '../render/constants.js';
-import { createGpuBuffer } from '../render/gpu-buffer.js';
-import type { WalkabilityMap, WalkabilityTraversal } from './types.js';
-import { walkabilityVertexLayout } from './schemas.js';
-import { walkabilityFragment, walkabilityVertex } from './shaders.js';
+import type { WalkabilityMap, WalkabilityTraversal } from '../walkability/types.js';
+import { RENDER_SAMPLE_COUNT } from './constants.js';
+import { createGpuBuffer } from './gpu-buffer.js';
+import { walkabilityVertexLayout } from './walkability-schemas.js';
+import { walkabilityFragment, walkabilityVertex } from './walkability-shaders.js';
 
 const FLOATS_PER_VERTEX = 7;
 

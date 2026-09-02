@@ -1,4 +1,5 @@
 import type { Bounds, MapBrush, Vec3 } from '../core/index.js';
+import { uploadFloatBuffer } from './gpu-buffer.js';
 
 export interface SolidBatch {
   readonly cacheKey: string;
@@ -88,12 +89,7 @@ function includeBounds(target: Bounds, source: Bounds): Bounds {
 }
 
 function upload(device: GPUDevice, data: Float32Array): GPUBuffer {
-  const buffer = device.createBuffer({
-    size: Math.max(4, data.byteLength),
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-  });
-  if (data.byteLength > 0) device.queue.writeBuffer(buffer, 0, data);
-  return buffer;
+  return uploadFloatBuffer(device, data, GPUBufferUsage.VERTEX, 'Worldview solid batch');
 }
 
 /** Collects material batches in stable world-space cells so viewports can frustum-cull dense maps. */

@@ -54,17 +54,19 @@ adapters or migrations unless a release explicitly promises otherwise.
 | `apps/collaboration-service`  | Portable Workers/Durable Objects map-room service                                                                      |
 | `apps/worldview-service`      | Same-origin application backend for auth, projects, resources, builds, and realtime admission                          |
 
-The following boundaries are enforced:
+The following boundaries are enforced by `npm run check:architecture`; the
+[verification guide](./verification.md#architecture-contracts) records the automated and human
+review boundary:
 
 - `packages/worldview/src/core` has no DOM, WebGPU, or TypeGPU imports.
 - `packages/worldview-editor/src/core` has no DOM imports.
 - Applications consume public package entrypoints instead of package internals.
 - React is an application dependency, not an editor-engine or viewer-core dependency.
 - TypeGPU owns schemas, shaders, pipelines, bindings, textures, and samplers. Raw WebGPU is limited
-  to command encoding and bulk immutable buffer upload.
+  to command encoding, canvas and capture interop, and explicit bulk buffer transfers.
 - npm workspaces and the committed `package-lock.json` define the dependency graph.
-- Hand-written TypeScript, TSX, and CSS under the editor app and package stay below the repository's
-  enforced file ceiling.
+- Production modules stay below the repository ceiling, with tighter limits for named coordination
+  roots. Hand-written TypeScript, TSX, and CSS under the editor app and package remain covered.
 
 ## Editor architecture
 

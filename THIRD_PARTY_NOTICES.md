@@ -91,3 +91,10 @@ Worldview's editor uses [`idb`](https://github.com/jakearchibald/idb) 8.0.3 for 
 connection, transactions, and upgrades. `idb` is distributed under the ISC License. Persistence
 tests use [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB) 6.2.5, distributed under
 the Apache License 2.0. Their package distributions retain their license texts.
+
+## Architecture tooling
+
+Worldview uses [`oxc-parser`](https://github.com/oxc-project/oxc) 0.143.0 to read TypeScript and
+TSX module edges for repository architecture checks. Oxc is distributed under the MIT License;
+its package distribution retains the license text. Copyright VoidZero Inc., Boshen, and Oxc
+contributors.

@@ -16,27 +16,6 @@ belong in [the architecture plan](./plan.md); delivered editor behavior belongs 
 - This project is pre-1.0. Change contracts atomically instead of adding legacy shims.
 - Remove an item only after its acceptance criteria and focused verification pass.
 
-## Structural cleanup
-
-Work from the top unless another item is explicitly chosen.
-
-| ID  | Status | Workstream                       | Dependency                              |
-| --- | ------ | -------------------------------- | --------------------------------------- |
-| C11 | Ready  | Broader architecture enforcement | Encode boundaries only after they exist |
-
-### C11: Architecture enforcement
-
-Existing checks cover editor DOM ownership, TypeGPU, package entrypoints, route isolation, and file
-ceilings, but not every established boundary.
-
-- Add checks for renderer packages, the viewer app, hosted service, dependency cycles, and
-  coordination-file complexity.
-- Keep exceptions narrow, documented, and actionable.
-- Reject architectural violations, not harmless implementation details.
-
-Done when each durable invariant in [the architecture plan](./plan.md) is enforced automatically or
-has a documented review reason, and each failure names the governing contract.
-
 ## Hosted product
 
 ### H1: Hosted project workflows

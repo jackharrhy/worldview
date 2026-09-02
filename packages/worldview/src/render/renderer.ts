@@ -7,7 +7,7 @@ import {
   type Vec3Tuple,
 } from '../core/index.js';
 import type { WalkabilityCutawayGrid, WalkabilityMap } from '../walkability/index.js';
-import { TypeGpuWalkabilityRenderer } from '../walkability/renderer.js';
+import { TypeGpuWalkabilityRenderer } from './walkability-renderer.js';
 import type { RenderWorldAssets } from './assets.js';
 import { TypeGpuSpriteRenderer } from './sprite-renderer.js';
 import type { CameraState, TextureFiltering } from './types.js';

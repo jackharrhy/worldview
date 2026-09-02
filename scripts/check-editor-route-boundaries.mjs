@@ -1,11 +1,15 @@
 import { gzipSync } from 'node:zlib';
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+
+import { moduleReferences } from './lib/source-analysis.mjs';
+import { resolveRelativeSource } from './lib/source-graph.mjs';
 
 const repositoryRoot = process.cwd();
 const editorSourceRoot = path.join(repositoryRoot, 'apps/editor/src');
 const manifestPath = path.join(repositoryRoot, 'apps/editor/dist/.vite/manifest.json');
+const ROUTE_ARCHITECTURE_CONTRACT = 'docs/plan.md#react-and-routing';
 
 const sourceRoots = {
   bootstrap: 'apps/editor/src/main.tsx',
@@ -31,7 +35,9 @@ const forbiddenHomePaths = [
 ];
 
 function fail(message) {
-  console.error(`Editor route boundary failed: ${message}`);
+  console.error(
+    `Editor route boundary failed: ${message} (contract: ${ROUTE_ARCHITECTURE_CONTRACT})`,
+  );
   process.exitCode = 1;
 }
 
@@ -39,58 +45,10 @@ function repositoryPath(filename) {
   return path.relative(repositoryRoot, filename).split(path.sep).join('/');
 }
 
-function staticValueImports(source) {
-  const imports = [];
-  for (const match of source.matchAll(/^\s*import\s*['"]([^'"]+)['"]\s*;?/gm)) {
-    imports.push(match[1]);
-  }
-  for (const match of source.matchAll(/^\s*import\s+([^;]+?)\s+from\s+['"]([^'"]+)['"]\s*;/gm)) {
-    const clause = match[1].trim();
-    if (clause.startsWith('type ')) continue;
-    if (
-      clause.startsWith('{') &&
-      clause
-        .slice(1, clause.lastIndexOf('}'))
-        .split(',')
-        .filter(Boolean)
-        .every((specifier) => specifier.trim().startsWith('type '))
-    ) {
-      continue;
-    }
-    imports.push(match[2]);
-  }
-  for (const match of source.matchAll(
-    /^\s*export\s+(?!type\b)[^;]+?\s+from\s+['"]([^'"]+)['"]\s*;/gm,
-  )) {
-    imports.push(match[1]);
-  }
-  return imports;
-}
-
 function staticCssImports(source) {
   return [...source.matchAll(/@import\s+(?:url\()?['"]([^'"]+)['"]\)?\s*;/g)].map(
     (match) => match[1],
   );
-}
-
-async function resolveRelativeImport(importer, specifier) {
-  const unresolved = path.resolve(path.dirname(importer), specifier);
-  const base = unresolved.replace(/\.(?:c|m)?js$/, '');
-  const candidates = [
-    unresolved,
-    `${base}.ts`,
-    `${base}.tsx`,
-    path.join(base, 'index.ts'),
-    path.join(base, 'index.tsx'),
-  ];
-  for (const candidate of candidates) {
-    try {
-      if ((await stat(candidate)).isFile()) return candidate;
-    } catch {
-      // Try the next TypeScript source candidate.
-    }
-  }
-  return null;
 }
 
 async function collectStaticSourceGraph(entryFiles) {
@@ -104,13 +62,15 @@ async function collectStaticSourceGraph(entryFiles) {
     const source = await readFile(filename, 'utf8');
     const specifiers = filename.endsWith('.css')
       ? staticCssImports(source)
-      : staticValueImports(source);
+      : moduleReferences(filename, source)
+          .filter(({ dynamic, runtime }) => runtime && !dynamic)
+          .map(({ specifier }) => specifier);
     for (const specifier of specifiers) {
       if (!specifier.startsWith('.')) {
         packages.add(specifier);
         continue;
       }
-      const resolved = await resolveRelativeImport(filename, specifier);
+      const resolved = await resolveRelativeSource(filename, specifier, files);
       if (resolved) pending.push(resolved);
     }
   }

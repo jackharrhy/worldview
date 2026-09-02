@@ -5,7 +5,7 @@
 
 import type { TgpuBindGroup } from 'typegpu';
 
-import { TypeGpuWalkabilityRenderer } from '../walkability/renderer.js';
+import { TypeGpuWalkabilityRenderer } from './walkability-renderer.js';
 import { TypeGpuSpriteRenderer } from './sprite-renderer.js';
 import type { CameraState } from './types.js';
 import type { WorldFramePlan } from './world-frame-plan.js';
