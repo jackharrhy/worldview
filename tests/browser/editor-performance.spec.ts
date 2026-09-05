@@ -40,8 +40,27 @@ test.describe('recorded dependable-solo performance gate', () => {
     page,
   }, testInfo) => {
     test.setTimeout(90_000);
+    const renderErrors: string[] = [];
+    page.on('pageerror', (error) => renderErrors.push(error.message));
+    page.on('console', (message) => {
+      if (
+        ['error', 'warning'].includes(message.type()) &&
+        /WebGPU|GPUDevice|GPUValidation|createBuffer|Invalid CommandBuffer|\[Queue\]/i.test(
+          message.text(),
+        )
+      )
+        renderErrors.push(message.text());
+    });
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.addInitScript(() => {
+      const gpu = { submittedFrames: 0, queue: null as GPUQueue | null };
+      Object.assign(window, { worldviewGpuPerformance: gpu });
+      const submit = GPUQueue.prototype.submit;
+      GPUQueue.prototype.submit = function (buffers) {
+        submit.call(this, buffers);
+        gpu.submittedFrames += 1;
+        gpu.queue = this;
+      };
       interface SiteTool {
         readonly name: string;
         execute(input: unknown): unknown | Promise<unknown>;
@@ -67,6 +86,13 @@ test.describe('recorded dependable-solo performance gate', () => {
     });
     await page.goto('http://127.0.0.1:5174/editor');
     await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
+    await expect(page.locator('.viewport-error')).toBeHidden();
+    const adapterInfo = await page.evaluate(async () => {
+      const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+      if (!adapter) throw new Error('Performance verification requires a WebGPU adapter');
+      const { vendor, architecture, device, description } = adapter.info;
+      return { vendor, architecture, device, description };
+    });
     await page.evaluate(() => {
       Object.assign(window, { worldviewLoadStarted: performance.now() });
     });
@@ -226,6 +252,9 @@ test.describe('recorded dependable-solo performance gate', () => {
 
     await page.evaluate(() => {
       const state = { previous: 0, samples: [] as number[] };
+      (
+        window as typeof window & { worldviewGpuPerformance: { submittedFrames: number } }
+      ).worldviewGpuPerformance.submittedFrames = 0;
       Object.assign(window, { worldviewFrameSamples: state });
       const frame = (time: number) => {
         if (state.previous > 0) state.samples.push(time - state.previous);
@@ -259,9 +288,22 @@ test.describe('recorded dependable-solo performance gate', () => {
     );
     const orderedFrames = frameTimes.toSorted((left, right) => left - right);
     const p95FrameMilliseconds = orderedFrames[Math.floor(orderedFrames.length * 0.95)]!;
+    const submittedFrames = await page.evaluate(async () => {
+      const gpu = (
+        window as typeof window & {
+          worldviewGpuPerformance: { submittedFrames: number; queue: GPUQueue | null };
+        }
+      ).worldviewGpuPerformance;
+      if (!gpu.queue) throw new Error('No GPU frames were submitted');
+      await gpu.queue.onSubmittedWorkDone();
+      return gpu.submittedFrames;
+    });
     const report = {
       brushCount,
       performanceEnvelope,
+      adapterInfo,
+      renderErrors,
+      submittedFrames,
       viewport: await page.viewportSize(),
       devicePixelRatio: await page.evaluate(() => devicePixelRatio),
       loadMilliseconds,
@@ -297,6 +339,9 @@ test.describe('recorded dependable-solo performance gate', () => {
     });
     const metrics = JSON.stringify(report);
 
+    expect(renderErrors, metrics).toEqual([]);
+    expect(submittedFrames, metrics).toBeGreaterThan(30);
+    await expect(page.locator('.viewport-error')).toBeHidden();
     expect(report.devicePixelRatio, metrics).toBe(1);
     expect(loadMilliseconds, metrics).toBeLessThan(performanceEnvelope.loadMilliseconds);
     expect(selectionResult.milliseconds, metrics).toBeLessThan(

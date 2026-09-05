@@ -1,6 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
-const performanceChromiumArguments = ['--enable-unsafe-webgpu', '--enable-features=WebGPU'];
+const performanceChromiumArguments = [
+  '--enable-unsafe-webgpu',
+  ...(process.platform === 'linux'
+    ? ['--enable-features=Vulkan', '--use-angle=vulkan', '--disable-vulkan-surface']
+    : ['--enable-features=WebGPU']),
+];
 
 // Chromium's own GPU tests use its software Vulkan adapter on headless Linux hosts. Supplying
 // ANGLE's SwiftShader flag alone exposes navigator.gpu but destroys the device during pipeline

@@ -420,7 +420,8 @@ export abstract class ViewportBase {
           view: this.root.unwrap(this.color).createView(),
           resolveTarget: swapchainView,
           loadOp: 'clear',
-          storeOp: 'store',
+          // Only the resolved canvas survives this pass; the multisampled attachment is transient.
+          storeOp: 'discard',
           clearValue: {
             r: clearColor[0],
             g: clearColor[1],
@@ -432,7 +433,7 @@ export abstract class ViewportBase {
       depthStencilAttachment: {
         view: this.root.unwrap(this.depth).createView(),
         depthLoadOp: 'clear',
-        depthStoreOp: 'store',
+        depthStoreOp: 'discard',
         depthClearValue: 1,
       },
     });

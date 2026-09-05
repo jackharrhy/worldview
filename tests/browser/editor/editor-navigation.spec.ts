@@ -150,6 +150,28 @@ test.describe('Editor navigation and contextual actions', () => {
     await expect(page.locator('#document-revision')).toHaveText('0');
   });
 
+  test('refreshes the paste destination when a perspective camera drag ends', async ({ page }) => {
+    await openEditor(page);
+    const brushPoint = await perspectivePoint(page, 0.5, 0.58);
+    await page.mouse.click(brushPoint.x, brushPoint.y);
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+
+    const point = await perspectivePoint(page, 0.8, 0.2);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(point.x + 40, point.y + 20, { steps: 8 });
+    await page.mouse.up({ button: 'right' });
+    // Paste immediately, without another hover event to refresh the surface pick.
+    await page.keyboard.press('Control+v');
+    const releaseBounds = await page.locator('#brush-bounds').textContent();
+    await page.keyboard.press('Control+z');
+
+    await page.mouse.move(point.x + 41, point.y + 20);
+    await page.mouse.move(point.x + 40, point.y + 20);
+    await page.keyboard.press('Control+v');
+    await expect(page.locator('#brush-bounds')).toHaveText(releaseBounds!);
+  });
+
   test('keeps perspective grid lines fine when they cross the near plane', async ({ page }) => {
     await openEditor(page, { empty: true });
     const canvas = page.getByLabel('Perspective map viewport');

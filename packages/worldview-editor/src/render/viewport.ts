@@ -258,6 +258,10 @@ export class Viewport extends ViewportPointerMove {
         ) {
           this.interaction.selectTopology(null, event.ctrlKey || event.metaKey);
         }
+        if (drag.cameraMode && drag.moved >= 5) {
+          const pointerPosition = this.pointerPositionAt(event.clientX, event.clientY);
+          if (pointerPosition) this.interaction.pointerPosition(pointerPosition);
+        }
         this.removeHandleLasso();
         this.clearInteractionState();
         if (!drag.pivotMoving) this.hideTransformReadout();

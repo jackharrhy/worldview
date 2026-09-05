@@ -29,9 +29,13 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
     this.canvas.addEventListener(
       'pointermove',
       (event) => {
-        const pointerPosition = this.pointerPositionAt(event.clientX, event.clientY);
-        if (pointerPosition) this.interaction.pointerPosition(pointerPosition);
         const drag = this.dragState;
+        // Camera drags need no surface pick or collaboration cursor update on every mouse sample.
+        // Refresh the editing cursor once on release, using the resulting camera.
+        if (!drag?.cameraMode) {
+          const pointerPosition = this.pointerPositionAt(event.clientX, event.clientY);
+          if (pointerPosition) this.interaction.pointerPosition(pointerPosition);
+        }
         const routed = this.gestures.update(event.pointerId, event);
         if (!drag || !routed) {
           const tool = this.interaction.currentTool();

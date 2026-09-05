@@ -283,6 +283,12 @@ Repository-wide test tiers and host requirements live in
 [the verification guide](./verification.md). GPU performance, local game corpora, and live celld
 recovery drills run explicitly on hosts that can provide meaningful evidence.
 
+Source viewport camera drags defer surface picking and collaboration cursor publication until
+release; the final camera refreshes the paste destination. Multisampled color and depth attachments
+are discarded after each resolved frame. Hardware performance verification records the adapter and
+GPU submissions and rejects renderer failures; Windows/GTX 1070 responsiveness still needs direct
+verification on the affected machine.
+
 The current user-visible result and its verification entrypoints are summarized in
 [editor capabilities](./editor-capabilities.md). Local viewer fixture setup belongs in the
 [development viewer README](../apps/viewer/README.md).

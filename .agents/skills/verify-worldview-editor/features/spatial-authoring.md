@@ -95,6 +95,10 @@ remain at the flown destination while yaw or pitch changes; a return toward the 
 a stale camera-anchor failure. Perspective look and Alt+right-button orbit use direct vertical
 controls: dragging upward raises pitch and dragging downward lowers it.
 
+Camera drags defer editing-cursor surface picks until release. After looking around, paste without
+another mouse move and compare its destination with a fresh hover at the same screen coordinate.
+This catches stale paste positions while keeping surface raycasts out of camera motion.
+
 For Shift-hover face targeting on a selected brush, capture the same perspective region before and
 after holding Shift and moving across a visible face. The prospective face must retain its existing
 texture and grid treatment and gain only an amber face boundary on top of the brush's otherwise red

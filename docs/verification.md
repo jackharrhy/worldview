@@ -77,7 +77,11 @@ npm run test:editor-performance
 ```
 
 It exercises an 8,000-brush fixture and records load, selection, transform, material, undo, frame
-cadence, and retained-scene invalidation. Its fixed envelope is deliberately broad enough for the
+cadence, actual GPU submissions, adapter identity, and retained-scene invalidation. It waits for
+submitted GPU work to finish and rejects page errors, GPU validation messages, and visible renderer
+failure. On Linux the hardware run explicitly uses Vulkan for ANGLE; ordinary browser verification
+continues to use SwiftShader. RAF cadence includes browser/compositor work and is not a GPU timing
+measurement. Its fixed envelope is deliberately broad enough for the
 project's older headless Xeon workstation and is recorded in every report. Use the attached
 measurements for hardware-specific comparisons instead of silently changing the fixture.
 
