@@ -41,17 +41,37 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Worldview collaboration
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: collaboration
+          pull: true
+          load: true
+          tags: worldview-celld:ci
+      - name: Verify collaboration persistence with the built image
+        run: npm run test:collaboration-celld-live
+        env:
+          CELLD_TEST_IMAGE: worldview-celld:ci
       - name: Extract container metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=main
+            type=raw,value=latest
       - name: Build and push Worldview
         uses: docker/build-push-action@v7
         with:
@@ -61,10 +81,9 @@ jobs:
             WORLDVIEW_COLLABORATION_ENDPOINT=${{ vars.WORLDVIEW_COLLABORATION_ENDPOINT }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      - name: Build and push Worldview collaboration
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          target: collaboration
-          push: true
-          tags: ghcr.io/${{ github.repository }}-celld:main
+      - name: Push the verified collaboration image
+        run: |
+          docker tag worldview-celld:ci ghcr.io/${{ github.repository }}-celld:main
+          docker tag worldview-celld:ci ghcr.io/${{ github.repository }}-celld:latest
+          docker push ghcr.io/${{ github.repository }}-celld:main
+          docker push ghcr.io/${{ github.repository }}-celld:latest

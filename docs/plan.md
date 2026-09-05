@@ -285,12 +285,12 @@ The ordered implementation work for additional formats lives only in
 
 ## Verification and provenance
 
-Collaboration deployment packages the Worker and Celld 0.4.0 in one application image that prepares
-Azurite and deploys the Worker before starting Celld. Azurite remains a separate persistent service;
-the one-shot bootstrap service and deployer image are retired from the deployment configuration.
-Radio's rollout and Newport's production cutover were verified on 2026-09-05. Both existing storage
-mounts were preserved, and the hosted map recovered unchanged across cutover and runtime restart;
-the procedure lives in [the collaboration deployment guide](./collaboration.md#newport-migration).
+Collaboration packages the Worker and the maintained Celld fork in one `:latest` application image.
+It diagnoses a SQLite object store and deploys the Worker before starting the runtime, without an
+Azurite or bootstrap container. Authoritative objects and disposable replicas occupy separate
+paths under the existing persistent Celld volume. The web/compiler service and its project data
+remain separate. The storage transition preserves MapCell identity and the browser protocol;
+see [the collaboration deployment notes](./collaboration.md#newport-migration).
 
 Repository-wide test tiers and host requirements live in
 [the verification guide](./verification.md). GPU performance, local game corpora, and live celld

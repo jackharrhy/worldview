@@ -104,86 +104,41 @@ a separate license review.
 ## Runtime and deployment
 
 `apps/collaboration-service` targets Workers/Durable Objects semantics and runs on Wrangler/workerd
-or celld 0.4.0. It provides one `MapCell` per map, private SQLite, RPC initialization/snapshot/submit,
-hibernating WebSockets, actor-bound sockets, persist-before-ack operations, and non-durable presence.
-Clients see no celld-specific types.
+or the maintained `jackharrhy/celld` fork. It provides one `MapCell` per map, private SQLite,
+RPC initialization/snapshot/submit, hibernating WebSockets, actor-bound sockets,
+persist-before-ack operations, and non-durable presence. Clients see no Celld-specific types.
 
-Local celld development persists beneath `apps/collaboration-service/.celld/dev`:
+Local development remains available through `npm run dev:collaboration:celld`.
+Production uses one `ghcr.io/jackharrhy/worldview-celld:latest` container (`Dockerfile` target
+`collaboration`), built with `ghcr.io/jackharrhy/celld:latest`. On each start it diagnoses the
+store, deploys its bundled Worker, and execs Celld. No Azurite or bootstrap container is needed.
+The web/compiler application stays separate and also publishes a `:latest` image.
 
-```sh
-npm run dev:collaboration:celld
-```
+The existing `/var/lib/celld` volume holds authoritative objects at
+`object-store/objects.sqlite3`; `state-sqlite` contains disposable replicas. The default bucket is
+`sqlite:///var/lib/celld/object-store/objects.sqlite3` with `CELLD_DURABILITY=bucket`.
+Run one runtime per store. Back up the authoritative SQLite database consistently, including its
+WAL when present; deleting a replica cache must never delete `object-store`.
 
-The collaboration deployment uses two containers: persistent loopback-only Azurite and the
-`ghcr.io/jackharrhy/worldview-celld:main` application image (`Dockerfile` target `collaboration`).
-On each start, the application idempotently creates/checks the Azurite **blob container**, runs
-`celld diagnose`, deploys its bundled Worker, and replaces its startup shell with Celld 0.4.0.
-Preparation failure prevents the runtime from starting; Compose retries through `unless-stopped`.
-Docker Compose owns the Azurite service and its health check; the application needs no Docker socket.
-The existing `deploy:collaboration:celld-azurite` command remains available for manual deployments.
+Traefik exposes only `/sync/maps/*`. The Worldview service mints short-lived signed map tickets
+after 4orm session and project-role authorization; the cell trusts the ticket principal and never
+client-supplied identity. Hosted project metadata and resource files remain in the web service's
+existing data volume. Collaboration has no R2 or asset binding.
 
-Newport shares Azurite's network namespace with Celld and routes only `/sync/maps/*` through
-Traefik. The Worldview service mints short-lived signed map
-tickets after 4orm session and project-role authorization; the cell trusts the ticket principal and
-never client-supplied identity.
-
-This is a suitable small single-host deployment, not a qualified fleet. Multi-node, object-store,
-recovery, upgrade, and hostile multi-tenant work is tracked in
-[the backlog](./cleanup-plan.md#h2-collaboration-fleet-hardening).
-
-Back up both `worldview_azurite` and `worldview_celld`. A future object-store adapter must not change
-the Worker or browser protocol.
+This is a single-host deployment. Fleet recovery and multi-host operation remain outside this
+configuration; related work is tracked in [the backlog](./cleanup-plan.md#h2-collaboration-fleet-hardening).
 
 ### Newport migration
 
-Newport completed the production cutover on 2026-09-05 using application commit `910394b` and infra
-commit `bdcb600`. Radio's prerequisite rollout was verified on Mug that day: both its
-application and Azurite containers were healthy, with application commit `86b52ba` and infra commit
-`4959eb4` merged. This satisfies [`CELLD-DEPLOYMENT-NOTE.md`](../CELLD-DEPLOYMENT-NOTE.md).
-CI now publishes `worldview-celld:main`
-instead of `worldview-celld-deployer:main`.
+The earlier 2026-09-05 rollout combined Worker preparation and runtime while retaining Azurite.
+The SQLite transition preserves that workflow and the `/var/lib/celld` mount. During its maintenance
+window, stop writers, retain consistent Azurite and runtime backups, copy the complete object
+namespace with the fork's verified migration tool, and start with a fresh `state-sqlite` directory.
+Compare every existing map's version, source hash, document, and checkpoints before resuming work.
+The preserved source snapshot is only a rollback point before new writes.
 
-Isolated Docker verification on 2026-09-05 built the new image, started it against fresh Azurite,
-initialized a map, acknowledged a WebSocket edit at map version 1, restarted the application
-container, and recovered the same edit after startup redeployed the Worker. Celld ran as PID 1.
-Production verification recovered the existing hosted map at version 145 with an identical
-snapshot hash after both cutover and a further runtime restart. The public site returned HTTP 200,
-and unauthenticated map requests returned 401. The obsolete bootstrap container was removed.
-
-The deployed image digest was
-`sha256:608b29736d220c2269d69c0887f71272411d5353d11210ad29a87f67e99a6cca`.
-A consistent backup, taken with both services stopped, is retained at
-`/mnt/terrabud/docker-data/newport/worldview-deploy-backup-20260905/storage.tar.gz`, alongside the
-previous Compose definition, image IDs, and map snapshot hash. Both original data mounts remain
-in use.
-
-For future cutovers, publish the new Worldview image, record the old
-runtime/deployer image digests for rollback, and take a consistent backup of the existing storage.
-Keep these bind mounts, bucket, and work-directory settings unchanged:
-
-- `/mnt/terrabud/docker-data/newport/worldview_azurite:/data`
-- `/mnt/terrabud/docker-data/newport/worldview_celld:/var/lib/celld`
-- `CELLD_BUCKET=az://worldview-celld` and `CELLD_WATCH=/var/lib/celld/state`
-- `./.runtime-secrets/worldview.env:/run/secrets/worldview.env:ro`
-
-From `/home/jack/infra/hosts/newport`, pull and recreate only the runtime:
-
-```sh
-docker compose pull worldview-celld
-docker compose up -d --no-deps worldview-celld
-docker compose logs --tail 100 worldview-celld
-```
-
-Azurite must already be healthy. Verify authorized map loading and a persisted edit across a runtime
-restart, then explicitly remove the obsolete bootstrap container:
-
-```sh
-docker rm newport-worldview-celld-bootstrap-1
-```
-
-Do not delete either storage directory or use a stack-wide orphan cleanup. For rollback, stop the
-new runtime, restore the previous Compose definition and recorded images, redeploy the previous
-Worker with its bootstrap service, and start the previous Celld runtime against the retained data.
+Routine updates use `docker compose pull` and recreate the existing service with `:latest`.
+`npm run deploy:collaboration:celld` remains available for an explicit deployment to `CELLD_BUCKET`.
 
 ## Verification
 

@@ -1,13 +1,13 @@
 #!/bin/sh
 set -eu
 
-# Keep preparation and the runtime on the same bucket, including legacy bare names.
-export CELLD_BUCKET="${CELLD_BUCKET:-az://worldview-celld}"
-case "$CELLD_BUCKET" in
-  az://*) ;;
-  *) CELLD_BUCKET="az://$CELLD_BUCKET" ;;
-esac
+# Authoritative objects and disposable replicas share the persistent volume,
+# but occupy separate directories so cache cleanup cannot remove the store.
+export CELLD_BIN="${CELLD_BIN:-celld}"
+export CELLD_BUCKET="${CELLD_BUCKET:-sqlite:///var/lib/celld/object-store/objects.sqlite3}"
+export CELLD_WATCH="${CELLD_WATCH:-/var/lib/celld/state-sqlite}"
+export CELLD_DURABILITY="${CELLD_DURABILITY:-bucket}"
 
-cd /app
-node scripts/deploy-celld-azurite.mjs
-exec "$CELLD_BIN" "$@"
+cd "$(dirname "$0")/.."
+node scripts/deploy-celld.mjs
+exec "$CELLD_BIN" --no-control-plane "$@"

@@ -113,9 +113,11 @@ npm run test:collaboration-celld-compat
 npm run test:collaboration-celld-live
 ```
 
-The live test needs Docker and host infrastructure. It starts or reuses loopback Azurite, deploys
-the real Worker through celld, submits a WebSocket operation, kills celld, removes local replica
-state, and requires recovery from blob storage.
+The live test uses `CELLD_BIN` with an isolated SQLite store and random loopback port. Set
+`CELLD_TEST_IMAGE` to test a built collaboration image through Docker instead. It deploys the
+real Worker, submits a WebSocket operation and checkpoint, kills Celld, removes local replica
+state, and verifies the exact map snapshot, checkpoint, and idempotent operation receipt from a
+fresh node. It creates only disposable fixture data.
 
 ## Test data
 

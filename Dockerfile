@@ -16,7 +16,7 @@ COPY apps/editor apps/editor
 COPY apps/worldview-service apps/worldview-service
 COPY apps/compiler-service apps/compiler-service
 COPY apps/collaboration-service apps/collaboration-service
-COPY scripts/deploy-celld-azurite.mjs scripts/deploy-celld-azurite.mjs
+COPY scripts/deploy-celld.mjs scripts/deploy-celld.mjs
 ARG WORLDVIEW_COLLABORATION_ENDPOINT
 ENV VITE_WORLDVIEW_COLLABORATION_ENDPOINT=$WORLDVIEW_COLLABORATION_ENDPOINT
 RUN npm run build -w @jackharrhy/worldview \
@@ -29,11 +29,10 @@ RUN npm run build -w @jackharrhy/worldview \
 FROM node:24-bookworm-slim AS collaboration
 WORKDIR /app
 ENV CELLD_BIN=/usr/local/bin/celld \
-    CELLD_BUCKET=az://worldview-celld \
-    CELLD_WATCH=/var/lib/celld/state \
-    AZURE_STORAGE_USE_EMULATOR=true \
-    AZURE_STORAGE_ACCOUNT_NAME=devstoreaccount1
-COPY --from=ghcr.io/denoland/celld:0.4.0 /usr/local/bin/celld /usr/local/bin/celld
+    CELLD_BUCKET=sqlite:///var/lib/celld/object-store/objects.sqlite3 \
+    CELLD_WATCH=/var/lib/celld/state-sqlite \
+    CELLD_DURABILITY=bucket
+COPY --from=ghcr.io/jackharrhy/celld:latest /usr/local/bin/celld /usr/local/bin/celld
 COPY --from=build /app /app
 COPY scripts/start-celld.sh scripts/start-celld.sh
 EXPOSE 8080
