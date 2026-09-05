@@ -61,10 +61,10 @@ jobs:
             WORLDVIEW_COLLABORATION_ENDPOINT=${{ vars.WORLDVIEW_COLLABORATION_ENDPOINT }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      - name: Build and push the celld deployment image
+      - name: Build and push Worldview collaboration
         uses: docker/build-push-action@v7
         with:
           context: .
-          target: collaboration-deployer
+          target: collaboration
           push: true
-          tags: ghcr.io/${{ github.repository }}-celld-deployer:main
+          tags: ghcr.io/${{ github.repository }}-celld:main
