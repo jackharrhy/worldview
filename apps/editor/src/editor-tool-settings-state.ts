@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview/runtime';
+import { EditorUiPort } from './editor-ui-port.js';
 
 export interface EditorToolSettingsSnapshot {
   readonly gridSize: number;
@@ -10,22 +10,15 @@ export interface EditorToolSettingsActions {
   setTextureLock(enabled: boolean): void;
 }
 
-export class EditorToolSettingsPort {
-  private readonly store = new SnapshotStore<EditorToolSettingsSnapshot>({
-    gridSize: 16,
-    textureLock: true,
-  });
-  private actions: EditorToolSettingsActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: EditorToolSettingsActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
-  }
-  public update(update: Partial<EditorToolSettingsSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class EditorToolSettingsPort extends EditorUiPort<
+  EditorToolSettingsSnapshot,
+  EditorToolSettingsActions
+> {
+  public constructor() {
+    super({
+      gridSize: 16,
+      textureLock: true,
+    });
   }
   public setGridSize(size: number): void {
     this.actions?.setGridSize(size);

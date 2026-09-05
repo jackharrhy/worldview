@@ -1,7 +1,7 @@
 import {
   EditorSession,
   createEmptyDocument,
-  type EditorSourceRenderer,
+  DEFAULT_SIMPLE_SHAPE_OPTIONS,
   type SweepTransform,
 } from '@jackharrhy/worldview-editor';
 import { describe, expect, it, vi } from 'vitest';
@@ -13,21 +13,30 @@ function sweepTransform(translation: readonly [number, number, number]): SweepTr
   return { translation, rotationDegrees: [0, 0, 0], scale: 1 };
 }
 
+function rendererCommands() {
+  return {
+    setDocument: vi.fn(),
+    setSweepCaps: vi.fn(),
+    setTool: vi.fn(),
+    setTransformPivot: vi.fn(),
+    commitHullBrush: vi.fn(() => false),
+    removeLastClipPoint: vi.fn(() => false),
+    clearHullPoints: vi.fn(() => false),
+  };
+}
+
 describe('EditorToolControllerRegistry', () => {
   it('owns tool activation and presentation without an EditorApplication', () => {
     const ui = createEditorShellState();
     const session = new EditorSession(createEmptyDocument());
-    const renderer = {
-      setTool: vi.fn(),
-      setTransformPivot: vi.fn(),
-    } as unknown as EditorSourceRenderer;
+    const renderer = rendererCommands();
     const state = {
       activeGridSize: 16,
       activeTool: 'select' as const,
       lastPointerPosition: null,
       renderer,
       session,
-      simpleShapeOptions: { kind: 'cylinder' as const, sides: 8, hollow: false },
+      simpleShapeOptions: { ...DEFAULT_SIMPLE_SHAPE_OPTIONS, kind: 'cylinder' as const },
       sweepCandidate: null,
       sweepDefaultTransform: sweepTransform([0, 0, 64]),
       sweepDragBase: null,
@@ -79,19 +88,14 @@ describe('EditorToolControllerRegistry', () => {
   it('runs the registered sweep enter and leave behavior', () => {
     const ui = createEditorShellState();
     const session = new EditorSession(createEmptyDocument());
-    const renderer = {
-      setDocument: vi.fn(),
-      setSweepCaps: vi.fn(),
-      setTool: vi.fn(),
-      setTransformPivot: vi.fn(),
-    } as unknown as EditorSourceRenderer;
+    const renderer = rendererCommands();
     const state = {
       activeGridSize: 16,
       activeTool: 'select' as const,
       lastPointerPosition: null,
       renderer,
       session,
-      simpleShapeOptions: { kind: 'cuboid' as const },
+      simpleShapeOptions: DEFAULT_SIMPLE_SHAPE_OPTIONS,
       sweepCandidate: null,
       sweepDefaultTransform: sweepTransform([0, 0, 64]),
       sweepDragBase: null,

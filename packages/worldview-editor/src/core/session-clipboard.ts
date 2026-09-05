@@ -14,20 +14,12 @@ import {
 } from './layers.js';
 import { formatEntityOrigin, parseEntityOrigin } from './point-entities.js';
 import { createObjectSelection } from './selection.js';
-import type {
-  BrushId,
-  EditorSelection,
-  EntityId,
-  IdFactory,
-  MapDocument,
-  MapEntity,
-  Vec3,
-} from './types.js';
+import type { BrushId, EntityId, IdFactory, MapDocument, MapEntity, Vec3 } from './types.js';
 import { brushesInDocument } from './types.js';
 import type { DocumentEditCandidate } from './session-common.js';
-import { SessionKernel } from './session-kernel.js';
+import type { SessionKernel } from './session-kernel.js';
 
-type SessionClipboardKernel = Pick<SessionKernel, 'document' | 'layerId' | 'selection'>;
+type SessionClipboardKernel = Readonly<Pick<SessionKernel, 'document' | 'layerId' | 'selection'>>;
 
 export interface SessionClipboardPorts {
   readonly commitDocumentCandidate: (candidate: DocumentEditCandidate) => void;
@@ -39,22 +31,6 @@ export class SessionClipboardCommands {
     private readonly ports: SessionClipboardPorts,
   ) {}
 
-  private get currentDocument(): MapDocument {
-    return this.kernel.document;
-  }
-
-  private get currentSelection(): EditorSelection | null {
-    return this.kernel.selection;
-  }
-
-  private get currentLayerId(): EditorLayerId {
-    return this.kernel.layerId;
-  }
-
-  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
-    this.ports.commitDocumentCandidate(candidate);
-  }
-
   /** Clones every object in a parseable clipboard map with fresh IDs as one document transaction. */
   public createPasteCandidate(
     clipboard: MapDocument,
@@ -62,33 +38,33 @@ export class SessionClipboardCommands {
     delta: Vec3 = [0, 0, 0],
     textureLock = true,
     targetGroupId: string | null = null,
-    targetLayerId: EditorLayerId = this.currentLayerId,
+    targetLayerId: EditorLayerId = this.kernel.layerId,
   ): DocumentEditCandidate | null {
     if (!delta.every(Number.isFinite)) throw new Error('Clipboard translation must be finite');
     const sourceWorldspawn = clipboard.entities.find(
       (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
     );
     if (!sourceWorldspawn) throw new Error('Clipboard map has no worldspawn entity');
-    const destinationWorldspawn = this.currentDocument.entities.find(
+    const destinationWorldspawn = this.kernel.document.entities.find(
       (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
     );
     if (!destinationWorldspawn) throw new Error('The map has no worldspawn entity');
     const destinationGroup = targetGroupId
-      ? deriveEditorGroups(this.currentDocument).find((group) => group.id === targetGroupId)
+      ? deriveEditorGroups(this.kernel.document).find((group) => group.id === targetGroupId)
       : null;
     if (targetGroupId && !destinationGroup) throw new Error(`Unknown group ${targetGroupId}`);
     const destinationLayer = targetGroupId
       ? null
-      : findEditorLayer(this.currentDocument, targetLayerId);
+      : findEditorLayer(this.kernel.document, targetLayerId);
     if (!targetGroupId && !destinationLayer) {
       throw new Error(
         targetLayerId === null ? 'Default Layer is missing' : `Unknown layer ${targetLayerId}`,
       );
     }
     const destinationBrushEntity = destinationGroup
-      ? this.currentDocument.entities.find((entity) => entity.id === destinationGroup.entityId)!
+      ? this.kernel.document.entities.find((entity) => entity.id === destinationGroup.entityId)!
       : destinationLayer?.id
-        ? this.currentDocument.entities.find((entity) => entity.id === destinationLayer.entityId)!
+        ? this.kernel.document.entities.find((entity) => entity.id === destinationLayer.entityId)!
         : destinationWorldspawn;
     const pointEntities = clipboard.entities.filter(
       (entity) =>
@@ -98,8 +74,8 @@ export class SessionClipboardCommands {
         !isEditorLayerEntity(entity),
     );
     const existingNumericGroupIds = [
-      ...deriveEditorGroups(this.currentDocument).map((group) => group.id),
-      ...deriveEditorLayers(this.currentDocument).flatMap((layer) => (layer.id ? [layer.id] : [])),
+      ...deriveEditorGroups(this.kernel.document).map((group) => group.id),
+      ...deriveEditorLayers(this.kernel.document).flatMap((layer) => (layer.id ? [layer.id] : [])),
     ]
       .map((id) => Number.parseInt(id, 10))
       .filter(Number.isFinite);
@@ -138,7 +114,7 @@ export class SessionClipboardCommands {
         return clone;
       });
     let after = insertBrushes(
-      this.currentDocument,
+      this.kernel.document,
       worldBrushes.map((brush, index) => ({
         entityId: destinationBrushEntity.id,
         insertionIndex: destinationBrushEntity.primitives.length + index,
@@ -193,7 +169,7 @@ export class SessionClipboardCommands {
       after = transformEditorGroupMetadata(after, pastedGroupId, translationAffineMatrix(delta));
     }
     after = normalizeSingleLinkedGroups(after);
-    after = { ...after, revision: this.currentDocument.revision + 1 };
+    after = { ...after, revision: this.kernel.document.revision + 1 };
     let selectionAfter = createObjectSelection(
       pastedBrushIds,
       pastedEntityIds,
@@ -208,10 +184,10 @@ export class SessionClipboardCommands {
     const count = pastedBrushIds.length + pastedEntityIds.length;
     return {
       label: count === 1 ? 'Paste object' : 'Paste objects',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter,
       document: after,
     };
@@ -223,7 +199,7 @@ export class SessionClipboardCommands {
     delta: Vec3 = [0, 0, 0],
     textureLock = true,
     targetGroupId: string | null = null,
-    targetLayerId: EditorLayerId = this.currentLayerId,
+    targetLayerId: EditorLayerId = this.kernel.layerId,
   ): boolean {
     const candidate = this.createPasteCandidate(
       clipboard,
@@ -234,7 +210,7 @@ export class SessionClipboardCommands {
       targetLayerId,
     );
     if (!candidate) return false;
-    this.commitDocumentCandidate(candidate);
+    this.ports.commitDocumentCandidate(candidate);
     return true;
   }
 }

@@ -4,13 +4,14 @@ import type {
   NativeCompilerResult,
 } from './compiler.js';
 import type { LaunchableBuild, NativeLaunchConfig } from './launch.js';
-import { z } from 'zod';
+import {
+  RemoteCompileRequestSchema,
+  MapLaunchRequestSchema,
+  type MapBuildCapabilities,
+  type RemoteLaunchRequest as NativeLaunchRequest,
+} from '@jackharrhy/worldview-editor/core';
 
-export interface NativeLaunchRequest {
-  readonly buildId: string;
-  readonly profileId: string;
-  readonly expectedDocumentRevision: number;
-}
+export type { RemoteLaunchRequest as NativeLaunchRequest } from '@jackharrhy/worldview-editor/core';
 
 export function originAllowed(
   origin: string | undefined,
@@ -25,28 +26,6 @@ export interface CompileRequestLimits {
   readonly maxAssetBase64Bytes: number;
 }
 
-const NativeCompilerRequestSchema = z.strictObject({
-  mapName: z.string().min(1).max(512),
-  mapText: z.string(),
-  quality: z.enum(['preview', 'final']),
-  expectedDocumentRevision: z.number().int().nonnegative(),
-  profileId: z.literal('default').optional(),
-  assets: z
-    .array(
-      z.strictObject({
-        name: z.string().min(1).max(4_096),
-        mediaType: z.string().min(1).max(256),
-        base64: z.string(),
-      }),
-    )
-    .optional(),
-}) satisfies z.ZodType<NativeCompilerRequest>;
-const NativeLaunchRequestSchema = z.strictObject({
-  buildId: z.string().min(1).max(256),
-  profileId: z.string().min(1).max(256),
-  expectedDocumentRevision: z.number().int().nonnegative(),
-});
-
 export function parseCompileRequest(
   value: unknown,
   limits: CompileRequestLimits = {
@@ -55,7 +34,7 @@ export function parseCompileRequest(
     maxAssetBase64Bytes: 32 * 1024 * 1024,
   },
 ): NativeCompilerRequest {
-  const parsed = NativeCompilerRequestSchema.safeParse(value);
+  const parsed = RemoteCompileRequestSchema.safeParse(value);
   if (!parsed.success) {
     if (parsed.error.issues.some((issue) => issue.path[0] === 'profileId')) {
       throw new Error('Unknown compile profile');
@@ -63,6 +42,9 @@ export function parseCompileRequest(
     throw new Error('Request contains invalid compile fields');
   }
   const request = parsed.data;
+  if (request.profileId !== undefined && request.profileId !== 'default') {
+    throw new Error('Unknown compile profile');
+  }
   if (Buffer.byteLength(request.mapText) > limits.maxMapBytes) {
     throw new Error(`Map source exceeds the ${limits.maxMapBytes} byte limit`);
   }
@@ -78,7 +60,7 @@ export function parseCompileRequest(
 }
 
 export function parseLaunchRequest(value: unknown): NativeLaunchRequest {
-  const request = NativeLaunchRequestSchema.safeParse(value);
+  const request = MapLaunchRequestSchema.safeParse(value);
   if (!request.success) throw new Error('Request contains invalid launch fields');
   return request.data;
 }
@@ -87,16 +69,16 @@ export function helperCapabilities(
   compilerConfigured: boolean,
   game: CompilerGameProfile,
   launchProfile: NativeLaunchConfig | null,
-) {
+): MapBuildCapabilities {
   return {
-    protocolVersion: 1 as const,
+    protocolVersion: 1,
     compileProfiles: compilerConfigured
       ? [
           {
             id: 'default',
             label: game === 'quake2' ? 'Local q2tools-220' : 'Local ericw-tools',
             game,
-            qualities: ['preview', 'final'] as const,
+            qualities: ['preview', 'final'],
           },
         ]
       : [],
@@ -132,7 +114,7 @@ export class BoundedBuildHistory {
       bspBase64: bsp.base64,
     });
     while (this.builds.size > this.limit) {
-      const oldest = this.builds.keys().next().value as string | undefined;
+      const oldest = this.builds.keys().next().value;
       if (!oldest) break;
       this.builds.delete(oldest);
     }

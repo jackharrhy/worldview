@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview/runtime';
+import { EditorUiPort } from './editor-ui-port.js';
 
 export type EntityPropertyControlKind = 'text' | 'number' | 'boolean' | 'choices' | 'flags';
 
@@ -40,24 +40,17 @@ const EMPTY_ENTITY_INSPECTOR: EntityInspectorSnapshot = {
   properties: [],
 };
 
-export class EntityInspectorPort {
-  private readonly store = new SnapshotStore<EntityInspectorSnapshot>(EMPTY_ENTITY_INSPECTOR);
-  private actions: EntityInspectorActions | null = null;
-
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-
-  public bind(actions: EntityInspectorActions): void {
-    this.actions = actions;
+export class EntityInspectorPort extends EditorUiPort<
+  EntityInspectorSnapshot,
+  EntityInspectorActions
+> {
+  public constructor() {
+    super(EMPTY_ENTITY_INSPECTOR);
   }
 
-  public unbind(): void {
-    this.actions = null;
+  public override unbind(): void {
+    super.unbind();
     this.store.set(EMPTY_ENTITY_INSPECTOR);
-  }
-
-  public set(snapshot: EntityInspectorSnapshot): void {
-    this.store.set(snapshot);
   }
 
   public setProperty(key: string, value: string | null, protect = false): void {

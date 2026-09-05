@@ -26,10 +26,8 @@ import {
 } from './view-filters.js';
 import { selectedBrushIds, selectedPointEntityIds } from './selection.js';
 import type {
-  BrushId,
   EditorObjectViewState,
   EditorSelection,
-  EntityId,
   IdFactory,
   MapDocument,
   MapEntity,
@@ -42,29 +40,29 @@ import {
   type EditorRepeatableCommand,
   type ChangeListener,
 } from './session-common.js';
-import { SessionKernel } from './session-kernel.js';
+import type { SessionKernel } from './session-kernel.js';
 
-type SessionOrganizationKernel = Pick<
-  SessionKernel,
-  | 'discardRepeatableCommands'
-  | 'document'
-  | 'editingGroupId'
-  | 'hiddenBrushIds'
-  | 'hiddenEntityIds'
-  | 'history'
-  | 'layerId'
-  | 'linkedSyncIds'
-  | 'lockedBrushIds'
-  | 'lockedEntityIds'
-  | 'notify'
-  | 'repeatSequence'
-  | 'repeatableCommands'
-  | 'replaceDocument'
-  | 'selection'
-  | 'snapshotObjectViewState'
-  | 'subscribe'
-  | 'viewFilters'
->;
+type SessionOrganizationKernel = Readonly<Pick<SessionKernel, 'document'>> &
+  Pick<
+    SessionKernel,
+    | 'discardRepeatableCommands'
+    | 'editingGroupId'
+    | 'hiddenBrushIds'
+    | 'hiddenEntityIds'
+    | 'history'
+    | 'layerId'
+    | 'linkedSyncIds'
+    | 'lockedBrushIds'
+    | 'lockedEntityIds'
+    | 'notify'
+    | 'repeatSequence'
+    | 'repeatableCommands'
+    | 'replaceDocument'
+    | 'selection'
+    | 'snapshotObjectViewState'
+    | 'subscribe'
+    | 'viewFilters'
+  >;
 
 export interface SessionReplayTarget {
   readonly document: MapDocument;
@@ -131,100 +129,20 @@ export class SessionOrganizationCommands {
     private readonly ports: SessionOrganizationPorts,
   ) {}
 
-  private get currentDocument(): MapDocument {
-    return this.kernel.document;
-  }
-
-  private get currentSelection(): EditorSelection | null {
-    return this.kernel.selection;
-  }
-
-  private set currentSelection(selection: EditorSelection | null) {
-    this.kernel.selection = selection;
-  }
-
-  private get hiddenBrushIds(): Set<BrushId> {
-    return this.kernel.hiddenBrushIds;
-  }
-
-  private get hiddenEntityIds(): Set<EntityId> {
-    return this.kernel.hiddenEntityIds;
-  }
-
-  private get lockedBrushIds(): Set<BrushId> {
-    return this.kernel.lockedBrushIds;
-  }
-
-  private get lockedEntityIds(): Set<EntityId> {
-    return this.kernel.lockedEntityIds;
-  }
-
-  private get editingGroupId(): string | null {
-    return this.kernel.editingGroupId;
-  }
-
-  private set editingGroupId(groupId: string | null) {
-    this.kernel.editingGroupId = groupId;
-  }
-
-  private get currentLayerId(): EditorLayerId {
-    return this.kernel.layerId;
-  }
-
-  private set currentLayerId(layerId: EditorLayerId) {
-    this.kernel.layerId = layerId;
-  }
-
-  private get currentViewFilters(): EditorViewFilterState {
-    return this.kernel.viewFilters;
-  }
-
-  private set currentViewFilters(filters: EditorViewFilterState) {
-    this.kernel.viewFilters = filters;
-  }
-
-  private get repeatableCommands(): EditorRepeatableCommand[] {
-    return this.kernel.repeatableCommands;
-  }
-
-  private set repeatableCommands(commands: EditorRepeatableCommand[]) {
-    this.kernel.repeatableCommands = commands;
-  }
-
-  private get linkedSyncIds(): IdFactory {
-    return this.kernel.linkedSyncIds;
-  }
-
-  private notify(kind: 'document' | 'selection' | 'history' | 'view', label: string): void {
-    this.kernel.notify(kind, label);
-  }
-
-  private snapshotObjectViewState(): EditorObjectViewState {
-    return this.kernel.snapshotObjectViewState();
-  }
-
-  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
-    this.ports.commitDocumentCandidate(candidate);
-  }
-
-  private select(selection: EditorSelection | null): void {
-    this.ports.select(selection);
-  }
-
   /** Live, deterministic diagnostics for the current document revision. */
   public get issues(): readonly EditorIssue[] {
-    return deriveEditorIssues(this.currentDocument);
+    return deriveEditorIssues(this.kernel.document);
   }
 
   public get objectViewState(): EditorObjectViewState {
-    return this.objectViewStateFor(this.currentDocument);
+    return this.objectViewStateFor(this.kernel.document);
   }
 
   /** Resolves visibility, layer, and view-filter state for a committed or preview document. */
   public objectViewStateFor(document: MapDocument): EditorObjectViewState {
-    const base = this.snapshotObjectViewState();
+    const base = this.kernel.snapshotObjectViewState();
     const layers = deriveEditorLayers(document);
-    const filtered = deriveEditorViewFilterObjectIds(document, this.currentViewFilters);
+    const filtered = deriveEditorViewFilterObjectIds(document, this.kernel.viewFilters);
     return {
       hiddenBrushIds: [
         ...new Set([
@@ -257,14 +175,14 @@ export class SessionOrganizationCommands {
 
   public get viewFilters(): EditorViewFilterState {
     return {
-      worldBrushesVisible: this.currentViewFilters.worldBrushesVisible,
-      hiddenEntityClassnames: [...this.currentViewFilters.hiddenEntityClassnames],
-      hiddenSpecialBrushTypes: [...this.currentViewFilters.hiddenSpecialBrushTypes],
+      worldBrushesVisible: this.kernel.viewFilters.worldBrushesVisible,
+      hiddenEntityClassnames: [...this.kernel.viewFilters.hiddenEntityClassnames],
+      hiddenSpecialBrushTypes: [...this.kernel.viewFilters.hiddenSpecialBrushTypes],
     };
   }
 
   public get filteredObjectIds(): EditorViewFilterObjectIds {
-    return deriveEditorViewFilterObjectIds(this.currentDocument, this.currentViewFilters);
+    return deriveEditorViewFilterObjectIds(this.kernel.document, this.kernel.viewFilters);
   }
 
   private setViewFilters(after: EditorViewFilterState, label: string): boolean {
@@ -278,30 +196,30 @@ export class SessionOrganizationCommands {
       ),
     };
     if (
-      normalized.worldBrushesVisible === this.currentViewFilters.worldBrushesVisible &&
+      normalized.worldBrushesVisible === this.kernel.viewFilters.worldBrushesVisible &&
       normalized.hiddenEntityClassnames.join('\u0000') ===
-        this.currentViewFilters.hiddenEntityClassnames.join('\u0000') &&
+        this.kernel.viewFilters.hiddenEntityClassnames.join('\u0000') &&
       normalized.hiddenSpecialBrushTypes.join('\u0000') ===
-        this.currentViewFilters.hiddenSpecialBrushTypes.join('\u0000')
+        this.kernel.viewFilters.hiddenSpecialBrushTypes.join('\u0000')
     ) {
       return false;
     }
-    this.currentViewFilters = normalized;
-    if (this.currentSelection) {
+    this.kernel.viewFilters = normalized;
+    if (this.kernel.selection) {
       const state = this.objectViewState;
       const hiddenBrushIds = new Set(state.hiddenBrushIds);
       const hiddenEntityIds = new Set(state.hiddenEntityIds);
       if (
-        selectedBrushIds(this.currentSelection).some((brushId) => hiddenBrushIds.has(brushId)) ||
-        selectedPointEntityIds(this.currentSelection).some((entityId) =>
+        selectedBrushIds(this.kernel.selection).some((brushId) => hiddenBrushIds.has(brushId)) ||
+        selectedPointEntityIds(this.kernel.selection).some((entityId) =>
           hiddenEntityIds.has(entityId),
         )
       ) {
-        this.currentSelection = null;
-        this.discardRepeatableCommands();
+        this.kernel.selection = null;
+        this.kernel.discardRepeatableCommands();
       }
     }
-    this.notify('view', label);
+    this.kernel.notify('view', label);
     return true;
   }
 
@@ -309,11 +227,11 @@ export class SessionOrganizationCommands {
   public setEntityClassVisible(classname: string, visible: boolean): boolean {
     const normalizedClassname = classname.trim().toLowerCase();
     if (!normalizedClassname || normalizedClassname === 'worldspawn') return false;
-    const hidden = new Set(this.currentViewFilters.hiddenEntityClassnames);
+    const hidden = new Set(this.kernel.viewFilters.hiddenEntityClassnames);
     if (visible) hidden.delete(normalizedClassname);
     else hidden.add(normalizedClassname);
     return this.setViewFilters(
-      { ...this.currentViewFilters, hiddenEntityClassnames: [...hidden] },
+      { ...this.kernel.viewFilters, hiddenEntityClassnames: [...hidden] },
       `${visible ? 'Show' : 'Hide'} ${normalizedClassname} entities`,
     );
   }
@@ -321,10 +239,10 @@ export class SessionOrganizationCommands {
   public setAllEntityClassesVisible(visible: boolean): boolean {
     return this.setViewFilters(
       {
-        ...this.currentViewFilters,
+        ...this.kernel.viewFilters,
         hiddenEntityClassnames: visible
           ? []
-          : entityClassFiltersInDocument(this.currentDocument).map(({ classname }) => classname),
+          : entityClassFiltersInDocument(this.kernel.document).map(({ classname }) => classname),
       },
       `${visible ? 'Show' : 'Hide'} all entity classes`,
     );
@@ -332,29 +250,29 @@ export class SessionOrganizationCommands {
 
   public setWorldBrushesVisible(visible: boolean): boolean {
     return this.setViewFilters(
-      { ...this.currentViewFilters, worldBrushesVisible: visible },
+      { ...this.kernel.viewFilters, worldBrushesVisible: visible },
       `${visible ? 'Show' : 'Hide'} world brushes`,
     );
   }
 
   public setSpecialBrushFilterVisible(type: EditorSpecialBrushFilter, visible: boolean): boolean {
     if (!EDITOR_SPECIAL_BRUSH_FILTER_INFO.some((entry) => entry.type === type)) return false;
-    const hidden = new Set(this.currentViewFilters.hiddenSpecialBrushTypes);
+    const hidden = new Set(this.kernel.viewFilters.hiddenSpecialBrushTypes);
     if (visible) hidden.delete(type);
     else hidden.add(type);
     const label = EDITOR_SPECIAL_BRUSH_FILTER_INFO.find((entry) => entry.type === type)!.label;
     return this.setViewFilters(
-      { ...this.currentViewFilters, hiddenSpecialBrushTypes: [...hidden] },
+      { ...this.kernel.viewFilters, hiddenSpecialBrushTypes: [...hidden] },
       `${visible ? 'Show' : 'Hide'} ${label.toLowerCase()}`,
     );
   }
 
   public get canShowAll(): boolean {
-    return this.hiddenBrushIds.size + this.hiddenEntityIds.size > 0;
+    return this.kernel.hiddenBrushIds.size + this.kernel.hiddenEntityIds.size > 0;
   }
 
   public get canUnlockAll(): boolean {
-    return this.lockedBrushIds.size + this.lockedEntityIds.size > 0;
+    return this.kernel.lockedBrushIds.size + this.kernel.lockedEntityIds.size > 0;
   }
 
   public get canUndo(): boolean {
@@ -375,32 +293,28 @@ export class SessionOrganizationCommands {
 
   public get canRepeatCommands(): boolean {
     return Boolean(
-      this.repeatableCommands.length > 0 &&
-      this.currentSelection &&
-      !this.currentSelection.faceId &&
-      selectedBrushIds(this.currentSelection).length +
-        selectedPointEntityIds(this.currentSelection).length >
+      this.kernel.repeatableCommands.length > 0 &&
+      this.kernel.selection &&
+      !this.kernel.selection.faceId &&
+      selectedBrushIds(this.kernel.selection).length +
+        selectedPointEntityIds(this.kernel.selection).length >
         0,
     );
   }
 
   public get repeatCommandCount(): number {
-    return this.repeatableCommands.length;
+    return this.kernel.repeatableCommands.length;
   }
 
   public get repeatCommandLabels(): readonly string[] {
-    return this.repeatableCommands.map(repeatableCommandLabel);
-  }
-
-  private discardRepeatableCommands(): void {
-    this.kernel.discardRepeatableCommands();
+    return this.kernel.repeatableCommands.map(repeatableCommandLabel);
   }
 
   /** Explicitly starts a new macro-like command-repetition sequence. */
   public clearRepeatableCommands(): boolean {
-    if (this.repeatableCommands.length === 0) return false;
-    this.discardRepeatableCommands();
-    this.notify('view', 'Clear repeatable commands');
+    if (this.kernel.repeatableCommands.length === 0) return false;
+    this.kernel.discardRepeatableCommands();
+    this.kernel.notify('view', 'Clear repeatable commands');
     return true;
   }
 
@@ -464,29 +378,29 @@ export class SessionOrganizationCommands {
 
   /** Replays the actions recorded since the last manual selection change as one undo step. */
   public repeatLastCommands(): boolean {
-    if (!this.canRepeatCommands || !this.currentSelection) return false;
-    const commands = [...this.repeatableCommands];
-    const replay = this.ports.createReplayTarget(this.currentDocument, {
-      selection: this.currentSelection,
+    if (!this.canRepeatCommands || !this.kernel.selection) return false;
+    const commands = [...this.kernel.repeatableCommands];
+    const replay = this.ports.createReplayTarget(this.kernel.document, {
+      selection: this.kernel.selection,
       activeLayerId: this.activeLayerId,
-      editingGroupId: this.editingGroupId,
+      editingGroupId: this.kernel.editingGroupId,
     });
     const ids = createSequentialIdFactory(
-      `repeat-${this.currentDocument.revision}-${++this.kernel.repeatSequence}`,
+      `repeat-${this.kernel.document.revision}-${++this.kernel.repeatSequence}`,
     );
     for (const command of commands) {
       if (!this.applyRepeatableCommand(replay, command, ids)) {
         throw new Error(`Cannot repeat ${repeatableCommandLabel(command).toLowerCase()} command`);
       }
     }
-    if (replay.document === this.currentDocument) return false;
+    if (replay.document === this.kernel.document) return false;
     const count = commands.length;
-    this.commitDocumentCandidate({
+    this.ports.commitDocumentCandidate({
       label: `Repeat ${count} ${count === 1 ? 'command' : 'commands'}`,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after: replay.document,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: replay.selection,
       document: replay.document,
     });
@@ -499,21 +413,21 @@ export class SessionOrganizationCommands {
 
   public replaceDocument(document: MapDocument, label = 'Open map'): void {
     this.kernel.replaceDocument(document);
-    this.notify('document', label);
+    this.kernel.notify('document', label);
   }
 
   /** Replaces document contents as one history entry, primarily for recovery/version restore. */
   public restoreDocument(document: MapDocument, label = 'Restore document'): void {
     const restored: MapDocument = {
       ...structuredClone(document),
-      revision: this.currentDocument.revision + 1,
+      revision: this.kernel.document.revision + 1,
     };
-    this.commitDocumentCandidate({
+    this.ports.commitDocumentCandidate({
       label,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after: restored,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: null,
       document: restored,
     });
@@ -523,34 +437,37 @@ export class SessionOrganizationCommands {
   public setEditingGroup(groupId: string | null): void {
     if (
       groupId &&
-      !deriveEditorGroups(this.currentDocument).some((group) => group.id === groupId)
+      !deriveEditorGroups(this.kernel.document).some((group) => group.id === groupId)
     ) {
       throw new Error(`Unknown group ${groupId}`);
     }
-    this.editingGroupId = groupId;
+    this.kernel.editingGroupId = groupId;
   }
 
   public get editingGroup(): string | null {
-    return this.editingGroupId;
+    return this.kernel.editingGroupId;
   }
 
   public get activeLayerId(): EditorLayerId {
-    return findEditorLayer(this.currentDocument, this.currentLayerId) ? this.currentLayerId : null;
+    return findEditorLayer(this.kernel.document, this.kernel.layerId) ? this.kernel.layerId : null;
   }
 
   /** Changes the non-serialized insertion target used for new and pasted top-level objects. */
   public setActiveLayer(layerId: EditorLayerId): void {
-    if (!findEditorLayer(this.currentDocument, layerId)) {
+    if (!findEditorLayer(this.kernel.document, layerId)) {
       throw new Error(layerId === null ? 'Default Layer is missing' : `Unknown layer ${layerId}`);
     }
-    this.currentLayerId = layerId;
-    this.notify('view', `Set active layer ${findEditorLayer(this.currentDocument, layerId)!.name}`);
+    this.kernel.layerId = layerId;
+    this.kernel.notify(
+      'view',
+      `Set active layer ${findEditorLayer(this.kernel.document, layerId)!.name}`,
+    );
   }
 
-  public activeLayerEntity(document = this.currentDocument): MapEntity {
-    const layer = findEditorLayer(document, this.currentLayerId);
+  public activeLayerEntity(document = this.kernel.document): MapEntity {
+    const layer = findEditorLayer(document, this.kernel.layerId);
     if (!layer) {
-      this.currentLayerId = null;
+      this.kernel.layerId = null;
       return document.entities.find(
         (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
       )!;
@@ -568,40 +485,40 @@ export class SessionOrganizationCommands {
   private commitLayerChange(
     label: string,
     after: MapDocument,
-    selectionAfter: EditorSelection | null = this.currentSelection,
+    selectionAfter: EditorSelection | null = this.kernel.selection,
   ): void {
-    this.commitDocumentCandidate({
+    this.ports.commitDocumentCandidate({
       label,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter,
       document: after,
     });
   }
 
   public createLayer(name: string, ids: IdFactory): string {
-    const result = createEditorLayer(this.currentDocument, name, ids);
-    this.currentLayerId = result.layerId;
+    const result = createEditorLayer(this.kernel.document, name, ids);
+    this.kernel.layerId = result.layerId;
     this.commitLayerChange('Create layer', result.document);
     return result.layerId;
   }
 
   public renameLayer(layerId: string, name: string): boolean {
-    const after = renameEditorLayer(this.currentDocument, layerId, name);
+    const after = renameEditorLayer(this.kernel.document, layerId, name);
     this.commitLayerChange('Rename layer', after);
     return true;
   }
 
   public setLayerFlag(layerId: EditorLayerId, flag: EditorLayerFlag, value: boolean): boolean {
-    const layer = findEditorLayer(this.currentDocument, layerId);
+    const layer = findEditorLayer(this.kernel.document, layerId);
     if (!layer || layer[flag === 'omit-from-export' ? 'omitFromExport' : flag] === value) {
       return false;
     }
-    const after = setEditorLayerFlag(this.currentDocument, layerId, flag, value);
-    const selectedBrushes = new Set(selectedBrushIds(this.currentSelection));
-    const selectedEntities = new Set(selectedPointEntityIds(this.currentSelection));
+    const after = setEditorLayerFlag(this.kernel.document, layerId, flag, value);
+    const selectedBrushes = new Set(selectedBrushIds(this.kernel.selection));
+    const selectedEntities = new Set(selectedPointEntityIds(this.kernel.selection));
     const selectionTouchesLayer =
       layer.brushIds.some((brushId) => selectedBrushes.has(brushId)) ||
       layer.pointEntityIds.some((entityId) => selectedEntities.has(entityId));
@@ -611,14 +528,14 @@ export class SessionOrganizationCommands {
       after,
       (flag === 'hidden' || flag === 'locked') && value && selectionTouchesLayer
         ? null
-        : this.currentSelection,
+        : this.kernel.selection,
     );
     return true;
   }
 
   public setAllLayersFlag(flag: 'hidden' | 'locked', value: boolean): boolean {
-    const layers = deriveEditorLayers(this.currentDocument);
-    let after = this.currentDocument;
+    const layers = deriveEditorLayers(this.kernel.document);
+    let after = this.kernel.document;
     let changed = false;
     for (const layer of layers) {
       if (layer[flag] === value) continue;
@@ -629,76 +546,82 @@ export class SessionOrganizationCommands {
     this.commitLayerChange(
       `${value ? (flag === 'hidden' ? 'Hide' : 'Lock') : flag === 'hidden' ? 'Show' : 'Unlock'} all layers`,
       after,
-      value ? null : this.currentSelection,
+      value ? null : this.kernel.selection,
     );
     return true;
   }
 
   public isolateLayer(layerId: EditorLayerId): boolean {
-    if (!findEditorLayer(this.currentDocument, layerId)) return false;
-    let after = this.currentDocument;
+    if (!findEditorLayer(this.kernel.document, layerId)) return false;
+    let after = this.kernel.document;
     let changed = false;
-    for (const layer of deriveEditorLayers(this.currentDocument)) {
+    for (const layer of deriveEditorLayers(this.kernel.document)) {
       const hidden = layer.id !== layerId;
       if (layer.hidden === hidden) continue;
       after = setEditorLayerFlag(after, layer.id, 'hidden', hidden);
       changed = true;
     }
     if (!changed) return false;
-    const layer = findEditorLayer(this.currentDocument, layerId)!;
+    const layer = findEditorLayer(this.kernel.document, layerId)!;
     const selection = layer.locked ? null : selectionForEditorLayer(layer);
     this.commitLayerChange('Isolate layer', after, selection);
     return true;
   }
 
   public reorderLayer(layerId: string, direction: -1 | 1): boolean {
-    const after = reorderEditorLayer(this.currentDocument, layerId, direction);
-    if (after === this.currentDocument) return false;
+    const after = reorderEditorLayer(this.kernel.document, layerId, direction);
+    if (after === this.kernel.document) return false;
     this.commitLayerChange('Reorder layer', after);
     return true;
   }
 
   public removeLayer(layerId: string): boolean {
-    const layer = findEditorLayer(this.currentDocument, layerId);
+    const layer = findEditorLayer(this.kernel.document, layerId);
     if (!layer?.entityId) return false;
-    const after = removeEditorLayer(this.currentDocument, layerId);
-    if (this.currentLayerId === layerId) this.currentLayerId = null;
+    const after = removeEditorLayer(this.kernel.document, layerId);
+    if (this.kernel.layerId === layerId) this.kernel.layerId = null;
     this.commitLayerChange('Remove layer', after);
     return true;
   }
 
   public moveSelectedToLayer(layerId: EditorLayerId): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const currentLayer = editorLayerForSelection(this.currentDocument, this.currentSelection);
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
+    const currentLayer = editorLayerForSelection(this.kernel.document, this.kernel.selection);
     if (currentLayer?.id === layerId) return false;
-    const targetLayer = findEditorLayer(this.currentDocument, layerId);
+    const targetLayer = findEditorLayer(this.kernel.document, layerId);
     if (!targetLayer) return false;
-    const after = moveSelectionToEditorLayer(this.currentDocument, this.currentSelection, layerId);
+    const after = moveSelectionToEditorLayer(this.kernel.document, this.kernel.selection, layerId);
     this.commitLayerChange(
       'Move objects to layer',
       after,
-      targetLayer.hidden || targetLayer.locked ? null : this.currentSelection,
+      targetLayer.hidden || targetLayer.locked ? null : this.kernel.selection,
     );
     return true;
   }
 
   public selectAllInLayer(layerId: EditorLayerId): EditorSelection | null {
-    const layer = findEditorLayer(this.currentDocument, layerId);
-    if (!layer || layer.hidden || layer.locked) return this.currentSelection;
+    const layer = findEditorLayer(this.kernel.document, layerId);
+    if (!layer || layer.hidden || layer.locked) return this.kernel.selection;
     const selection = selectionForEditorLayer(layer);
-    this.select(selection);
+    this.ports.select(selection);
     return selection;
   }
 
-  public hasLinkedEditingGroup(document = this.currentDocument): boolean {
+  public hasLinkedEditingGroup(document = this.kernel.document): boolean {
     return Boolean(
-      this.editingGroupId && linkedGroupSiblings(document, this.editingGroupId).length > 1,
+      this.kernel.editingGroupId &&
+      linkedGroupSiblings(document, this.kernel.editingGroupId).length > 1,
     );
   }
 
   public synchronizeEditingGroup(document: MapDocument): MapDocument {
-    return this.editingGroupId && linkedGroupSiblings(document, this.editingGroupId).length > 1
-      ? synchronizeLinkedGroupContents(document, this.editingGroupId, this.linkedSyncIds)
+    return this.kernel.editingGroupId &&
+      linkedGroupSiblings(document, this.kernel.editingGroupId).length > 1
+      ? synchronizeLinkedGroupContents(
+          document,
+          this.kernel.editingGroupId,
+          this.kernel.linkedSyncIds,
+        )
       : document;
   }
 

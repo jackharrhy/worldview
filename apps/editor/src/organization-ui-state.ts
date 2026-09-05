@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview/runtime';
+import { EditorUiPort } from './editor-ui-port.js';
 import type {
   EditorIssueType,
   EditorLayerId,
@@ -59,29 +59,13 @@ const EMPTY_LAYER_PANEL: LayerPanelSnapshot = {
   canMoveDown: false,
 };
 
-export class LayerPanelPort {
-  private readonly store = new SnapshotStore<LayerPanelSnapshot>(EMPTY_LAYER_PANEL);
-  private actions: LayerPanelActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: LayerPanelActions): void {
-    this.actions = actions;
+export class LayerPanelPort extends EditorUiPort<LayerPanelSnapshot, LayerPanelActions> {
+  public constructor() {
+    super(EMPTY_LAYER_PANEL);
   }
-  public unbind(): void {
-    this.actions = null;
+  public override unbind(): void {
+    super.unbind();
     this.store.set(EMPTY_LAYER_PANEL);
-  }
-  public set(snapshot: LayerPanelSnapshot): void {
-    this.store.set(snapshot);
-  }
-  public invoke<K extends keyof LayerPanelActions>(
-    action: K,
-    ...args: Parameters<LayerPanelActions[K]>
-  ): void {
-    const handler = this.actions?.[action] as
-      | ((...values: Parameters<LayerPanelActions[K]>) => void)
-      | undefined;
-    handler?.(...args);
   }
 }
 
@@ -126,32 +110,13 @@ const EMPTY_ISSUE_BROWSER: IssueBrowserSnapshot = {
   issues: [],
 };
 
-export class IssueBrowserPort {
-  private readonly store = new SnapshotStore<IssueBrowserSnapshot>(EMPTY_ISSUE_BROWSER);
-  private actions: IssueBrowserActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: IssueBrowserActions): void {
-    this.actions = actions;
+export class IssueBrowserPort extends EditorUiPort<IssueBrowserSnapshot, IssueBrowserActions> {
+  public constructor() {
+    super(EMPTY_ISSUE_BROWSER);
   }
-  public unbind(): void {
-    this.actions = null;
+  public override unbind(): void {
+    super.unbind();
     this.store.set(EMPTY_ISSUE_BROWSER);
-  }
-  public set(snapshot: IssueBrowserSnapshot): void {
-    this.store.set(snapshot);
-  }
-  public update(update: Partial<IssueBrowserSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
-  }
-  public invoke<K extends keyof IssueBrowserActions>(
-    action: K,
-    ...args: Parameters<IssueBrowserActions[K]>
-  ): void {
-    const handler = this.actions?.[action] as
-      | ((...values: Parameters<IssueBrowserActions[K]>) => void)
-      | undefined;
-    handler?.(...args);
   }
 }
 
@@ -188,32 +153,13 @@ const EMPTY_VIEW_FILTER: ViewFilterSnapshot = {
   status: '0 objects filtered · map source unchanged',
 };
 
-export class ViewFilterPort {
-  private readonly store = new SnapshotStore<ViewFilterSnapshot>(EMPTY_VIEW_FILTER);
-  private actions: ViewFilterActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: ViewFilterActions): void {
-    this.actions = actions;
+export class ViewFilterPort extends EditorUiPort<ViewFilterSnapshot, ViewFilterActions> {
+  public constructor() {
+    super(EMPTY_VIEW_FILTER);
   }
-  public unbind(): void {
-    this.actions = null;
+  public override unbind(): void {
+    super.unbind();
     this.store.set(EMPTY_VIEW_FILTER);
-  }
-  public set(snapshot: ViewFilterSnapshot): void {
-    this.store.set(snapshot);
-  }
-  public update(update: Partial<ViewFilterSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
-  }
-  public invoke<K extends keyof ViewFilterActions>(
-    action: K,
-    ...args: Parameters<ViewFilterActions[K]>
-  ): void {
-    const handler = this.actions?.[action] as
-      | ((...values: Parameters<ViewFilterActions[K]>) => void)
-      | undefined;
-    handler?.(...args);
   }
 }
 
@@ -227,23 +173,13 @@ export interface EntityLinksActions {
   setMode(mode: EntityLinkMode): void;
 }
 
-export class EntityLinksPort {
-  private readonly store = new SnapshotStore<EntityLinksSnapshot>({
-    mode: 'direct',
-    shownCount: 0,
-    totalCount: 0,
-  });
-  private actions: EntityLinksActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: EntityLinksActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
-  }
-  public set(snapshot: EntityLinksSnapshot): void {
-    this.store.set(snapshot);
+export class EntityLinksPort extends EditorUiPort<EntityLinksSnapshot, EntityLinksActions> {
+  public constructor() {
+    super({
+      mode: 'direct',
+      shownCount: 0,
+      totalCount: 0,
+    });
   }
   public setMode(mode: EntityLinkMode): void {
     this.actions?.setMode(mode);

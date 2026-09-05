@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { decodeProjectMaterialImage, projectMaterialName } from '../src/project-material-assets.js';
 
-function onePixelTga(): Uint8Array {
+function onePixelTga(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(21);
   bytes[2] = 2;
   bytes[12] = 1;

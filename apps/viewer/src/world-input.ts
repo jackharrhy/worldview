@@ -15,7 +15,7 @@ function containedGamePath(file: File): string | null {
   return root >= 0 ? parts.slice(root).join('/') : null;
 }
 
-export async function sourceFromFiles(files: FileList): Promise<WorldSource | undefined> {
+export async function sourceFromFiles(files: Iterable<File>): Promise<WorldSource | undefined> {
   const list = [...files];
   const bsp = list.find((file) => file.name.toLowerCase().endsWith('.bsp'));
   if (!bsp) return undefined;

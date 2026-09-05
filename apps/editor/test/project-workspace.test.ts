@@ -12,9 +12,9 @@ import {
   type EditorDirectoryHandle,
 } from '../src/project-workspace.js';
 
-type Entry = string | Uint8Array | Record<string, Entry>;
+type Entry = string | Uint8Array<ArrayBuffer> | { [name: string]: Entry };
 
-function isFileEntry(value: Entry | undefined): value is string | Uint8Array {
+function isFileEntry(value: Entry | undefined): value is string | Uint8Array<ArrayBuffer> {
   return typeof value === 'string' || value instanceof Uint8Array;
 }
 
@@ -73,7 +73,7 @@ const root = directory('fixture', {
   sprites: {},
 });
 
-function quake2PalettePcx(): Uint8Array {
+function quake2PalettePcx(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(128 + 1 + 768);
   bytes[0] = 0x0a;
   bytes[2] = 1;
@@ -84,7 +84,7 @@ function quake2PalettePcx(): Uint8Array {
   return bytes;
 }
 
-function quake2Wal(): Uint8Array {
+function quake2Wal(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(440);
   const view = new DataView(bytes.buffer);
   new TextEncoder().encodeInto('unit/wall', bytes.subarray(0, 32));
@@ -95,7 +95,7 @@ function quake2Wal(): Uint8Array {
   return bytes;
 }
 
-function onePixelTga(): Uint8Array {
+function onePixelTga(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(21);
   bytes[2] = 2;
   bytes[12] = 1;
@@ -157,13 +157,13 @@ describe('project workspaces', () => {
       createWritable: () =>
         Promise.resolve({ write: () => Promise.resolve(), close: () => Promise.resolve() }),
     };
-    const maps = {
+    const maps: EditorDirectoryHandle = {
       kind: 'directory' as const,
       name: 'maps',
       getFileHandle: () => Promise.resolve(mapHandle),
       getDirectoryHandle: () => Promise.reject(new Error('unused')),
       async *entries() {
-        yield ['large.map', mapHandle] as const;
+        yield ['large.map', mapHandle];
       },
     };
     const lazyRoot: EditorDirectoryHandle = {

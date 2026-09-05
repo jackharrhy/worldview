@@ -31,7 +31,7 @@ function ViewFilterPopover({ shellState }: { readonly shellState: EditorShellSta
           <strong>View filters</strong>
           <span>Non-serialized</span>
         </div>
-        <Button size="compact" onPress={() => shellState.viewFilter.invoke('setOpen', false)}>
+        <Button size="compact" onPress={() => shellState.viewFilter.commands?.setOpen(false)}>
           Close
         </Button>
       </header>
@@ -44,7 +44,7 @@ function ViewFilterPopover({ shellState }: { readonly shellState: EditorShellSta
           <Checkbox
             className="view-filter-row"
             isSelected={filters.worldBrushesVisible}
-            onChange={(visible) => shellState.viewFilter.invoke('setWorldBrushesVisible', visible)}
+            onChange={(visible) => shellState.viewFilter.commands?.setWorldBrushesVisible(visible)}
           >
             <span>
               <b>World brushes</b>
@@ -57,7 +57,7 @@ function ViewFilterPopover({ shellState }: { readonly shellState: EditorShellSta
               key={entry.type}
               isSelected={visibleSpecialTypes.has(entry.type)}
               onChange={(visible) =>
-                shellState.viewFilter.invoke('setSpecialBrushTypeVisible', entry.type, visible)
+                shellState.viewFilter.commands?.setSpecialBrushTypeVisible(entry.type, visible)
               }
             >
               <span>
@@ -85,13 +85,13 @@ function ViewFilterPopover({ shellState }: { readonly shellState: EditorShellSta
             />
             <Button
               size="compact"
-              onPress={() => shellState.viewFilter.invoke('setAllEntityClassesVisible', true)}
+              onPress={() => shellState.viewFilter.commands?.setAllEntityClassesVisible(true)}
             >
               All
             </Button>
             <Button
               size="compact"
-              onPress={() => shellState.viewFilter.invoke('setAllEntityClassesVisible', false)}
+              onPress={() => shellState.viewFilter.commands?.setAllEntityClassesVisible(false)}
             >
               None
             </Button>
@@ -115,8 +115,7 @@ function ViewFilterPopover({ shellState }: { readonly shellState: EditorShellSta
                     key={filter.classname}
                     isSelected={filter.visible}
                     onChange={(visible) =>
-                      shellState.viewFilter.invoke(
-                        'setEntityClassVisible',
+                      shellState.viewFilter.commands?.setEntityClassVisible(
                         filter.classname,
                         visible,
                       )

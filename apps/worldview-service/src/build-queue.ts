@@ -1,26 +1,10 @@
 import type { BlobStore } from './blob-store.js';
 import type { WorldviewDatabase } from './database.js';
-import { MapCompileDiagnosticSchema, MapCompileLogSchema } from '@worldview/protocol';
-import { z } from 'zod';
-
-const NativeResultSchema = z.strictObject({
-  status: z.enum(['succeeded', 'failed']),
-  diagnostics: z.array(MapCompileDiagnosticSchema).max(10_000),
-  logs: z.array(MapCompileLogSchema).max(1_000),
-  elapsedMilliseconds: z.number().finite().nonnegative(),
-  artifacts: z
-    .array(
-      z.strictObject({
-        name: z.string().min(1).max(4_096),
-        kind: z.enum(['bsp', 'portal', 'leak-path', 'log', 'other']),
-        mediaType: z.string().min(1).max(256),
-        base64: z.string(),
-        stage: z.string().min(1).max(256).optional(),
-      }),
-    )
-    .max(1_000),
-});
-const NativeErrorSchema = z.strictObject({ error: z.string().max(16_384).optional() });
+import {
+  RemoteCompileResultSchema,
+  type RemoteCompileRequest,
+} from '@jackharrhy/worldview-editor/core';
+import { HostedErrorResponseSchema } from '@worldview/protocol';
 
 export class RemoteBuildQueue {
   private readonly pending: (() => Promise<void>)[] = [];
@@ -69,17 +53,20 @@ export class RemoteBuildQueue {
               mediaType: asset.mediaType,
               base64: Buffer.from(asset.bytes).toString('base64'),
             })),
-          }),
+          } satisfies RemoteCompileRequest),
           signal: AbortSignal.timeout(190_000),
         });
         const payload: unknown = await response.json().catch(() => null);
-        const result = NativeResultSchema.safeParse(payload);
+        const result = RemoteCompileResultSchema.safeParse(payload);
         if (!response.ok || !result.success) {
-          const error = NativeErrorSchema.safeParse(payload);
+          const error = HostedErrorResponseSchema.safeParse(payload);
           const detail = error.success ? error.data.error : null;
           throw new Error(
             typeof detail === 'string' ? detail : `Build worker failed (${response.status})`,
           );
+        }
+        if (result.data.sourceDocumentRevision !== input.mapVersion) {
+          throw new Error('Build worker returned a different map revision');
         }
         const artifacts = [];
         for (const artifact of result.data.artifacts) {

@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview/runtime';
+import { EditorUiPort } from './editor-ui-port.js';
 
 export interface PointEntityPresetSnapshot {
   readonly id: string;
@@ -15,23 +15,16 @@ export interface PointEntityToolActions {
   setClassname(classname: string): void;
 }
 
-export class PointEntityToolPort {
-  private readonly store = new SnapshotStore<PointEntityToolSnapshot>({
-    visible: false,
-    classname: 'light',
-    presets: [],
-  });
-  private actions: PointEntityToolActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: PointEntityToolActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
-  }
-  public update(update: Partial<PointEntityToolSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class PointEntityToolPort extends EditorUiPort<
+  PointEntityToolSnapshot,
+  PointEntityToolActions
+> {
+  public constructor() {
+    super({
+      visible: false,
+      classname: 'light',
+      presets: [],
+    });
   }
   public setClassname(classname: string): void {
     this.actions?.setClassname(classname);

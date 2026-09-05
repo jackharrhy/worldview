@@ -5,8 +5,10 @@ import {
   EditorSession,
   brushesInDocument,
   createStarterDocument,
+  findBrush,
   selectedBrushIds,
   serializeMap,
+  type Vec3,
 } from '../src/core/index.js';
 
 const nonZeroTranslation = fc
@@ -17,7 +19,12 @@ const nonZeroTranslation = fc
   )
   .filter(([x, y, z]) => x !== 0 || y !== 0 || z !== 0);
 
-test.prop([fc.array(nonZeroTranslation, { minLength: 1, maxLength: 24 })], { numRuns: 50 })(
+const translationHistory = fc.oneof(
+  fc.array(nonZeroTranslation, { minLength: 1, maxLength: 24 }),
+  nonZeroTranslation.map((delta): Vec3[] => [delta, [-delta[0], -delta[1], -delta[2]]]),
+);
+
+test.prop([translationHistory], { numRuns: 50 })(
   'undo and redo restore exact source and selection across generated translation histories',
   (translations) => {
     const session = new EditorSession(createStarterDocument());
@@ -32,7 +39,15 @@ test.prop([fc.array(nonZeroTranslation, { minLength: 1, maxLength: 24 })], { num
 
     const editedSource = serializeMap(session.document);
     const editedSelection = selectedBrushIds(session.selection);
-    expect(editedSource).not.toBe(initialSource);
+    const total = translations.reduce<Vec3>(
+      (sum, delta) => [sum[0] + delta[0], sum[1] + delta[1], sum[2] + delta[2]],
+      [0, 0, 0],
+    );
+    expect(findBrush(session.document, brush.id)?.faces.map((face) => face.planePoints)).toEqual(
+      brush.faces.map((face) =>
+        face.planePoints.map((point) => point.map((value, axis) => value + total[axis]!)),
+      ),
+    );
 
     for (let index = 0; index < translations.length; index += 1) {
       expect(session.undo()).toBe(true);

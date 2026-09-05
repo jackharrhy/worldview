@@ -1,3 +1,4 @@
+import { EditorUiPort } from './editor-ui-port.js';
 import { SnapshotStore } from '@jackharrhy/worldview/runtime';
 
 export interface ProjectToolbarOption {
@@ -44,28 +45,18 @@ export interface ProjectUiActions {
   createCheckpoint(label: string): void;
 }
 
-export class ProjectUiPort {
-  private readonly store = new SnapshotStore<ProjectUiSnapshot>({
-    source: {
-      open: false,
-      value: '',
-      message: 'Normalized source is ready.',
-      tone: 'normal',
-    },
-    checkpoint: { open: false, label: '' },
-    recoveryOpen: false,
-  });
-  private actions: ProjectUiActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: ProjectUiActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
-  }
-  public update(update: Partial<ProjectUiSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class ProjectUiPort extends EditorUiPort<ProjectUiSnapshot, ProjectUiActions> {
+  public constructor() {
+    super({
+      source: {
+        open: false,
+        value: '',
+        message: 'Normalized source is ready.',
+        tone: 'normal',
+      },
+      checkpoint: { open: false, label: '' },
+      recoveryOpen: false,
+    });
   }
   public updateSource(update: Partial<ProjectUiSnapshot['source']>): void {
     const snapshot = this.store.getSnapshot();
@@ -105,23 +96,16 @@ const EMPTY_PROJECT_TOOLBAR: ProjectToolbarSnapshot = {
   selectedBuildProfileId: null,
 };
 
-export class ProjectToolbarPort {
-  private readonly store = new SnapshotStore<ProjectToolbarSnapshot>(EMPTY_PROJECT_TOOLBAR);
-  private actions: ProjectToolbarActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: ProjectToolbarActions): void {
-    this.actions = actions;
+export class ProjectToolbarPort extends EditorUiPort<
+  ProjectToolbarSnapshot,
+  ProjectToolbarActions
+> {
+  public constructor() {
+    super(EMPTY_PROJECT_TOOLBAR);
   }
-  public unbind(): void {
-    this.actions = null;
+  public override unbind(): void {
+    super.unbind();
     this.store.set(EMPTY_PROJECT_TOOLBAR);
-  }
-  public set(snapshot: ProjectToolbarSnapshot): void {
-    this.store.set(snapshot);
-  }
-  public update(update: Partial<ProjectToolbarSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
   }
   public openMap(id: string): void {
     this.actions?.openMap(id);
@@ -183,27 +167,14 @@ export interface BuildLogActions {
   inspect(buildId: string): void;
 }
 
-export class BuildLogPort {
-  private readonly store = new SnapshotStore<BuildLogSnapshot>({
-    open: false,
-    output: '',
-    history: [],
-    selectedBuildId: null,
-  });
-  private actions: BuildLogActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: BuildLogActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
-  }
-  public set(snapshot: BuildLogSnapshot): void {
-    this.store.set(snapshot);
-  }
-  public update(update: Partial<BuildLogSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class BuildLogPort extends EditorUiPort<BuildLogSnapshot, BuildLogActions> {
+  public constructor() {
+    super({
+      open: false,
+      output: '',
+      history: [],
+      selectedBuildId: null,
+    });
   }
   public inspect(buildId: string): void {
     this.actions?.inspect(buildId);

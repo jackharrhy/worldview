@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { z } from 'zod';
+import type { MapLaunchResult } from '@jackharrhy/worldview-editor/core';
 
 import { parseCompilerGameProfile, safeMapName, type CompilerGameProfile } from './compiler.js';
 
@@ -21,13 +22,6 @@ export interface LaunchableBuild {
   readonly mapName: string;
   readonly sourceDocumentRevision: number;
   readonly bspBase64: string;
-}
-
-export interface NativeLaunchResult {
-  readonly buildId: string;
-  readonly profileId: string;
-  readonly sourceDocumentRevision: number;
-  readonly launchedAt: number;
 }
 
 const LaunchArgumentsSchema = z.array(z.string().max(4_096)).max(256);
@@ -65,7 +59,7 @@ export function configuredLaunchProfile(environment: NodeJS.ProcessEnv): NativeL
 export async function launchBuild(
   build: LaunchableBuild,
   profile: NativeLaunchConfig,
-): Promise<NativeLaunchResult> {
+): Promise<MapLaunchResult> {
   const mapName = safeMapName(build.mapName);
   await mkdir(profile.mapDirectory, { recursive: true });
   const destination = join(profile.mapDirectory, `${mapName}.bsp`);

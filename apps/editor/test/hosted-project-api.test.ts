@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HostedOkResponseSchema } from '@worldview/protocol';
-import { authenticatedApiJson } from '../src/routes/hosted-project-api.js';
+import { apiJson, authenticatedApiJson } from '../src/routes/hosted-project-api.js';
 
 describe('authenticatedApiJson', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -24,6 +24,26 @@ describe('authenticatedApiJson', () => {
       expect(response.headers.get('X-Remix-Reload-Document')).toBe('true');
     });
   });
+
+  it.each([Response.json({ ok: true, unexpected: 'field' }), new Response('not JSON')])(
+    'rejects malformed successful responses in direct calls and route loaders',
+    async (response) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(() => Promise.resolve(response.clone())),
+      );
+      await expect(apiJson(HostedOkResponseSchema, '/api/projects')).rejects.toThrow(
+        'invalid response',
+      );
+      await expect(
+        authenticatedApiJson(
+          HostedOkResponseSchema,
+          new Request('https://worldview.example/'),
+          '/api/projects',
+        ),
+      ).rejects.toMatchObject({ init: { status: 502 } });
+    },
+  );
 
   it('keeps non-authentication API status for the route error boundary', async () => {
     vi.stubGlobal(

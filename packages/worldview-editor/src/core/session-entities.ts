@@ -6,18 +6,11 @@ import {
 import { editorLayerForSelection } from './layers.js';
 import { formatEntityOrigin, pointEntityDefinition } from './point-entities.js';
 import { createObjectSelection, selectedBrushIds, selectedPointEntityIds } from './selection.js';
-import type {
-  EditorSelection,
-  EntityId,
-  IdFactory,
-  MapDocument,
-  MapEntity,
-  Vec3,
-} from './types.js';
+import type { EntityId, IdFactory, MapEntity, Vec3 } from './types.js';
 import type { DocumentEditCandidate } from './session-common.js';
-import { SessionKernel } from './session-kernel.js';
+import type { SessionKernel } from './session-kernel.js';
 
-type SessionEntityKernel = Pick<SessionKernel, 'document' | 'layerId' | 'selection'>;
+type SessionEntityKernel = Readonly<Pick<SessionKernel, 'document' | 'layerId' | 'selection'>>;
 
 export interface SessionEntityPorts {
   readonly commitDocumentCandidate: (candidate: DocumentEditCandidate) => void;
@@ -30,21 +23,6 @@ export class SessionEntityCommands {
     private readonly ports: SessionEntityPorts,
   ) {}
 
-  private get currentDocument(): MapDocument {
-    return this.kernel.document;
-  }
-
-  private get currentSelection(): EditorSelection | null {
-    return this.kernel.selection;
-  }
-
-  private get currentLayerId(): string | null {
-    return this.kernel.layerId;
-  }
-
-  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
-    this.ports.commitDocumentCandidate(candidate);
-  }
   public createPointEntity(
     classname: string,
     origin: Vec3,
@@ -55,7 +33,7 @@ export class SessionEntityCommands {
     if (!normalizedClassname) throw new Error('A point entity requires a classname');
     const definition = pointEntityDefinition(normalizedClassname);
     const layerProperties =
-      !properties['_tb_group'] && this.currentLayerId ? { _tb_layer: this.currentLayerId } : {};
+      !properties['_tb_group'] && this.kernel.layerId ? { _tb_layer: this.kernel.layerId } : {};
     const entity: MapEntity = {
       id: ids.entity(),
       properties: {
@@ -67,13 +45,13 @@ export class SessionEntityCommands {
       },
       primitives: [],
     };
-    const after = insertEntity(this.currentDocument, entity);
-    this.commitDocumentCandidate({
+    const after = insertEntity(this.kernel.document, entity);
+    this.ports.commitDocumentCandidate({
       label: `Create ${normalizedClassname}`,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: { entityId: entity.id },
       document: after,
     });
@@ -85,12 +63,12 @@ export class SessionEntityCommands {
     ids: IdFactory,
     properties: Readonly<Record<string, string>> = {},
   ): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const brushIds = selectedBrushIds(this.currentSelection);
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
+    const brushIds = selectedBrushIds(this.kernel.selection);
     if (brushIds.length === 0) return false;
     const normalizedClassname = classname.trim();
     if (!normalizedClassname) throw new Error('A brush entity requires a classname');
-    const layer = editorLayerForSelection(this.currentDocument, this.currentSelection);
+    const layer = editorLayerForSelection(this.kernel.document, this.kernel.selection);
     const entity: MapEntity = {
       id: ids.entity(),
       properties: {
@@ -100,18 +78,18 @@ export class SessionEntityCommands {
       },
       primitives: [],
     };
-    const after = createBrushEntityInDocument(this.currentDocument, brushIds, entity);
+    const after = createBrushEntityInDocument(this.kernel.document, brushIds, entity);
     const selectionAfter = createObjectSelection(
       brushIds,
-      selectedPointEntityIds(this.currentSelection),
+      selectedPointEntityIds(this.kernel.selection),
       { kind: 'brush', brushId: brushIds.at(-1)! },
     );
-    this.commitDocumentCandidate({
+    this.ports.commitDocumentCandidate({
       label: `Make ${normalizedClassname}`,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter,
       document: after,
     });
@@ -119,41 +97,41 @@ export class SessionEntityCommands {
   }
 
   public moveSelectedBrushesToEntity(entityId: EntityId): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const brushIds = selectedBrushIds(this.currentSelection);
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
+    const brushIds = selectedBrushIds(this.kernel.selection);
     if (brushIds.length === 0) return false;
-    const after = moveBrushesToEntity(this.currentDocument, brushIds, entityId);
-    this.commitDocumentCandidate({
+    const after = moveBrushesToEntity(this.kernel.document, brushIds, entityId);
+    this.ports.commitDocumentCandidate({
       label: 'Move brushes to entity',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
-      selectionAfter: this.currentSelection,
+      selectionBefore: this.kernel.selection,
+      selectionAfter: this.kernel.selection,
       document: after,
     });
     return true;
   }
 
   public makeSelectedStructural(): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const brushIds = selectedBrushIds(this.currentSelection);
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
+    const brushIds = selectedBrushIds(this.kernel.selection);
     if (brushIds.length === 0) return false;
-    const layer = editorLayerForSelection(this.currentDocument, this.currentSelection);
+    const layer = editorLayerForSelection(this.kernel.document, this.kernel.selection);
     const target = layer?.id
-      ? this.currentDocument.entities.find((entity) => entity.id === layer.entityId)
-      : this.currentDocument.entities.find(
+      ? this.kernel.document.entities.find((entity) => entity.id === layer.entityId)
+      : this.kernel.document.entities.find(
           (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
         );
     if (!target) throw new Error('The map has no structural layer entity');
-    const after = moveBrushesToEntity(this.currentDocument, brushIds, target.id, true);
-    this.commitDocumentCandidate({
+    const after = moveBrushesToEntity(this.kernel.document, brushIds, target.id, true);
+    this.ports.commitDocumentCandidate({
       label: brushIds.length === 1 ? 'Make brush structural' : 'Make brushes structural',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
-      selectionAfter: this.currentSelection,
+      selectionBefore: this.kernel.selection,
+      selectionAfter: this.kernel.selection,
       document: after,
     });
     return true;

@@ -56,23 +56,23 @@ import {
   type DocumentEditCandidate,
   type SelectionBrushSelectionResult,
 } from './session-common.js';
-import { SessionKernel } from './session-kernel.js';
+import type { SessionKernel } from './session-kernel.js';
 
-type SessionSelectionKernel = Pick<
-  SessionKernel,
-  | 'discardRepeatableCommands'
-  | 'document'
-  | 'editingGroupId'
-  | 'hiddenBrushIds'
-  | 'hiddenEntityIds'
-  | 'issueFixIds'
-  | 'layerId'
-  | 'lockedBrushIds'
-  | 'lockedEntityIds'
-  | 'notify'
-  | 'selection'
-  | 'snapshotObjectViewState'
->;
+type SessionSelectionKernel = Readonly<Pick<SessionKernel, 'document'>> &
+  Pick<
+    SessionKernel,
+    | 'discardRepeatableCommands'
+    | 'editingGroupId'
+    | 'hiddenBrushIds'
+    | 'hiddenEntityIds'
+    | 'issueFixIds'
+    | 'layerId'
+    | 'lockedBrushIds'
+    | 'lockedEntityIds'
+    | 'notify'
+    | 'selection'
+    | 'snapshotObjectViewState'
+  >;
 
 export interface SessionSelectionPorts {
   readonly objectViewState: () => EditorObjectViewState;
@@ -90,32 +90,8 @@ export class SessionSelectionCommands {
     private readonly ports: SessionSelectionPorts,
   ) {}
 
-  private get currentDocument() {
-    return this.kernel.document;
-  }
-
-  private get currentSelection() {
-    return this.kernel.selection;
-  }
-
-  private set currentSelection(selection: EditorSelection | null) {
-    this.kernel.selection = selection;
-  }
-
-  private get currentLayerId() {
-    return this.kernel.layerId;
-  }
-
-  private get editingGroupId() {
-    return this.kernel.editingGroupId;
-  }
-
-  private get issueFixIds() {
-    return this.kernel.issueFixIds;
-  }
-
   private get issues() {
-    return deriveEditorIssues(this.currentDocument);
+    return deriveEditorIssues(this.kernel.document);
   }
 
   private get objectViewState(): EditorObjectViewState {
@@ -130,48 +106,25 @@ export class SessionSelectionCommands {
     return this.kernel.lockedBrushIds.size + this.kernel.lockedEntityIds.size > 0;
   }
 
-  private snapshotObjectViewState(): EditorObjectViewState {
-    return this.kernel.snapshotObjectViewState();
-  }
-
-  private commitObjectViewState(
-    label: string,
-    state: EditorObjectViewState,
-    selectionAfter: EditorSelection | null,
-  ): boolean {
-    return this.ports.commitObjectViewState(label, state, selectionAfter);
-  }
-
-  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
-    this.ports.commitDocumentCandidate(candidate);
-  }
-
-  private discardRepeatableCommands(): void {
-    this.kernel.discardRepeatableCommands();
-  }
-
-  private notify(kind: 'document' | 'selection' | 'history' | 'view', label: string): void {
-    this.kernel.notify(kind, label);
-  }
   public groupSelected(
     name: string,
     ids: IdFactory,
     openGroupId: string | null = null,
   ): string | null {
-    const selection = this.currentSelection;
+    const selection = this.kernel.selection;
     if (!selection || selection.faceId) return null;
     const result = groupObjects(
-      this.currentDocument,
+      this.kernel.document,
       selection,
       name,
       ids,
       openGroupId,
-      openGroupId ? null : this.currentLayerId,
+      openGroupId ? null : this.kernel.layerId,
     );
-    this.commitDocumentCandidate({
+    this.ports.commitDocumentCandidate({
       label: 'Group objects',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after: result.document,
       selectionBefore: selection,
       selectionAfter: result.selection,
@@ -185,9 +138,9 @@ export class SessionSelectionCommands {
     delta: Vec3 = [16, 16, 0],
     textureLock = true,
   ): string | null {
-    const source = selectedEditorGroup(this.currentDocument, this.currentSelection);
+    const source = selectedEditorGroup(this.kernel.document, this.kernel.selection);
     if (!source) return null;
-    const duplicate = createLinkedGroupDuplicate(this.currentDocument, source.id, ids);
+    const duplicate = createLinkedGroupDuplicate(this.kernel.document, source.id, ids);
     let after = duplicate.document;
     if (duplicate.selection && delta.some((component) => Math.abs(component) > Number.EPSILON)) {
       after = translatedObjects(after, duplicate.selection, delta, textureLock);
@@ -197,12 +150,12 @@ export class SessionSelectionCommands {
         translationAffineMatrix(delta),
       );
     }
-    this.commitDocumentCandidate({
+    this.ports.commitDocumentCandidate({
       label: 'Create linked duplicate',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: duplicate.selection,
       document: after,
     });
@@ -211,17 +164,17 @@ export class SessionSelectionCommands {
 
   public unlinkGroup(groupId?: string): boolean {
     const group = groupId
-      ? deriveEditorGroups(this.currentDocument).find((candidate) => candidate.id === groupId)
-      : selectedEditorGroup(this.currentDocument, this.currentSelection);
+      ? deriveEditorGroups(this.kernel.document).find((candidate) => candidate.id === groupId)
+      : selectedEditorGroup(this.kernel.document, this.kernel.selection);
     if (!group?.linkedGroupId) return false;
-    const after = unlinkEditorGroup(this.currentDocument, group.id);
-    this.commitDocumentCandidate({
+    const after = unlinkEditorGroup(this.kernel.document, group.id);
+    this.ports.commitDocumentCandidate({
       label: 'Unlink group',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
-      selectionAfter: this.currentSelection,
+      selectionBefore: this.kernel.selection,
+      selectionAfter: this.kernel.selection,
       document: after,
     });
     return true;
@@ -231,16 +184,16 @@ export class SessionSelectionCommands {
   public ungroupSelected(groupId?: string): boolean {
     const group = groupId
       ? { id: groupId }
-      : selectedEditorGroup(this.currentDocument, this.currentSelection);
+      : selectedEditorGroup(this.kernel.document, this.kernel.selection);
     if (!group) return false;
-    const result = ungroupObjects(this.currentDocument, group.id);
+    const result = ungroupObjects(this.kernel.document, group.id);
     const after = normalizeSingleLinkedGroups(result.document);
-    this.commitDocumentCandidate({
+    this.ports.commitDocumentCandidate({
       label: 'Ungroup objects',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: result.selection,
       document: after,
     });
@@ -248,29 +201,29 @@ export class SessionSelectionCommands {
   }
 
   public renameGroup(groupId: string, name: string): boolean {
-    const after = renameEditorGroup(this.currentDocument, groupId, name);
-    if (after === this.currentDocument) return false;
-    this.commitDocumentCandidate({
+    const after = renameEditorGroup(this.kernel.document, groupId, name);
+    if (after === this.kernel.document) return false;
+    this.ports.commitDocumentCandidate({
       label: 'Rename group',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
-      selectionAfter: this.currentSelection,
+      selectionBefore: this.kernel.selection,
+      selectionAfter: this.kernel.selection,
       document: after,
     });
     return true;
   }
 
   public addSelectedToGroup(groupId: string): boolean {
-    const selection = this.currentSelection;
+    const selection = this.kernel.selection;
     if (!selection || selection.faceId) return false;
-    const after = moveObjectsIntoEditorGroup(this.currentDocument, selection, groupId);
-    if (after === this.currentDocument) return false;
-    this.commitDocumentCandidate({
+    const after = moveObjectsIntoEditorGroup(this.kernel.document, selection, groupId);
+    if (after === this.kernel.document) return false;
+    this.ports.commitDocumentCandidate({
       label: 'Add objects to group',
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
       selectionBefore: selection,
       selectionAfter: selection,
@@ -280,13 +233,13 @@ export class SessionSelectionCommands {
   }
 
   public hideSelected(): boolean {
-    const selection = this.currentSelection;
+    const selection = this.kernel.selection;
     if (!selection || selection.faceId) return false;
     const brushIds = selectedBrushIds(selection);
     const entityIds = selectedPointEntityIds(selection);
     if (brushIds.length + entityIds.length === 0) return false;
-    const after = this.snapshotObjectViewState();
-    return this.commitObjectViewState(
+    const after = this.kernel.snapshotObjectViewState();
+    return this.ports.commitObjectViewState(
       brushIds.length + entityIds.length === 1 ? 'Hide object' : 'Hide objects',
       {
         ...after,
@@ -298,19 +251,19 @@ export class SessionSelectionCommands {
   }
 
   public isolateSelected(): boolean {
-    const selection = this.currentSelection;
+    const selection = this.kernel.selection;
     if (!selection || selection.faceId) return false;
     const visibleBrushIds = new Set(selectedBrushIds(selection));
     const visibleEntityIds = new Set(selectedPointEntityIds(selection));
     if (visibleBrushIds.size + visibleEntityIds.size === 0) return false;
-    return this.commitObjectViewState(
+    return this.ports.commitObjectViewState(
       'Isolate objects',
       {
-        ...this.snapshotObjectViewState(),
-        hiddenBrushIds: brushesInDocument(this.currentDocument)
+        ...this.kernel.snapshotObjectViewState(),
+        hiddenBrushIds: brushesInDocument(this.kernel.document)
           .map((brush) => brush.id)
           .filter((brushId) => !visibleBrushIds.has(brushId)),
-        hiddenEntityIds: pointEntitiesInDocument(this.currentDocument)
+        hiddenEntityIds: pointEntitiesInDocument(this.kernel.document)
           .map((entity) => entity.id)
           .filter((entityId) => !visibleEntityIds.has(entityId)),
       },
@@ -320,25 +273,25 @@ export class SessionSelectionCommands {
 
   public showAll(): boolean {
     if (!this.canShowAll) return false;
-    return this.commitObjectViewState(
+    return this.ports.commitObjectViewState(
       'Show all objects',
       {
-        ...this.snapshotObjectViewState(),
+        ...this.kernel.snapshotObjectViewState(),
         hiddenBrushIds: [],
         hiddenEntityIds: [],
       },
-      this.currentSelection,
+      this.kernel.selection,
     );
   }
 
   public lockSelected(): boolean {
-    const selection = this.currentSelection;
+    const selection = this.kernel.selection;
     if (!selection || selection.faceId) return false;
     const brushIds = selectedBrushIds(selection);
     const entityIds = selectedPointEntityIds(selection);
     if (brushIds.length + entityIds.length === 0) return false;
-    const before = this.snapshotObjectViewState();
-    return this.commitObjectViewState(
+    const before = this.kernel.snapshotObjectViewState();
+    return this.ports.commitObjectViewState(
       brushIds.length + entityIds.length === 1 ? 'Lock object' : 'Lock objects',
       {
         ...before,
@@ -351,22 +304,22 @@ export class SessionSelectionCommands {
 
   public unlockAll(): boolean {
     if (!this.canUnlockAll) return false;
-    return this.commitObjectViewState(
+    return this.ports.commitObjectViewState(
       'Unlock all objects',
       {
-        ...this.snapshotObjectViewState(),
+        ...this.kernel.snapshotObjectViewState(),
         lockedBrushIds: [],
         lockedEntityIds: [],
       },
-      this.currentSelection,
+      this.kernel.selection,
     );
   }
 
   public select(selection: EditorSelection | null): void {
     if (selection) this.assertSelectionAvailable(selection);
-    this.discardRepeatableCommands();
-    this.currentSelection = selection;
-    this.notify(
+    this.kernel.discardRepeatableCommands();
+    this.kernel.selection = selection;
+    this.kernel.notify(
       'selection',
       selection
         ? selection.faceId
@@ -381,9 +334,9 @@ export class SessionSelectionCommands {
   /** Internal selection commit used by focused command domains that already own the label. */
   public setSelection(selection: EditorSelection | null, label: string): EditorSelection | null {
     if (selection) this.assertSelectionAvailable(selection);
-    this.discardRepeatableCommands();
-    this.currentSelection = selection;
-    this.notify('selection', label);
+    this.kernel.discardRepeatableCommands();
+    this.kernel.selection = selection;
+    this.kernel.notify('selection', label);
     return selection;
   }
 
@@ -391,23 +344,23 @@ export class SessionSelectionCommands {
   public selectIssue(issueId: string): EditorSelection | null {
     const issue = this.issues.find((candidate) => candidate.id === issueId);
     if (!issue) return null;
-    this.discardRepeatableCommands();
-    this.currentSelection = selectionForEditorIssue(issue);
-    this.notify('selection', `Select issue: ${issue.message}`);
-    return this.currentSelection;
+    this.kernel.discardRepeatableCommands();
+    this.kernel.selection = selectionForEditorIssue(issue);
+    this.kernel.notify('selection', `Select issue: ${issue.message}`);
+    return this.kernel.selection;
   }
   /** Applies one advertised issue quick fix as a single undoable document edit. */
   public fixIssue(issueId: string): boolean {
-    const result = applyEditorIssueFix(this.currentDocument, issueId, this.issueFixIds);
+    const result = applyEditorIssueFix(this.kernel.document, issueId, this.kernel.issueFixIds);
     if (!result) return false;
-    this.discardRepeatableCommands();
-    this.commitDocumentCandidate({
+    this.kernel.discardRepeatableCommands();
+    this.ports.commitDocumentCandidate({
       label: result.label,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after: result.document,
-      selectionBefore: this.currentSelection,
-      selectionAfter: result.removesObjects ? null : this.currentSelection,
+      selectionBefore: this.kernel.selection,
+      selectionAfter: result.removesObjects ? null : this.kernel.selection,
       document: result.document,
     });
     return true;
@@ -442,19 +395,21 @@ export class SessionSelectionCommands {
     readonly brushIds: readonly BrushId[];
     readonly entityIds: readonly EntityId[];
   } {
-    const editingGroup = this.editingGroupId
-      ? deriveEditorGroups(this.currentDocument).find((group) => group.id === this.editingGroupId)
+    const editingGroup = this.kernel.editingGroupId
+      ? deriveEditorGroups(this.kernel.document).find(
+          (group) => group.id === this.kernel.editingGroupId,
+        )
       : null;
     const groupBrushIds = editingGroup ? new Set(editingGroup.brushIds) : null;
     const groupEntityIds = editingGroup ? new Set(editingGroup.pointEntityIds) : null;
     return {
-      brushIds: brushesInDocument(this.currentDocument)
+      brushIds: brushesInDocument(this.kernel.document)
         .map((brush) => brush.id)
         .filter(
           (brushId) =>
             (!groupBrushIds || groupBrushIds.has(brushId)) && !this.isBrushUnavailable(brushId),
         ),
-      entityIds: pointEntitiesInDocument(this.currentDocument)
+      entityIds: pointEntitiesInDocument(this.kernel.document)
         .map((entity) => entity.id)
         .filter(
           (entityId) =>
@@ -470,10 +425,10 @@ export class SessionSelectionCommands {
     label: string,
   ): EditorSelection | null {
     const selection = createObjectSelection(brushIds, entityIds);
-    this.discardRepeatableCommands();
-    this.currentSelection = selection;
+    this.kernel.discardRepeatableCommands();
+    this.kernel.selection = selection;
     const count = brushIds.length + entityIds.length;
-    this.notify('selection', count > 0 ? `${label} (${count})` : 'Clear selection');
+    this.kernel.notify('selection', count > 0 ? `${label} (${count})` : 'Clear selection');
     return selection;
   }
 
@@ -487,10 +442,10 @@ export class SessionSelectionCommands {
   public invertObjectSelection(): EditorSelection | null {
     const editable = this.editableObjectIds();
     const selectedBrushes = new Set(
-      this.currentSelection?.faceId ? [] : selectedBrushIds(this.currentSelection),
+      this.kernel.selection?.faceId ? [] : selectedBrushIds(this.kernel.selection),
     );
     const selectedEntities = new Set(
-      this.currentSelection?.faceId ? [] : selectedPointEntityIds(this.currentSelection),
+      this.kernel.selection?.faceId ? [] : selectedPointEntityIds(this.kernel.selection),
     );
     return this.setObjectSelection(
       editable.brushIds.filter((brushId) => !selectedBrushes.has(brushId)),
@@ -507,7 +462,11 @@ export class SessionSelectionCommands {
     const entities = new Set<EntityId>();
     const expandedGroups = new Map<string, ReturnType<typeof editorGroupForObject>>();
     const addGroupOrObject = (selection: EditorSelection): void => {
-      const group = editorGroupForObject(this.currentDocument, selection, this.editingGroupId);
+      const group = editorGroupForObject(
+        this.kernel.document,
+        selection,
+        this.kernel.editingGroupId,
+      );
       if (!group) {
         for (const brushId of selectedBrushIds(selection)) brushes.add(brushId);
         for (const entityId of selectedPointEntityIds(selection)) entities.add(entityId);
@@ -547,12 +506,12 @@ export class SessionSelectionCommands {
     mode: SelectionBrushQueryMode,
     projection?: SelectionBrushProjection,
   ): SelectionBrushSelectionResult | null {
-    const selection = this.currentSelection;
+    const selection = this.kernel.selection;
     if (!selection || selection.faceId || selection.groupId) return null;
     const selectionBrushIds = selectedBrushIds(selection);
     if (selectionBrushIds.length === 0 || selectedPointEntityIds(selection).length > 0) return null;
     for (const brushId of selectionBrushIds) {
-      const owner = this.currentDocument.entities.find((entity) =>
+      const owner = this.kernel.document.entities.find((entity) =>
         entity.primitives.some((brush) => brush.id === brushId),
       );
       if (
@@ -565,15 +524,15 @@ export class SessionSelectionCommands {
       }
     }
     const editable = this.editableObjectIds();
-    const queried = querySelectionBrushes(this.currentDocument, selectionBrushIds, {
+    const queried = querySelectionBrushes(this.kernel.document, selectionBrushIds, {
       mode,
       ...(projection ? { projection } : {}),
       candidateBrushIds: editable.brushIds,
       candidateEntityIds: editable.entityIds,
     });
     const selectionAfter = this.expandSelectionQueryGroups(queried.brushIds, queried.entityIds);
-    this.discardRepeatableCommands();
-    const after = removeBrushes(this.currentDocument, selectionBrushIds);
+    this.kernel.discardRepeatableCommands();
+    const after = removeBrushes(this.kernel.document, selectionBrushIds);
     const selectedBrushCount = selectedBrushIds(selectionAfter).length;
     const selectedEntityCount = selectedPointEntityIds(selectionAfter).length;
     const modeLabel =
@@ -582,10 +541,10 @@ export class SessionSelectionCommands {
         : mode === 'inside'
           ? 'Select enclosed objects'
           : 'Select projected objects';
-    this.commitDocumentCandidate({
+    this.ports.commitDocumentCandidate({
       label: modeLabel,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
       selectionBefore: selection,
       selectionAfter,
@@ -600,43 +559,43 @@ export class SessionSelectionCommands {
   }
 
   public selectBrush(brushId: BrushId, additive = false): EditorSelection | null {
-    if (!findBrush(this.currentDocument, brushId)) throw new Error(`Unknown brush ${brushId}`);
+    if (!findBrush(this.kernel.document, brushId)) throw new Error(`Unknown brush ${brushId}`);
     if (this.isBrushUnavailable(brushId)) {
       throw new Error(`Cannot select hidden or locked brush ${brushId}`);
     }
-    this.discardRepeatableCommands();
-    this.currentSelection = updateBrushSelection(this.currentSelection, brushId, additive);
-    const count = selectedBrushIds(this.currentSelection).length;
-    this.notify(
+    this.kernel.discardRepeatableCommands();
+    this.kernel.selection = updateBrushSelection(this.kernel.selection, brushId, additive);
+    const count = selectedBrushIds(this.kernel.selection).length;
+    this.kernel.notify(
       'selection',
-      this.currentSelection
+      this.kernel.selection
         ? count > 1
           ? `Select ${count} brushes`
           : 'Select brush'
         : 'Clear selection',
     );
-    return this.currentSelection;
+    return this.kernel.selection;
   }
 
   public selectPointEntity(entityId: EntityId, additive = false): EditorSelection | null {
-    if (!pointEntitiesInDocument(this.currentDocument).some((entity) => entity.id === entityId)) {
+    if (!pointEntitiesInDocument(this.kernel.document).some((entity) => entity.id === entityId)) {
       throw new Error(`Unknown point entity ${entityId}`);
     }
     if (this.isEntityUnavailable(entityId)) {
       throw new Error(`Cannot select hidden or locked point entity ${entityId}`);
     }
-    this.discardRepeatableCommands();
-    this.currentSelection = updatePointEntitySelection(this.currentSelection, entityId, additive);
-    const count = selectedPointEntityIds(this.currentSelection).length;
-    this.notify(
+    this.kernel.discardRepeatableCommands();
+    this.kernel.selection = updatePointEntitySelection(this.kernel.selection, entityId, additive);
+    const count = selectedPointEntityIds(this.kernel.selection).length;
+    this.kernel.notify(
       'selection',
-      this.currentSelection
+      this.kernel.selection
         ? count > 1
           ? `Select ${count} entities`
           : 'Select entity'
         : 'Clear selection',
     );
-    return this.currentSelection;
+    return this.kernel.selection;
   }
 
   public selectFace(face: FaceSelection, additive = false): BrushSelection | null {
@@ -649,7 +608,7 @@ export class SessionSelectionCommands {
     primaryFaceId?: FaceId,
   ): BrushSelection | null {
     return this.selectFaces(
-      facesOfBrush(this.currentDocument, brushId),
+      facesOfBrush(this.kernel.document, brushId),
       additive,
       additive ? 'Add brush faces' : 'Select brush faces',
       primaryFaceId ? { brushId, faceId: primaryFaceId } : null,
@@ -661,7 +620,7 @@ export class SessionSelectionCommands {
     additive = false,
   ): BrushSelection | null {
     return this.selectFaces(
-      connectedCoplanarFaces(this.currentDocument, seed),
+      connectedCoplanarFaces(this.kernel.document, seed),
       additive,
       additive ? 'Add coplanar faces' : 'Select coplanar faces',
       seed,
@@ -674,7 +633,7 @@ export class SessionSelectionCommands {
     additive = false,
   ): BrushSelection | null {
     return this.selectFaces(
-      matchingBrushFaces(this.currentDocument, seed, brushIds),
+      matchingBrushFaces(this.kernel.document, seed, brushIds),
       additive,
       additive ? 'Add matching faces' : 'Select matching faces',
       seed,
@@ -691,30 +650,30 @@ export class SessionSelectionCommands {
       if (this.isBrushUnavailable(face.brushId)) {
         throw new Error(`Cannot select a face on hidden or locked brush ${face.brushId}`);
       }
-      const brush = findBrush(this.currentDocument, face.brushId);
+      const brush = findBrush(this.kernel.document, face.brushId);
       if (!brush?.faces.some((candidate) => candidate.id === face.faceId)) {
         throw new Error(`Unknown face ${face.faceId} on brush ${face.brushId}`);
       }
     }
-    this.discardRepeatableCommands();
-    this.currentSelection = updateFaceSelection(this.currentSelection, faces, additive, primary);
-    this.notify('selection', this.currentSelection ? label : 'Clear selection');
-    return this.currentSelection;
+    this.kernel.discardRepeatableCommands();
+    this.kernel.selection = updateFaceSelection(this.kernel.selection, faces, additive, primary);
+    this.kernel.notify('selection', this.kernel.selection ? label : 'Clear selection');
+    return this.kernel.selection;
   }
 
   public selectFacesWithLasso(
     faces: readonly FaceSelection[],
     ensureSelected = false,
   ): BrushSelection | null {
-    if (faces.length === 0) return this.currentSelection?.brushId ? this.currentSelection : null;
+    if (faces.length === 0) return this.kernel.selection?.brushId ? this.kernel.selection : null;
     for (const face of faces) {
-      const brush = findBrush(this.currentDocument, face.brushId);
+      const brush = findBrush(this.kernel.document, face.brushId);
       if (!brush?.faces.some((candidate) => candidate.id === face.faceId)) {
         throw new Error(`Unknown face ${face.faceId} on brush ${face.brushId}`);
       }
     }
     const selected = new Map(
-      selectedFaceReferences(this.currentSelection).map(
+      selectedFaceReferences(this.kernel.selection).map(
         (face) => [faceSelectionKey(face), face] as const,
       ),
     );
@@ -725,15 +684,15 @@ export class SessionSelectionCommands {
       else selected.set(faceKey, face);
     }
     const primary = faces.toReversed().find((face) => selected.has(faceSelectionKey(face))) ?? null;
-    this.discardRepeatableCommands();
-    this.currentSelection = createFaceSelection([...selected.values()], primary);
+    this.kernel.discardRepeatableCommands();
+    this.kernel.selection = createFaceSelection([...selected.values()], primary);
     const count = selected.size;
-    this.notify(
+    this.kernel.notify(
       'selection',
       count === 0
         ? 'Clear face lasso selection'
         : `Lasso selected ${count} ${count === 1 ? 'face' : 'faces'}`,
     );
-    return this.currentSelection;
+    return this.kernel.selection;
   }
 }

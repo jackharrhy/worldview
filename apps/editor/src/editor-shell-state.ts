@@ -1,3 +1,4 @@
+import { EditorUiPort } from './editor-ui-port.js';
 import { SnapshotStore } from '@jackharrhy/worldview/runtime';
 import type {
   EditorMaterial,
@@ -118,17 +119,14 @@ export interface WorkspaceLayoutSnapshot {
   readonly dragging: WorkspaceResizeKind | null;
 }
 
-export class WorkspaceLayoutPort {
-  private readonly store = new SnapshotStore<WorkspaceLayoutSnapshot>({
-    viewportColumn: 0.5,
-    viewportTop: 0.5,
-    inspectorWidth: 320,
-    dragging: null,
-  });
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public update(update: Partial<WorkspaceLayoutSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class WorkspaceLayoutPort extends EditorUiPort<WorkspaceLayoutSnapshot> {
+  public constructor() {
+    super({
+      viewportColumn: 0.5,
+      viewportTop: 0.5,
+      inspectorWidth: 320,
+      dragging: null,
+    });
   }
 }
 
@@ -139,17 +137,14 @@ export interface ViewportPresentationSnapshot {
   readonly error: string | null;
 }
 
-export class ViewportPresentationPort {
-  private readonly store = new SnapshotStore<ViewportPresentationSnapshot>({
-    showingCompiled: false,
-    perspectiveMode: 'EDIT',
-    perspectiveTitle: '',
-    error: null,
-  });
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public update(update: Partial<ViewportPresentationSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class ViewportPresentationPort extends EditorUiPort<ViewportPresentationSnapshot> {
+  public constructor() {
+    super({
+      showingCompiled: false,
+      perspectiveMode: 'EDIT',
+      perspectiveTitle: '',
+      error: null,
+    });
   }
 }
 
@@ -157,23 +152,24 @@ export interface ViewportLayoutActions {
   setPerspectiveOnly(enabled: boolean): void;
 }
 
-export class ViewportLayoutPort {
-  private readonly store = new SnapshotStore<ViewportLayoutSnapshot>({
-    perspectiveOnly: false,
-    rendererReady: false,
-  });
-  private actions: ViewportLayoutActions | null = null;
+export class ViewportLayoutPort extends EditorUiPort<
+  ViewportLayoutSnapshot,
+  ViewportLayoutActions
+> {
+  public constructor() {
+    super({
+      perspectiveOnly: false,
+      rendererReady: false,
+    });
+  }
 
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-
-  public bind(actions: ViewportLayoutActions): void {
-    this.actions = actions;
+  public override bind(actions: ViewportLayoutActions): void {
+    super.bind(actions);
     this.store.set({ ...this.store.getSnapshot(), rendererReady: true });
   }
 
-  public unbind(): void {
-    this.actions = null;
+  public override unbind(): void {
+    super.unbind();
     this.store.set({ perspectiveOnly: false, rendererReady: false });
   }
 
@@ -195,14 +191,13 @@ export interface InspectorLayoutSnapshot {
   readonly open: boolean;
 }
 
-export class InspectorLayoutPort {
-  private readonly store = new SnapshotStore<InspectorLayoutSnapshot>({
-    active: 'object',
-    open: true,
-  });
-
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
+export class InspectorLayoutPort extends EditorUiPort<InspectorLayoutSnapshot> {
+  public constructor() {
+    super({
+      active: 'object',
+      open: true,
+    });
+  }
 
   public setActive(page: InspectorPage): void {
     this.store.set({ ...this.store.getSnapshot(), active: page });
@@ -286,21 +281,16 @@ const CLOSED_VIEWPORT_CONTEXT_MENU: ViewportContextMenuSnapshot = {
   sections: [],
 };
 
-export class ViewportContextMenuPort {
-  private readonly store = new SnapshotStore<ViewportContextMenuSnapshot>(
-    CLOSED_VIEWPORT_CONTEXT_MENU,
-  );
-  private actions: ViewportContextMenuActions | null = null;
-
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-
-  public bind(actions: ViewportContextMenuActions): void {
-    this.actions = actions;
+export class ViewportContextMenuPort extends EditorUiPort<
+  ViewportContextMenuSnapshot,
+  ViewportContextMenuActions
+> {
+  public constructor() {
+    super(CLOSED_VIEWPORT_CONTEXT_MENU);
   }
 
-  public unbind(): void {
-    this.actions = null;
+  public override unbind(): void {
+    super.unbind();
     this.hide();
   }
 
@@ -332,22 +322,17 @@ export interface DocumentSummarySnapshot {
   readonly geometryErrorCount: number;
 }
 
-export class DocumentSummaryPort {
-  private readonly store = new SnapshotStore<DocumentSummarySnapshot>({
-    revision: 0,
-    entityCount: 0,
-    brushCount: 0,
-    groupCount: 0,
-    hiddenObjectCount: 0,
-    lockedObjectCount: 0,
-    geometryErrorCount: 0,
-  });
-
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-
-  public set(snapshot: DocumentSummarySnapshot): void {
-    this.store.set(snapshot);
+export class DocumentSummaryPort extends EditorUiPort<DocumentSummarySnapshot> {
+  public constructor() {
+    super({
+      revision: 0,
+      entityCount: 0,
+      brushCount: 0,
+      groupCount: 0,
+      hiddenObjectCount: 0,
+      lockedObjectCount: 0,
+      geometryErrorCount: 0,
+    });
   }
 }
 
@@ -372,37 +357,21 @@ export interface SurfaceInspectorActions {
   setValue(value: number): void;
 }
 
-export class SurfaceInspectorPort {
-  private readonly store = new SnapshotStore<SurfaceInspectorSnapshot>({
-    visible: false,
-    contents: [],
-    flags: [],
-    unknownContents: '',
-    unknownFlags: '',
-    value: '',
-    valueMixed: false,
-    valueLabel: 'Value',
-  });
-  private actions: SurfaceInspectorActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: SurfaceInspectorActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
-  }
-  public set(snapshot: SurfaceInspectorSnapshot): void {
-    this.store.set(snapshot);
-  }
-  public invoke<K extends keyof SurfaceInspectorActions>(
-    action: K,
-    ...args: Parameters<SurfaceInspectorActions[K]>
-  ): void {
-    const handler = this.actions?.[action] as
-      | ((...values: Parameters<SurfaceInspectorActions[K]>) => void)
-      | undefined;
-    handler?.(...args);
+export class SurfaceInspectorPort extends EditorUiPort<
+  SurfaceInspectorSnapshot,
+  SurfaceInspectorActions
+> {
+  public constructor() {
+    super({
+      visible: false,
+      contents: [],
+      flags: [],
+      unknownContents: '',
+      unknownFlags: '',
+      value: '',
+      valueMixed: false,
+      valueLabel: 'Value',
+    });
   }
 }
 
@@ -451,32 +420,13 @@ const EMPTY_FACE_INSPECTOR: FaceInspectorSnapshot = {
   uvGrid: [1, 1],
 };
 
-export class FaceInspectorPort {
-  private readonly store = new SnapshotStore<FaceInspectorSnapshot>(EMPTY_FACE_INSPECTOR);
-  private actions: FaceInspectorActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: FaceInspectorActions): void {
-    this.actions = actions;
+export class FaceInspectorPort extends EditorUiPort<FaceInspectorSnapshot, FaceInspectorActions> {
+  public constructor() {
+    super(EMPTY_FACE_INSPECTOR);
   }
-  public unbind(): void {
-    this.actions = null;
+  public override unbind(): void {
+    super.unbind();
     this.store.set(EMPTY_FACE_INSPECTOR);
-  }
-  public set(snapshot: FaceInspectorSnapshot): void {
-    this.store.set(snapshot);
-  }
-  public update(update: Partial<FaceInspectorSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
-  }
-  public invoke<K extends keyof FaceInspectorActions>(
-    action: K,
-    ...args: Parameters<FaceInspectorActions[K]>
-  ): void {
-    const handler = this.actions?.[action] as
-      | ((...values: Parameters<FaceInspectorActions[K]>) => void)
-      | undefined;
-    handler?.(...args);
   }
 }
 
@@ -539,32 +489,16 @@ const EMPTY_MATERIAL_BROWSER: MaterialBrowserSnapshot = {
   revealVersion: 0,
 };
 
-export class MaterialBrowserPort {
-  private readonly store = new SnapshotStore<MaterialBrowserSnapshot>(EMPTY_MATERIAL_BROWSER);
-  private actions: MaterialBrowserActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: MaterialBrowserActions): void {
-    this.actions = actions;
+export class MaterialBrowserPort extends EditorUiPort<
+  MaterialBrowserSnapshot,
+  MaterialBrowserActions
+> {
+  public constructor() {
+    super(EMPTY_MATERIAL_BROWSER);
   }
-  public unbind(): void {
-    this.actions = null;
+  public override unbind(): void {
+    super.unbind();
     this.store.set(EMPTY_MATERIAL_BROWSER);
-  }
-  public set(snapshot: MaterialBrowserSnapshot): void {
-    this.store.set(snapshot);
-  }
-  public update(update: Partial<MaterialBrowserSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
-  }
-  public invoke<K extends keyof MaterialBrowserActions>(
-    action: K,
-    ...args: Parameters<MaterialBrowserActions[K]>
-  ): void {
-    const handler = this.actions?.[action] as
-      | ((...values: Parameters<MaterialBrowserActions[K]>) => void)
-      | undefined;
-    handler?.(...args);
   }
 }
 
@@ -576,18 +510,15 @@ export interface ResourceSettingsSnapshot {
   readonly revealVersion: number;
 }
 
-export class ResourceSettingsPort {
-  private readonly store = new SnapshotStore<ResourceSettingsSnapshot>({
-    loadedWadCount: 0,
-    paletteLoaded: false,
-    message: 'Material resources are local to this browser until added to a project mount.',
-    tone: 'normal',
-    revealVersion: 0,
-  });
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public update(update: Partial<ResourceSettingsSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class ResourceSettingsPort extends EditorUiPort<ResourceSettingsSnapshot> {
+  public constructor() {
+    super({
+      loadedWadCount: 0,
+      paletteLoaded: false,
+      message: 'Material resources are local to this browser until added to a project mount.',
+      tone: 'normal',
+      revealVersion: 0,
+    });
   }
 }
 
@@ -620,32 +551,16 @@ export interface WorkspaceHomeActions {
   showHome(): void;
 }
 
-export class WorkspaceHomePort {
-  private readonly store = new SnapshotStore<WorkspaceHomeSnapshot>({
-    visible: true,
-    newMapOpen: false,
-    name: 'untitled.map',
-    profile: 'quake',
-    format: 'valve-220',
-    recents: [],
-  });
-  private actions: WorkspaceHomeActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: WorkspaceHomeActions): void {
-    this.actions = actions;
-  }
-  public update(update: Partial<WorkspaceHomeSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
-  }
-  public invoke<K extends keyof WorkspaceHomeActions>(
-    action: K,
-    ...args: Parameters<WorkspaceHomeActions[K]>
-  ): void {
-    const handler = this.actions?.[action] as
-      | ((...values: Parameters<WorkspaceHomeActions[K]>) => void)
-      | undefined;
-    handler?.(...args);
+export class WorkspaceHomePort extends EditorUiPort<WorkspaceHomeSnapshot, WorkspaceHomeActions> {
+  public constructor() {
+    super({
+      visible: true,
+      newMapOpen: false,
+      name: 'untitled.map',
+      profile: 'quake',
+      format: 'valve-220',
+      recents: [],
+    });
   }
 }
 
@@ -679,38 +594,22 @@ export interface CollaborationUiActions {
   copyLink(): void;
 }
 
-export class CollaborationUiPort {
-  private readonly store = new SnapshotStore<CollaborationUiSnapshot>({
-    dialogOpen: false,
-    state: 'Local only',
-    description:
-      'Live collaboration requires a hosted project and a 4orm account. This local map stays offline.',
-    displayName: '',
-    shareLink: '',
-    lifecycle: { status: 'solo' },
-    error: null,
-    participants: [],
-  });
-  private actions: CollaborationUiActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: CollaborationUiActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
-  }
-  public update(update: Partial<CollaborationUiSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
-  }
-  public invoke<K extends keyof CollaborationUiActions>(
-    action: K,
-    ...args: Parameters<CollaborationUiActions[K]>
-  ): void {
-    const handler = this.actions?.[action] as
-      | ((...values: Parameters<CollaborationUiActions[K]>) => void)
-      | undefined;
-    handler?.(...args);
+export class CollaborationUiPort extends EditorUiPort<
+  CollaborationUiSnapshot,
+  CollaborationUiActions
+> {
+  public constructor() {
+    super({
+      dialogOpen: false,
+      state: 'Local only',
+      description:
+        'Live collaboration requires a hosted project and a 4orm account. This local map stays offline.',
+      displayName: '',
+      shareLink: '',
+      lifecycle: { status: 'solo' },
+      error: null,
+      participants: [],
+    });
   }
 }
 

@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview/runtime';
+import { EditorUiPort } from './editor-ui-port.js';
 import type { EditorTool } from '@jackharrhy/worldview-editor';
 
 export const EDITOR_COMMAND_IDS = [
@@ -51,19 +51,12 @@ export function isEditorCommandId(value: string): value is EditorCommandId {
   return (EDITOR_COMMAND_IDS as readonly string[]).includes(value);
 }
 
-export class EditorCommandPort {
-  private readonly store = new SnapshotStore<EditorCommandSnapshot>({
-    activeTool: 'select',
-    actions: {},
-  });
-  private actions: EditorCommandActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: EditorCommandActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
+export class EditorCommandPort extends EditorUiPort<EditorCommandSnapshot, EditorCommandActions> {
+  public constructor() {
+    super({
+      activeTool: 'select',
+      actions: {},
+    });
   }
   public setActiveTool(activeTool: EditorTool): void {
     this.store.set({ ...this.store.getSnapshot(), activeTool });

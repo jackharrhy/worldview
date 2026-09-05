@@ -1,7 +1,11 @@
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { RemoteMapCompiler } from '@jackharrhy/worldview-editor/core';
 import { describe, expect, it } from 'vitest';
 
 import {
-  NativeCompileError,
+  compileNativeMap,
   compilerStages,
   parseCompilerGameProfile,
   safeAssetName,
@@ -117,15 +121,76 @@ describe('native compiler planning', () => {
     expect(() => safeAssetName('payload.sh')).toThrow(/unsupported extension/);
   });
 
-  it('retains bounded-log truncation metadata when a compiler stage fails', () => {
-    const error = new NativeCompileError('qbsp', 'qbsp failed', 'bounded output', true);
-
-    expect(error).toMatchObject({
-      stage: 'qbsp',
-      output: 'bounded output',
-      truncated: true,
-    });
-  });
+  // The synthetic native executable uses a POSIX shebang; protocol unit tests run on every OS.
+  it.skipIf(process.platform === 'win32').each(['succeeded', 'failed'] as const)(
+    'round-trips a native %s result through the browser protocol',
+    async (status) => {
+      const directory = await mkdtemp(join(tmpdir(), 'worldview-native-test-'));
+      try {
+        const executable = join(directory, 'compiler.cjs');
+        await writeFile(
+          executable,
+          `#!${process.execPath}
+const fs = require('node:fs');
+const path = process.argv.at(-1).replace(/\\.map$/, '');
+fs.writeFileSync(path + '.pts', '0 0 0\\n16 0 0\\n');
+if (${JSON.stringify(status)} === 'failed') {
+  process.stdout.write('ERROR: ' + 'x'.repeat(128));
+  process.exitCode = 1;
+} else {
+  fs.writeFileSync(path + '.bsp', Buffer.from([29, 0, 0, 0]));
+  process.stdout.write('compiled');
+}
+`,
+        );
+        await chmod(executable, 0o755);
+        const compiler = new RemoteMapCompiler({
+          endpoint: 'http://compiler.invalid/compile',
+          fetch: async (_input, init) =>
+            Response.json(
+              await compileNativeMap(parseCompileRequest(JSON.parse(String(init?.body))), {
+                toolchain: { kind: 'q2tool', executable },
+                maxThreads: 1,
+                timeoutMilliseconds: 5_000,
+                maxLogBytes: 32,
+                maxArtifactBytes: 1_024,
+              }),
+            ),
+        });
+        const result = await compiler.compile({
+          mapName: 'room',
+          mapText: '{}',
+          quality: 'preview',
+          expectedDocumentRevision: 7,
+        });
+        expect(result).toMatchObject({
+          status,
+          sourceDocumentRevision: 7,
+          artifacts: expect.arrayContaining([
+            {
+              name: 'room.pts',
+              kind: 'leak-path',
+              stage: 'qbsp',
+              mediaType: 'text/plain',
+              data: expect.any(ArrayBuffer),
+            },
+          ]),
+          logs: [{ stage: 'q2tool', text: expect.any(String), truncated: status === 'failed' }],
+        });
+        if (status === 'succeeded') {
+          expect(new Uint8Array(result.artifacts.find(({ kind }) => kind === 'bsp')!.data)).toEqual(
+            Uint8Array.from([29, 0, 0, 0]),
+          );
+        } else {
+          expect(result.diagnostics).toContainEqual(
+            expect.objectContaining({ severity: 'error', message: 'q2tool exited with 1' }),
+          );
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('accepts launch configuration only from machine-local absolute paths', () => {
     expect(

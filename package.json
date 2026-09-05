@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "npm run build --workspace @jackharrhy/worldview && npm run dev --workspace @worldview/viewer",
     "dev:editor": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/protocol && npm run dev --workspace @worldview/editor",
-    "dev:compiler": "npm run dev --workspace @worldview/compiler-service",
+    "dev:compiler": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run dev --workspace @worldview/compiler-service",
     "dev:collaboration": "npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/protocol && npm run dev --workspace @worldview/collaboration-service",
     "dev:collaboration:celld": "npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/protocol && celld dev apps/collaboration-service --port 8787 --logs",
     "deploy:collaboration:celld-azurite": "npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/protocol && node scripts/deploy-celld-azurite.mjs",

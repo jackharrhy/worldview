@@ -4,7 +4,6 @@ import {
   flipBrush,
   moveBrushVertices,
   replaceBrush,
-  replaceBrushes,
   rotateBrush,
   rotateBrushVertices,
   scaleBrush,
@@ -37,6 +36,7 @@ import type {
 } from './types.js';
 import { findBrush } from './types.js';
 import {
+  createBrushEditCandidate,
   translatedObjects,
   transformedObjects,
   transformPointEntityByAffine,
@@ -45,9 +45,9 @@ import {
   type BrushBatchEditCandidate,
   type DocumentEditCandidate,
 } from './session-common.js';
-import { SessionKernel } from './session-kernel.js';
+import type { SessionKernel } from './session-kernel.js';
 
-type SessionTransformKernel = Pick<SessionKernel, 'document' | 'selection'>;
+type SessionTransformKernel = Readonly<Pick<SessionKernel, 'document' | 'selection'>>;
 
 export interface SessionTransformPorts {
   readonly commitCandidate: (candidate: BrushEditCandidate | BrushBatchEditCandidate) => void;
@@ -60,31 +60,16 @@ export class SessionTransformCommands {
     private readonly ports: SessionTransformPorts,
   ) {}
 
-  private get currentDocument() {
-    return this.kernel.document;
-  }
-
-  private get currentSelection() {
-    return this.kernel.selection;
-  }
-
-  private commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void {
-    this.ports.commitCandidate(candidate);
-  }
-
-  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
-    this.ports.commitDocumentCandidate(candidate);
-  }
   public snapSelectionToGrid(gridSize: number, ids: IdFactory, textureLock = true): boolean {
     if (!Number.isFinite(gridSize) || gridSize <= 0) throw new Error('Grid size must be positive');
-    if (!this.currentSelection) return false;
-    const faces = selectedFaceReferences(this.currentSelection);
+    if (!this.kernel.selection) return false;
+    const faces = selectedFaceReferences(this.kernel.selection);
     const brushIds =
       faces.length > 0
         ? [...new Set(faces.map((face) => face.brushId))]
-        : selectedBrushIds(this.currentSelection);
+        : selectedBrushIds(this.kernel.selection);
     const vertices = faces.flatMap((selection) => {
-      const brush = findBrush(this.currentDocument, selection.brushId);
+      const brush = findBrush(this.kernel.document, selection.brushId);
       return (
         (brush &&
           deriveBrush(brush).faces.find((face) => face.faceId === selection.faceId)?.vertices) ??
@@ -94,7 +79,7 @@ export class SessionTransformCommands {
     const isOnGrid = (point: Vec3) =>
       point.every((value) => Math.abs(value / gridSize - Math.round(value / gridSize)) <= 1e-6);
     const targetsAlreadySnapped = brushIds.every((brushId) => {
-      const brush = findBrush(this.currentDocument, brushId);
+      const brush = findBrush(this.kernel.document, brushId);
       if (!brush) return true;
       const targetVertices =
         faces.length === 0
@@ -121,26 +106,26 @@ export class SessionTransformCommands {
         ),
     );
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
   public translateSelected(delta: Vec3, textureLock = true): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
     const candidate = this.createObjectTranslationCandidate(
-      this.currentSelection,
+      this.kernel.selection,
       delta,
       textureLock,
     );
     if (!candidate) return false;
-    this.commitDocumentCandidate(candidate);
+    this.ports.commitDocumentCandidate(candidate);
     return true;
   }
   public translate(brushId: BrushId, delta: Vec3, textureLock = true): boolean {
     if (delta.every((component) => Math.abs(component) <= Number.EPSILON)) return false;
     const candidate = this.createTranslationCandidate(brushId, delta, textureLock);
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
@@ -149,7 +134,7 @@ export class SessionTransformCommands {
     delta: Vec3,
     textureLock = true,
   ): BrushEditCandidate | null {
-    const before = findBrush(this.currentDocument, brushId);
+    const before = findBrush(this.kernel.document, brushId);
     if (!before) return null;
     const after = translateBrush(before, delta, textureLock);
     const derived = deriveBrush(after);
@@ -159,11 +144,11 @@ export class SessionTransformCommands {
     return {
       label: 'Move brush',
       brushId,
-      baseDocumentRevision: this.currentDocument.revision,
+      baseDocumentRevision: this.kernel.document.revision,
       baseBrushRevision: before.revision,
       before,
       after,
-      document: replaceBrush(this.currentDocument, after),
+      document: replaceBrush(this.kernel.document, after),
     };
   }
 
@@ -189,7 +174,7 @@ export class SessionTransformCommands {
     const brushCount = selectedBrushIds(selection).length;
     const entityCount = selectedPointEntityIds(selection).length;
     if (brushCount + entityCount === 0) return null;
-    let after = translatedObjects(this.currentDocument, selection, delta, textureLock);
+    let after = translatedObjects(this.kernel.document, selection, delta, textureLock);
     after = transformEditorGroupSubtreeMetadata(
       after,
       selection.groupId,
@@ -201,13 +186,13 @@ export class SessionTransformCommands {
     return {
       label:
         count === 1 ? `Move ${subject}` : `Move ${subject === 'brush' ? 'brushes' : `${subject}s`}`,
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: selection,
       document: after,
-      repeatable: { kind: 'translate', delta: [...delta] as Vec3, textureLock },
+      repeatable: { kind: 'translate', delta: [...delta], textureLock },
     };
   }
 
@@ -217,16 +202,16 @@ export class SessionTransformCommands {
     degrees: number,
     textureLock = true,
   ): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
     const candidate = this.createObjectRotationCandidate(
-      this.currentSelection,
+      this.kernel.selection,
       pivot,
       axis,
       degrees,
       textureLock,
     );
     if (!candidate) return false;
-    this.commitDocumentCandidate(candidate);
+    this.ports.commitDocumentCandidate(candidate);
     return true;
   }
 
@@ -243,7 +228,7 @@ export class SessionTransformCommands {
     const entityCount = selectedPointEntityIds(selection).length;
     if (brushCount + entityCount === 0) return null;
     let after = transformedObjects(
-      this.currentDocument,
+      this.kernel.document,
       selection,
       (brush) => rotateBrush(brush, pivot, axis, degrees, textureLock),
       (entity) => rotatePointEntity(entity, pivot, axis, degrees, updateEntityAngles),
@@ -255,15 +240,15 @@ export class SessionTransformCommands {
     );
     return {
       label: objectTransformLabel('Rotate', brushCount, entityCount),
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: selection,
       document: after,
       repeatable: {
         kind: 'rotate',
-        pivot: [...pivot] as Vec3,
+        pivot: [...pivot],
         axis,
         degrees,
         textureLock,
@@ -278,16 +263,16 @@ export class SessionTransformCommands {
     textureLock = true,
     updateEntityAngles = true,
   ): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
     const candidate = this.createObjectFlipCandidate(
-      this.currentSelection,
+      this.kernel.selection,
       pivot,
       axis,
       textureLock,
       updateEntityAngles,
     );
     if (!candidate) return false;
-    this.commitDocumentCandidate(candidate);
+    this.ports.commitDocumentCandidate(candidate);
     return true;
   }
 
@@ -303,7 +288,7 @@ export class SessionTransformCommands {
     const entityCount = selectedPointEntityIds(selection).length;
     if (brushCount + entityCount === 0) return null;
     let after = transformedObjects(
-      this.currentDocument,
+      this.kernel.document,
       selection,
       (brush) => flipBrush(brush, pivot, axis, textureLock),
       (entity) => flipPointEntity(entity, pivot, axis, updateEntityAngles),
@@ -315,15 +300,15 @@ export class SessionTransformCommands {
     );
     return {
       label: objectTransformLabel('Flip', brushCount, entityCount),
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: selection,
       document: after,
       repeatable: {
         kind: 'flip',
-        pivot: [...pivot] as Vec3,
+        pivot: [...pivot],
         axis,
         textureLock,
         updateEntityAngles,
@@ -361,15 +346,15 @@ export class SessionTransformCommands {
   }
 
   public scaleSelected(pivot: Vec3, factors: Vec3, textureLock = true): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
     const candidate = this.createObjectScaleCandidate(
-      this.currentSelection,
+      this.kernel.selection,
       pivot,
       factors,
       textureLock,
     );
     if (!candidate) return false;
-    this.commitDocumentCandidate(candidate);
+    this.ports.commitDocumentCandidate(candidate);
     return true;
   }
 
@@ -388,7 +373,7 @@ export class SessionTransformCommands {
     if (brushCount + entityCount === 0) return null;
     const affine = scaleAffineMatrix(pivot, factors);
     let after = transformedObjects(
-      this.currentDocument,
+      this.kernel.document,
       selection,
       (brush) => scaleBrush(brush, pivot, factors, textureLock),
       (entity) => transformPointEntityByAffine(entity, affine, updateEntityAngles),
@@ -396,16 +381,16 @@ export class SessionTransformCommands {
     after = transformEditorGroupSubtreeMetadata(after, selection.groupId, affine);
     return {
       label: objectTransformLabel('Scale', brushCount, entityCount),
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: selection,
       document: after,
       repeatable: {
         kind: 'scale',
-        pivot: [...pivot] as Vec3,
-        factors: [...factors] as Vec3,
+        pivot: [...pivot],
+        factors: [...factors],
         textureLock,
         updateEntityAngles,
       },
@@ -446,9 +431,9 @@ export class SessionTransformCommands {
     factor: number,
     textureLock = true,
   ): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
     const candidate = this.createObjectShearCandidate(
-      this.currentSelection,
+      this.kernel.selection,
       pivot,
       sourceAxis,
       targetAxis,
@@ -456,7 +441,7 @@ export class SessionTransformCommands {
       textureLock,
     );
     if (!candidate) return false;
-    this.commitDocumentCandidate(candidate);
+    this.ports.commitDocumentCandidate(candidate);
     return true;
   }
 
@@ -475,7 +460,7 @@ export class SessionTransformCommands {
     if (brushCount + entityCount === 0) return null;
     const affine = shearAffineMatrix(pivot, sourceAxis, targetAxis, factor);
     let after = transformedObjects(
-      this.currentDocument,
+      this.kernel.document,
       selection,
       (brush) => shearBrush(brush, pivot, sourceAxis, targetAxis, factor, textureLock),
       (entity) => transformPointEntityByAffine(entity, affine, updateEntityAngles),
@@ -483,15 +468,15 @@ export class SessionTransformCommands {
     after = transformEditorGroupSubtreeMetadata(after, selection.groupId, affine);
     return {
       label: objectTransformLabel('Shear', brushCount, entityCount),
-      baseDocumentRevision: this.currentDocument.revision,
-      before: this.currentDocument,
+      baseDocumentRevision: this.kernel.document.revision,
+      before: this.kernel.document,
       after,
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: selection,
       document: after,
       repeatable: {
         kind: 'shear',
-        pivot: [...pivot] as Vec3,
+        pivot: [...pivot],
         sourceAxis,
         targetAxis,
         factor,
@@ -617,7 +602,7 @@ export class SessionTransformCommands {
     if (uniqueIds.length === 0) return null;
     const edits: BrushEdit[] = [];
     for (const brushId of uniqueIds) {
-      const before = findBrush(this.currentDocument, brushId);
+      const before = findBrush(this.kernel.document, brushId);
       if (!before) return null;
       const after = transform(before);
       const derived = deriveBrush(after);
@@ -630,28 +615,7 @@ export class SessionTransformCommands {
       }
       edits.push({ brushId, baseBrushRevision: before.revision, before, after });
     }
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map((edit) => edit.after),
-    );
-    if (edits.length === 1) {
-      const edit = edits[0]!;
-      return {
-        label: singleLabel,
-        brushId: edit.brushId,
-        baseDocumentRevision: this.currentDocument.revision,
-        baseBrushRevision: edit.baseBrushRevision,
-        before: edit.before,
-        after: edit.after,
-        document,
-      };
-    }
-    return {
-      label: batchLabel,
-      baseDocumentRevision: this.currentDocument.revision,
-      edits,
-      document,
-    };
+    return createBrushEditCandidate(this.kernel.document, edits, singleLabel, batchLabel);
   }
 
   private createBrushTransformCandidate(
@@ -659,7 +623,7 @@ export class SessionTransformCommands {
     label: string,
     transform: (brush: MapBrush) => MapBrush,
   ): BrushEditCandidate | null {
-    const before = findBrush(this.currentDocument, brushId);
+    const before = findBrush(this.kernel.document, brushId);
     if (!before) return null;
     const after = transform(before);
     const derived = deriveBrush(after);
@@ -673,11 +637,11 @@ export class SessionTransformCommands {
     return {
       label,
       brushId,
-      baseDocumentRevision: this.currentDocument.revision,
+      baseDocumentRevision: this.kernel.document.revision,
       baseBrushRevision: before.revision,
       before,
       after,
-      document: replaceBrush(this.currentDocument, after),
+      document: replaceBrush(this.kernel.document, after),
     };
   }
 
@@ -687,16 +651,16 @@ export class SessionTransformCommands {
     ids: IdFactory,
     textureLock = true,
   ): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
     const candidate = this.createBrushSetVertexMoveCandidate(
-      selectedBrushIds(this.currentSelection),
+      selectedBrushIds(this.kernel.selection),
       vertices,
       delta,
       ids,
       textureLock,
     );
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
@@ -768,7 +732,7 @@ export class SessionTransformCommands {
     if (faces.length === 0) return null;
     const vertices: Vec3[] = [];
     for (const face of faces) {
-      const brush = findBrush(this.currentDocument, face.brushId);
+      const brush = findBrush(this.kernel.document, face.brushId);
       const derivedFace = brush
         ? deriveBrush(brush).faces.find((candidate) => candidate.faceId === face.faceId)
         : null;
@@ -809,15 +773,15 @@ export class SessionTransformCommands {
     ids: IdFactory,
     textureLock = true,
   ): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
     const candidate = this.createBrushSetVertexDeletionCandidate(
-      selectedBrushIds(this.currentSelection),
+      selectedBrushIds(this.kernel.selection),
       vertices,
       ids,
       textureLock,
     );
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
@@ -854,7 +818,7 @@ export class SessionTransformCommands {
     vertices: readonly Vec3[],
   ): readonly BrushId[] {
     return [...new Set(brushIds)].filter((brushId) => {
-      const brush = findBrush(this.currentDocument, brushId);
+      const brush = findBrush(this.kernel.document, brushId);
       return Boolean(
         brush &&
         brushVertices(brush).some((point) =>

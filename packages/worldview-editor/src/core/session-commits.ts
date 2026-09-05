@@ -18,7 +18,7 @@ import {
   type DocumentEditCandidate,
   type SessionCommitMutation,
 } from './session-common.js';
-import { SessionKernel } from './session-kernel.js';
+import type { SessionKernel } from './session-kernel.js';
 
 type SessionCommitKernel = Pick<
   SessionKernel,
@@ -43,59 +43,23 @@ export class SessionCommitCommands {
     private readonly ports: SessionCommitPorts,
   ) {}
 
-  private get currentDocument() {
-    return this.kernel.document;
-  }
-
-  private set currentDocument(document: MapDocument) {
-    this.kernel.document = document;
-  }
-
-  private get currentSelection() {
-    return this.kernel.selection;
-  }
-
-  private set currentSelection(selection: EditorSelection | null) {
-    this.kernel.selection = selection;
-  }
-
-  private get history() {
-    return this.kernel.history;
-  }
-
-  private discardRepeatableCommands(): void {
-    this.kernel.discardRepeatableCommands();
-  }
-
-  private recordRepeatableCommand(command: DocumentEditCandidate['repeatable']): void {
-    this.kernel.recordRepeatableCommand(command);
-  }
-
-  private hasLinkedEditingGroup(document = this.currentDocument): boolean {
-    return this.ports.hasLinkedEditingGroup(document);
-  }
-
-  private synchronizeEditingGroup(document: MapDocument): MapDocument {
-    return this.ports.synchronizeEditingGroup(document);
-  }
-
   /** The only generic document/history mutation point used by command domains. */
   public commitMutation(mutation: SessionCommitMutation): void {
-    this.currentDocument = mutation.document;
-    this.currentSelection = mutation.selection;
-    this.history.record(mutation.historyEntry);
-    this.notify(mutation.changeKind ?? 'document', mutation.historyEntry.label);
+    this.kernel.document = mutation.document;
+    this.kernel.selection = mutation.selection;
+    this.kernel.history.record(mutation.historyEntry);
+    this.kernel.notify(mutation.changeKind ?? 'document', mutation.historyEntry.label);
   }
 
   /** Applies an already sequenced remote commit without adding it to this actor's undo stack. */
   public applyRemoteCollaborationOperation(
     operation: CollaborationOperation,
   ): CollaborationApplyResult {
-    const result = applyCollaborationOperation(this.currentDocument, operation);
+    const result = applyCollaborationOperation(this.kernel.document, operation);
     if (result.status !== 'applied') return result;
-    this.currentDocument = result.document;
-    this.discardRepeatableCommands();
-    this.notify('document', operation.label);
+    this.kernel.document = result.document;
+    this.kernel.discardRepeatableCommands();
+    this.kernel.notify('document', operation.label);
     return result;
   }
 
@@ -104,10 +68,10 @@ export class SessionCommitCommands {
       this.commitBatchCandidate(candidate);
       return;
     }
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+    if (this.kernel.document.revision !== candidate.baseDocumentRevision) {
       throw new Error('Cannot commit an edit candidate created from a stale document revision');
     }
-    const current = findBrush(this.currentDocument, candidate.brushId);
+    const current = findBrush(this.kernel.document, candidate.brushId);
     if (!current || current.revision !== candidate.baseBrushRevision) {
       throw new Error('Cannot commit an edit candidate created from a stale brush revision');
     }
@@ -115,21 +79,21 @@ export class SessionCommitCommands {
     if (!derived.valid) {
       throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
     }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
+    if (this.ports.hasLinkedEditingGroup(candidate.document)) {
       this.commitDocumentCandidate({
         label: candidate.label,
         baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
+        before: this.kernel.document,
         after: candidate.document,
-        selectionBefore: this.currentSelection,
-        selectionAfter: this.currentSelection,
+        selectionBefore: this.kernel.selection,
+        selectionAfter: this.kernel.selection,
         document: candidate.document,
       });
       return;
     }
     this.commitMutation({
-      document: replaceBrush(this.currentDocument, candidate.after),
-      selection: this.currentSelection,
+      document: replaceBrush(this.kernel.document, candidate.after),
+      selection: this.kernel.selection,
       historyEntry: {
         kind: 'replace-brush',
         label: candidate.label,
@@ -141,11 +105,11 @@ export class SessionCommitCommands {
   }
 
   private commitBatchCandidate(candidate: BrushBatchEditCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+    if (this.kernel.document.revision !== candidate.baseDocumentRevision) {
       throw new Error('Cannot commit an edit candidate created from a stale document revision');
     }
     for (const edit of candidate.edits) {
-      const current = findBrush(this.currentDocument, edit.brushId);
+      const current = findBrush(this.kernel.document, edit.brushId);
       if (!current || current.revision !== edit.baseBrushRevision) {
         throw new Error('Cannot commit an edit candidate created from a stale brush revision');
       }
@@ -154,24 +118,24 @@ export class SessionCommitCommands {
         throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
       }
     }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
+    if (this.ports.hasLinkedEditingGroup(candidate.document)) {
       this.commitDocumentCandidate({
         label: candidate.label,
         baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
+        before: this.kernel.document,
         after: candidate.document,
-        selectionBefore: this.currentSelection,
-        selectionAfter: this.currentSelection,
+        selectionBefore: this.kernel.selection,
+        selectionAfter: this.kernel.selection,
         document: candidate.document,
       });
       return;
     }
     this.commitMutation({
       document: replaceBrushes(
-        this.currentDocument,
+        this.kernel.document,
         candidate.edits.map((edit) => edit.after),
       ),
-      selection: this.currentSelection,
+      selection: this.kernel.selection,
       historyEntry: {
         kind: 'replace-brushes',
         label: candidate.label,
@@ -181,20 +145,20 @@ export class SessionCommitCommands {
   }
 
   public commitCreationCandidate(candidate: BrushCreationCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+    if (this.kernel.document.revision !== candidate.baseDocumentRevision) {
       throw new Error('Cannot commit a creation candidate from a stale document revision');
     }
     const derived = deriveBrush(candidate.brush);
     if (!derived.valid) {
       throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
     }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
+    if (this.ports.hasLinkedEditingGroup(candidate.document)) {
       this.commitDocumentCandidate({
         label: candidate.label,
         baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
+        before: this.kernel.document,
         after: candidate.document,
-        selectionBefore: this.currentSelection,
+        selectionBefore: this.kernel.selection,
         selectionAfter: { brushId: candidate.brush.id },
         document: candidate.document,
       });
@@ -202,7 +166,7 @@ export class SessionCommitCommands {
     }
     this.commitMutation({
       document: insertBrush(
-        this.currentDocument,
+        this.kernel.document,
         candidate.entityId,
         candidate.brush,
         candidate.insertionIndex,
@@ -219,7 +183,7 @@ export class SessionCommitCommands {
   }
 
   public commitBatchCreationCandidate(candidate: BrushBatchCreationCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+    if (this.kernel.document.revision !== candidate.baseDocumentRevision) {
       throw new Error('Cannot commit a batch creation candidate from a stale document revision');
     }
     for (const insertion of candidate.insertions) {
@@ -228,11 +192,11 @@ export class SessionCommitCommands {
         throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
       }
     }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
+    if (this.ports.hasLinkedEditingGroup(candidate.document)) {
       this.commitDocumentCandidate({
         label: candidate.label,
         baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
+        before: this.kernel.document,
         after: candidate.document,
         selectionBefore: candidate.selectionBefore,
         selectionAfter: createBrushSelection(candidate.selectionAfter),
@@ -241,7 +205,7 @@ export class SessionCommitCommands {
       return;
     }
     this.commitMutation({
-      document: insertBrushes(this.currentDocument, candidate.insertions),
+      document: insertBrushes(this.kernel.document, candidate.insertions),
       selection: createBrushSelection(candidate.selectionAfter),
       historyEntry: {
         kind: 'create-brushes',
@@ -254,13 +218,13 @@ export class SessionCommitCommands {
   }
 
   public commitDocumentCandidate(candidate: DocumentEditCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+    if (this.kernel.document.revision !== candidate.baseDocumentRevision) {
       throw new Error('Cannot commit a document candidate from a stale document revision');
     }
-    const synchronizedAfter = this.synchronizeEditingGroup(candidate.after);
-    this.recordRepeatableCommand(candidate.repeatable);
+    const synchronizedAfter = this.ports.synchronizeEditingGroup(candidate.after);
+    this.kernel.recordRepeatableCommand(candidate.repeatable);
     this.commitMutation({
-      document: documentRevisionForApply(this.currentDocument, synchronizedAfter),
+      document: documentRevisionForApply(this.kernel.document, synchronizedAfter),
       selection: candidate.selectionAfter,
       historyEntry: {
         kind: 'replace-document',
@@ -273,22 +237,14 @@ export class SessionCommitCommands {
     });
   }
 
-  private snapshotObjectViewState(): EditorObjectViewState {
-    return this.kernel.snapshotObjectViewState();
-  }
-
-  private applyObjectViewState(state: EditorObjectViewState): void {
-    this.kernel.applyObjectViewState(state);
-  }
-
   public commitObjectViewState(
     label: string,
     state: EditorObjectViewState,
     selectionAfter: EditorSelection | null,
   ): boolean {
-    const before = this.snapshotObjectViewState();
-    this.applyObjectViewState(state);
-    const after = this.snapshotObjectViewState();
+    const before = this.kernel.snapshotObjectViewState();
+    this.kernel.applyObjectViewState(state);
+    const after = this.kernel.snapshotObjectViewState();
     const unchanged =
       before.hiddenBrushIds.join('\u0000') === after.hiddenBrushIds.join('\u0000') &&
       before.hiddenEntityIds.join('\u0000') === after.hiddenEntityIds.join('\u0000') &&
@@ -296,14 +252,14 @@ export class SessionCommitCommands {
       before.lockedEntityIds.join('\u0000') === after.lockedEntityIds.join('\u0000');
     if (unchanged) return false;
     this.commitMutation({
-      document: this.currentDocument,
+      document: this.kernel.document,
       selection: selectionAfter,
       historyEntry: {
         kind: 'view-state',
         label,
         before,
         after,
-        selectionBefore: this.currentSelection,
+        selectionBefore: this.kernel.selection,
         selectionAfter,
       },
       changeKind: 'view',
@@ -312,28 +268,29 @@ export class SessionCommitCommands {
   }
 
   private applyHistory(direction: 'undo' | 'redo'): boolean {
-    const entry = direction === 'undo' ? this.history.takeUndo() : this.history.takeRedo();
+    const entry =
+      direction === 'undo' ? this.kernel.history.takeUndo() : this.kernel.history.takeRedo();
     if (!entry) return false;
 
-    this.discardRepeatableCommands();
+    this.kernel.discardRepeatableCommands();
     const next = applyHistoryEntry(
       {
-        document: this.currentDocument,
-        selection: this.currentSelection,
-        objectViewState: this.snapshotObjectViewState(),
+        document: this.kernel.document,
+        selection: this.kernel.selection,
+        objectViewState: this.kernel.snapshotObjectViewState(),
       },
       entry,
       direction,
     );
-    this.currentDocument = next.document;
-    this.currentSelection = next.selection;
-    this.applyObjectViewState(next.objectViewState);
+    this.kernel.document = next.document;
+    this.kernel.selection = next.selection;
+    this.kernel.applyObjectViewState(next.objectViewState);
 
-    if (direction === 'undo') this.history.completeUndo(entry);
-    else this.history.completeRedo(entry);
+    if (direction === 'undo') this.kernel.history.completeUndo(entry);
+    else this.kernel.history.completeRedo(entry);
     const changeKind = entry.kind === 'view-state' ? 'view' : 'history';
     const action = direction === 'undo' ? 'Undo' : 'Redo';
-    this.notify(changeKind, `${action} ${entry.label}`);
+    this.kernel.notify(changeKind, `${action} ${entry.label}`);
     return true;
   }
 
@@ -343,9 +300,5 @@ export class SessionCommitCommands {
 
   public redo(): boolean {
     return this.applyHistory('redo');
-  }
-
-  private notify(kind: 'document' | 'selection' | 'history' | 'view', label: string): void {
-    this.kernel.notify(kind, label);
   }
 }

@@ -39,7 +39,7 @@ function IssueBrowser({ shellState }: EditorAuxiliaryProps) {
                 key={entry.type}
                 isSelected={enabledTypes.has(entry.type)}
                 onChange={(enabled) =>
-                  shellState.issueBrowser.invoke('setTypeEnabled', entry.type, enabled)
+                  shellState.issueBrowser.commands?.setTypeEnabled(entry.type, enabled)
                 }
               >
                 {entry.label}
@@ -50,14 +50,14 @@ function IssueBrowser({ shellState }: EditorAuxiliaryProps) {
         <Checkbox
           className="show-hidden-issues"
           isSelected={browser.showHidden}
-          onChange={(show) => shellState.issueBrowser.invoke('setShowHidden', show)}
+          onChange={(show) => shellState.issueBrowser.commands?.setShowHidden(show)}
         >
           Show hidden
         </Checkbox>
         <Button
           size="compact"
           aria-label="Close issue browser"
-          onPress={() => shellState.issueBrowser.invoke('setOpen', false)}
+          onPress={() => shellState.issueBrowser.commands?.setOpen(false)}
         >
           Close
         </Button>
@@ -77,8 +77,8 @@ function IssueBrowser({ shellState }: EditorAuxiliaryProps) {
                 className="issue-description"
                 tone="quiet"
                 aria-label={`${issue.message}. Select implicated objects`}
-                onPress={() => shellState.issueBrowser.invoke('select', issue.id, false)}
-                onDoubleClick={() => shellState.issueBrowser.invoke('select', issue.id, true)}
+                onPress={() => shellState.issueBrowser.commands?.select(issue.id, false)}
+                onDoubleClick={() => shellState.issueBrowser.commands?.select(issue.id, true)}
               >
                 <span className="issue-severity">
                   {issue.severity === 'error' ? 'ERROR' : 'WARN'}
@@ -91,7 +91,7 @@ function IssueBrowser({ shellState }: EditorAuxiliaryProps) {
               <div className="issue-actions">
                 <Button
                   size="compact"
-                  onPress={() => shellState.issueBrowser.invoke('select', issue.id, true)}
+                  onPress={() => shellState.issueBrowser.commands?.select(issue.id, true)}
                 >
                   Reveal
                 </Button>
@@ -100,14 +100,14 @@ function IssueBrowser({ shellState }: EditorAuxiliaryProps) {
                     className="issue-fix"
                     size="compact"
                     aria-label={issue.fixLabel}
-                    onPress={() => shellState.issueBrowser.invoke('fix', issue.id)}
+                    onPress={() => shellState.issueBrowser.commands?.fix(issue.id)}
                   >
                     Fix
                   </Button>
                 ) : null}
                 <Button
                   size="compact"
-                  onPress={() => shellState.issueBrowser.invoke('toggleHidden', issue.id)}
+                  onPress={() => shellState.issueBrowser.commands?.toggleHidden(issue.id)}
                 >
                   {issue.hidden ? 'Show' : 'Hide'}
                 </Button>

@@ -80,7 +80,7 @@ function ProjectionField({
   const commit = () => {
     const next = draft.current;
     if (next === null || !Number.isFinite(next) || next === value) return;
-    shellState.faceInspector.invoke('setProjectionField', field, next);
+    shellState.faceInspector.commands?.setProjectionField(field, next);
   };
   return (
     <NumberField
@@ -158,7 +158,7 @@ function FaceCommandGroup({
           isDisabled={disabled}
           data-texture-operation={command.operation}
           onPress={(event) =>
-            shellState.faceInspector.invoke('align', command.operation, {
+            shellState.faceInspector.commands?.align(command.operation, {
               reverse: event.shiftKey,
               subdivide: event.ctrlKey || event.metaKey,
             })
@@ -183,13 +183,13 @@ function UvToolbar({
           icon="frame-uv"
           label="Frame selected face"
           isDisabled={snapshot.mode !== 'single'}
-          onPress={() => shellState.faceInspector.invoke('frameUvSelection')}
+          onPress={() => shellState.faceInspector.commands?.frameUvSelection()}
         />
         <IconButton
           icon="align-center"
           label="Reset UV origin"
           isDisabled={snapshot.mode !== 'single'}
-          onPress={() => shellState.faceInspector.invoke('resetUvPivot')}
+          onPress={() => shellState.faceInspector.commands?.resetUvPivot()}
         />
       </div>
       <div className="uv-grid-fields" aria-label="UV grid subdivisions">
@@ -199,7 +199,7 @@ function UvToolbar({
           minValue={1}
           maxValue={16}
           step={1}
-          onChange={(value) => shellState.faceInspector.invoke('setUvGrid', 0, value)}
+          onChange={(value) => shellState.faceInspector.commands?.setUvGrid(0, value)}
           input={{ id: 'uv-grid-x', 'aria-label': 'UV grid X subdivisions' }}
         />
         <NumberField
@@ -208,7 +208,7 @@ function UvToolbar({
           minValue={1}
           maxValue={16}
           step={1}
-          onChange={(value) => shellState.faceInspector.invoke('setUvGrid', 1, value)}
+          onChange={(value) => shellState.faceInspector.commands?.setUvGrid(1, value)}
           input={{ id: 'uv-grid-y', 'aria-label': 'UV grid Y subdivisions' }}
         />
       </div>
@@ -230,7 +230,7 @@ function FlagCheckbox({
       isSelected={flag.checked}
       isIndeterminate={flag.mixed}
       onChange={(selected) =>
-        shellState.surfaceInspector.invoke('setFlag', field, flag.value, selected)
+        shellState.surfaceInspector.commands?.setFlag(field, flag.value, selected)
       }
     >
       {flag.label}
@@ -255,7 +255,7 @@ function SurfaceValueField({
   const commit = () => {
     const next = draft.current;
     if (next === null || !Number.isFinite(next) || next === initialValue) return;
-    shellState.surfaceInspector.invoke('setValue', next);
+    shellState.surfaceInspector.commands?.setValue(next);
   };
   return (
     <NumberField
@@ -507,7 +507,7 @@ function MaterialGrid({
                       aria-description={`${material.logicalWidth ?? material.width}×${material.logicalHeight ?? material.height}, ${usage}, ${material.sourceName}`}
                       onFocus={() => setFocusedMaterial(material.name)}
                       onPress={() =>
-                        shellState.materialBrowser.invoke('activateMaterial', material.name)
+                        shellState.materialBrowser.commands?.activateMaterial(material.name)
                       }
                     >
                       <MaterialThumbnail material={material} />
@@ -547,9 +547,9 @@ function MaterialActionsMenu({
         <Menu
           aria-label="Material actions"
           onAction={(key) => {
-            if (key === 'faces') shellState.materialBrowser.invoke('selectFaces');
-            if (key === 'brushes') shellState.materialBrowser.invoke('selectBrushes');
-            if (key === 'copy') shellState.materialBrowser.invoke('copyMaterialName');
+            if (key === 'faces') shellState.materialBrowser.commands?.selectFaces();
+            if (key === 'brushes') shellState.materialBrowser.commands?.selectBrushes();
+            if (key === 'copy') shellState.materialBrowser.commands?.copyMaterialName();
             if (key === 'replace') onReplace();
           }}
         >
@@ -606,9 +606,9 @@ function MaterialBrowser({ shellState }: { readonly shellState: EditorShellState
           label="Current material"
           hideLabel
           value={snapshot.activeMaterial}
-          onChange={(value) => shellState.materialBrowser.invoke('setActiveMaterial', value)}
+          onChange={(value) => shellState.materialBrowser.commands?.setActiveMaterial(value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') shellState.materialBrowser.invoke('applyActiveMaterial');
+            if (event.key === 'Enter') shellState.materialBrowser.commands?.applyActiveMaterial();
           }}
           input={{ id: 'material-name', placeholder: 'Material name', spellCheck: false }}
         />
@@ -617,17 +617,17 @@ function MaterialBrowser({ shellState }: { readonly shellState: EditorShellState
           label="Apply current material"
           data-action="apply-material"
           isDisabled={!hasMaterial}
-          onPress={() => shellState.materialBrowser.invoke('applyActiveMaterial')}
+          onPress={() => shellState.materialBrowser.commands?.applyActiveMaterial()}
         />
         <IconButton
           icon="sample-material"
           label="Sample selected face material"
-          onPress={() => shellState.materialBrowser.invoke('sampleSelection')}
+          onPress={() => shellState.materialBrowser.commands?.sampleSelection()}
         />
         <MaterialActionsMenu
           disabled={!hasMaterial}
           onReplace={() => {
-            shellState.materialBrowser.invoke('setReplaceSource', snapshot.activeMaterial);
+            shellState.materialBrowser.commands?.setReplaceSource(snapshot.activeMaterial);
             setReplaceOpen(true);
           }}
           shellState={shellState}
@@ -645,7 +645,7 @@ function MaterialBrowser({ shellState }: { readonly shellState: EditorShellState
           ]}
           onSelectionChange={(key) => {
             if (key === 'name' || key === 'usage')
-              shellState.materialBrowser.invoke('setSort', key);
+              shellState.materialBrowser.commands?.setSort(key);
           }}
         />
         <Select
@@ -657,13 +657,13 @@ function MaterialBrowser({ shellState }: { readonly shellState: EditorShellState
             { id: 'all', label: 'All groups' },
             ...snapshot.sources.map((source) => ({ id: source, label: source })),
           ]}
-          onSelectionChange={(key) => shellState.materialBrowser.invoke('setSource', String(key))}
+          onSelectionChange={(key) => shellState.materialBrowser.commands?.setSource(String(key))}
         />
         <Checkbox
           id="material-used-only"
           className="material-used-only"
           isSelected={snapshot.usedOnly}
-          onChange={(value) => shellState.materialBrowser.invoke('setUsedOnly', value)}
+          onChange={(value) => shellState.materialBrowser.commands?.setUsedOnly(value)}
         >
           Used
         </Checkbox>
@@ -671,7 +671,7 @@ function MaterialBrowser({ shellState }: { readonly shellState: EditorShellState
           label="Search materials"
           hideLabel
           value={snapshot.filter}
-          onChange={(value) => shellState.materialBrowser.invoke('setFilter', value)}
+          onChange={(value) => shellState.materialBrowser.commands?.setFilter(value)}
           input={{ id: 'material-filter', type: 'search', placeholder: 'Search…' }}
         />
       </div>
@@ -687,13 +687,13 @@ function MaterialBrowser({ shellState }: { readonly shellState: EditorShellState
           <TextField
             label="Find"
             value={snapshot.replaceSource}
-            onChange={(value) => shellState.materialBrowser.invoke('setReplaceSource', value)}
+            onChange={(value) => shellState.materialBrowser.commands?.setReplaceSource(value)}
             input={{ id: 'material-replace-source', spellCheck: false }}
           />
           <TextField
             label="Replace with"
             value={snapshot.replaceTarget}
-            onChange={(value) => shellState.materialBrowser.invoke('setReplaceTarget', value)}
+            onChange={(value) => shellState.materialBrowser.commands?.setReplaceTarget(value)}
             input={{ id: 'material-replace-target', spellCheck: false }}
           />
           <p id="material-replace-scope">{snapshot.replaceScope}</p>
@@ -702,7 +702,7 @@ function MaterialBrowser({ shellState }: { readonly shellState: EditorShellState
             isDisabled={replaceDisabled}
             data-action="replace-material"
             onPress={() => {
-              shellState.materialBrowser.invoke('replace');
+              shellState.materialBrowser.commands?.replace();
               setReplaceOpen(false);
             }}
           >

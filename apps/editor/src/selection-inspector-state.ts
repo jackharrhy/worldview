@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview/runtime';
+import { EditorUiPort } from './editor-ui-port.js';
 
 export interface SelectionInspectorSnapshot {
   readonly kind: string;
@@ -30,14 +30,8 @@ const EMPTY_SELECTION_INSPECTOR: SelectionInspectorSnapshot = {
   faceNormal: '',
 };
 
-export class SelectionInspectorPort {
-  private readonly store = new SnapshotStore<SelectionInspectorSnapshot>(EMPTY_SELECTION_INSPECTOR);
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public set(snapshot: SelectionInspectorSnapshot): void {
-    this.store.set(snapshot);
-  }
-  public update(update: Partial<SelectionInspectorSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class SelectionInspectorPort extends EditorUiPort<SelectionInspectorSnapshot> {
+  public constructor() {
+    super(EMPTY_SELECTION_INSPECTOR);
   }
 }

@@ -35,11 +35,13 @@ function channel(publish: (message: unknown) => void): CollaborationChannel {
 describe('CollaborationController', () => {
   it('reapplies offline operations over a canonical snapshot and reports stale edits', () => {
     const before = createStarterDocument();
-    const after = insertBrush(
-      before,
-      before.entities[0]!.id,
-      createBoxBrush([0, 0, 0], [64, 64, 64], 'STONE', createSequentialIdFactory('reconcile')),
+    const brush = createBoxBrush(
+      [0, 0, 0],
+      [64, 64, 64],
+      'STONE',
+      createSequentialIdFactory('reconcile'),
     );
+    const after = insertBrush(before, before.entities[0]!.id, brush);
     const operation = {
       schemaVersion: 1,
       operationId: 'alice:offline',
@@ -52,7 +54,7 @@ describe('CollaborationController', () => {
           kind: 'insert-brush',
           entityId: before.entities[0]!.id,
           insertionIndex: before.entities[0]!.primitives.length,
-          brush: after.entities[0]!.primitives.at(-1)!,
+          brush,
         },
       ],
     } as const;

@@ -384,7 +384,7 @@ export abstract class ViewportPointerDown extends ViewportTools {
           !faceTranslating
             ? ([0, 0, 1] as const)
             : this.viewDirection());
-        this.gestures.begin({
+        this.dragState = {
           button: event.button,
           pointerId: event.pointerId,
           startX: event.clientX,
@@ -475,7 +475,7 @@ export abstract class ViewportPointerDown extends ViewportTools {
           lastTransform: null,
           lastPivot: null,
           lastSweep: null,
-        });
+        };
       },
       { signal: this.inputSignal },
     );

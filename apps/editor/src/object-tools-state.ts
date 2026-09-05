@@ -1,4 +1,4 @@
-import { SnapshotStore } from '@jackharrhy/worldview/runtime';
+import { EditorUiPort } from './editor-ui-port.js';
 import type { BrushClipMode, TransformAxis, Vec3 } from '@jackharrhy/worldview-editor';
 
 export interface GroupToolSnapshot {
@@ -124,63 +124,49 @@ const initialSettings: TransformSettingsSnapshot = {
   shearOffset: 16,
 };
 
-export class ObjectToolsPort {
-  private readonly store = new SnapshotStore<ObjectToolsSnapshot>({
-    hull: { visible: false, pointCount: 0, canCreate: false, canDiscard: false },
-    group: {
-      visible: false,
-      stateLabel: 'Selection',
-      name: 'Group',
-      canCreate: true,
-      canRename: false,
-      canOpen: false,
-      canClose: false,
-      canDuplicateLinked: false,
-      canUnlink: false,
-      canUngroup: false,
-    },
-    selectionBrush: { visible: false, countLabel: '1 volume' },
-    flipVisible: false,
-    faceExtrude: { visible: false, distance: 16, step: 16 },
-    clip: {
-      visible: false,
-      pointCountLabel: '0 / 3 points',
-      pointPositions: 'No clip points.',
-      mode: 'back',
-      canApply: false,
-    },
-    transform: {
-      visible: false,
-      tool: 'rotate',
-      title: 'Transform',
-      help: 'Drag the viewport handle for a live snapped preview.',
-      settings: initialSettings,
-    },
-    topology: { visible: false, title: 'Vertex editing', selectionCount: 0, gridSize: 16 },
-    csg: {
-      visible: false,
-      selectionCountLabel: '0 selected',
-      canMerge: false,
-      canIntersect: false,
-    },
-    brushEntity: { visible: false, canMakeStructural: false },
-    nudgeVisible: false,
-  });
-  private actions: ObjectToolsActions | null = null;
-
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-
-  public bind(actions: ObjectToolsActions): void {
-    this.actions = actions;
-  }
-
-  public unbind(): void {
-    this.actions = null;
-  }
-
-  public update(update: Partial<ObjectToolsSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class ObjectToolsPort extends EditorUiPort<ObjectToolsSnapshot, ObjectToolsActions> {
+  public constructor() {
+    super({
+      hull: { visible: false, pointCount: 0, canCreate: false, canDiscard: false },
+      group: {
+        visible: false,
+        stateLabel: 'Selection',
+        name: 'Group',
+        canCreate: true,
+        canRename: false,
+        canOpen: false,
+        canClose: false,
+        canDuplicateLinked: false,
+        canUnlink: false,
+        canUngroup: false,
+      },
+      selectionBrush: { visible: false, countLabel: '1 volume' },
+      flipVisible: false,
+      faceExtrude: { visible: false, distance: 16, step: 16 },
+      clip: {
+        visible: false,
+        pointCountLabel: '0 / 3 points',
+        pointPositions: 'No clip points.',
+        mode: 'back',
+        canApply: false,
+      },
+      transform: {
+        visible: false,
+        tool: 'rotate',
+        title: 'Transform',
+        help: 'Drag the viewport handle for a live snapped preview.',
+        settings: initialSettings,
+      },
+      topology: { visible: false, title: 'Vertex editing', selectionCount: 0, gridSize: 16 },
+      csg: {
+        visible: false,
+        selectionCountLabel: '0 selected',
+        canMerge: false,
+        canIntersect: false,
+      },
+      brushEntity: { visible: false, canMakeStructural: false },
+      nudgeVisible: false,
+    });
   }
 
   public updateTransformSettings(update: Partial<TransformSettingsSnapshot>): void {

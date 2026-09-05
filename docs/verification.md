@@ -29,6 +29,13 @@ The root `package.json` remains the canonical command list; `npm run test:editor
 workspaces, while `npm run test:browser:editor` builds their dependencies and runs the complete
 editor Playwright directory serially.
 
+All workspace unit tests and viewer host helpers participate in strict TypeScript checking.
+Prioritize observable failures over setter/getter mirrors: history properties include cancelling
+edits, stale previews must leave the whole session unchanged, and pointer cancellation is exercised
+in the real browser. Compiler contract tests pass actual native subprocess results through the
+browser adapter and test hosted rejection of mismatched revisions. The synthetic native executable
+uses a POSIX shebang, so those two subprocess cases skip on Windows; protocol tests still run there.
+
 ## Architecture contracts
 
 Run the architecture gate directly while changing package or ownership boundaries:

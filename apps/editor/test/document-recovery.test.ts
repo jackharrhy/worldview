@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createStarterDocument,
+  findBrush,
   rebaseMapSource,
   serializeMap,
 } from '@jackharrhy/worldview-editor/core';
@@ -78,8 +79,14 @@ describe('document recovery', () => {
     expect(reopened.document.entities.map(({ id }) => id)).toEqual(
       snapshot.source.originalDocument.entities.map(({ id }) => id),
     );
-    expect(reopened.document.entities[0]?.primitives[0]?.faces[0]?.id).toBe(
-      snapshot.source.originalDocument.entities[0]?.primitives[0]?.faces[0]?.id,
+    const originalBrush = findBrush(
+      snapshot.source.originalDocument,
+      snapshot.source.originalDocument.entities[0]!.primitives[0]!.id,
+    );
+    expect(originalBrush).not.toBeNull();
+    const reopenedBrush = findBrush(reopened.document, originalBrush!.id);
+    expect(reopenedBrush!.faces.map(({ id }) => id)).toEqual(
+      originalBrush!.faces.map(({ id }) => id),
     );
   });
 

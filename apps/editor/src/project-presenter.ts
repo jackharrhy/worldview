@@ -602,7 +602,7 @@ export class ProjectPresenter {
   private invokeProjectAction(action: ProjectActionId): void {
     switch (action) {
       case 'new':
-        this.ui.workspaceHome.invoke('newMap');
+        this.ui.workspaceHome.commands?.newMap();
         return;
       case 'show-source':
         this.document.updateSourceFromDocument(true);

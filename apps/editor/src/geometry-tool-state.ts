@@ -1,8 +1,9 @@
-import { SnapshotStore } from '@jackharrhy/worldview/runtime';
-import type {
-  SimpleShapeOptions,
-  SweepOptions,
-  SweepTransform,
+import { EditorUiPort } from './editor-ui-port.js';
+import {
+  DEFAULT_SIMPLE_SHAPE_OPTIONS,
+  type SimpleShapeOptions,
+  type SweepOptions,
+  type SweepTransform,
 } from '@jackharrhy/worldview-editor';
 
 export interface SimpleShapeToolSnapshot {
@@ -15,34 +16,16 @@ export interface SimpleShapeToolActions {
   updateOptions(update: Partial<SimpleShapeOptions>): void;
 }
 
-export class SimpleShapeToolPort {
-  private readonly store = new SnapshotStore<SimpleShapeToolSnapshot>({
-    visible: true,
-    result: 'cuboid ready',
-    options: {
-      kind: 'cuboid',
-      axis: 2,
-      sides: 8,
-      circleMode: 'edge-aligned',
-      hollow: false,
-      thickness: 16,
-      rings: 8,
-      accuracy: 1,
-      stepHeight: 16,
-      stairDirection: 'positive-x',
-    },
-  });
-  private actions: SimpleShapeToolActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: SimpleShapeToolActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
-  }
-  public update(update: Partial<SimpleShapeToolSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class SimpleShapeToolPort extends EditorUiPort<
+  SimpleShapeToolSnapshot,
+  SimpleShapeToolActions
+> {
+  public constructor() {
+    super({
+      visible: true,
+      result: 'cuboid ready',
+      options: DEFAULT_SIMPLE_SHAPE_OPTIONS,
+    });
   }
   public updateOptions(update: Partial<SimpleShapeOptions>): void {
     this.actions?.updateOptions(update);
@@ -65,36 +48,26 @@ export interface SweepToolActions {
   apply(): void;
 }
 
-export class SweepToolPort {
-  private readonly store = new SnapshotStore<SweepToolSnapshot>({
-    visible: false,
-    generatedLabel: '0 brushes',
-    canApply: false,
-    transform: {
-      translation: [0, 0, 64],
-      rotationDegrees: [0, 0, 0],
-      scale: 1,
-    },
-    options: {
-      path: 'straight',
-      segments: 4,
-      iterations: 1,
-      snapToInteger: false,
-      textureLock: true,
-    },
-    gridSize: 16,
-  });
-  private actions: SweepToolActions | null = null;
-  public readonly subscribe = this.store.subscribe;
-  public readonly getSnapshot = this.store.getSnapshot;
-  public bind(actions: SweepToolActions): void {
-    this.actions = actions;
-  }
-  public unbind(): void {
-    this.actions = null;
-  }
-  public update(update: Partial<SweepToolSnapshot>): void {
-    this.store.set({ ...this.store.getSnapshot(), ...update });
+export class SweepToolPort extends EditorUiPort<SweepToolSnapshot, SweepToolActions> {
+  public constructor() {
+    super({
+      visible: false,
+      generatedLabel: '0 brushes',
+      canApply: false,
+      transform: {
+        translation: [0, 0, 64],
+        rotationDegrees: [0, 0, 0],
+        scale: 1,
+      },
+      options: {
+        path: 'straight',
+        segments: 4,
+        iterations: 1,
+        snapToInteger: false,
+        textureLock: true,
+      },
+      gridSize: 16,
+    });
   }
   public setTransform(transform: SweepTransform): void {
     this.actions?.setTransform(transform);

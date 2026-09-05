@@ -19,7 +19,7 @@ those snapshots through `useSyncExternalStore`.
   cross a narrow snapshot port. React creates viewport lasso/readout overlay roots, and the renderer
   may update geometry/text only through those explicit runtime refs; it may not discover or mutate
   viewport wrapper DOM. Canvas input listeners share the renderer's abort-owned lifetime so route
-  remounts cannot leave stale gesture controllers attached to React-owned canvases. Async GPU
+  remounts cannot leave stale input handlers attached to React-owned canvases. Async GPU
   construction checks the same lifetime before configuring those canvases.
 - File inputs may be cleared imperatively after consumption because their value cannot be usefully
   controlled. Canvas pixel contents remain renderer-owned; the canvas element remains React-owned.

@@ -1,9 +1,9 @@
-import {
-  HostedErrorResponseSchema,
-  HostedMapLaunchSchema as HostedMapLaunchWireSchema,
-} from '@worldview/protocol';
+import { HostedMapLaunchSchema as HostedMapLaunchWireSchema } from '@worldview/protocol';
 import { data, redirectDocument } from 'react-router';
 import { z } from 'zod';
+import { decodeHostedResponse } from '../hosted-api.js';
+
+export { apiJson } from '../hosted-api.js';
 
 export type {
   HostedProject,
@@ -26,25 +26,6 @@ export const HostedMapLaunchSchema = HostedMapLaunchWireSchema.extend({
 });
 export type HostedMapLaunch = z.infer<typeof HostedMapLaunchSchema>;
 
-async function decodeResponse<T>(response: Response, responseSchema: z.ZodType<T>): Promise<T> {
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = HostedErrorResponseSchema.safeParse(payload);
-    throw new Error(error.success ? error.data.error : `Request failed (${response.status})`);
-  }
-  const result = responseSchema.safeParse(payload);
-  if (!result.success) throw new Error('The hosted service returned an invalid response');
-  return result.data;
-}
-
-export async function apiJson<T>(
-  responseSchema: z.ZodType<T>,
-  request: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<T> {
-  return decodeResponse(await fetch(request, init), responseSchema);
-}
-
 export async function authenticatedApiJson<T>(
   responseSchema: z.ZodType<T>,
   routeRequest: Request,
@@ -58,7 +39,7 @@ export async function authenticatedApiJson<T>(
     throw redirectDocument(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
   try {
-    return await decodeResponse(response, responseSchema);
+    return await decodeHostedResponse(response, responseSchema);
   } catch (error) {
     const message = error instanceof Error ? error.message : `Request failed (${response.status})`;
     throw data(message, {

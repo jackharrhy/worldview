@@ -4,11 +4,13 @@ import {
   EditorSession,
   brushesInDocument,
   createBoxBrush,
+  createFaceSelection,
   createSequentialIdFactory,
   createStarterDocument,
   deriveBrush,
   findBrush,
   selectedBrushIds,
+  serializeMap,
 } from '../src/core/index.js';
 
 describe('editor object and history transactions', () => {
@@ -211,15 +213,47 @@ describe('editor object and history transactions', () => {
     expect(deriveBrush(findBrush(session.document, brush.id)!).bounds?.min).toEqual([-96, -32, 0]);
   });
 
-  it('rejects a preview after another edit advances the source document', () => {
-    const document = createStarterDocument();
-    const brushes = brushesInDocument(document);
-    const session = new EditorSession(document);
-    const stale = session.createTranslationCandidate(brushes[1]!.id, [16, 0, 0]);
+  it.each([1, 2])(
+    'isolates %i-brush previews and rejects stale geometry and texture edits without changing history',
+    (brushCount) => {
+      const document = createStarterDocument();
+      const brushes = brushesInDocument(document).slice(1, brushCount + 1);
+      const session = new EditorSession(document);
+      session.select(
+        createFaceSelection(
+          brushes.map((brush) => ({ brushId: brush.id, faceId: brush.faces[0]!.id })),
+        ),
+      );
+      const previews = [
+        session.createBrushSetTranslationCandidate(
+          brushes.map((brush) => brush.id),
+          [16, 0, 0],
+        ),
+        session.createMaterialCandidate('BRICK'),
+        session.createTextureTransformCandidate({
+          offset: [24, -8],
+          rotationDegrees: 90,
+          scale: [1, 1],
+        }),
+      ];
+      expect(session.document).toBe(document);
+      expect(session.canUndo).toBe(false);
+      const changes: string[] = [];
+      session.subscribe((change) => changes.push(change.label));
+      session.translate(brushesInDocument(document)[0]!.id, [0, 16, 0]);
+      const committed = session.document;
 
-    expect(session.translate(brushes[2]!.id, [0, 16, 0])).toBe(true);
-    expect(() => session.commitCandidate(stale!)).toThrow(/stale document revision/);
-  });
+      for (const preview of previews) {
+        expect(preview).not.toBeNull();
+        expect(() => session.commitCandidate(preview!)).toThrow(/stale document revision/);
+        expect(session.document).toBe(committed);
+      }
+      expect(changes).toEqual(['Move brush']);
+      expect(session.undo()).toBe(true);
+      expect(serializeMap(session.document)).toBe(serializeMap(document));
+      expect(session.canUndo).toBe(false);
+    },
+  );
 
   it('commits one brush replacement and reverses it without rewinding document revisions', () => {
     const document = createStarterDocument();

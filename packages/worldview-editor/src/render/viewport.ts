@@ -12,7 +12,8 @@ export class Viewport extends ViewportPointerMove {
       'pointerup',
       (event) => {
         const drag = this.dragState;
-        if (!drag || !this.gestures.commit(event.pointerId, event)) return;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        this.dragState = null;
         if (drag.button === 2 && drag.moved < 5 && drag.cameraMode !== 'orbit') {
           const pointer = this.pointerPositionAt(event.clientX, event.clientY);
           if (pointer) {
@@ -268,100 +269,109 @@ export class Viewport extends ViewportPointerMove {
       },
       { signal: this.inputSignal },
     );
-    this.canvas.addEventListener('dblclick', (event) => {
-      if (event.button !== 0) return;
-      const ray = this.rayAt(event.clientX, event.clientY);
-      const tool = this.interaction.currentTool();
-      const hit =
-        tool === 'select' && !event.shiftKey && !event.altKey
-          ? this.selectionHitAt(event.clientX, event.clientY)
-          : (this.interaction.hitTests(ray.origin, ray.direction).find(isBrushRayHit) ?? null);
-      if (!hit) {
-        if (tool === 'select' && !event.shiftKey && !event.altKey) {
-          this.interaction.pick(null, this.kind, {
+    this.canvas.addEventListener(
+      'dblclick',
+      (event) => {
+        if (event.button !== 0) return;
+        const ray = this.rayAt(event.clientX, event.clientY);
+        const tool = this.interaction.currentTool();
+        const hit =
+          tool === 'select' && !event.shiftKey && !event.altKey
+            ? this.selectionHitAt(event.clientX, event.clientY)
+            : (this.interaction.hitTests(ray.origin, ray.direction).find(isBrushRayHit) ?? null);
+        if (!hit) {
+          if (tool === 'select' && !event.shiftKey && !event.altKey) {
+            this.interaction.pick(null, this.kind, {
+              additive: false,
+              expansion: 'single',
+              objectExpansion: 'activate',
+            });
+          }
+          return;
+        }
+        if (this.interaction.currentTool() === 'clip') {
+          if (isBrushRayHit(hit)) this.interaction.matchClipFace(hit, this.kind);
+          return;
+        }
+        const sequenceSource = this.faceTransferSequenceSource;
+        if (this.kind === 'perspective' && event.altKey) {
+          if (this.pendingFaceTransferClick !== null) {
+            window.clearTimeout(this.pendingFaceTransferClick);
+            this.pendingFaceTransferClick = null;
+          }
+          if (this.faceTransferSequenceReset !== null) {
+            window.clearTimeout(this.faceTransferSequenceReset);
+            this.faceTransferSequenceReset = null;
+          }
+          this.faceTransferSequenceSource = undefined;
+        }
+        if (
+          isBrushRayHit(hit) &&
+          this.kind === 'perspective' &&
+          event.altKey &&
+          sequenceSource &&
+          (this.interaction.currentTool() === 'select' || this.interaction.currentTool() === 'face')
+        ) {
+          this.interaction.transfer({
+            phase: 'commit',
+            viewport: this.kind,
+            mode:
+              event.ctrlKey || event.metaKey ? 'material' : event.shiftKey ? 'rotate' : 'project',
+            source: sequenceSource,
+            targets: this.interaction
+              .brushFaceSelections(hit.brushId)
+              .filter(
+                (target) =>
+                  target.brushId !== sequenceSource.brushId ||
+                  target.faceId !== sequenceSource.faceId,
+              ),
+          });
+          return;
+        }
+        if (
+          isBrushRayHit(hit) &&
+          this.interaction.currentTool() === 'hull' &&
+          this.kind === 'perspective'
+        ) {
+          this.interaction.addHullFace(
+            { brushId: hit.brushId, faceId: hit.faceId },
+            'perspective',
+            this.interaction.snapClipHit(hit, this.gridSize) ?? undefined,
+          );
+          return;
+        }
+        if (this.interaction.currentTool() === 'select' && !event.shiftKey && !event.altKey) {
+          this.interaction.pick(selectionForHit(hit), this.kind, {
             additive: false,
+            objectAdditive: event.ctrlKey || event.metaKey,
             expansion: 'single',
             objectExpansion: 'activate',
           });
+          return;
         }
-        return;
-      }
-      if (this.interaction.currentTool() === 'clip') {
-        if (isBrushRayHit(hit)) this.interaction.matchClipFace(hit, this.kind);
-        return;
-      }
-      const sequenceSource = this.faceTransferSequenceSource;
-      if (this.kind === 'perspective' && event.altKey) {
-        if (this.pendingFaceTransferClick !== null) {
-          window.clearTimeout(this.pendingFaceTransferClick);
-          this.pendingFaceTransferClick = null;
-        }
-        if (this.faceTransferSequenceReset !== null) {
-          window.clearTimeout(this.faceTransferSequenceReset);
-          this.faceTransferSequenceReset = null;
-        }
-        this.faceTransferSequenceSource = undefined;
-      }
-      if (
-        isBrushRayHit(hit) &&
-        this.kind === 'perspective' &&
-        event.altKey &&
-        sequenceSource &&
-        (this.interaction.currentTool() === 'select' || this.interaction.currentTool() === 'face')
-      ) {
-        this.interaction.transfer({
-          phase: 'commit',
-          viewport: this.kind,
-          mode: event.ctrlKey || event.metaKey ? 'material' : event.shiftKey ? 'rotate' : 'project',
-          source: sequenceSource,
-          targets: this.interaction
-            .brushFaceSelections(hit.brushId)
-            .filter(
-              (target) =>
-                target.brushId !== sequenceSource.brushId ||
-                target.faceId !== sequenceSource.faceId,
-            ),
+        if (!isBrushRayHit(hit)) return;
+        if (
+          this.interaction.currentTool() !== 'face' &&
+          !(this.interaction.currentTool() === 'select' && event.shiftKey)
+        )
+          return;
+        this.interaction.pick({ brushId: hit.brushId, faceId: hit.faceId }, this.kind, {
+          additive:
+            this.interaction.currentTool() === 'face'
+              ? event.shiftKey
+              : event.ctrlKey || event.metaKey,
+          expansion: event.altKey ? 'coplanar' : 'brush',
         });
-        return;
-      }
-      if (
-        isBrushRayHit(hit) &&
-        this.interaction.currentTool() === 'hull' &&
-        this.kind === 'perspective'
-      ) {
-        this.interaction.addHullFace(
-          { brushId: hit.brushId, faceId: hit.faceId },
-          'perspective',
-          this.interaction.snapClipHit(hit, this.gridSize) ?? undefined,
-        );
-        return;
-      }
-      if (this.interaction.currentTool() === 'select' && !event.shiftKey && !event.altKey) {
-        this.interaction.pick(selectionForHit(hit), this.kind, {
-          additive: false,
-          objectAdditive: event.ctrlKey || event.metaKey,
-          expansion: 'single',
-          objectExpansion: 'activate',
-        });
-        return;
-      }
-      if (!isBrushRayHit(hit)) return;
-      if (
-        this.interaction.currentTool() !== 'face' &&
-        !(this.interaction.currentTool() === 'select' && event.shiftKey)
-      )
-        return;
-      this.interaction.pick({ brushId: hit.brushId, faceId: hit.faceId }, this.kind, {
-        additive:
-          this.interaction.currentTool() === 'face'
-            ? event.shiftKey
-            : event.ctrlKey || event.metaKey,
-        expansion: event.altKey ? 'coplanar' : 'brush',
-      });
-    });
-    this.canvas.addEventListener('pointercancel', (event) => {
-      if (this.gestures.activePointerId === event.pointerId) this.cancelDrag();
-    });
+      },
+      { signal: this.inputSignal },
+    );
+    this.canvas.addEventListener(
+      'pointercancel',
+      (event) => {
+        if (this.dragState?.pointerId === event.pointerId) this.cancelDrag();
+      },
+      { signal: this.inputSignal },
+    );
     this.canvas.addEventListener(
       'lostpointercapture',
       () => {
@@ -476,13 +486,14 @@ export class Viewport extends ViewportPointerMove {
           this.notifyCamera('zoom');
         }
       },
-      { passive: false },
+      { passive: false, signal: this.inputSignal },
     );
   }
 
   protected cancelDrag(): void {
     const drag = this.dragState;
-    if (!drag || !this.gestures.cancel()) return;
+    if (!drag) return;
+    this.dragState = null;
     if (drag.clipMoving && drag.clipPointIndex !== null && drag.clipPoint) {
       this.interaction.moveClipPoint(
         drag.clipPointIndex,

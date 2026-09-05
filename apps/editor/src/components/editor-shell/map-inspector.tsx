@@ -111,7 +111,7 @@ function LayerRow({ layer, shellState }: { layer: LayerSnapshot; shellState: Edi
   const commitName = () => {
     const next = name.trim();
     if (layer.id !== null && next && next !== layer.name) {
-      shellState.layerPanel.invoke('rename', layer.id, next);
+      shellState.layerPanel.commands?.rename(layer.id, next);
     } else {
       setName(layer.name);
     }
@@ -123,13 +123,13 @@ function LayerRow({ layer, shellState }: { layer: LayerSnapshot; shellState: Edi
       role="option"
       tabIndex={0}
       aria-selected={layer.selected}
-      onClick={() => shellState.layerPanel.invoke('select', layer.id)}
+      onClick={() => shellState.layerPanel.commands?.select(layer.id)}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) {
           return;
         }
         event.preventDefault();
-        shellState.layerPanel.invoke('select', layer.id);
+        shellState.layerPanel.commands?.select(layer.id);
       }}
     >
       <Button
@@ -137,7 +137,7 @@ function LayerRow({ layer, shellState }: { layer: LayerSnapshot; shellState: Edi
         size="compact"
         aria-pressed={layer.active}
         aria-label={`Make ${layer.name} active`}
-        onPress={() => shellState.layerPanel.invoke('makeActive', layer.id)}
+        onPress={() => shellState.layerPanel.commands?.makeActive(layer.id)}
       >
         {layer.active ? 'A' : '·'}
       </Button>
@@ -186,7 +186,7 @@ function LayerRow({ layer, shellState }: { layer: LayerSnapshot; shellState: Edi
           size="compact"
           aria-pressed={active}
           aria-label={label}
-          onPress={() => shellState.layerPanel.invoke('setFlag', layer.id, flag, !active)}
+          onPress={() => shellState.layerPanel.commands?.setFlag(layer.id, flag, !active)}
         >
           {text}
         </Button>
@@ -203,7 +203,7 @@ function LayerPanel({ shellState }: MapInspectorProps) {
   const [newName, setNewName] = useState('Layer');
   const nameInput = useRef<HTMLInputElement>(null);
   const create = () => {
-    shellState.layerPanel.invoke('create', newName);
+    shellState.layerPanel.commands?.create(newName);
     requestAnimationFrame(() => nameInput.current?.select());
   };
   return (
@@ -237,28 +237,28 @@ function LayerPanel({ shellState }: MapInspectorProps) {
         <Button
           size="compact"
           isDisabled={!panel.canMoveSelection}
-          onPress={() => shellState.layerPanel.invoke('moveSelection')}
+          onPress={() => shellState.layerPanel.commands?.moveSelection()}
         >
           Move selection
         </Button>
         <Button
           size="compact"
           isDisabled={!panel.canSelectContents}
-          onPress={() => shellState.layerPanel.invoke('selectContents')}
+          onPress={() => shellState.layerPanel.commands?.selectContents()}
         >
           Select contents
         </Button>
         <Button
           size="compact"
           isDisabled={!panel.canIsolate}
-          onPress={() => shellState.layerPanel.invoke('isolate')}
+          onPress={() => shellState.layerPanel.commands?.isolate()}
         >
           Isolate
         </Button>
         <Button
           size="compact"
           isDisabled={!panel.canRemove}
-          onPress={() => shellState.layerPanel.invoke('remove')}
+          onPress={() => shellState.layerPanel.commands?.remove()}
         >
           Remove
         </Button>
@@ -266,7 +266,7 @@ function LayerPanel({ shellState }: MapInspectorProps) {
           size="compact"
           isDisabled={!panel.canMoveUp}
           aria-label="Move selected layer up"
-          onPress={() => shellState.layerPanel.invoke('reorder', -1)}
+          onPress={() => shellState.layerPanel.commands?.reorder(-1)}
         >
           Move up
         </Button>
@@ -274,7 +274,7 @@ function LayerPanel({ shellState }: MapInspectorProps) {
           size="compact"
           isDisabled={!panel.canMoveDown}
           aria-label="Move selected layer down"
-          onPress={() => shellState.layerPanel.invoke('reorder', 1)}
+          onPress={() => shellState.layerPanel.commands?.reorder(1)}
         >
           Move down
         </Button>
@@ -282,25 +282,25 @@ function LayerPanel({ shellState }: MapInspectorProps) {
       <div className="layer-global-actions">
         <Button
           size="compact"
-          onPress={() => shellState.layerPanel.invoke('setAllFlags', 'hidden', false)}
+          onPress={() => shellState.layerPanel.commands?.setAllFlags('hidden', false)}
         >
           Show all
         </Button>
         <Button
           size="compact"
-          onPress={() => shellState.layerPanel.invoke('setAllFlags', 'hidden', true)}
+          onPress={() => shellState.layerPanel.commands?.setAllFlags('hidden', true)}
         >
           Hide all
         </Button>
         <Button
           size="compact"
-          onPress={() => shellState.layerPanel.invoke('setAllFlags', 'locked', false)}
+          onPress={() => shellState.layerPanel.commands?.setAllFlags('locked', false)}
         >
           Unlock all
         </Button>
         <Button
           size="compact"
-          onPress={() => shellState.layerPanel.invoke('setAllFlags', 'locked', true)}
+          onPress={() => shellState.layerPanel.commands?.setAllFlags('locked', true)}
         >
           Lock all
         </Button>
@@ -363,7 +363,7 @@ function ReferenceScenes({ shellState }: MapInspectorProps) {
         <Button
           size="compact"
           isDisabled={references.length === 0}
-          onPress={() => shellState.referenceScenes.invoke('clear')}
+          onPress={() => shellState.referenceScenes.commands?.clear()}
         >
           Clear
         </Button>
@@ -375,7 +375,7 @@ function ReferenceScenes({ shellState }: MapInspectorProps) {
               <Checkbox
                 isSelected={reference.visible}
                 onChange={(visible) =>
-                  shellState.referenceScenes.invoke('setVisible', reference.id, visible)
+                  shellState.referenceScenes.commands?.setVisible(reference.id, visible)
                 }
               >
                 <span className="visually-hidden">Show reference</span>
@@ -383,7 +383,7 @@ function ReferenceScenes({ shellState }: MapInspectorProps) {
               <span>{reference.label}</span>
               <Button
                 size="compact"
-                onPress={() => shellState.referenceScenes.invoke('remove', reference.id)}
+                onPress={() => shellState.referenceScenes.commands?.remove(reference.id)}
               >
                 Remove
               </Button>
@@ -398,7 +398,7 @@ function ReferenceScenes({ shellState }: MapInspectorProps) {
                   hideSteppers
                   onChange={(next) => {
                     if (axis === 0 || axis === 1 || axis === 2) {
-                      shellState.referenceScenes.invoke('setOffset', reference.id, axis, next);
+                      shellState.referenceScenes.commands?.setOffset(reference.id, axis, next);
                     }
                   }}
                 />

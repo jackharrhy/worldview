@@ -8,12 +8,8 @@ import type {
   MapLaunchResult,
   WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor';
-import {
-  HostedBuildCreatedResponseSchema,
-  HostedBuildsResponseSchema,
-  HostedErrorResponseSchema,
-} from '@worldview/protocol';
-import type { z } from 'zod';
+import { HostedBuildCreatedResponseSchema, HostedBuildsResponseSchema } from '@worldview/protocol';
+import { decodeHostedResponse } from './hosted-api.js';
 
 interface HostedMapBuildServiceOptions {
   readonly mapId: string;
@@ -23,28 +19,18 @@ interface HostedMapBuildServiceOptions {
   readonly timeoutMilliseconds?: number;
 }
 
-async function responseJson<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = HostedErrorResponseSchema.safeParse(payload);
-    throw new Error(error.success ? error.data.error : `Build request failed (${response.status})`);
-  }
-  const result = schema.safeParse(payload);
-  if (!result.success) throw new Error('Build service returned an invalid response');
-  return result.data;
-}
-
 function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const timer = globalThis.setTimeout(resolve, milliseconds);
-    signal?.addEventListener(
-      'abort',
-      () => {
-        globalThis.clearTimeout(timer);
-        reject(signal.reason ?? new DOMException('Build cancelled', 'AbortError'));
-      },
-      { once: true },
-    );
+    const cancel = () => {
+      globalThis.clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = globalThis.setTimeout(() => {
+      signal?.removeEventListener('abort', cancel);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener('abort', cancel, { once: true });
   });
 }
 
@@ -62,7 +48,7 @@ export class HostedMapBuildService implements MapBuildService {
   }
 
   public async capabilities(signal?: AbortSignal): Promise<MapBuildCapabilities> {
-    const response = await responseJson(
+    const response = await decodeHostedResponse(
       await this.fetch(this.endpoint(), {
         credentials: 'same-origin',
         signal: signal ?? null,
@@ -91,7 +77,7 @@ export class HostedMapBuildService implements MapBuildService {
 
   public async compile(request: MapCompileRequest): Promise<MapCompileResult> {
     const endpoint = this.endpoint();
-    const created = await responseJson(
+    const created = await decodeHostedResponse(
       await this.fetch(endpoint, {
         method: 'POST',
         credentials: 'same-origin',
@@ -109,7 +95,7 @@ export class HostedMapBuildService implements MapBuildService {
     while (build.status === 'queued' || build.status === 'running') {
       if (Date.now() >= deadline) throw new Error('Hosted build timed out');
       await delay(this.pollIntervalMilliseconds, request.signal);
-      const listed = await responseJson(
+      const listed = await decodeHostedResponse(
         await this.fetch(endpoint, {
           credentials: 'same-origin',
           signal: request.signal ?? null,

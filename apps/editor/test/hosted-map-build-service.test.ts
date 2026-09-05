@@ -1,3 +1,4 @@
+import type { HostedBuild } from '@worldview/protocol';
 import { describe, expect, test, vi } from 'vitest';
 import { HostedMapBuildService } from '../src/hosted-map-build-service.js';
 
@@ -7,10 +8,7 @@ const enabledCapabilityFetch: typeof fetch = async function (this: unknown) {
   return Response.json({ builds: [], capability: { profileId: 'default' } });
 };
 
-function build(
-  status: 'queued' | 'running' | 'succeeded',
-  result: Record<string, unknown> | null = null,
-) {
+function build(status: HostedBuild['status'], result: HostedBuild['result'] = null): HostedBuild {
   return {
     id: 'build-1',
     mapVersion: 4,
@@ -44,6 +42,9 @@ describe('HostedMapBuildService', () => {
 
   test('builds the canonical map, waits for completion, and downloads artifacts', async () => {
     const bsp = Uint8Array.from([29, 0, 0, 0]);
+    const controller = new AbortController();
+    const addListener = vi.spyOn(controller.signal, 'addEventListener');
+    const removeListener = vi.spyOn(controller.signal, 'removeEventListener');
     let polls = 0;
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input);
@@ -85,8 +86,13 @@ describe('HostedMapBuildService', () => {
       mapText: 'ignored local source',
       quality: 'preview',
       expectedDocumentRevision: 4,
+      signal: controller.signal,
     });
 
+    expect(removeListener).toHaveBeenCalledTimes(2);
+    expect(removeListener.mock.calls).toEqual(
+      addListener.mock.calls.map(([event, listener]) => [event, listener]),
+    );
     expect(result).toMatchObject({
       status: 'succeeded',
       buildId: 'build-1',
@@ -101,6 +107,25 @@ describe('HostedMapBuildService', () => {
         body: JSON.stringify({ quality: 'preview', expectedMapVersion: 4 }),
       }),
     );
+  });
+
+  test('cancels before polling when the request aborts as submission completes', async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      controller.abort(new Error('Build cancelled'));
+      return Response.json({ build: build('queued') }, { status: 202 });
+    });
+    const service = new HostedMapBuildService({ mapId: 'map-1', game: 'quake', fetch: fetchImpl });
+    await expect(
+      service.compile({
+        mapName: 'room.map',
+        mapText: '',
+        quality: 'preview',
+        expectedDocumentRevision: 4,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow('Build cancelled');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   test('surfaces service admission and snapshot errors', async () => {

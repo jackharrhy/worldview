@@ -7,7 +7,6 @@ import {
   intersectBrushes,
   moveBrushFace,
   replaceBrush,
-  replaceBrushes,
   replaceBrushSequence,
   replaceBrushSequences,
   splitBrushFace,
@@ -35,6 +34,7 @@ import type {
 } from './types.js';
 import { findBrush } from './types.js';
 import {
+  createBrushEditCandidate,
   type BrushEditCandidate,
   type BrushBatchEditCandidate,
   type BrushBatchCreationCandidate,
@@ -46,9 +46,9 @@ import {
   type DocumentEditCandidate,
   type SessionCommitMutation,
 } from './session-common.js';
-import { SessionKernel } from './session-kernel.js';
+import type { SessionKernel } from './session-kernel.js';
 
-type SessionGeometryKernel = Pick<SessionKernel, 'document' | 'selection'>;
+type SessionGeometryKernel = Readonly<Pick<SessionKernel, 'document' | 'selection'>>;
 
 export interface SessionGeometryPorts {
   readonly commitCandidate: (candidate: BrushEditCandidate | BrushBatchEditCandidate) => void;
@@ -67,54 +67,19 @@ export class SessionGeometryCommands {
     private readonly ports: SessionGeometryPorts,
   ) {}
 
-  private get currentDocument() {
-    return this.kernel.document;
-  }
-
-  private get currentSelection() {
-    return this.kernel.selection;
-  }
-
-  private commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void {
-    this.ports.commitCandidate(candidate);
-  }
-
-  private commitDocumentCandidate(candidate: DocumentEditCandidate): void {
-    this.ports.commitDocumentCandidate(candidate);
-  }
-
-  private commitCreationCandidate(candidate: BrushCreationCandidate): void {
-    this.ports.commitCreationCandidate(candidate);
-  }
-
-  private commitBatchCreationCandidate(candidate: BrushBatchCreationCandidate): void {
-    this.ports.commitBatchCreationCandidate(candidate);
-  }
-
-  private createBrushCandidate(brush: MapBrush, entityId?: EntityId): BrushCreationCandidate {
-    return this.ports.createBrushCandidate(brush, entityId);
-  }
-
-  private hasLinkedEditingGroup(document = this.currentDocument): boolean {
-    return this.ports.hasLinkedEditingGroup(document);
-  }
-
-  private isBrushUnavailable(brushId: BrushId): boolean {
-    return this.ports.isBrushUnavailable(brushId);
-  }
   public extrudeSelectedFace(distance: number): boolean {
-    const faces = selectedFaceReferences(this.currentSelection);
-    if (faces.length === 0 || !this.currentSelection?.faceId) return false;
+    const faces = selectedFaceReferences(this.kernel.selection);
+    if (faces.length === 0 || !this.kernel.selection?.faceId) return false;
     const candidate = this.createFaceSetExtrusionCandidate(
       faces,
       {
-        brushId: this.currentSelection.brushId,
-        faceId: this.currentSelection.faceId,
+        brushId: this.kernel.selection.brushId,
+        faceId: this.kernel.selection.faceId,
       },
       distance,
     );
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
   public createFaceExtrusionCandidate(
@@ -123,7 +88,7 @@ export class SessionGeometryCommands {
     distance: number,
   ): BrushEditCandidate | null {
     if (!faceId || Math.abs(distance) <= Number.EPSILON) return null;
-    const before = findBrush(this.currentDocument, brushId);
+    const before = findBrush(this.kernel.document, brushId);
     if (!before) return null;
     const after = moveBrushFace(before, faceId, distance);
     const derived = deriveBrush(after);
@@ -137,11 +102,11 @@ export class SessionGeometryCommands {
     return {
       label: 'Extrude face',
       brushId,
-      baseDocumentRevision: this.currentDocument.revision,
+      baseDocumentRevision: this.kernel.document.revision,
       baseBrushRevision: before.revision,
       before,
       after,
-      document: replaceBrush(this.currentDocument, after),
+      document: replaceBrush(this.kernel.document, after),
     };
   }
 
@@ -156,7 +121,7 @@ export class SessionGeometryCommands {
     );
     const normalized = [...unique.values()];
     const matching = extrudableBrushFaces(
-      this.currentDocument,
+      this.kernel.document,
       primary,
       normalized.map((face) => face.brushId),
     );
@@ -167,14 +132,14 @@ export class SessionGeometryCommands {
     ) {
       throw new Error('Shared extrusion requires compatible coplanar faces');
     }
-    const primaryBrush = findBrush(this.currentDocument, primary.brushId);
+    const primaryBrush = findBrush(this.kernel.document, primary.brushId);
     const primaryFace = primaryBrush
       ? deriveBrush(primaryBrush).faces.find((face) => face.faceId === primary.faceId)
       : null;
     if (!primaryFace) return null;
     const edits: BrushEdit[] = [];
     for (const face of normalized) {
-      const before = findBrush(this.currentDocument, face.brushId);
+      const before = findBrush(this.kernel.document, face.brushId);
       const derivedFace = before
         ? deriveBrush(before).faces.find((candidate) => candidate.faceId === face.faceId)
         : null;
@@ -202,36 +167,20 @@ export class SessionGeometryCommands {
         after,
       });
     }
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map((edit) => edit.after),
-    );
-    if (edits.length === 1) {
-      const edit = edits[0]!;
-      return {
-        label: 'Extrude face',
-        brushId: edit.brushId,
-        baseDocumentRevision: this.currentDocument.revision,
-        baseBrushRevision: edit.baseBrushRevision,
-        before: edit.before,
-        after: edit.after,
-        document,
-      };
-    }
-    return {
-      label: 'Extrude shared faces',
-      baseDocumentRevision: this.currentDocument.revision,
+    return createBrushEditCandidate(
+      this.kernel.document,
       edits,
-      document,
-    };
+      'Extrude face',
+      'Extrude shared faces',
+    );
   }
 
   public splitSelectedFace(distance: number, ids: IdFactory): boolean {
-    const faces = selectedFaceReferences(this.currentSelection);
-    if (faces.length === 0 || !this.currentSelection?.faceId) return false;
+    const faces = selectedFaceReferences(this.kernel.selection);
+    if (faces.length === 0 || !this.kernel.selection?.faceId) return false;
     const primary = {
-      brushId: this.currentSelection.brushId,
-      faceId: this.currentSelection.faceId,
+      brushId: this.kernel.selection.brushId,
+      faceId: this.kernel.selection.faceId,
     };
     const candidate = this.createFaceSetSplitCandidate(faces, primary, distance, ids);
     if (!candidate) return false;
@@ -250,7 +199,7 @@ export class SessionGeometryCommands {
     );
     const normalized = [...unique.values()];
     const matching = matchingBrushFaces(
-      this.currentDocument,
+      this.kernel.document,
       primary,
       normalized.map((face) => face.brushId),
     );
@@ -261,13 +210,13 @@ export class SessionGeometryCommands {
     ) {
       throw new Error('Split extrusion requires faces with exactly the same vertices');
     }
-    const primaryBrush = findBrush(this.currentDocument, primary.brushId);
+    const primaryBrush = findBrush(this.kernel.document, primary.brushId);
     const primaryFace = primaryBrush
       ? deriveBrush(primaryBrush).faces.find((face) => face.faceId === primary.faceId)
       : null;
     if (!primaryFace) return null;
     const rawEdits = normalized.map<BrushClipEdit>((face) => {
-      const before = findBrush(this.currentDocument, face.brushId);
+      const before = findBrush(this.kernel.document, face.brushId);
       const derivedFace = before
         ? deriveBrush(before).faces.find((candidate) => candidate.faceId === face.faceId)
         : null;
@@ -279,7 +228,7 @@ export class SessionGeometryCommands {
       if (alignment < 1 - 1e-5) {
         throw new Error('Split extrusion is unavailable for opposing shared faces');
       }
-      const owner = this.currentDocument.entities.find((entity) =>
+      const owner = this.kernel.document.entities.find((entity) =>
         entity.primitives.some((brush) => brush.id === before.id),
       );
       if (!owner) throw new Error(`Unknown owner for brush ${before.id}`);
@@ -296,10 +245,10 @@ export class SessionGeometryCommands {
     const offsets = new Map<EntityId, number>();
     const edits = rawEdits
       .toSorted((left, right) => {
-        const leftEntity = this.currentDocument.entities.findIndex(
+        const leftEntity = this.kernel.document.entities.findIndex(
           (entity) => entity.id === left.entityId,
         );
-        const rightEntity = this.currentDocument.entities.findIndex(
+        const rightEntity = this.kernel.document.entities.findIndex(
           (entity) => entity.id === right.entityId,
         );
         return leftEntity - rightEntity || left.insertionIndex - right.insertionIndex;
@@ -318,12 +267,12 @@ export class SessionGeometryCommands {
         mode: 'split',
         entityId: edit.entityId,
         insertionIndex: edit.insertionIndex,
-        baseDocumentRevision: this.currentDocument.revision,
+        baseDocumentRevision: this.kernel.document.revision,
         baseBrushRevision: edit.baseBrushRevision,
         before: edit.before,
         after: edit.after,
         document: replaceBrushSequence(
-          this.currentDocument,
+          this.kernel.document,
           edit.entityId,
           edit.insertionIndex,
           [edit.before.id],
@@ -335,12 +284,12 @@ export class SessionGeometryCommands {
     return {
       label: 'Split-extrude faces',
       mode: 'split',
-      baseDocumentRevision: this.currentDocument.revision,
+      baseDocumentRevision: this.kernel.document.revision,
       edits,
       selectionBefore,
       selectionAfter: edits.flatMap((edit) => edit.after.map((brush) => brush.id)),
       document: replaceBrushSequences(
-        this.currentDocument,
+        this.kernel.document,
         edits.map((edit) => ({
           entityId: edit.entityId,
           insertionIndex: edit.insertionIndex,
@@ -364,7 +313,7 @@ export class SessionGeometryCommands {
     );
     const normalized = [...unique.values()];
     const matching = matchingBrushFaces(
-      this.currentDocument,
+      this.kernel.document,
       primary,
       normalized.map((face) => face.brushId),
     );
@@ -375,9 +324,9 @@ export class SessionGeometryCommands {
     ) {
       throw new Error('Face stamping requires faces with exactly the same vertices');
     }
-    const source = findBrush(this.currentDocument, primary.brushId);
+    const source = findBrush(this.kernel.document, primary.brushId);
     if (!source) return null;
-    const owner = this.currentDocument.entities.find((entity) =>
+    const owner = this.kernel.document.entities.find((entity) =>
       entity.primitives.some((brush) => brush.id === source.id),
     );
     if (!owner) throw new Error(`Stamp source brush ${source.id} has no owning entity`);
@@ -389,35 +338,35 @@ export class SessionGeometryCommands {
     };
     return {
       label: 'Stamp face',
-      baseDocumentRevision: this.currentDocument.revision,
+      baseDocumentRevision: this.kernel.document.revision,
       insertions: [insertion],
-      selectionBefore: this.currentSelection,
+      selectionBefore: this.kernel.selection,
       selectionAfter: [brush.id],
-      document: insertBrushes(this.currentDocument, [insertion]),
+      document: insertBrushes(this.kernel.document, [insertion]),
     };
   }
 
   public stampSelectedFace(distance: number, ids: IdFactory, textureLock = true): boolean {
-    const faces = selectedFaceReferences(this.currentSelection);
-    if (faces.length === 0 || !this.currentSelection?.faceId) return false;
+    const faces = selectedFaceReferences(this.kernel.selection);
+    if (faces.length === 0 || !this.kernel.selection?.faceId) return false;
     const candidate = this.createFaceStampCandidate(
       faces,
       {
-        brushId: this.currentSelection.brushId,
-        faceId: this.currentSelection.faceId,
+        brushId: this.kernel.selection.brushId,
+        faceId: this.kernel.selection.faceId,
       },
       distance,
       ids,
       textureLock,
     );
     if (!candidate) return false;
-    this.commitBatchCreationCandidate(candidate);
+    this.ports.commitBatchCreationCandidate(candidate);
     return true;
   }
 
   public createBrush(brush: MapBrush, entityId?: EntityId): boolean {
-    const candidate = this.createBrushCandidate(brush, entityId);
-    this.commitCreationCandidate(candidate);
+    const candidate = this.ports.createBrushCandidate(brush, entityId);
+    this.ports.commitCreationCandidate(candidate);
     return true;
   }
 
@@ -435,12 +384,12 @@ export class SessionGeometryCommands {
       mode,
       entityId: edit.entityId,
       insertionIndex: edit.insertionIndex,
-      baseDocumentRevision: this.currentDocument.revision,
+      baseDocumentRevision: this.kernel.document.revision,
       baseBrushRevision: edit.baseBrushRevision,
       before: edit.before,
       after: edit.after,
       document: replaceBrushSequence(
-        this.currentDocument,
+        this.kernel.document,
         edit.entityId,
         edit.insertionIndex,
         [edit.before.id],
@@ -469,10 +418,10 @@ export class SessionGeometryCommands {
     const offsets = new Map<EntityId, number>();
     const edits = rawEdits
       .toSorted((left, right) => {
-        const leftEntity = this.currentDocument.entities.findIndex(
+        const leftEntity = this.kernel.document.entities.findIndex(
           (entity) => entity.id === left.entityId,
         );
-        const rightEntity = this.currentDocument.entities.findIndex(
+        const rightEntity = this.kernel.document.entities.findIndex(
           (entity) => entity.id === right.entityId,
         );
         return leftEntity - rightEntity || left.insertionIndex - right.insertionIndex;
@@ -492,12 +441,12 @@ export class SessionGeometryCommands {
     return {
       label: mode === 'split' ? 'Split brushes' : 'Clip brushes',
       mode,
-      baseDocumentRevision: this.currentDocument.revision,
+      baseDocumentRevision: this.kernel.document.revision,
       edits,
       selectionBefore,
       selectionAfter,
       document: replaceBrushSequences(
-        this.currentDocument,
+        this.kernel.document,
         edits.map((edit) => ({
           entityId: edit.entityId,
           insertionIndex: edit.insertionIndex,
@@ -515,9 +464,9 @@ export class SessionGeometryCommands {
     ids: IdFactory,
     material?: string,
   ): BrushClipEdit | null {
-    const before = findBrush(this.currentDocument, brushId);
+    const before = findBrush(this.kernel.document, brushId);
     if (!before) return null;
-    const owner = this.currentDocument.entities.find((entity) =>
+    const owner = this.kernel.document.entities.find((entity) =>
       entity.primitives.some((brush) => brush.id === brushId),
     );
     if (!owner) return null;
@@ -549,10 +498,10 @@ export class SessionGeometryCommands {
       this.commitBatchClipCandidate(candidate);
       return;
     }
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+    if (this.kernel.document.revision !== candidate.baseDocumentRevision) {
       throw new Error('Cannot commit a clip candidate created from a stale document revision');
     }
-    const current = findBrush(this.currentDocument, candidate.before.id);
+    const current = findBrush(this.kernel.document, candidate.before.id);
     if (!current || current.revision !== candidate.baseBrushRevision) {
       throw new Error('Cannot commit a clip candidate created from a stale brush revision');
     }
@@ -562,20 +511,20 @@ export class SessionGeometryCommands {
         throw new Error(derived.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
       }
     }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
-      this.commitDocumentCandidate({
+    if (this.ports.hasLinkedEditingGroup(candidate.document)) {
+      this.ports.commitDocumentCandidate({
         label: candidate.label,
         baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
+        before: this.kernel.document,
         after: candidate.document,
-        selectionBefore: this.currentSelection,
+        selectionBefore: this.kernel.selection,
         selectionAfter: candidate.after[0] ? { brushId: candidate.after[0].id } : null,
         document: candidate.document,
       });
       return;
     }
     const document = replaceBrushSequence(
-      this.currentDocument,
+      this.kernel.document,
       candidate.entityId,
       candidate.insertionIndex,
       [candidate.before.id],
@@ -596,11 +545,11 @@ export class SessionGeometryCommands {
   }
 
   private commitBatchClipCandidate(candidate: BrushBatchClipCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+    if (this.kernel.document.revision !== candidate.baseDocumentRevision) {
       throw new Error('Cannot commit a clip candidate created from a stale document revision');
     }
     for (const edit of candidate.edits) {
-      const current = findBrush(this.currentDocument, edit.before.id);
+      const current = findBrush(this.kernel.document, edit.before.id);
       if (!current || current.revision !== edit.baseBrushRevision) {
         throw new Error('Cannot commit a clip candidate created from a stale brush revision');
       }
@@ -611,21 +560,21 @@ export class SessionGeometryCommands {
         }
       }
     }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
+    if (this.ports.hasLinkedEditingGroup(candidate.document)) {
       const selectionAfter = createBrushSelection(candidate.selectionAfter);
-      this.commitDocumentCandidate({
+      this.ports.commitDocumentCandidate({
         label: candidate.label,
         baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
+        before: this.kernel.document,
         after: candidate.document,
-        selectionBefore: this.currentSelection,
+        selectionBefore: this.kernel.selection,
         selectionAfter,
         document: candidate.document,
       });
       return;
     }
     const document = replaceBrushSequences(
-      this.currentDocument,
+      this.kernel.document,
       candidate.edits.map((edit) => ({
         entityId: edit.entityId,
         insertionIndex: edit.insertionIndex,
@@ -653,7 +602,7 @@ export class SessionGeometryCommands {
   ): BrushSequenceCandidate | null {
     if (replacements.size === 0) return null;
     const rawEdits: BrushClipEdit[] = [];
-    for (const entity of this.currentDocument.entities) {
+    for (const entity of this.kernel.document.entities) {
       for (const [insertionIndex, brush] of entity.primitives.entries()) {
         if (brush.kind !== 'brush') continue;
         const after = replacements.get(brush.id);
@@ -679,12 +628,12 @@ export class SessionGeometryCommands {
     });
     return {
       label,
-      baseDocumentRevision: this.currentDocument.revision,
+      baseDocumentRevision: this.kernel.document.revision,
       edits,
-      selectionBefore: selectedBrushIds(this.currentSelection),
+      selectionBefore: selectedBrushIds(this.kernel.selection),
       selectionAfter,
       document: replaceBrushSequences(
-        this.currentDocument,
+        this.kernel.document,
         edits.map((edit) => ({
           entityId: edit.entityId,
           insertionIndex: edit.insertionIndex,
@@ -696,11 +645,11 @@ export class SessionGeometryCommands {
   }
 
   public commitSequenceCandidate(candidate: BrushSequenceCandidate): void {
-    if (this.currentDocument.revision !== candidate.baseDocumentRevision) {
+    if (this.kernel.document.revision !== candidate.baseDocumentRevision) {
       throw new Error('Cannot commit a brush replacement created from a stale document revision');
     }
     for (const edit of candidate.edits) {
-      const current = findBrush(this.currentDocument, edit.before.id);
+      const current = findBrush(this.kernel.document, edit.before.id);
       if (!current || current.revision !== edit.baseBrushRevision) {
         throw new Error('Cannot commit a brush replacement created from a stale brush revision');
       }
@@ -711,20 +660,20 @@ export class SessionGeometryCommands {
         }
       }
     }
-    if (this.hasLinkedEditingGroup(candidate.document)) {
-      this.commitDocumentCandidate({
+    if (this.ports.hasLinkedEditingGroup(candidate.document)) {
+      this.ports.commitDocumentCandidate({
         label: candidate.label,
         baseDocumentRevision: candidate.baseDocumentRevision,
-        before: this.currentDocument,
+        before: this.kernel.document,
         after: candidate.document,
-        selectionBefore: this.currentSelection,
+        selectionBefore: this.kernel.selection,
         selectionAfter: createBrushSelection(candidate.selectionAfter),
         document: candidate.document,
       });
       return;
     }
     const document = replaceBrushSequences(
-      this.currentDocument,
+      this.kernel.document,
       candidate.edits.map((edit) => ({
         entityId: edit.entityId,
         insertionIndex: edit.insertionIndex,
@@ -746,10 +695,10 @@ export class SessionGeometryCommands {
   }
 
   public csgConvexMergeSelected(ids: IdFactory, currentMaterial?: string): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const selected = new Set(selectedBrushIds(this.currentSelection));
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
+    const selected = new Set(selectedBrushIds(this.kernel.selection));
     if (selected.size < 2) return false;
-    const inputs = this.currentDocument.entities.flatMap((entity) =>
+    const inputs = this.kernel.document.entities.flatMap((entity) =>
       entity.primitives.filter(
         (brush): brush is MapBrush => brush.kind === 'brush' && selected.has(brush.id),
       ),
@@ -765,10 +714,10 @@ export class SessionGeometryCommands {
   }
 
   public csgIntersectSelected(ids: IdFactory): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const selected = new Set(selectedBrushIds(this.currentSelection));
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
+    const selected = new Set(selectedBrushIds(this.kernel.selection));
     if (selected.size < 2) return false;
-    const inputs = this.currentDocument.entities.flatMap((entity) =>
+    const inputs = this.kernel.document.entities.flatMap((entity) =>
       entity.primitives.filter(
         (brush): brush is MapBrush => brush.kind === 'brush' && selected.has(brush.id),
       ),
@@ -790,10 +739,10 @@ export class SessionGeometryCommands {
   }
 
   public csgSubtractSelected(ids: IdFactory): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const selected = new Set(selectedBrushIds(this.currentSelection));
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
+    const selected = new Set(selectedBrushIds(this.kernel.selection));
     if (selected.size === 0) return false;
-    const subtrahends = this.currentDocument.entities.flatMap((entity) =>
+    const subtrahends = this.kernel.document.entities.flatMap((entity) =>
       entity.primitives.filter(
         (brush): brush is MapBrush => brush.kind === 'brush' && selected.has(brush.id),
       ),
@@ -801,14 +750,14 @@ export class SessionGeometryCommands {
     if (subtrahends.length !== selected.size) return false;
     const replacements = new Map<BrushId, readonly MapBrush[]>();
     const selectionAfter: BrushId[] = [];
-    for (const entity of this.currentDocument.entities) {
+    for (const entity of this.kernel.document.entities) {
       for (const brush of entity.primitives) {
         if (brush.kind !== 'brush') continue;
         if (selected.has(brush.id)) {
           replacements.set(brush.id, []);
           continue;
         }
-        if (this.isBrushUnavailable(brush.id)) continue;
+        if (this.ports.isBrushUnavailable(brush.id)) continue;
         let fragments: readonly MapBrush[] = [brush];
         let changed = false;
         for (const subtrahend of subtrahends) {
@@ -830,12 +779,12 @@ export class SessionGeometryCommands {
   }
 
   public csgHollowSelected(thickness: number, ids: IdFactory): boolean {
-    if (!this.currentSelection || this.currentSelection.faceId) return false;
-    const selected = new Set(selectedBrushIds(this.currentSelection));
+    if (!this.kernel.selection || this.kernel.selection.faceId) return false;
+    const selected = new Set(selectedBrushIds(this.kernel.selection));
     if (selected.size === 0) return false;
     const replacements = new Map<BrushId, readonly MapBrush[]>();
     const selectionAfter: BrushId[] = [];
-    for (const entity of this.currentDocument.entities) {
+    for (const entity of this.kernel.document.entities) {
       for (const brush of entity.primitives) {
         if (brush.kind !== 'brush') continue;
         if (!selected.has(brush.id)) continue;

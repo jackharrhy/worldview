@@ -29,13 +29,7 @@ export class ReferenceScenesPort {
   public set(scenes: readonly ReferenceSceneSnapshot[]): void {
     this.store.set(scenes);
   }
-  public invoke<K extends keyof ReferenceScenesActions>(
-    action: K,
-    ...args: Parameters<ReferenceScenesActions[K]>
-  ): void {
-    const handler = this.actions?.[action] as
-      | ((...values: Parameters<ReferenceScenesActions[K]>) => void)
-      | undefined;
-    handler?.(...args);
+  public get commands(): ReferenceScenesActions | null {
+    return this.actions;
   }
 }

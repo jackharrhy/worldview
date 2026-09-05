@@ -1,6 +1,5 @@
 import {
   alignFaceTexture,
-  replaceBrushes,
   setBrushFaceMaterials,
   setBrushMaterial,
   setFaceTextureTransform,
@@ -22,13 +21,14 @@ import { selectedBrushIds, selectedFaceReferences } from './selection.js';
 import type { BrushId, EditorSelection, FaceSelection, MapBrush, Vec3 } from './types.js';
 import { findBrush } from './types.js';
 import {
+  createBrushEditCandidate,
   faceSelectionKey,
   type BrushBatchEditCandidate,
   type BrushEditCandidate,
 } from './session-common.js';
-import { SessionKernel } from './session-kernel.js';
+import type { SessionKernel } from './session-kernel.js';
 
-type SessionMaterialKernel = Pick<SessionKernel, 'document' | 'selection'>;
+type SessionMaterialKernel = Readonly<Pick<SessionKernel, 'document' | 'selection'>>;
 
 export type FaceTextureProjectionField =
   | 'offset-u'
@@ -36,6 +36,16 @@ export type FaceTextureProjectionField =
   | 'scale-u'
   | 'scale-v'
   | 'rotation';
+
+function groupFacesByBrush(faces: readonly FaceSelection[]): Map<BrushId, FaceSelection[]> {
+  const groups = new Map<BrushId, FaceSelection[]>();
+  for (const face of faces) {
+    const group = groups.get(face.brushId) ?? [];
+    group.push(face);
+    groups.set(face.brushId, group);
+  }
+  return groups;
+}
 
 function projectionFieldValue(
   projection: FaceTextureTransform,
@@ -83,32 +93,15 @@ export class SessionMaterialCommands {
     private readonly ports: SessionMaterialPorts,
   ) {}
 
-  private get currentDocument() {
-    return this.kernel.document;
-  }
-
-  private get currentSelection() {
-    return this.kernel.selection;
-  }
-
-  private commitCandidate(candidate: BrushEditCandidate | BrushBatchEditCandidate): void {
-    this.ports.commitCandidate(candidate);
-  }
-
   private createSelectedSurfaceCandidate(
     label: string,
     update: Parameters<typeof updateBrushFaceSurfaces>[2],
   ): BrushEditCandidate | BrushBatchEditCandidate | null {
-    const selectedFaces = selectedFaceReferences(this.currentSelection);
+    const selectedFaces = selectedFaceReferences(this.kernel.selection);
     if (selectedFaces.length === 0) return null;
-    const byBrush = new Map<BrushId, FaceSelection[]>();
-    for (const face of selectedFaces) {
-      const entries = byBrush.get(face.brushId) ?? [];
-      entries.push(face);
-      byBrush.set(face.brushId, entries);
-    }
+    const byBrush = groupFacesByBrush(selectedFaces);
     const edits = [...byBrush].map<BrushEdit>(([brushId, faces]) => {
-      const before = findBrush(this.currentDocument, brushId)!;
+      const before = findBrush(this.kernel.document, brushId)!;
       const after = updateBrushFaceSurfaces(
         before,
         faces.map(({ faceId }) => faceId),
@@ -116,23 +109,7 @@ export class SessionMaterialCommands {
       );
       return { brushId, baseBrushRevision: before.revision, before, after };
     });
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map(({ after }) => after),
-    );
-    if (edits.length > 1) {
-      return { label, baseDocumentRevision: this.currentDocument.revision, edits, document };
-    }
-    const edit = edits[0]!;
-    return {
-      label,
-      brushId: edit.brushId,
-      baseDocumentRevision: this.currentDocument.revision,
-      baseBrushRevision: edit.baseBrushRevision,
-      before: edit.before,
-      after: edit.after,
-      document,
-    };
+    return createBrushEditCandidate(this.kernel.document, edits, label);
   }
 
   public setSelectedSurfaceFlag(
@@ -145,7 +122,7 @@ export class SessionMaterialCommands {
       (surface) => setSurfaceAttributeFlag(surface, field, mask, enabled),
     );
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
@@ -154,29 +131,23 @@ export class SessionMaterialCommands {
       setSurfaceAttributeValue(surface, value),
     );
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
   public createMaterialCandidate(
     material: string,
-    selection = this.currentSelection,
+    selection = this.kernel.selection,
   ): BrushEditCandidate | BrushBatchEditCandidate | null {
     if (!selection) return null;
     const selectedFaces = selectedFaceReferences(selection);
-    const byBrush = new Map<BrushId, FaceSelection[]>();
+    const byBrush = groupFacesByBrush(selectedFaces);
     if (selectedFaces.length === 0) {
       for (const brushId of selectedBrushIds(selection)) byBrush.set(brushId, []);
-    } else {
-      for (const face of selectedFaces) {
-        const entries = byBrush.get(face.brushId) ?? [];
-        entries.push(face);
-        byBrush.set(face.brushId, entries);
-      }
     }
     const edits: BrushEdit[] = [];
     for (const [brushId, faceSelections] of byBrush) {
-      const before = findBrush(this.currentDocument, brushId);
+      const before = findBrush(this.kernel.document, brushId);
       if (!before) continue;
       const affectedFaces =
         faceSelections.length === 0
@@ -200,38 +171,16 @@ export class SessionMaterialCommands {
         after,
       });
     }
-    if (edits.length === 0) return null;
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map((edit) => edit.after),
-    );
-    if (edits.length > 1) {
-      return {
-        label: 'Apply material',
-        baseDocumentRevision: this.currentDocument.revision,
-        edits,
-        document,
-      };
-    }
-    const edit = edits[0]!;
-    return {
-      label: 'Apply material',
-      brushId: edit.brushId,
-      baseDocumentRevision: this.currentDocument.revision,
-      baseBrushRevision: edit.baseBrushRevision,
-      before: edit.before,
-      after: edit.after,
-      document,
-    };
+    return createBrushEditCandidate(this.kernel.document, edits, 'Apply material');
   }
 
   public applyTextureTransform(
     transform: FaceTextureTransform,
-    selection = this.currentSelection,
+    selection = this.kernel.selection,
   ): boolean {
     const candidate = this.createTextureTransformCandidate(transform, selection);
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
@@ -243,17 +192,12 @@ export class SessionMaterialCommands {
     if ((field === 'scale-u' || field === 'scale-v') && Math.abs(value) <= 1e-6) {
       throw new Error('Texture scale cannot be zero');
     }
-    const faces = selectedFaceReferences(this.currentSelection);
+    const faces = selectedFaceReferences(this.kernel.selection);
     if (faces.length === 0) return false;
-    const byBrush = new Map<BrushId, FaceSelection[]>();
-    for (const face of faces) {
-      const entries = byBrush.get(face.brushId) ?? [];
-      entries.push(face);
-      byBrush.set(face.brushId, entries);
-    }
+    const byBrush = groupFacesByBrush(faces);
     const edits: BrushEdit[] = [];
     for (const [brushId, faceSelections] of byBrush) {
-      const before = findBrush(this.currentDocument, brushId);
+      const before = findBrush(this.kernel.document, brushId);
       if (!before) continue;
       let after = before;
       for (const selection of faceSelections) {
@@ -275,47 +219,27 @@ export class SessionMaterialCommands {
         });
       }
     }
-    if (edits.length === 0) return false;
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map(({ after }) => after),
-    );
-    const candidate: BrushEditCandidate | BrushBatchEditCandidate =
-      edits.length > 1
-        ? {
-            label: 'Adjust texture',
-            baseDocumentRevision: this.currentDocument.revision,
-            edits,
-            document,
-          }
-        : {
-            label: 'Adjust texture',
-            brushId: edits[0]!.brushId,
-            baseDocumentRevision: this.currentDocument.revision,
-            baseBrushRevision: edits[0]!.baseBrushRevision,
-            before: edits[0]!.before,
-            after: edits[0]!.after,
-            document,
-          };
-    this.commitCandidate(candidate);
+    const candidate = createBrushEditCandidate(this.kernel.document, edits, 'Adjust texture');
+    if (!candidate) return false;
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
   public alignTexture(
     operation: FaceTextureAlignmentOperation,
     options: FaceTextureAlignmentOptions = {},
-    selection = this.currentSelection,
+    selection = this.kernel.selection,
   ): boolean {
     const candidate = this.createTextureAlignmentCandidate(operation, options, selection);
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
   public createTextureAlignmentCandidate(
     operation: FaceTextureAlignmentOperation,
     options: FaceTextureAlignmentOptions = {},
-    selection = this.currentSelection,
+    selection = this.kernel.selection,
   ): BrushEditCandidate | BrushBatchEditCandidate | null {
     if (!selection) return null;
     const selectedFaces = selectedFaceReferences(selection);
@@ -323,18 +247,13 @@ export class SessionMaterialCommands {
       selectedFaces.length > 0
         ? selectedFaces
         : selectedBrushIds(selection).flatMap((brushId) => {
-            const brush = findBrush(this.currentDocument, brushId);
+            const brush = findBrush(this.kernel.document, brushId);
             return brush?.faces.map((face) => ({ brushId, faceId: face.id })) ?? [];
           });
     if (faces.length === 0) return null;
-    const byBrush = new Map<BrushId, FaceSelection[]>();
-    for (const face of faces) {
-      const entries = byBrush.get(face.brushId) ?? [];
-      entries.push(face);
-      byBrush.set(face.brushId, entries);
-    }
+    const byBrush = groupFacesByBrush(faces);
     const edits = [...byBrush].map<BrushEdit>(([brushId, targets]) => {
-      const before = findBrush(this.currentDocument, brushId)!;
+      const before = findBrush(this.kernel.document, brushId)!;
       const after = targets.reduce(
         (brush, target) => alignFaceTexture(brush, target.faceId, operation, options),
         before,
@@ -358,23 +277,7 @@ export class SessionMaterialCommands {
       'auto-fit': 'Auto-fit texture',
     };
     const label = labels[operation];
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map((edit) => edit.after),
-    );
-    if (edits.length > 1) {
-      return { label, baseDocumentRevision: this.currentDocument.revision, edits, document };
-    }
-    const edit = edits[0]!;
-    return {
-      label,
-      brushId: edit.brushId,
-      baseDocumentRevision: this.currentDocument.revision,
-      baseBrushRevision: edit.baseBrushRevision,
-      before: edit.before,
-      after: edit.after,
-      document,
-    };
+    return createBrushEditCandidate(this.kernel.document, edits, label);
   }
 
   public transferFaceAttributes(
@@ -384,31 +287,31 @@ export class SessionMaterialCommands {
   ): boolean {
     const candidate = this.createFaceAttributeTransferCandidate(source, targets, mode);
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
   /** Applies a standalone face-attribute clipboard payload to the current face selection. */
   public pasteFaceAttributes(
     source: FaceAttributeClipboard,
-    selection: EditorSelection | null = this.currentSelection,
+    selection: EditorSelection | null = this.kernel.selection,
   ): boolean {
     const candidate = this.createFaceAttributePasteCandidate(source, selection);
     if (!candidate) return false;
-    this.commitCandidate(candidate);
+    this.ports.commitCandidate(candidate);
     return true;
   }
 
   public createFaceAttributePasteCandidate(
     source: FaceAttributeClipboard,
-    selection: EditorSelection | null = this.currentSelection,
+    selection: EditorSelection | null = this.kernel.selection,
   ): BrushEditCandidate | BrushBatchEditCandidate | null {
     const targets = selectedFaceReferences(selection);
     if (targets.length === 0) return null;
     const afterByBrush = new Map<BrushId, MapBrush>();
     for (const target of targets) {
       const before =
-        afterByBrush.get(target.brushId) ?? findBrush(this.currentDocument, target.brushId);
+        afterByBrush.get(target.brushId) ?? findBrush(this.kernel.document, target.brushId);
       if (!before) throw new Error(`Unknown target brush ${target.brushId}`);
       afterByBrush.set(
         target.brushId,
@@ -416,31 +319,10 @@ export class SessionMaterialCommands {
       );
     }
     const edits = [...afterByBrush].map<BrushEdit>(([brushId, after]) => {
-      const before = findBrush(this.currentDocument, brushId)!;
+      const before = findBrush(this.kernel.document, brushId)!;
       return { brushId, baseBrushRevision: before.revision, before, after };
     });
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map((edit) => edit.after),
-    );
-    if (edits.length > 1) {
-      return {
-        label: 'Paste face attributes',
-        baseDocumentRevision: this.currentDocument.revision,
-        edits,
-        document,
-      };
-    }
-    const edit = edits[0]!;
-    return {
-      label: 'Paste face attributes',
-      brushId: edit.brushId,
-      baseDocumentRevision: this.currentDocument.revision,
-      baseBrushRevision: edit.baseBrushRevision,
-      before: edit.before,
-      after: edit.after,
-      document,
-    };
+    return createBrushEditCandidate(this.kernel.document, edits, 'Paste face attributes');
   }
 
   public createFaceAttributeTransferCandidate(
@@ -448,7 +330,7 @@ export class SessionMaterialCommands {
     targets: readonly FaceSelection[],
     mode: FaceAttributeTransferMode,
   ): BrushEditCandidate | BrushBatchEditCandidate | null {
-    const sourceBrush = findBrush(this.currentDocument, source.brushId);
+    const sourceBrush = findBrush(this.kernel.document, source.brushId);
     let chainSource = sourceBrush?.faces.find((face) => face.id === source.faceId);
     if (!chainSource) throw new Error(`Unknown source face ${source.faceId}`);
     const normalizedTargets = targets.filter(
@@ -461,7 +343,7 @@ export class SessionMaterialCommands {
     const afterByBrush = new Map<BrushId, MapBrush>();
     for (const target of normalizedTargets) {
       const before =
-        afterByBrush.get(target.brushId) ?? findBrush(this.currentDocument, target.brushId);
+        afterByBrush.get(target.brushId) ?? findBrush(this.kernel.document, target.brushId);
       if (!before) throw new Error(`Unknown target brush ${target.brushId}`);
       const after = transferFaceAttributes(before, target.faceId, chainSource, mode);
       afterByBrush.set(target.brushId, after);
@@ -469,44 +351,23 @@ export class SessionMaterialCommands {
       if (!chainSource) throw new Error(`Unknown transferred face ${target.faceId}`);
     }
     const edits = [...afterByBrush].map<BrushEdit>(([brushId, after]) => {
-      const before = findBrush(this.currentDocument, brushId)!;
+      const before = findBrush(this.kernel.document, brushId)!;
       return { brushId, baseBrushRevision: before.revision, before, after };
     });
     const label = mode === 'material' ? 'Transfer material' : 'Transfer face attributes';
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map((edit) => edit.after),
-    );
-    if (edits.length > 1) {
-      return { label, baseDocumentRevision: this.currentDocument.revision, edits, document };
-    }
-    const edit = edits[0]!;
-    return {
-      label,
-      brushId: edit.brushId,
-      baseDocumentRevision: this.currentDocument.revision,
-      baseBrushRevision: edit.baseBrushRevision,
-      before: edit.before,
-      after: edit.after,
-      document,
-    };
+    return createBrushEditCandidate(this.kernel.document, edits, label);
   }
 
   public createTextureTransformCandidate(
     transform: FaceTextureTransform,
-    selection = this.currentSelection,
+    selection = this.kernel.selection,
   ): BrushEditCandidate | BrushBatchEditCandidate | null {
     const faces = selectedFaceReferences(selection);
     if (faces.length === 0) return null;
-    const byBrush = new Map<BrushId, FaceSelection[]>();
-    for (const face of faces) {
-      const entries = byBrush.get(face.brushId) ?? [];
-      entries.push(face);
-      byBrush.set(face.brushId, entries);
-    }
+    const byBrush = groupFacesByBrush(faces);
     const edits: BrushEdit[] = [];
     for (const [brushId, faceSelections] of byBrush) {
-      const before = findBrush(this.currentDocument, brushId);
+      const before = findBrush(this.kernel.document, brushId);
       if (!before) continue;
       let after = before;
       for (const face of faceSelections) {
@@ -519,36 +380,14 @@ export class SessionMaterialCommands {
         after,
       });
     }
-    if (edits.length === 0) return null;
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map((edit) => edit.after),
-    );
-    if (edits.length > 1) {
-      return {
-        label: 'Adjust texture',
-        baseDocumentRevision: this.currentDocument.revision,
-        edits,
-        document,
-      };
-    }
-    const edit = edits[0]!;
-    return {
-      label: 'Adjust texture',
-      brushId: edit.brushId,
-      baseDocumentRevision: this.currentDocument.revision,
-      baseBrushRevision: edit.baseBrushRevision,
-      before: edit.before,
-      after: edit.after,
-      document,
-    };
+    return createBrushEditCandidate(this.kernel.document, edits, 'Adjust texture');
   }
 
   public createTextureTransformDeltaCandidate(
     transform: FaceTextureTransformDelta,
     primary: FaceSelection,
     primaryPivot: Vec3,
-    selection = this.currentSelection,
+    selection = this.kernel.selection,
   ): BrushEditCandidate | BrushBatchEditCandidate | null {
     const identity =
       transform.offset.every((value) => Math.abs(value) <= Number.EPSILON) &&
@@ -563,15 +402,10 @@ export class SessionMaterialCommands {
     ) {
       return null;
     }
-    const byBrush = new Map<BrushId, FaceSelection[]>();
-    for (const face of faces) {
-      const entries = byBrush.get(face.brushId) ?? [];
-      entries.push(face);
-      byBrush.set(face.brushId, entries);
-    }
+    const byBrush = groupFacesByBrush(faces);
     const edits: BrushEdit[] = [];
     for (const [brushId, faceSelections] of byBrush) {
-      const before = findBrush(this.currentDocument, brushId);
+      const before = findBrush(this.kernel.document, brushId);
       if (!before) continue;
       const derived = deriveBrush(before);
       let after = before;
@@ -603,29 +437,12 @@ export class SessionMaterialCommands {
         after,
       });
     }
-    if (edits.length === 0) return null;
     const changingScale = transform.scale.some((value) => Math.abs(value - 1) > Number.EPSILON);
     const label = changingScale
       ? 'Scale texture'
       : Math.abs(transform.rotationDegrees) > Number.EPSILON
         ? 'Rotate texture'
         : 'Pan texture';
-    const document = replaceBrushes(
-      this.currentDocument,
-      edits.map((edit) => edit.after),
-    );
-    if (edits.length > 1) {
-      return { label, baseDocumentRevision: this.currentDocument.revision, edits, document };
-    }
-    const edit = edits[0]!;
-    return {
-      label,
-      brushId: edit.brushId,
-      baseDocumentRevision: this.currentDocument.revision,
-      baseBrushRevision: edit.baseBrushRevision,
-      before: edit.before,
-      after: edit.after,
-      document,
-    };
+    return createBrushEditCandidate(this.kernel.document, edits, label);
   }
 }

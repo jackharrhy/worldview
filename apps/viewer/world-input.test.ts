@@ -2,13 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { sourceFromFiles } from './src/world-input.js';
 
-function fileList(files: readonly File[]): FileList {
-  return Object.assign([...files], {
-    item: (index: number) => files[index] ?? null,
-  }) as unknown as FileList;
-}
-
-function wal(name: string): Uint8Array {
+function wal(name: string): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(100);
   const view = new DataView(bytes.buffer);
   for (let index = 0; index < name.length; index += 1) bytes[index] = name.charCodeAt(index);
@@ -34,7 +28,7 @@ describe('viewer local file source', () => {
     });
     const palette = new File([new Uint8Array([0x0a])], 'colormap.pcx');
 
-    const source = await sourceFromFiles(fileList([bsp, namedWal, replacement, palette]));
+    const source = await sourceFromFiles([bsp, namedWal, replacement, palette]);
 
     expect(source?.bsp).toBe(bsp);
     expect(source?.palette).toBe(palette);
@@ -49,7 +43,7 @@ describe('viewer local file source', () => {
     const bsp = new File([new Uint8Array(8)], 'sample.bsp');
     const image = new File([new Uint8Array([1])], 'wall.jpg');
 
-    const source = await sourceFromFiles(fileList([bsp, image]));
+    const source = await sourceFromFiles([bsp, image]);
 
     expect(source?.gameAssets).toBeUndefined();
   });
@@ -59,7 +53,7 @@ describe('viewer local file source', () => {
     const first = new File([wal('e1u1/metal')], 'first.wal');
     const second = new File([wal('e1u1/metal')], 'second.wal');
 
-    const source = await sourceFromFiles(fileList([bsp, first, second]));
+    const source = await sourceFromFiles([bsp, first, second]);
 
     expect(source?.gameAssets?.['textures/e1u1/metal.wal']).toBe(second);
   });
@@ -67,12 +61,10 @@ describe('viewer local file source', () => {
   it('only creates an explicit skybox from one complete, consistently named set', async () => {
     const bsp = new File([new Uint8Array(8)], 'sample.bsp');
 
-    const source = await sourceFromFiles(fileList([bsp, ...skyboxSet('dusk')]));
+    const source = await sourceFromFiles([bsp, ...skyboxSet('dusk')]);
     expect(source?.skybox?.rt).toHaveProperty('name', 'duskrt.tga');
 
-    const ambiguous = await sourceFromFiles(
-      fileList([bsp, ...skyboxSet('dusk'), ...skyboxSet('space')]),
-    );
+    const ambiguous = await sourceFromFiles([bsp, ...skyboxSet('dusk'), ...skyboxSet('space')]);
     expect(ambiguous?.skybox).toBeUndefined();
   });
 });

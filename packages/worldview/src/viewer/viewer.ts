@@ -22,15 +22,10 @@ import type {
   CameraState,
   CameraUpdate,
   CreateWorldviewOptions,
-  ErrorDetail,
   LoadOptions,
   MapDiagnostics,
   OverviewCaptureOptions,
   OverviewCaptureResult,
-  ProgressDetail,
-  ReadyDetail,
-  WarningDetail,
-  WalkabilityChangeDetail,
   WorldviewMovementMode,
   WorldviewMovementUpdate,
   WorldSource,
@@ -105,7 +100,7 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
       options.playerAudioVolume ?? 1,
       options.musicVolume ?? 1,
       (message) => {
-        if (!this.disposed) this.emit<WarningDetail>('warning', { code: 'audio-warning', message });
+        if (!this.disposed) this.emit('warning', { code: 'audio-warning', message });
       },
     );
     this.canvas.addEventListener('pointerdown', this.onAudioInteraction);
@@ -158,7 +153,7 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
         'device-lost',
         `WebGPU device lost: ${info.message || info.reason}`,
       );
-      this.emit<ErrorDetail>('error', { error });
+      this.emit('error', { error });
       this.stop();
     });
   }
@@ -216,10 +211,10 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
       const loaded = await loadWorldAssets(source, {
         fetch: this.fetchImplementation,
         signal,
-        progress: (detail) => this.emit<ProgressDetail>('progress', detail),
+        progress: (detail) => this.emit('progress', detail),
       });
       signal.throwIfAborted();
-      this.emit<ProgressDetail>('progress', {
+      this.emit('progress', {
         phase: 'gpu',
         label: 'GPU resources',
         loaded: 0,
@@ -293,21 +288,21 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
         warnings: warningMessages,
         loadMilliseconds: performance.now() - started,
       };
-      for (const warning of loaded.warnings) this.emit<WarningDetail>('warning', warning);
+      for (const warning of loaded.warnings) this.emit('warning', warning);
       if (collisionWarning) {
-        this.emit<WarningDetail>('warning', {
+        this.emit('warning', {
           code: 'asset-warning',
           message: collisionWarning,
         });
       }
-      this.emit<ProgressDetail>('progress', {
+      this.emit('progress', {
         phase: 'gpu',
         label: 'GPU resources',
         loaded: 1,
         total: 1,
       });
       this.resize();
-      this.emit<ReadyDetail>('ready', {
+      this.emit('ready', {
         world: loaded.world,
         diagnostics: this.mapDiagnostics,
       });
@@ -316,7 +311,7 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
     } catch (error) {
       if (generation !== this.loadGeneration || isAbort(error) || signal.aborted) throw error;
       const typed = error instanceof Error ? error : new Error(String(error));
-      this.emit<ErrorDetail>('error', { error: typed });
+      this.emit('error', { error: typed });
       throw typed;
     } finally {
       if (generation === this.loadGeneration) this.loadController = null;
@@ -494,7 +489,7 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
       const walkability = await loadWalkabilitySource(world, source, {
         fetch: this.fetchImplementation,
         signal,
-        progress: (detail) => this.emit<ProgressDetail>('progress', detail),
+        progress: (detail) => this.emit('progress', detail),
       });
       signal.throwIfAborted();
       if (this.disposed || generation !== this.loadGeneration) {
@@ -658,7 +653,7 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
     if (!this.enableAudioOnInteraction || this.audio.enabled) return;
     void this.enableAudio().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      this.emit<WarningDetail>('warning', {
+      this.emit('warning', {
         code: 'audio-warning',
         message: `audio could not be enabled: ${message}`,
       });
@@ -676,7 +671,10 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
     return true;
   }
 
-  private emit<T>(type: string, detail: T): void {
+  private emit<K extends keyof WorldviewEventMap>(
+    type: K,
+    detail: WorldviewEventMap[K]['detail'],
+  ): void {
     this.dispatchEvent(new CustomEvent(type, { detail }));
   }
 
@@ -685,7 +683,7 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
   }
 
   private emitWalkabilityChange(): void {
-    this.emit<WalkabilityChangeDetail>('walkabilitychange', {
+    this.emit('walkabilitychange', {
       walkability: this.walkabilityMap,
       visible: this.walkabilityVisibleValue,
     });

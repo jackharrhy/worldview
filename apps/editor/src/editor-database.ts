@@ -161,11 +161,12 @@ export async function completeEditorTransaction<Result>(
   };
   if (signal?.aborted) {
     abort();
-    throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+  } else {
+    signal?.addEventListener('abort', abort, { once: true });
   }
-  signal?.addEventListener('abort', abort, { once: true });
   try {
     const [result] = await Promise.all([work, transaction.done]);
+    signal?.throwIfAborted();
     return result;
   } catch (error) {
     abort();

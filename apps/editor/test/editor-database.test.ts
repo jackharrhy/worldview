@@ -109,19 +109,30 @@ describe('typed editor database', () => {
     expect((await builds.list('map-1'))[0]?.buildId).toBe('build-1');
   });
 
-  it('aborts a live readwrite transaction when its signal is cancelled', async () => {
-    const database = await openEditorDatabase();
-    const transaction = database.transaction(EDITOR_STORES.localProjects, 'readwrite');
-    const controller = new AbortController();
-    const completion = completeEditorTransaction(
-      transaction,
-      transaction.store.put({ projectKey: 'must-not-commit' }),
-      controller.signal,
-    );
+  it.each(['before starting', 'while pending'])(
+    'aborts a readwrite transaction cancelled %s',
+    async (timing) => {
+      const database = await openEditorDatabase();
+      const transaction = database.transaction(EDITOR_STORES.assetMounts, 'readwrite');
+      const controller = new AbortController();
+      if (timing === 'before starting') controller.abort();
+      const completion = completeEditorTransaction(
+        transaction,
+        transaction.store.put({
+          id: 'must-not-commit',
+          scopeId: 'map-1',
+          kind: 'builtin',
+          label: 'Built in',
+          priority: 0,
+          profile: 'quake',
+        }),
+        controller.signal,
+      );
 
-    controller.abort();
+      if (timing === 'while pending') controller.abort();
 
-    await expect(completion).rejects.toMatchObject({ name: 'AbortError' });
-    expect(await database.get(EDITOR_STORES.localProjects, 'must-not-commit')).toBeUndefined();
-  });
+      await expect(completion).rejects.toMatchObject({ name: 'AbortError' });
+      expect(await database.get(EDITOR_STORES.assetMounts, 'must-not-commit')).toBeUndefined();
+    },
+  );
 });

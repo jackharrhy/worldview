@@ -1,6 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { HostedSessionResponseSchema } from '@worldview/protocol';
+import { HostedBuildsResponseSchema, HostedSessionResponseSchema } from '@worldview/protocol';
+import {
+  RemoteCompileRequestSchema,
+  RemoteCompileResultSchema,
+  type RemoteCompileResult,
+} from '@jackharrhy/worldview-editor/core';
 import { describe, expect, test } from 'vitest';
 import { fixture, session } from './service-fixture.js';
 
@@ -15,14 +20,13 @@ const malformedHumanTokenFetch: typeof fetch = async (input) => {
 };
 
 const successfulCompilerFetch: typeof fetch = async (_input, init) => {
-  const request = JSON.parse(String(init?.body)) as {
-    mapText: string;
-    expectedDocumentRevision: number;
-  };
+  const request = RemoteCompileRequestSchema.parse(JSON.parse(String(init?.body)));
   expect(request.mapText).toContain('worldspawn');
   expect(request.expectedDocumentRevision).toBe(0);
   return Response.json({
     status: 'succeeded',
+    buildId: 'native-build-1',
+    sourceDocumentRevision: request.expectedDocumentRevision,
     diagnostics: [],
     logs: [{ stage: 'qbsp', text: 'built', truncated: false }],
     elapsedMilliseconds: 7,
@@ -34,7 +38,7 @@ const successfulCompilerFetch: typeof fetch = async (_input, init) => {
         base64: Buffer.from([29, 0, 0, 0]).toString('base64'),
       },
     ],
-  });
+  } satisfies RemoteCompileResult);
 };
 
 describe('Worldview hosted project service', () => {
@@ -361,74 +365,90 @@ describe('Worldview hosted project service', () => {
     expect(app.database.buildAdmission(user.id)).toBe('user-hourly');
   });
 
-  test('builds canonical hosted maps and serves artifacts only to project members', async () => {
-    const app = await fixture(undefined, successfulCompilerFetch);
-    const { user, cookie } = session(app.database);
-    const viewer = session(app.database, {
-      fourmSub: 'build-viewer',
-      username: 'build-viewer',
-      displayName: 'Build Viewer',
-      isAdmin: false,
-    });
-    const outsider = session(app.database, {
-      fourmSub: 'build-outsider',
-      username: 'build-outsider',
-      displayName: 'Build Outsider',
-      isAdmin: false,
-    });
-    const project = app.database.createProject(user.id, 'Hosted build', 'quake');
-    expect(app.database.setProjectMemberRole(project.id, user.id, viewer.user.id, 'viewer')).toBe(
-      true,
-    );
-    const map = app.database.createMap({
-      id: app.database.createMapId(),
-      projectId: project.id,
-      userId: user.id,
-      name: 'showcase.map',
-      format: 'quake',
-    });
-    const mapId = String(map.id);
-    await app.maps.initialize(mapId, '{\n"classname" "worldspawn"\n}\n');
+  test.each([false, true])(
+    'builds canonical hosted maps, enforcing revision and artifact access (stale worker: %s)',
+    async (staleWorker) => {
+      const app = await fixture(undefined, async (input, init) => {
+        const response = await successfulCompilerFetch(input, init);
+        if (!staleWorker) return response;
+        const result = RemoteCompileResultSchema.parse(await response.json());
+        return Response.json({ ...result, sourceDocumentRevision: 9 });
+      });
+      const { user, cookie } = session(app.database);
+      const viewer = session(app.database, {
+        fourmSub: 'build-viewer',
+        username: 'build-viewer',
+        displayName: 'Build Viewer',
+        isAdmin: false,
+      });
+      const outsider = session(app.database, {
+        fourmSub: 'build-outsider',
+        username: 'build-outsider',
+        displayName: 'Build Outsider',
+        isAdmin: false,
+      });
+      const project = app.database.createProject(user.id, 'Hosted build', 'quake');
+      expect(app.database.setProjectMemberRole(project.id, user.id, viewer.user.id, 'viewer')).toBe(
+        true,
+      );
+      const map = app.database.createMap({
+        id: app.database.createMapId(),
+        projectId: project.id,
+        userId: user.id,
+        name: 'showcase.map',
+        format: 'quake',
+      });
+      const mapId = String(map.id);
+      await app.maps.initialize(mapId, '{\n"classname" "worldspawn"\n}\n');
 
-    const stale = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
-      method: 'POST',
-      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quality: 'preview', expectedMapVersion: 9 }),
-    });
-    expect(stale.status).toBe(409);
-    await expect(stale.json()).resolves.toEqual({
-      error: 'The hosted map has not saved this revision yet; wait a moment and try again',
-    });
-    expect(app.database.listBuilds(mapId, user.id)).toEqual([]);
-    const queued = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
-      method: 'POST',
-      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quality: 'preview', expectedMapVersion: 0 }),
-    });
-    expect(queued.status).toBe(202);
-    const buildId = ((await queued.json()) as { build: { id: string } }).build.id;
+      const stale = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quality: 'preview', expectedMapVersion: 9 }),
+      });
+      expect(stale.status).toBe(409);
+      await expect(stale.json()).resolves.toEqual({
+        error: 'The hosted map has not saved this revision yet; wait a moment and try again',
+      });
+      expect(app.database.listBuilds(mapId, user.id)).toEqual([]);
+      const queued = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quality: 'preview', expectedMapVersion: 0 }),
+      });
+      expect(queued.status).toBe(202);
+      const buildId = ((await queued.json()) as { build: { id: string } }).build.id;
 
-    await expect
-      .poll(async () => {
-        const response = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
-          headers: { Cookie: cookie },
-        });
-        const builds = (await response.json()) as {
-          builds: readonly { id: string; status: string; result?: { artifacts?: unknown[] } }[];
-        };
-        return builds.builds.find(({ id }) => id === buildId);
-      })
-      .toMatchObject({ status: 'succeeded', result: { artifacts: [expect.any(Object)] } });
-    const build = app.database.build(mapId, buildId, user.id)!;
-    const artifact = build.result!.artifacts![0]!;
-    const artifactUrl = `${app.origin}/api/maps/${map.id}/builds/${buildId}/artifacts/${artifact.sha256}`;
-    expect((await fetch(artifactUrl)).status).toBe(401);
-    const downloaded = await fetch(artifactUrl, { headers: { Cookie: cookie } });
-    expect(downloaded.status).toBe(200);
-    expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(Uint8Array.from([29, 0, 0, 0]));
-    expect((await fetch(artifactUrl, { headers: { Cookie: viewer.cookie } })).status).toBe(200);
-    expect((await fetch(artifactUrl, { headers: { Cookie: outsider.cookie } })).status).toBe(404);
-  });
+      await expect
+        .poll(async () => {
+          const response = await fetch(`${app.origin}/api/maps/${map.id}/builds`, {
+            headers: { Cookie: cookie },
+          });
+          const { builds } = HostedBuildsResponseSchema.parse(await response.json());
+          return builds.find(({ id }) => id === buildId);
+        })
+        .toMatchObject(
+          staleWorker
+            ? {
+                status: 'failed',
+                result: { error: 'Build worker returned a different map revision' },
+              }
+            : { status: 'succeeded', result: { artifacts: [expect.any(Object)] } },
+        );
+      if (staleWorker) return;
+      const build = app.database.build(mapId, buildId, user.id)!;
+      const artifact = build.result!.artifacts![0]!;
+      const artifactUrl = `${app.origin}/api/maps/${map.id}/builds/${buildId}/artifacts/${artifact.sha256}`;
+      expect((await fetch(artifactUrl)).status).toBe(401);
+      const downloaded = await fetch(artifactUrl, { headers: { Cookie: cookie } });
+      expect(downloaded.status).toBe(200);
+      expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(
+        Uint8Array.from([29, 0, 0, 0]),
+      );
+      expect((await fetch(artifactUrl, { headers: { Cookie: viewer.cookie } })).status).toBe(200);
+      expect((await fetch(artifactUrl, { headers: { Cookie: outsider.cookie } })).status).toBe(404);
+    },
+  );
 
   test('completes the existing 4orm PKCE flow into a Worldview session', async () => {
     const calls: string[] = [];

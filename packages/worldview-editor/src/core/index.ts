@@ -1,3 +1,14 @@
+export {
+  MapBuildCapabilitiesSchema,
+  MapLaunchRequestSchema,
+  MapLaunchResultSchema,
+  RemoteCompileArtifactSchema,
+  RemoteCompileRequestSchema,
+  RemoteCompileResultSchema,
+  type RemoteCompileRequest,
+  type RemoteCompileResult,
+  type RemoteLaunchRequest,
+} from './compiler-protocol.js';
 export type {
   MapCompileArtifact,
   MapCompileDiagnostic,

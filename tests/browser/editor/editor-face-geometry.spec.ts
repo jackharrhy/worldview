@@ -162,46 +162,63 @@ test.describe('Editor face geometry tools', () => {
     await expect(page.locator('#status-message')).toContainText('Stamp face');
   });
 
-  test('losing pointer capture cancels a face preview and leaves the next drag usable', async ({
-    page,
-  }) => {
-    await openEditor(page);
-    const start = await perspectiveWorldPoint(page, [0, 0, 0]);
-    const end = await perspectiveWorldPoint(page, [0, 0, 96]);
-    await page.mouse.click(start.x, start.y);
-    await page.locator('[data-viewport="perspective"] .source-canvas').evaluate((canvas) => {
-      canvas.addEventListener(
-        'pointerdown',
-        (event) => {
-          canvas.dataset.testPointerId = String((event as PointerEvent).pointerId);
-        },
-        { once: true },
-      );
-    });
-    await page.keyboard.down('Shift');
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(end.x, end.y, { steps: 4 });
-    await page.locator('[data-viewport="perspective"] .source-canvas').evaluate((canvas) => {
-      canvas.dispatchEvent(
-        new PointerEvent('lostpointercapture', {
-          pointerId: Number(canvas.dataset.testPointerId),
-        }),
-      );
-    });
-    await expect(page.locator('[data-viewport="perspective"]')).not.toHaveClass(/extruding/);
-    await page.mouse.up();
-    await page.keyboard.up('Shift');
+  for (const cancellation of ['lostpointercapture', 'pointercancel']) {
+    test(`${cancellation} cancels a face preview and leaves the next drag usable`, async ({
+      page,
+    }) => {
+      await openEditor(page);
+      const start = await perspectiveWorldPoint(page, [0, 0, 0]);
+      const end = await perspectiveWorldPoint(page, [0, 0, 96]);
+      await page.mouse.click(start.x, start.y);
+      const viewportCanvas = page.locator('[data-viewport="perspective"] .source-canvas');
+      await viewportCanvas.evaluate((canvas) => {
+        canvas.addEventListener(
+          'pointerdown',
+          (event) => {
+            if (event instanceof PointerEvent)
+              canvas.dataset.testPointerId = String(event.pointerId);
+          },
+          { once: true },
+        );
+      });
+      await page.keyboard.down('Shift');
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      await page.mouse.move(end.x, end.y, { steps: 4 });
+      await expect(viewportCanvas).toHaveAttribute('data-viewport-interaction', 'extruding');
+      // Events from another pointer must not commit or cancel the current preview.
+      await viewportCanvas.evaluate((canvas) => {
+        for (const type of ['pointerup', 'pointercancel']) {
+          canvas.dispatchEvent(
+            new PointerEvent(type, {
+              pointerId: Number(canvas.dataset.testPointerId) + 1,
+            }),
+          );
+        }
+      });
+      await expect(viewportCanvas).toHaveAttribute('data-viewport-interaction', 'extruding');
+      await expect(page.locator('#document-revision')).toHaveText('0');
+      await viewportCanvas.evaluate((canvas, type) => {
+        canvas.dispatchEvent(
+          new PointerEvent(type, {
+            pointerId: Number(canvas.dataset.testPointerId),
+          }),
+        );
+      }, cancellation);
+      await expect(viewportCanvas).not.toHaveAttribute('data-viewport-interaction');
+      await page.mouse.up();
+      await page.keyboard.up('Shift');
 
-    await expect(page.locator('#document-revision')).toHaveText('0');
-    await page.keyboard.down('Shift');
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(end.x, end.y, { steps: 4 });
-    await page.mouse.up();
-    await page.keyboard.up('Shift');
-    await expect(page.locator('#document-revision')).toHaveText('1');
-  });
+      await expect(page.locator('#document-revision')).toHaveText('0');
+      await page.keyboard.down('Shift');
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      await page.mouse.move(end.x, end.y, { steps: 4 });
+      await page.mouse.up();
+      await page.keyboard.up('Shift');
+      await expect(page.locator('#document-revision')).toHaveText('1');
+    });
+  }
 
   test('Ctrl-drag split-extrudes a face into two undoable brushes', async ({ page }) => {
     await openEditor(page);

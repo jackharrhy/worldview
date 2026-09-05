@@ -8,8 +8,14 @@ import type {
   MapLaunchRequest,
   MapLaunchResult,
 } from './compiler.js';
-import { MapCompileDiagnosticSchema, MapCompileLogSchema } from './runtime-schemas.js';
-import { z } from 'zod';
+import {
+  MapBuildCapabilitiesSchema,
+  MapLaunchResultSchema,
+  RemoteCompileResultSchema,
+  type RemoteCompileRequest,
+  type RemoteLaunchRequest,
+} from './compiler-protocol.js';
+import type { z } from 'zod';
 
 export type CompilerFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -20,48 +26,6 @@ export interface RemoteMapCompilerOptions {
   readonly maxInputAssetBytes?: number;
   readonly maxArtifactBytes?: number;
 }
-
-const RemoteArtifactSchema = z.strictObject({
-  name: z.string().min(1).max(4_096),
-  mediaType: z.string().min(1).max(256),
-  base64: z.string(),
-  kind: z.enum(['bsp', 'portal', 'leak-path', 'log', 'other']),
-  stage: z.string().min(1).max(256).optional(),
-});
-const RemoteResponseSchema = z.strictObject({
-  status: z.enum(['succeeded', 'failed']),
-  buildId: z.string().min(1).max(256),
-  sourceDocumentRevision: z.number().int().nonnegative(),
-  diagnostics: z.array(MapCompileDiagnosticSchema).max(10_000),
-  artifacts: z.array(RemoteArtifactSchema).max(1_000),
-  elapsedMilliseconds: z.number().finite().nonnegative(),
-  logs: z.array(MapCompileLogSchema).max(1_000),
-});
-type RemoteResponse = z.infer<typeof RemoteResponseSchema>;
-const BuildCapabilitiesSchema = z.strictObject({
-  protocolVersion: z.literal(1),
-  compileProfiles: z.array(
-    z.strictObject({
-      id: z.string().min(1).max(256),
-      label: z.string().min(1).max(256),
-      game: z.enum(['quake', 'goldsrc', 'quake2']),
-      qualities: z.array(z.enum(['preview', 'final'])).max(2),
-    }),
-  ),
-  launchProfiles: z.array(
-    z.strictObject({
-      id: z.string().min(1).max(256),
-      label: z.string().min(1).max(256),
-      game: z.enum(['quake', 'goldsrc', 'quake2']),
-    }),
-  ),
-}) satisfies z.ZodType<MapBuildCapabilities>;
-const LaunchResultSchema = z.strictObject({
-  buildId: z.string().min(1).max(256),
-  profileId: z.string().min(1).max(256),
-  sourceDocumentRevision: z.number().int().nonnegative(),
-  launchedAt: z.number().finite().nonnegative(),
-}) satisfies z.ZodType<MapLaunchResult>;
 
 function decodeBase64(value: string, limit: number): ArrayBuffer {
   const estimatedBytes = Math.floor((value.length * 3) / 4);
@@ -83,21 +47,9 @@ function encodeBase64(value: ArrayBuffer): string {
   return btoa(chunks.join(''));
 }
 
-function remoteResponse(value: unknown): RemoteResponse {
-  const result = RemoteResponseSchema.safeParse(value);
-  if (!result.success) throw new Error('Compiler returned an invalid result');
-  return result.data;
-}
-
-function buildCapabilities(value: unknown): MapBuildCapabilities {
-  const result = BuildCapabilitiesSchema.safeParse(value);
-  if (!result.success) throw new Error('Helper returned invalid capabilities');
-  return result.data;
-}
-
-function launchResult(value: unknown): MapLaunchResult {
-  const result = LaunchResultSchema.safeParse(value);
-  if (!result.success) throw new Error('Helper returned an invalid launch result');
+function parseResponse<T>(schema: z.ZodType<T>, value: unknown, message: string): T {
+  const result = schema.safeParse(value);
+  if (!result.success) throw new Error(message);
   return result.data;
 }
 
@@ -137,7 +89,7 @@ export class RemoteMapCompiler implements MapCompiler, MapBuildService {
           mediaType: asset.mediaType,
           base64: encodeBase64(asset.data),
         })),
-      }),
+      } satisfies RemoteCompileRequest),
       ...(request.signal ? { signal: request.signal } : {}),
     });
     if (!response.ok) {
@@ -146,7 +98,11 @@ export class RemoteMapCompiler implements MapCompiler, MapBuildService {
         `Compiler request failed with HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
       );
     }
-    const payload = remoteResponse(await response.json());
+    const payload = parseResponse(
+      RemoteCompileResultSchema,
+      await response.json(),
+      'Compiler returned an invalid result',
+    );
     const artifacts: MapCompileArtifact[] = payload.artifacts.map((artifact) => ({
       name: artifact.name,
       mediaType: artifact.mediaType,
@@ -174,7 +130,11 @@ export class RemoteMapCompiler implements MapCompiler, MapBuildService {
     });
     if (!response.ok)
       throw new Error(`Build capability request failed with HTTP ${response.status}`);
-    return buildCapabilities(await response.json());
+    return parseResponse(
+      MapBuildCapabilitiesSchema,
+      await response.json(),
+      'Helper returned invalid capabilities',
+    );
   }
 
   public async launch(request: MapLaunchRequest): Promise<MapLaunchResult> {
@@ -190,7 +150,7 @@ export class RemoteMapCompiler implements MapCompiler, MapBuildService {
         buildId: request.buildId,
         profileId: request.profileId,
         expectedDocumentRevision: request.expectedDocumentRevision,
-      }),
+      } satisfies RemoteLaunchRequest),
       ...(request.signal ? { signal: request.signal } : {}),
     });
     if (!response.ok) {
@@ -199,6 +159,10 @@ export class RemoteMapCompiler implements MapCompiler, MapBuildService {
         `Launch request failed with HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
       );
     }
-    return launchResult(await response.json());
+    return parseResponse(
+      MapLaunchResultSchema,
+      await response.json(),
+      'Helper returned an invalid launch result',
+    );
   }
 }

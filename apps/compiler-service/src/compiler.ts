@@ -4,28 +4,25 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-export type CompileQuality = 'preview' | 'final';
-export type CompilerGameProfile = 'quake' | 'goldsrc' | 'quake2';
+import type {
+  MapCompileDiagnostic as NativeCompileDiagnostic,
+  MapCompileQuality as CompileQuality,
+  RemoteCompileRequest as NativeCompilerRequest,
+  RemoteCompileResult as NativeCompilerResult,
+  WorldviewGameProfile as CompilerGameProfile,
+} from '@jackharrhy/worldview-editor/core';
+
+export type {
+  MapCompileQuality as CompileQuality,
+  RemoteCompileRequest as NativeCompilerRequest,
+  RemoteCompileResult as NativeCompilerResult,
+  WorldviewGameProfile as CompilerGameProfile,
+} from '@jackharrhy/worldview-editor/core';
 
 export function parseCompilerGameProfile(value: string | undefined): CompilerGameProfile {
   if (value === undefined || value.trim() === '') return 'quake';
   if (value === 'quake' || value === 'goldsrc' || value === 'quake2') return value;
   throw new Error('WORLDVIEW_GAME_PROFILE must be quake, goldsrc, or quake2');
-}
-
-export interface NativeCompilerRequest {
-  readonly mapName: string;
-  readonly mapText: string;
-  readonly quality: CompileQuality;
-  readonly expectedDocumentRevision: number;
-  readonly profileId?: string | undefined;
-  readonly assets?: readonly NativeCompilerAsset[] | undefined;
-}
-
-export interface NativeCompilerAsset {
-  readonly name: string;
-  readonly mediaType: string;
-  readonly base64: string;
 }
 
 export type NativeCompilerToolchain =
@@ -44,28 +41,6 @@ export interface NativeCompilerConfig {
   readonly timeoutMilliseconds: number;
   readonly maxLogBytes: number;
   readonly maxArtifactBytes: number;
-}
-
-export interface NativeCompileDiagnostic {
-  readonly severity: 'info' | 'warning' | 'error';
-  readonly stage: string;
-  readonly message: string;
-}
-
-export interface NativeCompilerResult {
-  readonly status: 'succeeded' | 'failed';
-  readonly buildId: string;
-  readonly sourceDocumentRevision: number;
-  readonly diagnostics: readonly NativeCompileDiagnostic[];
-  readonly artifacts: readonly {
-    name: string;
-    mediaType: string;
-    base64: string;
-    kind: 'bsp' | 'portal' | 'leak-path' | 'log' | 'other';
-    stage?: string;
-  }[];
-  readonly logs: readonly { stage: string; text: string; truncated: boolean }[];
-  readonly elapsedMilliseconds: number;
 }
 
 interface StageResult {
@@ -295,15 +270,7 @@ async function collectArtifacts(
     allowed.map(async (name) => {
       const metadata = artifactMetadata(name);
       const base64 = (await readFile(join(workingDirectory, name))).toString('base64');
-      return metadata.stage
-        ? {
-            name,
-            kind: metadata.kind,
-            mediaType: metadata.mediaType,
-            stage: metadata.stage,
-            base64,
-          }
-        : { name, kind: metadata.kind, mediaType: metadata.mediaType, base64 };
+      return Object.assign({ name, base64 }, metadata);
     }),
   );
 }

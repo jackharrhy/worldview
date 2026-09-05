@@ -93,16 +93,15 @@ unselected brush cannot steal the gesture.
 
 ## Controller translation
 
-TrenchBroom's useful architectural lesson is singular gesture ownership, not its desktop class
-layout. Worldview implements an original ordered `ViewportGestureRouter`:
+Worldview preserves TrenchBroom's singular gesture ownership with one typed drag per viewport:
 
 1. The viewport surface owns canvas, camera, projection, GPU targets, and render policy.
-2. The router owns at most one pointer/modifier tracker.
-3. Focused camera, selection, transform, topology, face, clip, hull, sweep, creation, and placement
-   controllers accept typed input in priority order.
-4. The accepting tracker exclusively owns update, commit, and cancel.
+2. Pointer-down handling selects camera, selection, transform, topology, face, clip, hull, sweep,
+   creation, or placement behavior in priority order.
+3. The drag records its owning pointer; unrelated pointer events cannot update or commit it.
+4. Commit and cancellation clear the drag before notifying the application.
 5. `EditorSession` remains the only document/history commit authority; render resources remain
-   outside gesture controllers.
+   separate from document edits.
 
 ## Follow-up ownership
 

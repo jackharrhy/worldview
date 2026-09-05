@@ -52,7 +52,7 @@ export function CollaborationPresence({ port }: { readonly port: CollaborationUi
         id="collaboration-toggle"
         className="collaboration-toggle icon-button"
         aria-pressed={live}
-        onPress={() => port.invoke('open')}
+        onPress={() => port.commands?.open()}
       />
     </div>
   );
@@ -71,7 +71,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
       isOpen={state.dialogOpen}
       isDismissable
       onOpenChange={(open) => {
-        if (!open) port.invoke('close');
+        if (!open) port.commands?.close();
       }}
     >
       <div className="collaboration-body">
@@ -80,7 +80,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
           label="Your name"
           value={state.displayName}
           isDisabled={live}
-          onChange={(value) => port.invoke('setDisplayName', value)}
+          onChange={(value) => port.commands?.setDisplayName(value)}
           input={{
             id: 'collaboration-display-name',
             maxLength: 48,
@@ -98,7 +98,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
           <Button
             size="compact"
             data-action="copy-collaboration-link"
-            onPress={() => port.invoke('copyLink')}
+            onPress={() => port.commands?.copyLink()}
           >
             Copy link
           </Button>
@@ -133,7 +133,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
             size="compact"
             data-action="leave-collaboration"
             hidden={!live}
-            onPress={() => port.invoke('stop')}
+            onPress={() => port.commands?.stop()}
           >
             Stop session
           </Button>
@@ -143,7 +143,7 @@ export function CollaborationDialog({ port }: { readonly port: CollaborationUiPo
             data-action="start-collaboration"
             hidden={live}
             isDisabled={joining}
-            onPress={() => port.invoke('start')}
+            onPress={() => port.commands?.start()}
           >
             {joining ? 'Joining…' : 'Open hosted projects'}
           </Button>

@@ -39,13 +39,9 @@ export interface SelectionBrushSelectionResult {
 
 export type ChangeListener = (change: EditorSessionChange) => void;
 
-export interface BrushEditCandidate {
+export interface BrushEditCandidate extends BrushEdit {
   readonly label: string;
-  readonly brushId: BrushId;
   readonly baseDocumentRevision: number;
-  readonly baseBrushRevision: number;
-  readonly before: MapBrush;
-  readonly after: MapBrush;
   /** A derived preview document. The session remains unchanged until commitCandidate is called. */
   readonly document: MapDocument;
 }
@@ -189,6 +185,26 @@ export function documentRevisionForApply(current: MapDocument, content: MapDocum
   return { ...content, revision: current.revision + 1 };
 }
 
+/** Package validated brush edits into the same preview shape used by history and gestures. */
+export function createBrushEditCandidate(
+  before: MapDocument,
+  edits: readonly BrushEdit[],
+  singleLabel: string,
+  batchLabel = singleLabel,
+): BrushEditCandidate | BrushBatchEditCandidate | null {
+  const first = edits[0];
+  if (!first) return null;
+  const base = {
+    label: edits.length === 1 ? singleLabel : batchLabel,
+    baseDocumentRevision: before.revision,
+    document: replaceBrushes(
+      before,
+      edits.map((edit) => edit.after),
+    ),
+  };
+  return edits.length === 1 ? { ...base, ...first } : { ...base, edits };
+}
+
 export function faceSelectionKey(face: FaceSelection): string {
   return `${face.brushId}\u0000${face.faceId}`;
 }
@@ -199,25 +215,16 @@ export function translatedObjects(
   delta: Vec3,
   textureLock: boolean,
 ): MapDocument {
-  let translated = document;
-  const brushIds = selectedBrushIds(selection);
-  if (brushIds.length > 0) {
-    const brushes = brushIds.map((brushId) => {
-      const brush = findBrush(document, brushId);
-      if (!brush) throw new Error(`Unknown brush ${brushId}`);
-      return translateBrush(brush, delta, textureLock);
-    });
-    translated = replaceBrushes(translated, brushes);
-  }
-  const entityIds = selectedPointEntityIds(selection);
-  if (entityIds.length > 0) {
-    const entities = entityIds.map((entityId) => {
-      const entity = document.entities.find((candidate) => candidate.id === entityId);
-      if (!entity) throw new Error(`Unknown point entity ${entityId}`);
+  return transformedObjects(
+    document,
+    selection,
+    (brush) => translateBrush(brush, delta, textureLock),
+    (entity) => {
       const origin = parseEntityOrigin(entity);
       if (!origin || entity.primitives.length > 0)
-        throw new Error(`Entity ${entityId} is not a point entity`);
-      return Object.assign({}, entity, {
+        throw new Error(`Entity ${entity.id} is not a point entity`);
+      return {
+        ...entity,
         properties: {
           ...entity.properties,
           origin: formatEntityOrigin([
@@ -226,11 +233,9 @@ export function translatedObjects(
             origin[2] + delta[2],
           ]),
         },
-      });
-    });
-    translated = replaceEntities(translated, entities);
-  }
-  return { ...translated, revision: document.revision + 1 };
+      };
+    },
+  );
 }
 
 export function transformedObjects(

@@ -446,7 +446,7 @@ function TopBar({ shellState }: EditorChromeProps) {
     shellState.inspectorLayout.getSnapshot,
   );
   const invokeAction = (action: string) => {
-    if (action === 'home') shellState.workspaceHome.invoke('showHome');
+    if (action === 'home') shellState.workspaceHome.commands?.showHome();
     else if (isProjectActionId(action)) shellState.projectUi.invoke(action);
     else if (isEditorCommandId(action)) shellState.editorCommands.invoke(action);
   };
@@ -661,7 +661,7 @@ function ToolRail({ shellState }: EditorChromeProps) {
         className={`view-filter-toggle icon-button${filters.filteredCount > 0 ? ' active-filter' : ''}`}
         data-action="toggle-view-filters"
         aria-expanded={filters.open}
-        onPress={() => shellState.viewFilter.invoke('setOpen', !filters.open)}
+        onPress={() => shellState.viewFilter.commands?.setOpen(!filters.open)}
       />
     </section>
   );

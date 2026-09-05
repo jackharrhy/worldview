@@ -44,7 +44,7 @@ export function StatusBar({ shellState }: StatusBarProps) {
         data-action="toggle-issues"
         aria-expanded={issues.open}
         data-state={issues.status}
-        onPress={() => shellState.issueBrowser.invoke('setOpen', !issues.open)}
+        onPress={() => shellState.issueBrowser.commands?.setOpen(!issues.open)}
       >
         {issues.statusLabel}
       </Button>

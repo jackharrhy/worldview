@@ -24,7 +24,9 @@ describe('browser asset mounts', () => {
     await service.addBrowserWad('map-a', 'quake', 'earlier.wad', new Uint8Array([1]).buffer, 10);
     const mounts = await service.list('map-a');
     expect(mounts.map(({ label }) => label)).toEqual(['earlier.wad', 'later.wad']);
-    expect(mounts[0]?.contentFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(mounts[0]).toMatchObject({
+      contentFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
     expect(new Uint8Array(mounts[0]!.data!)).toEqual(new Uint8Array([1]));
   });
 });

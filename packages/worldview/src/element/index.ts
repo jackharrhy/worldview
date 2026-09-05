@@ -299,13 +299,7 @@ export class WorldViewElement extends HTMLElement {
       const message = error instanceof Error ? error.message : String(error);
       this.show(message);
       if (!this.activeViewer) {
-        this.dispatchEvent(
-          new CustomEvent('error', {
-            detail: { error: error instanceof Error ? error : new Error(message) },
-            bubbles: true,
-            composed: true,
-          }),
-        );
+        this.redispatch('error', { error: error instanceof Error ? error : new Error(message) });
       }
     }
   }
@@ -371,7 +365,10 @@ export class WorldViewElement extends HTMLElement {
       });
   }
 
-  private redispatch(type: string, detail: unknown): void {
+  private redispatch<K extends keyof WorldviewEventMap>(
+    type: K,
+    detail: WorldviewEventMap[K]['detail'],
+  ): void {
     this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
   }
 

@@ -74,13 +74,15 @@ review boundary:
 
 `EditorSession` is the only authority for document changes and history. It is a stable facade over
 one session kernel and focused command domains for organization, selection, transforms, topology,
-entities, clipboard operations, materials, and commits. Direct actions, repeated commands, remote
-operations, and WebMCP calls all reach the same validation and transaction boundary.
+entities, clipboard operations, materials, and commits. Command domains read narrow, readonly
+kernel views and use shared candidate assembly for single-brush and batch previews. Direct actions,
+repeated commands, remote operations, and WebMCP calls all reach the same validation and transaction
+boundary.
 
-Pointer gestures have one owner at a time. The viewport gesture router selects a focused camera,
-selection, transform, topology, face, clip, hull, sweep, creation, or placement controller. The
-accepted controller owns begin, update, commit, and cancel. Gesture controllers do not own GPU
-resources or bypass the session.
+Each viewport owns one active pointer drag. Pointer handlers select and update camera, selection,
+transform, topology, face, clip, hull, sweep, creation, and placement operations directly. Only the
+owning pointer may update or commit the drag; commit and cancellation release ownership before
+notifying the application. Gesture previews and commits reach the same editor session boundary.
 
 High-frequency camera, pointer, preview, and GPU state stays outside React. Immutable application
 snapshots cross into React through narrow external-store ports. The initiating client renders a
@@ -93,6 +95,11 @@ do not create elements, query controls, or project state by mutating DOM nodes. 
 reserved for canvases, renderer overlays, focus and selection, pointer capture, measurement, native
 file inputs, and dialog lifetimes. The detailed rules live in
 [the React ownership contract](./react-ui-ownership.md).
+
+Object-shaped UI snapshots share one small application-local port for publication and presenter
+binding over the viewer package's `SnapshotStore`. Surface-specific defaults, command guards, and
+reset behavior remain explicit. React calls named, typed commands directly; no string-based generic
+dispatcher reconstructs their parameter types.
 
 The editor uses React Router v7 Data Mode. The home route loads local and authorized hosted work
 without importing the editor, renderer, WebMCP, compiler, collaboration, or editor styles. The
@@ -194,6 +201,12 @@ Zod schemas validate data at network, storage, clipboard, project-file, compiler
 trust boundaries. Owned formats reject unknown fields. External OAuth and asset-provider responses
 may discard provider additions while preserving bounded required fields. Validation does not run in
 document, gesture, or render hot paths.
+
+The editor core owns the native compiler wire schemas used by its browser adapter, the native
+compiler service, and the hosted build queue. The hosted queue rejects results for a different
+source revision. Hosted browser APIs share response decoding while retaining their endpoint-specific
+schemas. Every workspace uses the shared strict TypeScript options, including unit-test fixtures;
+the collaboration Worker substitutes its own runtime libraries and generated bindings.
 
 ## Hosted projects
 

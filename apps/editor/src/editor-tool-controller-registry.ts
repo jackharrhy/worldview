@@ -1,5 +1,6 @@
 import {
   selectedFaceReferences,
+  type EditorSourceRenderer,
   type EditorTool,
   type EditorViewportKind,
   type MapDocument,
@@ -13,7 +14,6 @@ type ToolControllerState = EditorStatePort<
   | 'activeTool'
   | 'activeGridSize'
   | 'lastPointerPosition'
-  | 'renderer'
   | 'session'
   | 'simpleShapeOptions'
   | 'sweepCandidate'
@@ -32,7 +32,18 @@ type ToolControllerState = EditorStatePort<
   | 'sweepTransform'
   | 'transformPivot'
   | 'transformPivotSelectionKey'
->;
+> & {
+  readonly renderer: Pick<
+    EditorSourceRenderer,
+    | 'setDocument'
+    | 'setSweepCaps'
+    | 'setTransformPivot'
+    | 'setTool'
+    | 'commitHullBrush'
+    | 'removeLastClipPoint'
+    | 'clearHullPoints'
+  > | null;
+};
 
 type ToolControllerUi = Pick<
   EditorShellState,

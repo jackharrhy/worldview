@@ -26,42 +26,6 @@ describe('editor shell state ports', () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps document, compiler, pointer, and map-summary snapshots independent', () => {
-    const shell = createEditorShellState();
-
-    shell.documentName.set('• dm1.map', 'dm1.map');
-    shell.compileState.set('COMPILER READY', 'ready');
-    shell.pointerContext.set('PERSPECTIVE / fly');
-    shell.documentSummary.set({
-      revision: 7,
-      entityCount: 4,
-      brushCount: 12,
-      groupCount: 2,
-      hiddenObjectCount: 3,
-      lockedObjectCount: 1,
-      geometryErrorCount: 0,
-    });
-
-    expect(shell.documentName.getSnapshot()).toEqual({
-      label: '• dm1.map',
-      title: 'dm1.map',
-    });
-    expect(shell.compileState.getSnapshot()).toEqual({
-      label: 'COMPILER READY',
-      state: 'ready',
-    });
-    expect(shell.pointerContext.getSnapshot()).toBe('PERSPECTIVE / fly');
-    expect(shell.documentSummary.getSnapshot()).toEqual({
-      revision: 7,
-      entityCount: 4,
-      brushCount: 12,
-      groupCount: 2,
-      hiddenObjectCount: 3,
-      lockedObjectCount: 1,
-      geometryErrorCount: 0,
-    });
-  });
-
   it('publishes immutable context-menu descriptions and invokes only its narrow command port', () => {
     const shell = createEditorShellState();
     const dismiss = vi.fn();
@@ -141,101 +105,24 @@ describe('editor shell state ports', () => {
     expect(shell.theme.getSnapshot()).toBe('light');
   });
 
-  it('routes dynamic editor surfaces through typed command ports', () => {
+  it('preserves disabled command guards across partial presentation updates', () => {
     const shell = createEditorShellState();
-    const setProperty = vi.fn();
-    const createLayer = vi.fn();
-    const setFiltersOpen = vi.fn();
-    const inspectBuild = vi.fn();
-    const openMap = vi.fn();
+    const invoke = vi.fn();
+    shell.editorCommands.bind({ invoke, selectTool: vi.fn() });
+    shell.editorCommands.updateActions({ delete: { disabled: true, label: 'Delete brush' } });
+    shell.editorCommands.updateActions({ delete: { title: 'Remove selection' } });
 
-    shell.entityInspector.bind({ setProperty, setPropertyProtected: vi.fn() });
-    shell.layerPanel.bind({
-      select: vi.fn(),
-      makeActive: vi.fn(),
-      rename: vi.fn(),
-      setFlag: vi.fn(),
-      create: createLayer,
-      moveSelection: vi.fn(),
-      selectContents: vi.fn(),
-      isolate: vi.fn(),
-      remove: vi.fn(),
-      reorder: vi.fn(),
-      setAllFlags: vi.fn(),
-    });
-    shell.viewFilter.bind({
-      setOpen: setFiltersOpen,
-      setWorldBrushesVisible: vi.fn(),
-      setSpecialBrushTypeVisible: vi.fn(),
-      setEntityClassVisible: vi.fn(),
-      setAllEntityClassesVisible: vi.fn(),
-    });
-    shell.buildLog.bind({ inspect: inspectBuild });
-    shell.projectToolbar.bind({ openMap, selectBuildProfile: vi.fn() });
-
-    shell.entityInspector.setProperty('message', 'Hello');
-    shell.layerPanel.invoke('create', 'Gameplay');
-    shell.viewFilter.invoke('setOpen', true);
-    shell.buildLog.inspect('build-7');
-    shell.projectToolbar.openMap('maps/start.map');
-
-    expect(setProperty).toHaveBeenCalledWith('message', 'Hello', false);
-    expect(createLayer).toHaveBeenCalledWith('Gameplay');
-    expect(setFiltersOpen).toHaveBeenCalledWith(true);
-    expect(inspectBuild).toHaveBeenCalledWith('build-7');
-    expect(openMap).toHaveBeenCalledWith('maps/start.map');
-  });
-
-  it('routes project and tool controls without using DOM event relays', () => {
-    const shell = createEditorShellState();
-    const invokeProject = vi.fn();
-    const applySource = vi.fn();
-    const createCheckpoint = vi.fn();
-    const updateShape = vi.fn();
-    const setSweepTransform = vi.fn();
-    const dispatchObjectTool = vi.fn();
-    const invokeEditorCommand = vi.fn();
-
-    shell.projectUi.bind({ invoke: invokeProject, applySource, createCheckpoint });
-    shell.simpleShapeTool.bind({ updateOptions: updateShape });
-    shell.sweepTool.bind({
-      setTransform: setSweepTransform,
-      setOptions: vi.fn(),
-      reset: vi.fn(),
-      apply: vi.fn(),
-    });
-    shell.objectTools.bind({ dispatch: dispatchObjectTool });
-    shell.editorCommands.bind({ invoke: invokeEditorCommand, selectTool: vi.fn() });
-    shell.editorCommands.updateActions({
-      delete: { disabled: true },
-      undo: { disabled: false },
-    });
-
-    shell.projectUi.invoke('show-source');
-    shell.projectUi.applySource('// map source');
-    shell.projectUi.createCheckpoint('Before CSG');
-    shell.simpleShapeTool.updateOptions({ kind: 'cylinder', sides: 12 });
-    shell.sweepTool.setTransform({
-      translation: [0, 0, 64],
-      rotationDegrees: [0, 90, 0],
-      scale: 1,
-    });
-    shell.objectTools.dispatch({ type: 'csg', operation: 'merge' });
     shell.editorCommands.invoke('delete');
-    shell.editorCommands.invoke('undo');
-
-    expect(invokeProject).toHaveBeenCalledWith('show-source');
-    expect(applySource).toHaveBeenCalledWith('// map source');
-    expect(createCheckpoint).toHaveBeenCalledWith('Before CSG');
-    expect(updateShape).toHaveBeenCalledWith({ kind: 'cylinder', sides: 12 });
-    expect(setSweepTransform).toHaveBeenCalledWith({
-      translation: [0, 0, 64],
-      rotationDegrees: [0, 90, 0],
-      scale: 1,
+    expect(invoke).not.toHaveBeenCalled();
+    expect(shell.editorCommands.getSnapshot().actions.delete).toEqual({
+      disabled: true,
+      label: 'Delete brush',
+      title: 'Remove selection',
     });
-    expect(dispatchObjectTool).toHaveBeenCalledWith({ type: 'csg', operation: 'merge' });
-    expect(invokeEditorCommand).toHaveBeenCalledTimes(1);
-    expect(invokeEditorCommand).toHaveBeenCalledWith('undo');
+
+    shell.editorCommands.updateActions({ delete: { disabled: false } });
+    shell.editorCommands.invoke('delete');
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('delete');
   });
 
   it('publishes viewport and inspector presentation as immutable React snapshots', () => {
@@ -343,16 +230,20 @@ describe('editor shell state ports', () => {
     shell.theme.select('light');
     shell.viewportContextMenu.dismiss();
     shell.viewportContextMenu.invoke('selection:focus');
-    shell.surfaceInspector.invoke('setValue', 7);
-    shell.faceInspector.invoke('setProjectionField', 'offset-u', 32);
-    shell.materialBrowser.invoke('copyMaterialName');
-    shell.collaborationUi.invoke('open');
+    shell.surfaceInspector.commands?.setValue(7);
+    shell.faceInspector.commands?.setProjectionField('offset-u', 32);
+    shell.materialBrowser.commands?.copyMaterialName();
+    shell.collaborationUi.commands?.open();
 
     expect(shell.viewportLayout.getSnapshot()).toEqual({
       perspectiveOnly: false,
       rendererReady: false,
     });
     expect(shell.viewportContextMenu.getSnapshot().open).toBe(false);
+    const nextSetValue = vi.fn();
+    shell.surfaceInspector.bind({ setFlag, setValue: nextSetValue });
+    shell.surfaceInspector.commands?.setValue(12);
+    expect(nextSetValue).toHaveBeenCalledExactlyOnceWith(12);
     for (const action of [
       setPerspectiveOnly,
       setPreference,

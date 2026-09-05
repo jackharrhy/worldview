@@ -7,7 +7,7 @@ link, or distribute ericw-tools. Configure the three GPL executables explicitly:
 ERICW_QBSP=/absolute/path/to/qbsp \
 ERICW_VIS=/absolute/path/to/vis \
 ERICW_LIGHT=/absolute/path/to/light \
-npm run dev --workspace @worldview/compiler-service
+npm run dev:compiler
 ```
 
 Quake II uses a separate, explicit q2tools-220 pipeline; the helper never advertises Quake II while
@@ -17,7 +17,7 @@ only Quake tools are configured:
 WORLDVIEW_GAME_PROFILE=quake2 \
 WORLDVIEW_Q2TOOL=/absolute/path/to/q2tool \
 WORLDVIEW_GAME_DIR=/absolute/path/to/quake2 \
-npm run dev --workspace @worldview/compiler-service
+npm run dev:compiler
 ```
 
 The external GPL tools are behavior dependencies installed by the user or operator. They are not
@@ -51,8 +51,8 @@ WORLDVIEW_LAUNCH_ARGS_JSON='["+map","%MAP%"]'
 The helper retains the newest 20 successful in-memory builds for launch. `%MAP%` in configured
 arguments is replaced with the already-validated map name. Processes are spawned without a shell.
 
-`npm run dev` performs a fresh TypeScript build and starts the service. Restart it after changing
-service source.
+Run `npm run dev:compiler` from the repository root to build the shared packages and compiler
+adapter, then start the service. Restart it after changing service source.
 
 This is a local-development service, not an Internet-facing sandbox. Before deploying it for other
 users, place each compile in a locked-down container or comparable sandbox, require authentication,

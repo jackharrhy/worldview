@@ -205,7 +205,7 @@ export class MapCell extends DurableObject<Env> {
       }));
   }
 
-  public async fetch(request: Request): Promise<Response> {
+  public override async fetch(request: Request): Promise<Response> {
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
       return Response.json({ error: 'WebSocket upgrade required' }, { status: 426 });
     }
@@ -229,8 +229,7 @@ export class MapCell extends DurableObject<Env> {
       return Response.json({ error: 'Actor connection limit reached' }, { status: 429 });
     }
     const snapshot = this.snapshot(mapId);
-    const pair = new WebSocketPair();
-    const [client, server] = Object.values(pair);
+    const { 0: client, 1: server } = new WebSocketPair();
     server.serializeAttachment({
       actorId,
       role,
@@ -242,7 +241,10 @@ export class MapCell extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  public async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
+  public override async webSocketMessage(
+    socket: WebSocket,
+    message: string | ArrayBuffer,
+  ): Promise<void> {
     try {
       const frame = parseCollaborationClientFrame(message);
       if (frame.type === 'presence') {
@@ -279,7 +281,7 @@ export class MapCell extends DurableObject<Env> {
     }
   }
 
-  public webSocketClose(socket: WebSocket, code: number, reason: string): void {
+  public override webSocketClose(socket: WebSocket, code: number, reason: string): void {
     socket.close(code, reason);
   }
 
