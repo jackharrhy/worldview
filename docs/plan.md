@@ -272,6 +272,12 @@ The ordered implementation work for additional formats lives only in
 
 ## Verification and provenance
 
+Collaboration deployment packages the Worker and Celld 0.4.0 in one application image that prepares
+Azurite and deploys the Worker before starting Celld. Azurite remains a separate persistent service;
+the one-shot bootstrap service and deployer image are retired from the deployment configuration.
+Radio's production rollout was verified on 2026-09-05. Newport cutover preserves both storage mounts;
+the procedure lives in [the collaboration deployment guide](./collaboration.md#newport-migration).
+
 Repository-wide test tiers and host requirements live in
 [the verification guide](./verification.md). GPU performance, local game corpora, and live celld
 recovery drills run explicitly on hosts that can provide meaningful evidence.

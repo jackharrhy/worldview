@@ -26,12 +26,20 @@ RUN npm run build -w @jackharrhy/worldview \
   && npm run build -w @worldview/service \
   && npm run build -w @worldview/compiler-service
 
-FROM node:24-bookworm-slim AS collaboration-deployer
+FROM node:24-bookworm-slim AS collaboration
 WORKDIR /app
-ENV CELLD_BIN=/usr/local/bin/celld
+ENV CELLD_BIN=/usr/local/bin/celld \
+    CELLD_BUCKET=az://worldview-celld \
+    CELLD_WATCH=/var/lib/celld/state \
+    AZURE_STORAGE_USE_EMULATOR=true \
+    AZURE_STORAGE_ACCOUNT_NAME=devstoreaccount1
 COPY --from=ghcr.io/denoland/celld:0.4.0 /usr/local/bin/celld /usr/local/bin/celld
 COPY --from=build /app /app
-CMD ["node", "scripts/deploy-celld-azurite.mjs"]
+COPY scripts/start-celld.sh scripts/start-celld.sh
+EXPOSE 8080
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["sh", "/app/scripts/start-celld.sh"]
+CMD ["--listen", "0.0.0.0:8080", "--internal-listen", "127.0.0.1:8081"]
 
 FROM node:24-bookworm-slim AS app
 WORKDIR /app
