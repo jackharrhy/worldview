@@ -1,5 +1,9 @@
 # Celld deployment simplification
 
+Completed on Newport on 2026-09-05 after verifying Radio's production rollout. The combined
+application image is live, both existing storage mounts are preserved, and the obsolete bootstrap
+container is removed. See [deployment evidence and rollback details](docs/collaboration.md#newport-migration).
+
 Worldview should adopt Radio's simpler two-service Celld deployment:
 
 - Keep one Azurite container with its own persistent volume and health check.

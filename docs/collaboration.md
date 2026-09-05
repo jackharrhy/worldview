@@ -136,8 +136,8 @@ the Worker or browser protocol.
 
 ### Newport migration
 
-The simplified image and `/home/jack/infra/hosts/newport/compose.yml` changes are prepared for
-production cutover. Radio's prerequisite rollout was verified on Mug on 2026-09-05: both its
+Newport completed the production cutover on 2026-09-05 using application commit `910394b` and infra
+commit `bdcb600`. Radio's prerequisite rollout was verified on Mug that day: both its
 application and Azurite containers were healthy, with application commit `86b52ba` and infra commit
 `4959eb4` merged. This satisfies [`CELLD-DEPLOYMENT-NOTE.md`](../CELLD-DEPLOYMENT-NOTE.md).
 CI now publishes `worldview-celld:main`
@@ -146,9 +146,18 @@ instead of `worldview-celld-deployer:main`.
 Isolated Docker verification on 2026-09-05 built the new image, started it against fresh Azurite,
 initialized a map, acknowledged a WebSocket edit at map version 1, restarted the application
 container, and recovered the same edit after startup redeployed the Worker. Celld ran as PID 1.
-This verifies the image lifecycle; it does not establish that production cutover has happened.
+Production verification recovered the existing hosted map at version 145 with an identical
+snapshot hash after both cutover and a further runtime restart. The public site returned HTTP 200,
+and unauthenticated map requests returned 401. The obsolete bootstrap container was removed.
 
-Before cutover, publish the new Worldview image, record the old
+The deployed image digest was
+`sha256:608b29736d220c2269d69c0887f71272411d5353d11210ad29a87f67e99a6cca`.
+A consistent backup, taken with both services stopped, is retained at
+`/mnt/terrabud/docker-data/newport/worldview-deploy-backup-20260905/storage.tar.gz`, alongside the
+previous Compose definition, image IDs, and map snapshot hash. Both original data mounts remain
+in use.
+
+For future cutovers, publish the new Worldview image, record the old
 runtime/deployer image digests for rollback, and take a consistent backup of the existing storage.
 Keep these bind mounts, bucket, and work-directory settings unchanged:
 
