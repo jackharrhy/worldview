@@ -131,7 +131,7 @@ export class DocumentPresenter {
   public setDocumentName(name: string): void {
     this.state.currentDocumentName = name.toLowerCase().endsWith('.map') ? name : `${name}.map`;
     this.ui.documentName.set(
-      `${this.state.documentDirty ? '• ' : ''}${this.state.currentDocumentName}`,
+      `${this.state.currentDocumentName}${this.state.documentDirty ? ' (unsaved)' : ''}`,
       this.state.currentDocumentName,
     );
   }

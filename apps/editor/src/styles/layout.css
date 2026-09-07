@@ -1,6 +1,6 @@
 :root {
   /* Semantic renderer tokens are consumed by both CSS and the WebGPU theme bridge. */
-  --renderer-background: oklch(16.5% 0.004 255);
+  --renderer-background: oklch(21% 0.006 285.885);
   --renderer-edge: oklch(92.49% 0 0);
   --renderer-material: oklch(63.7% 0.025 235.2);
   --renderer-selection: oklch(62.8% 0.2577 29.23);
@@ -19,33 +19,33 @@
   --renderer-success: oklch(88.2% 0.224 150.1);
   --renderer-info: oklch(77.2% 0.156 230.4);
   --renderer-special: oklch(63.9% 0.231 312.2);
-  --renderer-grid-minor: oklch(25% 0.006 255);
-  --renderer-grid-major: oklch(43% 0.008 255);
+  --renderer-grid-minor: oklch(27.4% 0.006 286.033);
+  --renderer-grid-major: oklch(44.2% 0.017 285.786);
   --uv-grid: oklch(42% 0.015 248.1);
   --uv-grid-major: oklch(54% 0.018 248.3);
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-synthesis: none;
   --font-mono: 'SFMono-Regular', Consolas, monospace;
-  --bg: oklch(12.63% 0.0069 258.37);
-  --surface: oklch(17% 0.009 255.61);
-  --surface-raised: oklch(22.17% 0.011 254.03);
-  --surface-input: oklch(13.93% 0.0094 255.63);
-  --surface-deep: oklch(15.65% 0.0117 254.09);
-  --surface-hover: oklch(25.37% 0.013 253.01);
-  --surface-active: oklch(29.32% 0.0163 255.63);
-  --surface-popover: oklch(18.23% 0.0113 254.06);
+  --bg: oklch(21% 0.006 285.885);
+  --surface: oklch(21% 0.006 285.885);
+  --surface-raised: oklch(27.4% 0.006 286.033);
+  --surface-input: oklch(21% 0.006 285.885);
+  --surface-deep: oklch(18% 0.005 285.823);
+  --surface-hover: oklch(32% 0.01 285.95);
+  --surface-active: oklch(37% 0.013 285.805);
+  --surface-popover: oklch(27.4% 0.006 286.033);
   --surface-danger: oklch(18.21% 0.0191 18.6);
   --surface-warning: oklch(21.76% 0.0124 78.06);
   --surface-special: oklch(23.94% 0.051 305.53);
-  --line-subtle: oklch(24.57% 0.0131 253.02);
-  --line: oklch(28.15% 0.0127 252.99);
-  --line-strong: oklch(37.93% 0.0161 251.73);
-  --line-emphasis: oklch(44.83% 0.0135 252.2);
-  --text: oklch(92.32% 0.0042 236.5);
+  --line-subtle: oklch(27.4% 0.006 286.033);
+  --line: oklch(37% 0.013 285.805);
+  --line-strong: oklch(44.2% 0.017 285.786);
+  --line-emphasis: oklch(55.2% 0.016 285.938);
+  --text: oklch(92% 0.004 286.32);
   --text-strong: oklch(100% 0 89.88);
-  --muted: oklch(72.82% 0.0129 248);
-  --quiet: oklch(53.42% 0.0168 251.26);
+  --muted: oklch(70.5% 0.015 286.067);
+  --quiet: oklch(59% 0.016 285.938);
   --accent: oklch(68% 0.11 245);
   --accent-bright: oklch(78% 0.1 240);
   --accent-text: oklch(88% 0.055 235);
@@ -65,7 +65,7 @@
   --shadow: oklch(0% 0 0 / 0.45);
   --shadow-strong: oklch(0% 0 0 / 0.55);
   --overlay: oklch(9% 0.007 243.79 / 0.68);
-  --readout-bg: oklch(11.15% 0.008 248.31 / 0.88);
+  --readout-bg: oklch(21% 0.006 285.885 / 0.88);
   --accent-soft: color-mix(in oklch, var(--accent) 12%, transparent);
   --accent-border: color-mix(in oklch, var(--accent) 55%, transparent);
   --danger-soft: color-mix(in oklch, var(--danger) 8%, transparent);
@@ -146,15 +146,15 @@ textarea:focus-visible {
 .editor-shell {
   position: relative;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  grid-template-rows: 40px minmax(0, 1fr) 0 24px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr) 0 20px;
   width: 100%;
   height: 100dvh;
   background: var(--bg);
 }
 
 .editor-shell.issues-open {
-  grid-template-rows: 40px minmax(0, 1fr) minmax(150px, 23dvh) 24px;
+  grid-template-rows: 48px minmax(0, 1fr) minmax(150px, 23dvh) 20px;
 }
 
 .topbar {
@@ -162,14 +162,9 @@ textarea:focus-visible {
   grid-column: 1 / -1;
 }
 
-.toolrail {
-  grid-row: 2;
-  grid-column: 1;
-}
-
 .workspace {
   grid-row: 2;
-  grid-column: 2;
+  grid-column: 1;
 }
 
 .issue-browser {
@@ -183,7 +178,7 @@ textarea:focus-visible {
 }
 
 .topbar,
-.toolrail,
+.toolstrip,
 .statusbar {
   display: flex;
   align-items: center;
@@ -234,20 +229,20 @@ textarea:focus-visible {
   scrollbar-width: none;
 }
 
-.toolrail .tool-group {
-  flex-direction: column;
+.toolstrip .tool-group {
+  flex-direction: row;
 }
 
-.toolrail .selection-actions {
-  flex-direction: column;
+.toolstrip .selection-actions {
+  flex-direction: row;
 }
 
-.toolrail .selection-actions .icon-button:disabled {
+.toolstrip .selection-actions .icon-button:disabled {
   display: none;
 }
 
 .top-actions::-webkit-scrollbar,
-.toolrail::-webkit-scrollbar {
+.toolstrip::-webkit-scrollbar {
   display: none;
 }
 
@@ -329,7 +324,7 @@ textarea:focus-visible {
 }
 
 .topbar-rule,
-.toolrail-rule {
+.toolstrip-rule {
   align-self: center;
   width: 1px;
   height: 18px;
@@ -442,30 +437,27 @@ textarea:focus-visible {
   color: var(--accent);
 }
 
-.toolrail {
-  flex-direction: column;
-  gap: 2px;
-  padding: 5px;
-  overflow-y: auto;
-  border-right: 1px solid var(--line);
-  background: var(--surface-deep);
-  scrollbar-width: none;
+.toolstrip {
+  flex: none;
+  flex-direction: row;
+  gap: 5px;
+  padding: 0 4px;
 }
 
-.toolrail .icon-button:hover:not(:disabled) {
+.toolstrip .icon-button:hover:not(:disabled) {
   border-color: var(--line);
   background: var(--surface-raised);
   color: var(--text);
 }
 
-.toolrail .tool-button.active {
+.toolstrip .tool-button.active {
   border-color: var(--accent-border);
-  box-shadow: inset 2px 0 var(--accent);
+  box-shadow: inset 0 -2px var(--accent);
   background: var(--surface-warning);
   color: var(--text);
 }
 
-.toolrail > .view-filter-toggle {
+.toolstrip > .view-filter-toggle {
   width: 30px;
   padding: 0;
 }
@@ -484,8 +476,8 @@ textarea:focus-visible {
   text-align: center;
 }
 
-.toolrail > .view-filter-toggle.active-filter {
-  box-shadow: inset 2px 0 var(--accent);
+.toolstrip > .view-filter-toggle.active-filter {
+  box-shadow: inset 0 -2px var(--accent);
   color: var(--accent-text);
 }
 
@@ -539,7 +531,7 @@ textarea:focus-visible {
   display: none;
 }
 
-.toolrail-spacer {
+.toolstrip-spacer {
   flex: 1 1 6px;
 }
 .tool-help {
@@ -786,26 +778,150 @@ textarea:focus-visible {
   width: min(248px, calc(100vw - 16px));
 }
 
-.viewport-context-heading {
+/* Original geometry glyphs; TrenchBroom is a visual reference only. */
+.worldview-menu-trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12px;
+  flex: 0 0 44px;
+  gap: 1px 8px;
+  height: 100%;
+  padding: 5px 12px;
+  text-align: left;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+}
+.worldview-menu-trigger .document-name {
+  grid-row: 2;
+  font-size: 10px;
+}
+.worldview-menu-trigger > .wv-icon {
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+.toolstrip .tool-group {
+  padding-right: 6px;
+  border-right: 1px solid var(--line);
+}
+.toolstrip [data-tool] .wv-icon {
+  font-size: 20px;
+}
+.toolstrip [data-tool='select'] .wv-icon {
+  color: var(--renderer-axis-x);
+}
+.toolstrip [data-tool='hull'] .wv-icon,
+.toolstrip [data-tool='vertex'] .wv-icon,
+.toolstrip [data-tool='edge'] .wv-icon,
+.toolstrip [data-tool='face'] .wv-icon,
+.toolstrip [data-tool='entity'] .wv-icon {
+  color: var(--tool-geometry);
+}
+.toolstrip [data-tool='rotate'] .wv-icon,
+.toolstrip [data-tool='shear'] .wv-icon,
+.toolstrip .tool-toggle .wv-icon {
+  color: var(--accent-bright);
+}
+.toolstrip [data-tool='scale'] .wv-icon,
+.toolstrip [data-tool='clip'] .wv-icon,
+.toolstrip [data-tool='sweep'] .wv-icon {
+  color: var(--success);
+}
+.toolstrip .tool-select {
+  width: 58px;
+}
+:root {
+  --tool-geometry: oklch(76% 0.16 62);
+}
+:root[data-theme='light'] {
+  --tool-geometry: oklch(52% 0.14 52);
+}
+
+.toolstrip .tool-select .wv-select-trigger {
+  width: 58px;
+  padding: 3px 6px;
+}
+.top-actions {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.top-actions::-webkit-scrollbar {
+  display: block;
+  height: 3px;
+}
+.top-actions::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+}
+.top-actions > * {
+  flex-shrink: 0;
+}
+
+.worldview-menu-trigger.wv-button {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 7px 7px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  padding: 8px;
+}
+.document-menu-heading {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
   border-bottom: 1px solid var(--line);
 }
-
-.viewport-context-heading strong {
-  color: var(--accent-bright);
-  font-size: 10px;
-  letter-spacing: 0.04em;
+.document-menu-heading .document-name {
+  max-width: 250px;
+  font-size: 12px;
 }
-
-.viewport-context-heading span {
-  overflow: hidden;
-  color: var(--quiet);
-  font-family: 'SFMono-Regular', Consolas, monospace;
-  font-size: 8px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Thin boundaries keep each editing concern legible without widening the toolbar. */
+.toolstrip [data-tool='entity'],
+.toolstrip [data-tool='vertex'],
+.toolstrip [data-tool='rotate'],
+.top-actions > .toolbar-group,
+.top-actions > [data-action='show-source'],
+.toolstrip .tool-select,
+.toolstrip .view-filter-toggle {
+  border-left: 1px solid var(--line-strong);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: 3px;
+}
+.toolstrip .tool-select .wv-select-value {
+  flex: 1;
+  text-align: right;
+}
+.document-menu-popover {
+  min-width: 248px;
+}
+.document-menu-popover .wv-menu-item,
+.wv-submenu-popover .wv-menu-item {
+  grid-template-columns: minmax(0, 1fr) 12px;
+  gap: 8px;
+  min-height: 31px;
+  font-size: 13px;
+  color: var(--text);
+}
+.document-menu-popover .wv-menu-item-label,
+.wv-submenu-popover .wv-menu-item-label {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+}
+.document-menu-popover .wv-menu-item-text,
+.wv-submenu-popover .wv-menu-item-text {
+  grid-column: 2;
+  text-align: left;
+}
+.document-menu-popover .wv-menu-item-label .wv-icon,
+.wv-submenu-popover .wv-menu-item-label .wv-icon {
+  font-size: 16px;
+  justify-self: start;
+}
+.document-menu-popover .wv-menu-section-heading {
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
 }

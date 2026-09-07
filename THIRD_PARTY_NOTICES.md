@@ -98,3 +98,36 @@ Worldview uses [`oxc-parser`](https://github.com/oxc-project/oxc) 0.143.0 to rea
 TSX module edges for repository architecture checks. Oxc is distributed under the MIT License;
 its package distribution retains the license text. Copyright VoidZero Inc., Boshen, and Oxc
 contributors.
+
+## TrenchBroom interface research
+
+TrenchBroom's GPL-licensed `MapWindow.cpp`, `Inspector.cpp`, and toolbar graphics were consulted
+as behavior and visual references for toolbar grouping and restrained icon color. No TrenchBroom
+implementation code or artwork is included. Worldview uses original geometry SVGs authored for this MIT project alongside the MIT-licensed Phosphor
+icons listed above; its toolbar composition and theme rules are independently implemented.
+
+`AssembleBrushToolController3D.cpp` was also consulted for hull construction behavior: yellow
+vertex handles and edges, and a translucent planar face under Shift. Worldview's hull geometry
+helpers, GPU billboards, shaders, and input feedback are original implementations; no GPL code
+or assets were copied.
+
+`ExtrudeTool.cpp` and `ExtrudeToolController.cpp` informed selected-face targeting, nearest
+silhouette fallback, and on-top drag outlines. Worldview implements these behaviors independently.
+
+TrenchBroom's `Face.fragsh` and `GridCommon.fragsh` informed the passive surface-grid behavior
+(world alignment, antialiasing, distance suppression, and texture-aware contrast). Worldview's
+`surface-grid-shader.ts` is an original TypeGPU implementation; no GPL shader code is included.
+
+TrenchBroom's `Edge.vertsh`, `Edge.fragsh`, and OpenGL startup configuration were inspected for
+line-rendering behavior and 4× multisampling. Worldview's shared pixel-space stroke geometry and
+analytic coverage in `gpu-line-shaders.ts` are independently authored TypeGPU code.
+
+Editor minification research also consulted TrenchBroom's `lib/TbGlLib/src/Texture.cpp` and
+`lib/TbUiLib/src/ViewPreferencePane.cpp` for mipmapped filtering and the single-level masked-texture
+exception. The editor's mip generation, procedural perspective grid, and bounded stroke projection
+are original MIT implementations; no TrenchBroom source was copied.
+
+The V2 editable icon working sheet at `apps/editor/public/design/worldview-icons-v2.svg` includes
+MIT-licensed Phosphor Icons 2.1.2 vector paths from the installed package's Regular selection data,
+alongside original Worldview geometry icons. The complete Phosphor MIT notice is embedded in the
+SVG metadata. `scripts/export-editor-icons.mjs` exports these paths without embedding a font.

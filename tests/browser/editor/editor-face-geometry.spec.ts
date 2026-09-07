@@ -14,6 +14,35 @@ import {
 } from './support/editor-browser-helpers.js';
 
 test.describe('Editor face geometry tools', () => {
+  for (const recover of [false, true]) {
+    test(`invalid face resize ${recover ? 'recovers when moved back into range' : 'commits the last valid shape'}`, async ({
+      page,
+    }) => {
+      await openEditor(page);
+      const start = await perspectiveWorldPoint(page, [0, 0, 0]);
+      const valid = await perspectiveWorldPoint(page, [0, 0, -16]);
+      const invalid = await perspectiveWorldPoint(page, [0, 0, -64]);
+      const recovered = await perspectiveWorldPoint(page, [0, 0, 32]);
+      await page.mouse.click(start.x, start.y);
+      await page.keyboard.down('Shift');
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      await page.mouse.move(valid.x, valid.y);
+      await expect(page.locator('#status-message')).toContainText('preview');
+      await page.mouse.move(invalid.x, invalid.y);
+      await expect(page.locator('#status-message')).toContainText('last valid shape');
+      if (recover) await page.mouse.move(recovered.x, recovered.y);
+      await page.mouse.up();
+      await page.keyboard.up('Shift');
+      await expect(page.locator('#document-revision')).toHaveText('1');
+      await expect(page.locator('#brush-bounds')).toHaveText(
+        `-128 -128 -32 to 128 128 ${recover ? 32 : -16}`,
+      );
+      await page.getByRole('button', { name: 'Undo', exact: true }).click();
+      await expect(page.locator('#brush-bounds')).toHaveText('-128 -128 -32 to 128 128 0');
+    });
+  }
+
   test('Face tool drags a plane along its normal as one undoable extrusion', async ({ page }) => {
     await openEditor(page);
     await page.getByRole('button', { name: 'Face' }).click();
@@ -155,6 +184,7 @@ test.describe('Editor face geometry tools', () => {
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(page.locator('#brush-count')).toHaveText('3');
     await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await page.getByRole('tab', { name: 'Entity', exact: true }).click();
     await page.locator('#face-extrude-distance').fill('16');
     await page.getByRole('button', { name: 'Stamp', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('4');
@@ -245,6 +275,7 @@ test.describe('Editor face geometry tools', () => {
 
     await page.mouse.click(start.x, start.y);
     await expect(page.locator('#selection-kind')).toHaveText('Face');
+    await page.getByRole('tab', { name: 'Entity', exact: true }).click();
     await page.locator('#face-extrude-distance').fill('-16');
     await page.getByRole('button', { name: 'Split', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('4');
@@ -278,6 +309,7 @@ test.describe('Editor face geometry tools', () => {
     await page.mouse.up();
 
     await expect(page.locator('#selection-kind')).toHaveText('2 Faces');
+    await page.getByRole('tab', { name: 'Entity', exact: true }).click();
     await expect(page.locator('#face-extrude-section')).toBeVisible();
     await expect(page.locator('#document-revision')).toHaveText('1');
     await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 0 to 16 32 32');

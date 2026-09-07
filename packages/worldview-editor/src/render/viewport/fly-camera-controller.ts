@@ -2,6 +2,7 @@ import type { Vec3 } from '../../core/index.js';
 import type { EditorViewportKind } from '../types.js';
 import { cross, normalize } from '../viewport-geometry.js';
 
+const FLY_BOOST = 4;
 const FLY_KEYS = new Set(['w', 's', 'a', 'd', 'q', 'x']);
 
 export interface FlyCameraControllerOptions {
@@ -20,6 +21,7 @@ export class FlyCameraController {
   private readonly keys = new Set<string>();
   private readonly now: () => number;
   private lastUpdateTime: number;
+  private boosted = false;
 
   public constructor(private readonly options: FlyCameraControllerOptions) {
     this.now = options.now ?? (() => performance.now());
@@ -57,7 +59,7 @@ export class FlyCameraController {
     if (Math.hypot(...movement) <= Number.EPSILON) return;
 
     const direction = normalize(movement);
-    const distance = this.options.speed() * seconds;
+    const distance = this.options.speed() * seconds * (this.boosted ? FLY_BOOST : 1);
     this.options.translate([
       direction[0] * distance,
       direction[1] * distance,
@@ -68,6 +70,7 @@ export class FlyCameraController {
 
   public dispose(): void {
     this.keys.clear();
+    this.boosted = false;
     this.options.canvas.removeEventListener('keydown', this.keyDown);
     this.options.canvas.removeEventListener('keyup', this.keyUp);
     this.options.canvas.removeEventListener('blur', this.blur);
@@ -77,7 +80,12 @@ export class FlyCameraController {
   private readonly keyDown = (event: KeyboardEvent) => {
     if (this.options.kind !== 'perspective') return;
     const key = event.key.toLowerCase();
+    if (key === 'shift') {
+      this.boosted = true;
+      return;
+    }
     if (!FLY_KEYS.has(key)) return;
+    if (typeof event.shiftKey === 'boolean') this.boosted = event.shiftKey;
     event.preventDefault();
     event.stopPropagation();
     const wasIdle = this.keys.size === 0;
@@ -90,6 +98,10 @@ export class FlyCameraController {
 
   private readonly keyUp = (event: KeyboardEvent) => {
     const key = event.key.toLowerCase();
+    if (key === 'shift') {
+      this.boosted = false;
+      return;
+    }
     if (!this.keys.has(key)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -98,6 +110,7 @@ export class FlyCameraController {
 
   private readonly blur = () => {
     this.keys.clear();
+    this.boosted = false;
     delete this.options.canvas.dataset.cameraFocused;
   };
 

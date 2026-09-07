@@ -24,19 +24,22 @@ test.describe('Editor select resize and sweep tools', () => {
     await page.mouse.click(point.x, point.y);
     await page.keyboard.up('Shift');
 
-    await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
     await expect(page.locator('#selection-kind')).toHaveText('Face');
     await expect(page.locator('#face-material')).toHaveText('DEV_FLOOR');
-    await expect(page.locator('#face-extrude-section')).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Face', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
 
     await page.keyboard.down('Shift');
     await page.mouse.dblclick(point.x, point.y);
     await page.keyboard.up('Shift');
     await expect(page.locator('#selection-kind')).toHaveText('6 Faces');
-    await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -131,7 +134,69 @@ test.describe('Editor select resize and sweep tools', () => {
     ]);
   });
 
-  test('Shift-drag acquires a selected brush face just outside its silhouette edge', async ({
+  test('quick face resize survives capture loss and delayed pointerup without a second commit', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      window.addEventListener(
+        'pointerup',
+        (event) => {
+          if (
+            !event.isTrusted ||
+            !event.shiftKey ||
+            event.button !== 0 ||
+            !(event.target instanceof HTMLCanvasElement)
+          )
+            return;
+          const canvas = event.target;
+          const sample = {
+            pointerId: event.pointerId,
+            pointerType: event.pointerType,
+            button: event.button,
+            buttons: 0,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            shiftKey: true,
+            bubbles: true,
+          };
+          event.stopImmediatePropagation();
+          canvas.dispatchEvent(new PointerEvent('lostpointercapture', sample));
+          setTimeout(() => canvas.dispatchEvent(new PointerEvent('pointerup', sample)), 40);
+        },
+        { capture: true },
+      );
+    });
+    await openEditor(page);
+    const start = await perspectiveWorldPoint(page, [0, 0, 0]);
+    const end = await perspectiveWorldPoint(page, [0, 0, 96]);
+    await page.mouse.click(start.x, start.y);
+    const original = await readEditorDocument(page);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y);
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(page.locator('#document-revision')).toHaveText('1');
+    await expect(page.locator('#status-message')).toContainText('Extrude face');
+    const committed = await readEditorDocument(page);
+    expect(committed).not.toEqual(original);
+    // Wait beyond capture-loss recovery and the delayed duplicate release.
+    await page.waitForTimeout(300);
+    expect(await readEditorDocument(page)).toEqual(committed);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    expect(
+      brushesInDocument(await readEditorDocument(page))
+        .map(deriveBrush)
+        .map((brush) => brush.bounds),
+    ).toEqual(
+      brushesInDocument(original)
+        .map(deriveBrush)
+        .map((brush) => brush.bounds),
+    );
+  });
+
+  test('Shift-drag acquires a selected brush face well outside its silhouette edge', async ({
     page,
   }) => {
     await openEditor(page);
@@ -146,13 +211,22 @@ test.describe('Editor select resize and sweep tools', () => {
       x: (corner.x - center.x) / length,
       y: (corner.y - center.y) / length,
     };
-    const nearEdge = { x: corner.x + outward.x * 6, y: corner.y + outward.y * 6 };
+    const nearEdge = { x: corner.x + outward.x * 36, y: corner.y + outward.y * 36 };
     const end = { x: nearEdge.x + outward.x * 48, y: nearEdge.y + outward.y * 48 };
 
-    await page.keyboard.down('Shift');
+    const canvas = page.getByLabel('Perspective map viewport', { exact: true });
     await page.mouse.move(nearEdge.x, nearEdge.y);
+    await page.keyboard.down('Shift');
+    await expect(canvas).toHaveAttribute('data-resize-face-edges', '4');
+    await page.keyboard.up('Shift');
+    await expect(canvas).toHaveAttribute('data-resize-face-edges', '0');
+    await page.keyboard.down('Shift');
+    await expect(canvas).toHaveAttribute('data-resize-face-edges', '4');
+    await page.screenshot({ path: 'artifacts/verification/resize/01-hidden-face.png' });
     await page.mouse.down();
     await page.mouse.move(end.x, end.y, { steps: 10 });
+    await expect(canvas).toHaveAttribute('data-resize-face-edges', '4');
+    await page.screenshot({ path: 'artifacts/verification/resize/02-drag-face.png' });
     await page.mouse.up();
     await page.keyboard.up('Shift');
 
@@ -217,6 +291,7 @@ test.describe('Editor select resize and sweep tools', () => {
     await page.mouse.click(point.x, point.y);
     await page.keyboard.up('Shift');
     await page.getByRole('button', { name: 'Sweep', exact: true }).click();
+    await page.getByRole('tab', { name: 'Entity', exact: true }).click();
 
     await expect(page.locator('#sweep-tool-section')).toBeVisible();
     await expect(page.locator('#sweep-generated-count')).toHaveText('4 brushes');
@@ -254,6 +329,7 @@ test.describe('Editor select resize and sweep tools', () => {
     await page.mouse.click(face.x, face.y);
     await page.keyboard.up('Shift');
     await page.getByRole('button', { name: 'Sweep', exact: true }).click();
+    await page.getByRole('tab', { name: 'Entity', exact: true }).click();
 
     const center = await perspectiveWorldPoint(page, [0, 0, 64]);
     const movedCenter = await perspectiveWorldPoint(page, [32, 0, 64]);

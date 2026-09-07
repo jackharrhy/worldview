@@ -45,8 +45,6 @@ describe('editor shell state ports', () => {
     shell.viewportContextMenu.show({
       x: 280,
       y: 120,
-      heading: '3D view',
-      detail: '0 64 128',
       sections,
     });
 
@@ -54,8 +52,6 @@ describe('editor shell state ports', () => {
       open: true,
       x: 280,
       y: 120,
-      heading: '3D view',
-      detail: '0 64 128',
       sections,
     });
     shell.viewportContextMenu.invoke('selection:focus');
@@ -144,12 +140,16 @@ describe('editor shell state ports', () => {
     shell.inspectorLayout.setOpen(false);
 
     expect(initialViewport).toEqual({
+      fieldOfView: 60,
+      defaultFieldOfView: 60,
       showingCompiled: false,
       perspectiveMode: 'EDIT',
       perspectiveTitle: '',
       error: null,
     });
     expect(shell.viewportPresentation.getSnapshot()).toEqual({
+      fieldOfView: 60,
+      defaultFieldOfView: 60,
       showingCompiled: true,
       perspectiveMode: 'FLY',
       perspectiveTitle: 'Free-look camera',
@@ -214,8 +214,6 @@ describe('editor shell state ports', () => {
     shell.viewportContextMenu.show({
       x: 1,
       y: 2,
-      heading: 'View',
-      detail: '0 0 0',
       sections: [],
     });
 

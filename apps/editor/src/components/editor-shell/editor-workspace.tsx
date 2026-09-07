@@ -1,5 +1,6 @@
 import { useSyncExternalStore, type CSSProperties } from 'react';
 
+import { FovControl } from './fov-control.js';
 import { Button } from '../ui/button.js';
 import { Icon } from '../ui/icon.js';
 import { Tab, TabList, TabPanel, Tabs } from '../ui/tabs.js';
@@ -11,6 +12,20 @@ import type { EditorShellState } from '../../editor-shell-state.js';
 
 interface EditorWorkspaceProps {
   readonly shellState: EditorShellState;
+}
+
+// Camera notifications arrive at input/frame frequency. Keep this subscription below the
+// workspace so moving the camera never reconciles inspectors or their React Aria collections.
+function PerspectiveReadout({ shellState }: EditorWorkspaceProps) {
+  const presentation = useSyncExternalStore(
+    shellState.viewportPresentation.subscribe,
+    shellState.viewportPresentation.getSnapshot,
+  );
+  return (
+    <span id="perspective-mode" title={presentation.perspectiveTitle}>
+      {presentation.perspectiveMode}
+    </span>
+  );
 }
 
 function ViewportRuntimeOverlays() {
@@ -35,9 +50,13 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
     shellState.inspectorLayout.subscribe,
     shellState.inspectorLayout.getSnapshot,
   );
-  const viewportPresentation = useSyncExternalStore(
+  const showingCompiled = useSyncExternalStore(
     shellState.viewportPresentation.subscribe,
-    shellState.viewportPresentation.getSnapshot,
+    () => shellState.viewportPresentation.getSnapshot().showingCompiled,
+  );
+  const viewportError = useSyncExternalStore(
+    shellState.viewportPresentation.subscribe,
+    () => shellState.viewportPresentation.getSnapshot().error,
   );
   const workspaceLayout = useSyncExternalStore(
     shellState.workspaceLayout.subscribe,
@@ -65,10 +84,9 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
       >
         <article className="viewport-pane perspective" data-viewport="perspective">
           <header>
-            <strong>PERSPECTIVE</strong>
-            <span id="perspective-mode" title={viewportPresentation.perspectiveTitle}>
-              {viewportPresentation.perspectiveMode}
-            </span>
+            <strong>3D</strong>
+            <PerspectiveReadout shellState={shellState} />
+            <FovControl shellState={shellState} />
             <Button
               className="viewport-layout-toggle"
               tone="quiet"
@@ -85,19 +103,18 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
             className="source-canvas"
             aria-label="Perspective map viewport"
             data-rendering="true"
-            hidden={viewportPresentation.showingCompiled}
+            hidden={showingCompiled}
           />
           <canvas
             className="compiled-canvas"
             aria-label="Compiled BSP preview"
-            hidden={!viewportPresentation.showingCompiled}
+            hidden={!showingCompiled}
           />
           <ViewportRuntimeOverlays />
         </article>
         <article className="viewport-pane" data-viewport="xy" hidden={perspectiveOnly}>
           <header>
-            <strong>TOP</strong>
-            <span>XY</span>
+            <strong>XY</strong>
           </header>
           <canvas
             className="source-canvas"
@@ -108,8 +125,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
         </article>
         <article className="viewport-pane" data-viewport="xz" hidden={perspectiveOnly}>
           <header>
-            <strong>FRONT</strong>
-            <span>XZ</span>
+            <strong>XZ</strong>
           </header>
           <canvas
             className="source-canvas"
@@ -120,8 +136,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
         </article>
         <article className="viewport-pane" data-viewport="yz" hidden={perspectiveOnly}>
           <header>
-            <strong>SIDE</strong>
-            <span>YZ</span>
+            <strong>YZ</strong>
           </header>
           <canvas
             className="source-canvas"
@@ -163,8 +178,8 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
           data-resize="viewport-cross"
           hidden={perspectiveOnly}
         />
-        <div className="viewport-error" hidden={!viewportPresentation.error}>
-          {viewportPresentation.error}
+        <div className="viewport-error" hidden={!viewportError}>
+          {viewportError}
         </div>
       </section>
       <div

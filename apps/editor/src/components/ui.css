@@ -169,7 +169,7 @@
   border-radius: 2px;
   background: var(--surface-popover, var(--surface-raised));
   color: var(--text);
-  box-shadow: 0 10px 28px var(--shadow-strong, var(--shadow));
+  box-shadow: 0 3px 9px var(--shadow);
 }
 
 .wv-menu {
@@ -700,4 +700,38 @@
   font: 7px/1 var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.geometry-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+}
+.geometry-accent {
+  color: var(--tool-geometry, oklch(76% 0.16 62));
+}
+[data-tool='select'] .geometry-accent {
+  color: var(--renderer-axis-x, var(--danger));
+}
+[data-tool='rotate'] .geometry-accent,
+[data-tool='shear'] .geometry-accent,
+.worldview-menu-trigger .geometry-accent {
+  color: var(--accent-bright, var(--accent));
+}
+[data-tool='clip'] .geometry-accent,
+[data-tool='sweep'] .geometry-accent,
+[data-tool='scale'] .geometry-accent {
+  color: var(--success);
+}
+
+.viewport-context-menu {
+  border-radius: 3px;
+}
+.viewport-context-menu .wv-menu-item {
+  min-height: 27px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: 3px;
 }

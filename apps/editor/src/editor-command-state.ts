@@ -1,4 +1,4 @@
-import { EditorUiPort } from './editor-ui-port.js';
+import { EditorUiPort, equalUiSnapshot } from './editor-ui-port.js';
 import type { EditorTool } from '@jackharrhy/worldview-editor';
 
 export const EDITOR_COMMAND_IDS = [
@@ -59,21 +59,23 @@ export class EditorCommandPort extends EditorUiPort<EditorCommandSnapshot, Edito
     });
   }
   public setActiveTool(activeTool: EditorTool): void {
-    this.store.set({ ...this.store.getSnapshot(), activeTool });
+    this.update({ activeTool });
   }
   public updateActions(
     actions: Readonly<Partial<Record<EditorCommandId, EditorCommandPresentation>>>,
   ): void {
     const current = this.store.getSnapshot();
     const merged = { ...current.actions };
+    let changed = false;
     for (const id of EDITOR_COMMAND_IDS) {
       const update = actions[id];
-      if (update) merged[id] = { ...merged[id], ...update };
+      if (!update) continue;
+      const next = { ...merged[id], ...update };
+      if (equalUiSnapshot(merged[id] ?? {}, next)) continue;
+      merged[id] = next;
+      changed = true;
     }
-    this.store.set({
-      ...current,
-      actions: merged,
-    });
+    if (changed) this.update({ actions: merged });
   }
   public invoke(command: EditorCommandId): void {
     if (this.store.getSnapshot().actions[command]?.disabled) return;

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -31,7 +31,7 @@ describe('local fixture file resolution', () => {
 
     await expect(
       createLocalFixtureResolver(root)('/local/textures/%23teleport.wal?cache=1'),
-    ).resolves.toEqual({ filename, size: 3 });
+    ).resolves.toEqual({ filename: await realpath(filename), size: 3 });
   });
 
   it('rejects lexical and symlink traversal', async () => {

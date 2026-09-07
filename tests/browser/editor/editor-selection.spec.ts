@@ -72,7 +72,7 @@ test.describe('Editor selection and organization', () => {
     await expect(page.locator('#document-revision')).toHaveText('1');
     const undo = page.getByRole('button', { name: 'Undo' });
     await undo.hover();
-    await expect(page.getByRole('tooltip')).toHaveText('Undo Delete invalid brush');
+    await expect(page.getByRole('tooltip')).toHaveText('Undo Delete invalid brush [Ctrl/⌘+Z]');
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(page.locator('[data-issue-type="invalid-brush"]')).toHaveCount(1);
 
@@ -126,7 +126,8 @@ test.describe('Editor selection and organization', () => {
     await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
 
     await page.getByRole('button', { name: 'Close', exact: true }).click();
-    await page.getByRole('button', { name: 'All', exact: true }).click();
+    await openToolbarMenu(page, 'More edit actions');
+    await page.getByRole('menuitem', { name: 'All', exact: true }).click();
     await expect(page.locator('#selection-kind')).toHaveText('3 Objects');
     expect(serializeMap(await readEditorDocument(page))).toBe(sourceBefore);
 
@@ -151,16 +152,22 @@ test.describe('Editor selection and organization', () => {
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await page.locator('#map-source').fill(adjacentBrushSource());
     await page.getByRole('button', { name: 'Apply source', exact: true }).click();
-    const repeatButton = page.locator('[data-action="repeat-commands"]');
+    await openToolbarMenu(page, 'More edit actions');
+    const repeatButton = page.getByRole('menuitem', { name: /^Repeat(?: \d+)?$/ });
     await expect(repeatButton).toBeDisabled();
+    await page.keyboard.press('Escape');
 
     const left = await topWorldPoint(page, -16, 0);
     await page.mouse.click(left.x, left.y);
     await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('3');
-    await expect(repeatButton).toHaveAttribute('aria-label', 'Repeat 1');
+    await openToolbarMenu(page, 'More edit actions');
+    await expect(repeatButton).toContainText('Repeat 1');
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Nudge Z positive' }).click();
-    await expect(repeatButton).toHaveAttribute('aria-label', 'Repeat 2');
+    await openToolbarMenu(page, 'More edit actions');
+    await expect(repeatButton).toContainText('Repeat 2');
+    await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: 'Rotate', exact: true }).click();
     await page.locator('#transform-pivot-x').fill('0');
@@ -168,12 +175,12 @@ test.describe('Editor selection and organization', () => {
     await page.locator('#transform-pivot-z').fill('0');
     await page.locator('#rotate-angle').fill('90');
     await page.getByRole('button', { name: 'Apply transform' }).click();
-    await expect(repeatButton).toHaveAttribute('aria-label', 'Repeat 3');
-    await repeatButton.hover();
-    await expect(page.getByRole('tooltip')).toHaveText(
-      'Repeat Duplicate → Move → Rotate (Ctrl/Command+Shift+R)',
-    );
     await openToolbarMenu(page, 'More edit actions');
+    await expect(repeatButton).toContainText('Repeat 3');
+    await expect(repeatButton.locator('.wv-menu-item-label')).toHaveAttribute(
+      'title',
+      'Repeat Duplicate → Move → Rotate [Ctrl/⌘+Shift+R]',
+    );
     await expect(page.getByRole('menuitem', { name: 'Clear repeat', exact: true })).toBeEnabled();
     await page.keyboard.press('Escape');
 
@@ -181,7 +188,9 @@ test.describe('Editor selection and organization', () => {
     await expect(page.locator('#brush-count')).toHaveText('4');
     await expect(page.locator('#document-revision')).toHaveText('4');
     await expect(page.locator('#status-message')).toContainText('Repeat 3 commands');
-    await expect(repeatButton).toHaveAttribute('aria-label', 'Repeat 3');
+    await openToolbarMenu(page, 'More edit actions');
+    await expect(repeatButton).toContainText('Repeat 3');
+    await page.keyboard.press('Escape');
     const document = await readEditorDocument(page);
     expect(
       brushesInDocument(document).some((brush) => {
@@ -199,7 +208,8 @@ test.describe('Editor selection and organization', () => {
 
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('3');
-    await expect(repeatButton).toHaveAttribute('aria-label', 'Repeat');
+    await openToolbarMenu(page, 'More edit actions');
+    await expect(repeatButton).toContainText('Repeat');
     await expect(repeatButton).toBeDisabled();
   });
 
@@ -222,6 +232,7 @@ test.describe('Editor selection and organization', () => {
     const left = await topWorldPoint(page, -16, 0);
     await page.mouse.click(left.x, left.y);
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.getByRole('tab', { name: 'Map', exact: true }).click();
     await page.getByRole('button', { name: 'Move selection', exact: true }).click();
     let document = await readEditorDocument(page);
     let architecture = deriveEditorLayers(document).find((layer) => layer.name === 'Architecture')!;
@@ -244,6 +255,7 @@ test.describe('Editor selection and organization', () => {
     await page.getByRole('button', { name: 'Unlock Architecture', exact: true }).click();
     await page.getByRole('button', { name: 'Select contents', exact: true }).click();
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.getByRole('tab', { name: 'Map', exact: true }).click();
     await page
       .getByRole('button', { name: 'Omit Architecture in compile export', exact: true })
       .click();
@@ -295,13 +307,21 @@ test.describe('Editor selection and organization', () => {
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await page.locator('#map-source').fill(selectionBrushSource());
     await page.getByRole('button', { name: 'Apply source', exact: true }).click();
-    const selector = await topWorldPoint(page, 80, 80);
+    let selector = await topWorldPoint(page, 80, 80);
     await page.mouse.click(selector.x, selector.y);
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
-    await expect(page.locator('#selection-brush-section')).toBeVisible();
-    await expect(page.locator('#selection-brush-count')).toHaveText('1 volume');
+    await page.getByRole('button', { name: 'Inspector', exact: true }).click();
+    await expect(page.getByRole('complementary', { name: 'Inspector', exact: true })).toBeHidden();
 
-    await page.getByRole('button', { name: 'Enclosed', exact: true }).click();
+    selector = await topWorldPoint(page, 80, 80);
+    await page.mouse.click(selector.x, selector.y, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Select enclosed', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Inspector', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await page.getByRole('button', { name: 'Inspector', exact: true }).click();
+    selector = await topWorldPoint(page, 80, 80);
     await expect(page.locator('#selection-kind')).toHaveText('2 Objects');
     await expect(page.locator('#status-message')).toContainText('selected 2 enclosed objects');
     let queried = await readEditorDocument(page);
@@ -311,13 +331,15 @@ test.describe('Editor selection and organization', () => {
 
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
-    await page.getByRole('button', { name: 'Touching', exact: true }).click();
+    await page.mouse.click(selector.x, selector.y, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Select touching', exact: true }).click();
     await expect(page.locator('#selection-kind')).toHaveText('3 Objects');
     await expect(page.locator('#status-message')).toContainText('selected 3 touching objects');
 
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await page.mouse.move(selector.x, selector.y);
-    await page.getByRole('button', { name: 'Enclosed in 2D', exact: true }).click();
+    await page.mouse.click(selector.x, selector.y, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Select enclosed in 2D', exact: true }).click();
     await expect(page.locator('#selection-kind')).toHaveText('3 Objects');
     await expect(page.locator('#status-message')).toContainText('selected 3 xy enclosed objects');
     queried = await readEditorDocument(page);

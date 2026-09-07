@@ -1,3 +1,4 @@
+import { surfaceGridColor } from './surface-grid-shader.js';
 import { d, std } from 'typegpu';
 import { editorMaterialLayout, editorSceneLayout } from './gpu-schemas.js';
 
@@ -10,23 +11,16 @@ interface SolidFragmentInput {
   readonly color: d.v3f;
   readonly uv: d.v2f;
 }
-interface LineVertexInput {
-  readonly start: d.v3f;
-  readonly startColor: d.v3f;
-  readonly end: d.v3f;
-  readonly endColor: d.v3f;
-  readonly $vertexIndex: number;
-}
-
 export function solidVertex(input: SolidVertexInput) {
   'use gpu';
   return {
     $position: editorSceneLayout.$.scene.projectionView.mul(d.vec4f(input.position, 1)),
     color: input.color,
     uv: input.uv,
+    world: input.position,
   };
 }
-export function solidFragment(input: SolidFragmentInput): d.v4f {
+export function solidFragment(input: SolidFragmentInput & { readonly world: d.v3f }): d.v4f {
   'use gpu';
   const dimensions = editorMaterialLayout.$.material.settings.zw;
   const sampled = std.textureSample(
@@ -35,72 +29,13 @@ export function solidFragment(input: SolidFragmentInput): d.v4f {
     input.uv.div(dimensions),
   );
   if (editorMaterialLayout.$.material.settings.y > 0.5 && sampled.a < 0.5) std.discard();
-  return d.vec4f(std.mix(input.color, sampled.rgb, editorMaterialLayout.$.material.settings.x), 1);
+  const base = std.mix(input.color, sampled.rgb, editorMaterialLayout.$.material.settings.x);
+  return d.vec4f(surfaceGridColor(input.world, base), 1);
 }
 export function selectionFragment(input: SolidFragmentInput): d.v4f {
   'use gpu';
   return d.vec4f(input.color, 0.22);
 }
-export function lineVertex(input: LineVertexInput) {
-  'use gpu';
-  const start = editorSceneLayout.$.scene.projectionView.mul(d.vec4f(input.start, 1));
-  const end = editorSceneLayout.$.scene.projectionView.mul(d.vec4f(input.end, 1));
-  let clippedStart = d.vec4f(start);
-  let clippedEnd = d.vec4f(end);
-  let clippedStartColor = d.vec3f(input.startColor);
-  let clippedEndColor = d.vec3f(input.endColor);
-  const startBehindNearPlane = start.z < 0;
-  const endBehindNearPlane = end.z < 0;
-  if (startBehindNearPlane && endBehindNearPlane) {
-    clippedStart = d.vec4f(2, 2, 2, 1);
-    clippedEnd = d.vec4f(2, 2, 2, 1);
-  } else if (startBehindNearPlane) {
-    const amount = (0.0001 - start.z) / (end.z - start.z);
-    clippedStart = std.mix(start, end, amount);
-    clippedStartColor = std.mix(input.startColor, input.endColor, amount);
-  } else if (endBehindNearPlane) {
-    const amount = (0.0001 - end.z) / (start.z - end.z);
-    clippedEnd = std.mix(end, start, amount);
-    clippedEndColor = std.mix(input.endColor, input.startColor, amount);
-  }
-  const startNdc = clippedStart.xy.div(clippedStart.w);
-  const endNdc = clippedEnd.xy.div(clippedEnd.w);
-  const delta = endNdc.sub(startNdc);
-  let direction = d.vec2f(1, 0);
-  if (std.length(delta) > 0.000001) direction = std.normalize(delta);
-  const perpendicular = d.vec2f(0 - direction.y, direction.x);
-  let atEnd = false;
-  let positiveSide = false;
-  if (input.$vertexIndex === 1 || input.$vertexIndex === 4 || input.$vertexIndex === 5)
-    atEnd = true;
-  if (input.$vertexIndex === 2 || input.$vertexIndex === 3 || input.$vertexIndex === 5)
-    positiveSide = true;
-  let clip = d.vec4f(clippedStart);
-  let color = d.vec3f(clippedStartColor);
-  let side = -1;
-  if (atEnd) {
-    clip = d.vec4f(clippedEnd);
-    color = d.vec3f(clippedEndColor);
-  }
-  if (positiveSide) side = 1;
-  const pixelOffset = d
-    .vec2f(2 / editorSceneLayout.$.scene.viewport.x, 2 / editorSceneLayout.$.scene.viewport.y)
-    .mul(editorSceneLayout.$.scene.viewport.z * d.f32(side));
-  const position = d.vec4f(clip.xy.add(perpendicular.mul(pixelOffset).mul(clip.w)), clip.z, clip.w);
-  return {
-    $position: position,
-    color,
-  };
-}
-export function lineFragment(input: { readonly color: d.v3f }): d.v4f {
-  'use gpu';
-  return d.vec4f(input.color, 1);
-}
-export function occludedLineFragment(input: { readonly color: d.v3f }): d.v4f {
-  'use gpu';
-  return d.vec4f(input.color, 0.4);
-}
-
 export function gridVertex(input: { readonly $vertexIndex: number }) {
   'use gpu';
   let position = d.vec2f(-1, -1);
@@ -129,4 +64,29 @@ export function gridFragment(input: { readonly $position: d.v4f }): d.v4f {
   const majorAlpha = std.saturate(1 - majorDistance);
   const color = std.mix(scene.gridMinor.rgb, scene.gridMajor.rgb, majorAlpha);
   return d.vec4f(color, std.max(minorAlpha * scene.gridMinor.a, majorAlpha * scene.gridMajor.a));
+}
+
+export function hullHandleVertex(input: SolidVertexInput) {
+  'use gpu';
+  const clip = editorSceneLayout.$.scene.projectionView.mul(d.vec4f(input.position, 1));
+  const offset = input.uv.mul(
+    d.vec2f(
+      (6 * editorSceneLayout.$.scene.viewport.w) / editorSceneLayout.$.scene.viewport.x,
+      (6 * editorSceneLayout.$.scene.viewport.w) / editorSceneLayout.$.scene.viewport.y,
+    ),
+  );
+  return {
+    $position: d.vec4f(clip.xy.add(offset.mul(clip.w)), clip.z, clip.w),
+    color: input.color,
+    uv: input.uv,
+  };
+}
+export function hullHandleFragment(input: SolidFragmentInput): d.v4f {
+  'use gpu';
+  if (std.length(input.uv) > 1) std.discard();
+  return d.vec4f(input.color, 1);
+}
+export function hullFaceFragment(input: SolidFragmentInput): d.v4f {
+  'use gpu';
+  return d.vec4f(input.color, std.mix(0.5, 0.24, input.uv.x));
 }

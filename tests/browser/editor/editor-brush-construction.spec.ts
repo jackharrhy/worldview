@@ -11,6 +11,8 @@ import {
 } from './support/editor-fixtures.js';
 import {
   openEditor,
+  installSiteToolRegistry,
+  executeSiteTool,
   readEditorDocument,
   perspectivePoint,
   perspectiveWorldPoint,
@@ -23,32 +25,76 @@ test.describe('Editor brush construction tools', () => {
   test('Hull tool captures a reference polygon, duplicates it, and creates one convex brush', async ({
     page,
   }) => {
+    await installSiteToolRegistry(page);
     await openEditor(page);
-    await page.getByRole('button', { name: 'Hull', exact: true }).click();
+    await chooseSelectOption(page, 'Editor theme', 'Dark');
+    await page.getByLabel('Perspective map viewport', { exact: true }).focus();
+    await page.keyboard.press('b');
+    await expect(page.getByRole('button', { name: 'Hull', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     const start = await perspectiveWorldPoint(page, [0, 0, 48]);
     const end = await perspectiveWorldPoint(page, [0, 0, 128]);
 
     await page.mouse.dblclick(start.x, start.y);
     await expect(page.locator('#hull-point-count')).toHaveText('4 points');
     await expect(page.getByRole('button', { name: 'Create hull' })).toBeDisabled();
+    await page.screenshot({ path: 'artifacts/verification/hull/01-planar.png' });
 
+    const hullCanvas = page.getByLabel('Perspective map viewport', { exact: true });
+    await expect(hullCanvas).toHaveAttribute('data-hull-handles', '4');
+    await expect(hullCanvas).toHaveAttribute('data-hull-face', 'false');
     await page.keyboard.down('Shift');
     await page.mouse.move(start.x, start.y);
+    await expect(hullCanvas).toHaveAttribute('data-hull-face', 'true');
+    await page.screenshot({ path: 'artifacts/verification/hull/01-shift-face.png' });
+    await page.keyboard.up('Shift');
+    await expect(hullCanvas).toHaveAttribute('data-hull-face', 'false');
+    await page.keyboard.down('Shift');
+    await expect(hullCanvas).toHaveAttribute('data-hull-face', 'true');
     await page.mouse.down();
     await page.mouse.move(end.x, end.y, { steps: 10 });
+    await expect(page.locator('#brush-id')).toContainText('hull-1');
+    await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    expect((await executeSiteTool(page, 'worldview_inspect_editor')).revision).toBe(0);
+    await expect(hullCanvas).toHaveAttribute('data-hull-handles', '8');
+    await expect(hullCanvas).toHaveAttribute('data-hull-grid-segments', /^[1-9][0-9]*$/);
+    await expect(hullCanvas).toHaveAttribute('data-hull-surface-triangles', '12');
+    await expect(hullCanvas).toHaveAttribute('data-hull-face', 'false');
+    const previewBounds = await page.locator('#brush-bounds').textContent();
+    await page.screenshot({ path: 'artifacts/verification/hull/02-volume-preview.png' });
     await page.mouse.up();
     await page.keyboard.up('Shift');
 
     await expect(page.locator('#hull-point-count')).toHaveText('8 points');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#hull-point-count')).toHaveText('4 points');
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(page.locator('#hull-point-count')).toHaveText('8 points');
+    await page.getByLabel('Perspective map viewport', { exact: true }).focus();
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('#hull-point-count')).toHaveText('4 points');
+    await page.keyboard.press('Control+Shift+z');
+    await expect(page.locator('#hull-point-count')).toHaveText('8 points');
+
+    await expect(page.locator('#brush-bounds')).toHaveText(previewBounds!);
     await expect(page.getByRole('button', { name: 'Create hull' })).toBeEnabled();
     await page.keyboard.press('Enter');
     await expect(page.locator('#brush-count')).toHaveText('4');
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
     await expect(page.locator('#status-message')).toContainText('Create hull brush');
+    await expect(page.locator('#brush-id')).toContainText('hull-1');
+    await expect(page.locator('#brush-bounds')).toHaveText(previewBounds!);
+    await page.screenshot({ path: 'artifacts/verification/hull/03-committed.png' });
     await expect(page.locator('#hull-point-count')).toHaveText('0 points');
+    await expect(hullCanvas).toHaveAttribute('data-hull-handles', '0');
 
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(page.locator('#brush-count')).toHaveText('3');
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await expect(page.locator('#brush-id')).toContainText('hull-1');
   });
 
   test('Hull tool places single and rectangular face points and cancels the whole set', async ({
@@ -184,7 +230,8 @@ test.describe('Editor brush construction tools', () => {
     const brushPoint = await topWorldPoint(page, 15, 17);
     await page.mouse.click(brushPoint.x, brushPoint.y);
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
-    await page.getByRole('button', { name: 'Snap to grid', exact: true }).click();
+    await page.getByRole('button', { name: 'More edit actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Snap to grid', exact: true }).click();
 
     let brush = brushesInDocument(await readEditorDocument(page))[0]!;
     expect(brushVertices(brush).every((point) => point.every((value) => value % 8 === 0))).toBe(

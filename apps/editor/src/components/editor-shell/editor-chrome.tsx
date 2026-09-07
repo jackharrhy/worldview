@@ -11,9 +11,9 @@ import type { EditorTool } from '@jackharrhy/worldview-editor';
 import { isProjectActionId } from '../../project-build-ui-state.js';
 import { Icon, IconButton, type IconName } from '../ui/icon.js';
 import { Checkbox } from '../ui/checkbox.js';
-import { Menu, MenuItem, Popover } from '../ui/menu.js';
+import { Menu, MenuItem, MenuSection, Popover, Submenu } from '../ui/menu.js';
 import { Select } from '../ui/select.js';
-import { CollaborationPresence } from './collaboration-ui.js';
+import { Button } from '../ui/button.js';
 
 interface EditorChromeProps {
   readonly shellState: EditorShellState;
@@ -78,15 +78,6 @@ const historyActions: readonly ActionSpec[] = [
     title: 'Edit map source',
   },
 ];
-
-const primaryHistoryActions = historyActions.filter(({ action }) => action === 'show-source');
-const documentMenuActions = historyActions.filter(({ action }) => action !== 'show-source');
-const primaryFileActions = fileActions.filter(({ action }) =>
-  ['home', 'new', 'download'].includes(action),
-);
-const fileMenuActions = fileActions.filter(
-  ({ action }) => !['home', 'new', 'download'].includes(action),
-);
 
 const buildActions: readonly ActionSpec[] = [
   { action: 'compile', icon: 'compile', label: 'Compile', title: 'Compile map' },
@@ -307,14 +298,44 @@ const visibilityActions: readonly ActionSpec[] = [
 const primaryEditActions = selectionActions.filter(({ action }) =>
   ['undo', 'redo'].includes(action),
 );
-const contextualEditActions = selectionActions.filter(
-  ({ action }) => !['undo', 'redo', 'invert-selection', 'clear-repeat-commands'].includes(action),
+const contextualEditActions = selectionActions.filter(({ action }) =>
+  ['focus-selection', 'duplicate', 'delete'].includes(action),
 );
-const editMenuActions = selectionActions.filter(({ action }) =>
-  ['invert-selection', 'clear-repeat-commands'].includes(action),
+const editMenuActions = selectionActions.filter(
+  ({ action }) => !['undo', 'redo', 'focus-selection', 'duplicate', 'delete'].includes(action),
 );
-const primaryBuildActions = buildActions.filter(({ action }) => action === 'compile');
-const buildMenuActions = buildActions.filter(({ action }) => action !== 'compile');
+
+const toolKeys: Partial<Record<EditorTool, string>> = {
+  hull: 'B',
+  entity: 'N',
+  face: 'F',
+  sweep: 'W',
+  vertex: 'V',
+  edge: 'E',
+  clip: 'C',
+  rotate: 'R',
+  scale: 'S',
+  shear: 'H',
+  select: 'Esc',
+};
+const actionKeys: Record<string, string> = {
+  undo: 'Ctrl/⌘+Z',
+  redo: 'Ctrl/⌘+Shift+Z',
+  duplicate: 'Ctrl/⌘+D',
+  delete: 'Delete',
+  'focus-selection': 'Home',
+  copy: 'Ctrl/⌘+C',
+  paste: 'Ctrl/⌘+V',
+  'paste-original': 'Ctrl/⌘+Alt+V',
+  'select-all': 'Ctrl/⌘+A',
+  'repeat-commands': 'Ctrl/⌘+Shift+R',
+  download: 'Ctrl/⌘+S',
+  'open-file': 'Ctrl/⌘+O',
+};
+function actionTooltip(action: string, title: string): string {
+  const key = actionKeys[action];
+  return key ? `${title.replace(/ \((?:Ctrl\/Command|Home)[^)]*\)$/, '')} [${key}]` : title;
+}
 
 function DocumentName({ shellState }: EditorChromeProps) {
   const documentName = useSyncExternalStore(
@@ -345,7 +366,7 @@ function ActionButton({
     <IconButton
       icon={icon}
       label={presentation?.label ?? label}
-      tooltip={presentation?.title ?? title}
+      tooltip={actionTooltip(action, presentation?.title ?? title)}
       className="icon-button"
       data-action={action}
       isDisabled={presentation?.disabled ?? disabled}
@@ -421,6 +442,7 @@ function ActionMenu({
                 id={action.action}
                 icon={action.icon}
                 label={presentation?.label ?? action.label}
+                title={actionTooltip(action.action, presentation?.title ?? action.title)}
                 {...((presentation?.disabled ?? action.disabled) ? { isDisabled: true } : {})}
               />
             );
@@ -441,9 +463,9 @@ function TopBar({ shellState }: EditorChromeProps) {
     shellState.editorCommands.subscribe,
     shellState.editorCommands.getSnapshot,
   );
-  const inspectorLayout = useSyncExternalStore(
+  const inspectorOpen = useSyncExternalStore(
     shellState.inspectorLayout.subscribe,
-    shellState.inspectorLayout.getSnapshot,
+    () => shellState.inspectorLayout.getSnapshot().open,
   );
   const invokeAction = (action: string) => {
     if (action === 'home') shellState.workspaceHome.commands?.showHome();
@@ -452,110 +474,140 @@ function TopBar({ shellState }: EditorChromeProps) {
   };
   return (
     <header className="topbar">
-      <div className="brand-lockup">
-        <div className="wordmark">WORLDVIEW</div>
-        <DocumentName shellState={shellState} />
-      </div>
-      <nav className="top-actions" aria-label="Document actions">
-        <ActionGroup
-          label="Files"
-          actions={primaryFileActions}
-          onAction={invokeAction}
-          commandState={commands.actions}
-        />
-        <ActionMenu
-          label="Open and create"
-          icon="open-map"
-          actions={fileMenuActions}
-          onAction={invokeAction}
-          commandState={commands.actions}
-        />
-        {project.maps.length > 0 ? (
-          <Select
-            id="project-map"
-            className="project-map-select"
-            label="Project map"
-            hideLabel
-            placeholder="Choose map"
-            options={project.maps}
-            selectedKey={project.selectedMapId}
-            onSelectionChange={(key) => shellState.projectToolbar.openMap(String(key))}
-          />
-        ) : null}
+      <MenuTrigger>
+        <Button
+          className="worldview-menu-trigger"
+          tone="quiet"
+          aria-label="Worldview document menu"
+        >
+          <Icon name="viewport-3d" />
+        </Button>
+        <Popover
+          className="toolbar-menu-popover document-menu-popover"
+          placement="bottom start"
+          offset={0}
+          containerPadding={0}
+        >
+          <div className="document-menu-heading">
+            <DocumentName shellState={shellState} />
+          </div>
+          <Menu aria-label="Worldview document menu" onAction={(key) => invokeAction(String(key))}>
+            <MenuSection label="File" showHeading={false}>
+              {[
+                ...fileActions,
+                ...historyActions.filter(
+                  ({ action }) => action !== 'checkpoint' && action !== 'versions',
+                ),
+              ].map(({ action, icon, label, disabled }) => (
+                <MenuItem
+                  key={action}
+                  id={action}
+                  icon={icon}
+                  label={label}
+                  isDisabled={disabled ?? false}
+                />
+              ))}
+            </MenuSection>
+            <MenuSection label="Recovery" showHeading={false}>
+              {historyActions
+                .filter(({ action }) => action === 'checkpoint' || action === 'versions')
+                .map(({ action, icon, label }) => (
+                  <MenuItem key={action} id={action} icon={icon} label={label} />
+                ))}
+            </MenuSection>
+            <MenuSection label="Application" showHeading={false}>
+              {project.maps.length > 0 ? (
+                <Submenu
+                  label="Project maps"
+                  menuProps={{ onAction: (key) => shellState.projectToolbar.openMap(String(key)) }}
+                >
+                  {project.maps.map((map) => (
+                    <MenuItem key={map.id} id={map.id} label={map.label} />
+                  ))}
+                </Submenu>
+              ) : null}
+              <MenuItem
+                id="collaboration"
+                icon="collaborate"
+                label="Collaboration"
+                onAction={() => shellState.collaborationUi.commands?.open()}
+              />
+              <Submenu
+                label="Appearance"
+                menuProps={{
+                  selectionMode: 'single',
+                  selectedKeys: [theme],
+                  onAction: (key) => {
+                    if (key === 'system' || key === 'dark' || key === 'light')
+                      shellState.theme.select(key);
+                  },
+                }}
+              >
+                <MenuItem id="system" label="System" />
+                <MenuItem id="dark" label="Dark" />
+                <MenuItem id="light" label="Light" />
+              </Submenu>
+              <Submenu label="Build" menuProps={{ onAction: (key) => invokeAction(String(key)) }}>
+                {project.buildProfiles.length > 0 ? (
+                  <Submenu
+                    label="Build profile"
+                    menuProps={{
+                      selectionMode: 'single',
+                      selectedKeys: project.selectedBuildProfileId
+                        ? [project.selectedBuildProfileId]
+                        : [],
+                      onAction: (key) => shellState.projectToolbar.selectBuildProfile(String(key)),
+                    }}
+                  >
+                    {project.buildProfiles.map((profile) => (
+                      <MenuItem key={profile.id} id={profile.id} label={profile.label} />
+                    ))}
+                  </Submenu>
+                ) : null}
+                {buildActions.map((action) => (
+                  <MenuItem
+                    key={action.action}
+                    id={action.action}
+                    icon={action.icon}
+                    label={
+                      commands.actions[action.action as keyof typeof commands.actions]?.label ??
+                      action.label
+                    }
+                    isDisabled={
+                      commands.actions[action.action as keyof typeof commands.actions]?.disabled ??
+                      action.disabled ??
+                      false
+                    }
+                  />
+                ))}
+              </Submenu>
+            </MenuSection>
+          </Menu>
+        </Popover>
+      </MenuTrigger>
+      <nav className="top-actions" aria-label="Map editing toolbar">
+        <ToolBar shellState={shellState} />
         <ActionGroup
           label="History"
           actions={primaryEditActions}
           onAction={invokeAction}
           commandState={commands.actions}
         />
-        <ActionGroup
+        <ActionButton
+          action="show-source"
+          icon="source"
           label="Source"
-          actions={primaryHistoryActions}
-          onAction={invokeAction}
-          commandState={commands.actions}
+          title="Edit map source"
+          onClick={() => invokeAction('show-source')}
         />
-        <ActionMenu
-          label="More document actions"
-          icon="versions"
-          actions={documentMenuActions}
-          onAction={invokeAction}
-          commandState={commands.actions}
-        />
-        <div className="toolbar-group build-actions" aria-label="Build">
-          {project.buildProfiles.length > 0 ? (
-            <Select
-              id="build-profile"
-              className="build-profile-select"
-              label="Build profile"
-              hideLabel
-              options={project.buildProfiles}
-              selectedKey={project.selectedBuildProfileId}
-              onSelectionChange={(key) => shellState.projectToolbar.selectBuildProfile(String(key))}
-            />
-          ) : null}
-          {primaryBuildActions.map((action) => (
-            <ActionButton
-              key={action.action}
-              {...action}
-              {...(commands.actions.compile ? { presentation: commands.actions.compile } : {})}
-              onClick={() => shellState.editorCommands.invoke('compile')}
-            />
-          ))}
-          <ActionMenu
-            label="Build results"
-            icon="build-results"
-            actions={buildMenuActions}
-            onAction={invokeAction}
-            commandState={commands.actions}
-          />
-        </div>
       </nav>
-      <CollaborationPresence port={shellState.collaborationUi} />
-      <div className="theme-control" title="Editor theme">
-        <Icon name="theme" />
-        <Select
-          id="editor-theme"
-          className="theme-select"
-          label="Editor theme"
-          hideLabel
-          options={[
-            { id: 'system', label: 'System' },
-            { id: 'dark', label: 'Dark' },
-            { id: 'light', label: 'Light' },
-          ]}
-          selectedKey={theme}
-          onSelectionChange={(key) => {
-            if (key === 'system' || key === 'dark' || key === 'light') shellState.theme.select(key);
-          }}
-        />
-      </div>
       <IconButton
         icon="inspector"
         label="Inspector"
         tooltip="Toggle inspector"
         className="inspector-toggle icon-button"
         data-action="toggle-inspector"
-        aria-pressed={inspectorLayout.open}
+        aria-pressed={inspectorOpen}
         onPress={() => shellState.inspectorLayout.toggle()}
       />
       <input id="map-file" type="file" accept=".map,.txt" aria-label="Open map file" hidden />
@@ -571,7 +623,7 @@ function TopBar({ shellState }: EditorChromeProps) {
   );
 }
 
-function ToolRail({ shellState }: EditorChromeProps) {
+function ToolBar({ shellState }: EditorChromeProps) {
   const filters = useSyncExternalStore(
     shellState.viewFilter.subscribe,
     shellState.viewFilter.getSnapshot,
@@ -588,14 +640,14 @@ function ToolRail({ shellState }: EditorChromeProps) {
     if (isEditorCommandId(action)) shellState.editorCommands.invoke(action);
   };
   return (
-    <section className="toolrail" aria-label="Editor tools">
+    <section className="toolstrip" aria-label="Editor tools">
       <div className="toolbar-group tool-group" aria-label="Modes">
         {editorTools.map(({ tool, icon, label, title }) => (
           <IconButton
             key={tool}
             icon={icon}
             label={label}
-            tooltip={title}
+            tooltip={toolKeys[tool] ? `${title} [${toolKeys[tool]}]` : title}
             className={`tool-button icon-button${commands.activeTool === tool ? ' active' : ''}`}
             data-tool={tool}
             aria-pressed={commands.activeTool === tool}
@@ -616,16 +668,15 @@ function ToolRail({ shellState }: EditorChromeProps) {
         actions={editMenuActions}
         onAction={invokeAction}
         commandState={commands.actions}
-        placement="right bottom"
+        placement="bottom start"
       />
-      <span className="toolrail-spacer" />
       <ActionMenu
         label="Visibility and locking"
         icon="show"
         actions={visibilityActions}
         onAction={invokeAction}
         commandState={commands.actions}
-        placement="right bottom"
+        placement="bottom start"
       />
       <Select
         id="grid-size"
@@ -668,10 +719,5 @@ function ToolRail({ shellState }: EditorChromeProps) {
 }
 
 export function EditorChrome({ shellState }: EditorChromeProps) {
-  return (
-    <>
-      <TopBar shellState={shellState} />
-      <ToolRail shellState={shellState} />
-    </>
-  );
+  return <TopBar shellState={shellState} />;
 }

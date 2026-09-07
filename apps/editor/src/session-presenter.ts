@@ -11,7 +11,10 @@ import {
 import type { EditorShellState } from './editor-shell-state.js';
 import type { EditorStatePort } from './editor-state-port.js';
 
-type SessionUi = Pick<EditorShellState, 'editorCommands' | 'projectUi' | 'statusMessage'>;
+type SessionUi = Pick<
+  EditorShellState,
+  'editorCommands' | 'projectUi' | 'statusMessage' | 'inspectorLayout'
+>;
 
 type SessionState = EditorStatePort<
   | 'clipCandidate'
@@ -133,6 +136,15 @@ export class SessionPresenter {
         this.state.session.selection,
         this.organization.effectiveObjectViewState(),
       );
+      if (
+        change.kind === 'selection' &&
+        this.state.session.selection &&
+        this.ui.inspectorLayout.getSnapshot().open
+      ) {
+        this.ui.inspectorLayout.update({
+          active: this.state.session.selection.faceId ? 'textures' : 'object',
+        });
+      }
       this.inspector.updateInspector();
       if (change.kind !== 'selection' && change.kind !== 'view') {
         this.document.updateSourceFromDocument();

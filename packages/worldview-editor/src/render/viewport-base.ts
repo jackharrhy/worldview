@@ -1,3 +1,4 @@
+import { ViewportToolOverlays } from './viewport/tool-overlays.js';
 import { mat4 } from 'wgpu-matrix';
 import { perspectiveForward as forwardFromAngles } from '@jackharrhy/worldview/core';
 
@@ -17,7 +18,7 @@ import type {
 } from './types.js';
 import { scaleOverlayVertices, type SceneBuffers } from './scene-buffers.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
-import { adaptiveGridSpacing, coordinateSystemVertices, gridVertices } from './scene-grid.js';
+import { adaptiveGridSpacing, coordinateSystemVertices } from './scene-grid.js';
 import { boundsVisible } from './scene-visibility.js';
 import {
   addScaled,
@@ -47,6 +48,7 @@ import { d, type TgpuBindGroup, type TgpuRoot, type TgpuTexture, type TgpuUnifor
 import { editorSceneLayout, SceneUniform } from './gpu-schemas.js';
 import { createViewportRenderTargets } from './viewport-render-targets.js';
 export abstract class ViewportBase {
+  private readonly toolOverlays: ViewportToolOverlays;
   protected abstract connectInput(): void;
   protected abstract cancelDrag(): void;
   protected readonly context: GPUCanvasContext;
@@ -56,8 +58,6 @@ export abstract class ViewportBase {
   protected readonly gridBindGroup: TgpuBindGroup;
   protected readonly overlayUniform: TgpuUniform<typeof SceneUniform>;
   protected readonly overlayBindGroup: TgpuBindGroup;
-  protected grid: GPUBuffer;
-  protected gridCount: number;
   protected coordinateSystem: GPUBuffer;
   protected coordinateSystemCount: number;
   protected readonly state: ViewportState;
@@ -203,9 +203,6 @@ export abstract class ViewportBase {
     this.overlayBindGroup = root.createBindGroup(editorSceneLayout, {
       scene: this.overlayUniform,
     });
-    const grid = gridVertices(kind, gridSize, theme);
-    this.grid = uploadFloatBuffer(root.device, grid, GPUBufferUsage.VERTEX);
-    this.gridCount = grid.length / 6;
     const coordinateSystem = coordinateSystemVertices(kind, theme);
     this.coordinateSystem = uploadFloatBuffer(root.device, coordinateSystem, GPUBufferUsage.VERTEX);
     this.coordinateSystemCount = coordinateSystem.length / 6;
@@ -224,6 +221,20 @@ export abstract class ViewportBase {
     this.canvas.addEventListener('pointerenter', this.followFocusedViewport, inputOptions);
     window.addEventListener('keydown', this.cancelOnEscape, inputOptions);
     window.addEventListener('keyup', this.clearInsertionOnModifierRelease, inputOptions);
+    this.toolOverlays = new ViewportToolOverlays(
+      root,
+      canvas,
+      kind,
+      pipelines,
+      this.overlayBindGroup,
+      interaction,
+      (point) => this.projectToCanvas(point),
+      () => {
+        this.renderRequested = true;
+        this.requestRender();
+      },
+      this.inputSignal,
+    );
     this.resizeObserver = new ResizeObserver(() => this.requestRender());
     this.resizeObserver.observe(this.canvas);
   }
@@ -336,19 +347,11 @@ export abstract class ViewportBase {
     const next = Math.max(1, gridSize);
     if (next === this.gridSize) return;
     this.gridSize = next;
-    this.grid.destroy();
-    const grid = gridVertices(this.kind, next, this.theme);
-    this.grid = uploadFloatBuffer(this.root.device, grid, GPUBufferUsage.VERTEX);
-    this.gridCount = grid.length / 6;
     this.renderRequested = true;
   }
 
   public setTheme(theme: EditorRenderTheme): void {
     this.theme = theme;
-    this.grid.destroy();
-    const grid = gridVertices(this.kind, this.gridSize, theme);
-    this.grid = uploadFloatBuffer(this.root.device, grid, GPUBufferUsage.VERTEX);
-    this.gridCount = grid.length / 6;
     this.coordinateSystem.destroy();
     const coordinateSystem = coordinateSystemVertices(this.kind, theme);
     this.coordinateSystem = uploadFloatBuffer(
@@ -385,7 +388,12 @@ export abstract class ViewportBase {
           : [this.state.center[1], this.state.center[2]];
     const uniformValue = {
       projectionView: matrix,
-      grid: d.vec4f(gridCenter[0], gridCenter[1], unitsPerPixel, visibleGridSpacing),
+      grid: d.vec4f(
+        gridCenter[0],
+        gridCenter[1],
+        unitsPerPixel,
+        this.kind === 'perspective' ? this.gridSize : visibleGridSpacing,
+      ),
       gridMinor: d.vec4f(...this.theme.gridMinor, 0.62),
       gridMajor: d.vec4f(...this.theme.gridMajor, 0.88),
     };
@@ -396,7 +404,12 @@ export abstract class ViewportBase {
     });
     this.overlayUniform.write({
       ...uniformValue,
-      viewport: d.vec4f(this.width, this.height, 0.9, 0),
+      viewport: d.vec4f(
+        this.width,
+        this.height,
+        0.9,
+        this.width / this.canvas.getBoundingClientRect().width,
+      ),
     });
     const swapchainView = this.context.getCurrentTexture().createView();
     const pass = encoder.beginRenderPass({
@@ -438,14 +451,16 @@ export abstract class ViewportBase {
     };
     // Match the source-editor convention: textured faces belong to 3D, while orthographic views
     // remain uncluttered projected wireframes.
+    const hullDraft = scene.toolPreviews.value.hull.handles.count > 0;
     const solids = [
       ...scene.worldSolids.value.solids,
       ...scene.references.value.solids,
-      ...scene.localPreview.value.solids,
+      ...(hullDraft ? [] : scene.localPreview.value.solids),
     ];
-    const localSelection = scene.localPreview.value.active
+    const selection = scene.localPreview.value.active
       ? scene.localPreview.value.selection
       : scene.localSelection.value;
+    const localSelection = hullDraft ? { ...selection, solids: [], lineCount: 0 } : selection;
     if (this.kind === 'perspective' && solids.length > 0) {
       pass.setPipeline(this.root.unwrap(this.pipelines.solid));
       for (const batch of solids) {
@@ -469,10 +484,11 @@ export abstract class ViewportBase {
     pass.setPipeline(this.root.unwrap(this.pipelines.lines));
     if (this.kind === 'perspective') {
       pass.setBindGroup(0, this.root.unwrap(this.gridBindGroup));
-      pass.setVertexBuffer(0, this.grid);
-      pass.draw(6, this.gridCount / 2);
+      pass.setPipeline(this.root.unwrap(this.pipelines.perspectiveGrid));
+      pass.draw(6);
+      pass.setPipeline(this.root.unwrap(this.pipelines.lines));
     }
-    if (this.kind === 'perspective' && scene.faceGrid.value.count > 0) {
+    if (this.kind === 'perspective' && !hullDraft && scene.faceGrid.value.count > 0) {
       pass.setBindGroup(0, this.root.unwrap(this.gridBindGroup));
       pass.setVertexBuffer(0, scene.faceGrid.value.buffer);
       pass.draw(6, scene.faceGrid.value.count / 2);
@@ -483,7 +499,7 @@ export abstract class ViewportBase {
     for (const batch of [
       ...scene.objectLines.value.batches,
       ...scene.references.value.batches,
-      ...scene.localPreview.value.batches,
+      ...(hullDraft ? [] : scene.localPreview.value.batches),
     ]) {
       if (!boundsVisible(matrix, batch.bounds)) continue;
       pass.setVertexBuffer(0, batch.buffer);
@@ -492,7 +508,7 @@ export abstract class ViewportBase {
     for (const lines of [
       scene.objectLines.value.unbatched,
       scene.references.value.unbatched,
-      scene.localPreview.value.unbatched,
+      ...(hullDraft ? [] : [scene.localPreview.value.unbatched]),
     ]) {
       if (lines.count === 0) continue;
       pass.setVertexBuffer(0, lines.buffer);
@@ -519,11 +535,15 @@ export abstract class ViewportBase {
       pass.draw(6, scene.remotePresence.value.lineCount / 2);
     }
     const selectionGuideVisible =
-      this.kind === 'perspective' && scene.toolPreviews.value.selectionGuide.count > 0;
+      this.kind === 'perspective' &&
+      this.canvas.matches(':hover') &&
+      scene.toolPreviews.value.selectionGuide.count > 0;
     if (selectionGuideVisible) {
+      pass.setPipeline(this.root.unwrap(this.pipelines.guideLines));
       pass.setBindGroup(0, this.root.unwrap(this.overlayBindGroup));
       pass.setVertexBuffer(0, scene.toolPreviews.value.selectionGuide.buffer);
       pass.draw(6, scene.toolPreviews.value.selectionGuide.count / 2);
+      pass.setPipeline(this.root.unwrap(this.pipelines.lines));
     }
     for (const lines of [scene.toolPreviews.value.lines, scene.diagnostics.value]) {
       if (lines.count === 0) continue;
@@ -536,6 +556,7 @@ export abstract class ViewportBase {
       pass.setVertexBuffer(0, this.scaleOverlay);
       pass.draw(6, this.scaleOverlayCount / 2);
     }
+    this.toolOverlays.render(pass, scene.toolPreviews, this.dragState);
     pass.end();
     this.canvas.dataset.selectionGuide = String(selectionGuideVisible);
     this.renderRequested = false;
@@ -546,6 +567,7 @@ export abstract class ViewportBase {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.toolOverlays.dispose();
     this.inputLifetime.abort();
     this.removeHandleLasso();
     this.hideTransformReadout();
@@ -555,7 +577,6 @@ export abstract class ViewportBase {
     this.uniform.buffer.destroy();
     this.gridUniform.buffer.destroy();
     this.overlayUniform.buffer.destroy();
-    this.grid.destroy();
     this.coordinateSystem.destroy();
     if (this.pendingFaceTransferClick !== null) window.clearTimeout(this.pendingFaceTransferClick);
     if (this.faceTransferSequenceReset !== null)
@@ -810,7 +831,7 @@ export abstract class ViewportBase {
     const canvasBounds = this.canvas.getBoundingClientRect();
     const pointerX = clientX - canvasBounds.left;
     const pointerY = clientY - canvasBounds.top;
-    const viewDirection = this.viewDirection();
+    const viewDirection = this.rayAt(clientX, clientY).direction;
     let nearest: {
       readonly face: FaceHandle;
       readonly distance: number;
@@ -840,7 +861,7 @@ export abstract class ViewportBase {
         start[0] + deltaX * amount - pointerX,
         start[1] + deltaY * amount - pointerY,
       );
-      if (distance > 10 || (nearest && distance >= nearest.distance)) continue;
+      if (nearest && distance >= nearest.distance) continue;
       nearest = {
         face: firstDot > secondDot ? edge.faces[0]! : edge.faces[1]!,
         distance,

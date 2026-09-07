@@ -86,7 +86,10 @@ interface SelectionBounds {
 interface InspectorTransformView {
   isTopologyTool(tool: EditorTool): tool is 'vertex' | 'edge';
   isTransformTool(tool: EditorTool): tool is 'rotate' | 'scale' | 'shear';
-  selectedObjectBounds(document?: MapDocument): SelectionBounds | null;
+  selectedObjectBounds(
+    document?: MapDocument,
+    selection?: EditorSelection | null,
+  ): SelectionBounds | null;
   selectedTransformBounds(document?: MapDocument): SelectionBounds | null;
   selectedTransformKey(selection?: EditorSelection | null): string | null;
 }
@@ -309,16 +312,24 @@ export class InspectorPresenter {
     const repeatLabels = this.state.session.repeatCommandLabels;
     this.ui.editorCommands.updateActions({
       undo: {
-        disabled: !this.state.session.canUndo,
-        title: this.state.session.undoLabel
-          ? `Undo ${this.state.session.undoLabel}`
-          : 'Nothing to undo',
+        disabled: this.state.renderer?.hullHistoryActive
+          ? !this.state.renderer.canUndoHull
+          : !this.state.session.canUndo,
+        title: this.state.renderer?.hullHistoryActive
+          ? 'Undo hull point placement'
+          : this.state.session.undoLabel
+            ? `Undo ${this.state.session.undoLabel}`
+            : 'Nothing to undo',
       },
       redo: {
-        disabled: !this.state.session.canRedo,
-        title: this.state.session.redoLabel
-          ? `Redo ${this.state.session.redoLabel}`
-          : 'Nothing to redo',
+        disabled: this.state.renderer?.hullHistoryActive
+          ? !this.state.renderer.canRedoHull
+          : !this.state.session.canRedo,
+        title: this.state.renderer?.hullHistoryActive
+          ? 'Redo hull point placement'
+          : this.state.session.redoLabel
+            ? `Redo ${this.state.session.redoLabel}`
+            : 'Nothing to redo',
       },
       'repeat-commands': {
         disabled: !this.state.session.canRepeatCommands,
@@ -667,7 +678,7 @@ export class InspectorPresenter {
       ? derived.faces.find((candidate) => candidate.faceId === face.id)
       : undefined;
     const objectBounds = brushObjectSelected
-      ? this.transform.selectedObjectBounds(document)
+      ? this.transform.selectedObjectBounds(document, selection)
       : derived.bounds;
     const revisions = new Set(objectBrushes.map((candidate) => candidate.revision));
     const faceCount = String(

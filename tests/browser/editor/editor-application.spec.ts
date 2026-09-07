@@ -67,7 +67,7 @@ test.describe('WebMCP site authoring', () => {
       }
       expect(failures, `${theme} editor controls below 3:1: ${failures.join(', ')}`).toEqual([]);
       for (const control of [
-        page.getByRole('button', { name: 'Home', exact: true }),
+        page.getByRole('button', { name: 'Select', exact: true }),
         page.getByRole('button', { name: 'Source', exact: true }),
         page.locator('#issue-status'),
       ]) {
@@ -138,7 +138,39 @@ test.describe('WebMCP site authoring', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: 'Dialog specimen' })).toBeHidden();
     await expect(page.getByRole('heading', { name: 'Editor chrome' })).toBeVisible();
-    await expect(page.locator('main [style]:not([style*="clip: rect"])')).toHaveCount(0);
+    await expect(page.locator('.specimen-toolrail')).toHaveCount(0);
+    await page.getByRole('button', { name: 'hull', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'hull', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    const sheetLink = page.getByRole('link', { name: 'Download editable SVG', exact: true });
+    const sheet = await page.request.get(
+      new URL((await sheetLink.getAttribute('href'))!, page.url()).href,
+    );
+    expect(sheet.ok()).toBe(true);
+    const svg = await sheet.text();
+    expect(svg.match(/id="icon-[^"]+"/g)).toHaveLength(84);
+    expect(svg).not.toContain('<image');
+    expect(svg).not.toContain('<glyph');
+    await page.getByText('Preview the complete sheet', { exact: true }).click();
+    await expect(page.locator('.design-icon-sheet')).toBeVisible();
+    await expect
+      .poll(() =>
+        page
+          .locator('.design-icon-sheet')
+          .evaluate((image) => (image as HTMLImageElement).naturalWidth),
+      )
+      .toBe(1152);
+    await page
+      .locator('.design-icon-sheet')
+      .screenshot({ path: 'artifacts/verification/design-v2/icons.png' });
+    await page.screenshot({ path: 'artifacts/verification/design-v2/page.png', fullPage: true });
+
+    // Screenshot capture may leave empty style attributes on form controls.
+    await expect(
+      page.locator('main [style]:not([style=""]):not([style*="clip: rect"])'),
+    ).toHaveCount(0);
   });
 
   test('keeps anonymous local maps offline when collaboration is opened @ci-smoke', async ({
@@ -150,7 +182,8 @@ test.describe('WebMCP site authoring', () => {
         roomRequests.push(request.url());
     });
     await openEditor(page, { empty: true });
-    await page.locator('#collaboration-toggle').click();
+    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Collaboration', exact: true }).click();
     await expect(page.locator('#collaboration-dialog')).toBeVisible();
     await expect(page.locator('#collaboration-description')).toContainText(
       'requires a hosted project and a 4orm account',
@@ -161,7 +194,6 @@ test.describe('WebMCP site authoring', () => {
 
   test('switches and persists the editor theme', async ({ page }) => {
     await openEditor(page, { empty: true });
-    const selector = page.getByRole('button', { name: /Editor theme$/ });
     await chooseSelectOption(page, 'Editor theme', 'Light');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect
@@ -178,7 +210,6 @@ test.describe('WebMCP site authoring', () => {
 
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
-    await expect(selector).toContainText('Light');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await chooseSelectOption(page, 'Editor theme', 'Dark');
   });
@@ -346,22 +377,21 @@ test.describe('WebMCP site authoring', () => {
     await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tools', 'unsupported');
     await expect(page.locator('html')).toHaveAttribute('data-worldview-site-tool-count', '0');
     await expect(page.getByRole('button', { name: 'Select', exact: true })).toBeEnabled();
-    const compile = page.locator('[data-action="compile"]');
-    const repeat = page.locator('[data-action="repeat-commands"]');
-    await expect(compile.locator('.ph')).toHaveCount(1);
-    await expect(repeat.locator('.ph')).toHaveCount(1);
-    expect(
-      await compile.evaluate((button) => ({
-        width: button.getBoundingClientRect().width,
-        overflow: getComputedStyle(button).overflow,
-      })),
-    ).toEqual({ width: 30, overflow: 'hidden' });
+    await openToolbarMenu(page, 'More edit actions');
     await expect(
-      page.getByRole('button', { name: 'More document actions', exact: true }),
+      page.getByRole('menuitem', { name: 'Repeat', exact: true }).locator('.wv-icon'),
+    ).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('button', { name: 'Worldview document menu', exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('menuitem', { name: 'Versions', exact: true })).toBeHidden();
-    await openToolbarMenu(page, 'More document actions');
+    await openToolbarMenu(page, 'Worldview document menu');
     await expect(page.getByRole('menuitem', { name: 'Versions', exact: true })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
+    await expect(
+      page.getByRole('menuitem', { name: 'Compile', exact: true }).locator('.wv-icon'),
+    ).toHaveCount(1);
   });
 
   test('registers first-class live tools with revision guards, visible edits, and undo @ci-smoke', async ({
@@ -474,7 +504,8 @@ test.describe('WebMCP site authoring', () => {
     expect(created.brushId).toEqual(expect.any(String));
     await expect(page.locator('#status-message')).toContainText('Site tool: created brush');
 
-    await page.getByRole('button', { name: 'New', exact: true }).click();
+    await openToolbarMenu(page, 'Worldview document menu');
+    await page.getByRole('menuitem', { name: 'New', exact: true }).click();
     await expect(page).toHaveURL(/\/new-map$/);
     await page.getByRole('button', { name: 'Create map', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');

@@ -32,6 +32,7 @@ import {
   appendSelectionBoundsGuide,
   selectionContainsHoveredObject,
 } from './bounds-overlays.js';
+import { buildHullOverlay } from './hull-overlay.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
 import {
   appendMovementTrace,
@@ -65,6 +66,7 @@ export interface ToolPreviewInput {
   readonly transformPivotTrace: MovementTrace | null;
   readonly movementTraces: readonly MovementTrace[];
   readonly clipPoints: readonly Vec3[];
+  readonly gridSize: number;
   readonly hullPoints: readonly Vec3[];
   readonly hullPreviewPoints: readonly Vec3[];
   readonly sweepCaps: readonly (readonly Vec3[])[];
@@ -425,34 +427,6 @@ function appendActiveTool(lines: number[], input: ToolPreviewInput): void {
       lines.push(...input.clipPoints[2]!, ...color, ...input.clipPoints[0]!, ...color);
     }
   }
-  if (input.tool === 'hull') {
-    for (const point of input.hullPoints) {
-      appendTopologyMarker(lines, point, input.theme.success, 5);
-    }
-    for (const point of input.hullPreviewPoints) {
-      appendTopologyMarker(lines, point, input.theme.info, 5);
-    }
-    if (input.hullPreviewPoints.length >= 3) {
-      for (let index = 0; index < input.hullPreviewPoints.length; index += 1) {
-        lines.push(
-          ...input.hullPreviewPoints[index]!,
-          ...input.theme.info,
-          ...input.hullPreviewPoints[(index + 1) % input.hullPreviewPoints.length]!,
-          ...input.theme.info,
-        );
-      }
-    }
-    if (input.hullPreviewPoints.length === input.hullPoints.length) {
-      for (let index = 0; index < input.hullPoints.length; index += 1) {
-        lines.push(
-          ...input.hullPoints[index]!,
-          ...input.theme.info,
-          ...input.hullPreviewPoints[index]!,
-          ...input.theme.info,
-        );
-      }
-    }
-  }
   if (input.tool === 'sweep') appendSweepOverlay(lines, input.sweepCaps, input.theme);
 }
 
@@ -461,6 +435,32 @@ export function buildToolPreviewBuffers(
   input: ToolPreviewInput,
 ): ToolPreviewBuffers {
   const lines: number[] = [];
+  const resizeLines: number[] = [];
+  if (
+    input.tool === 'select' &&
+    input.hoverSelection?.faceId &&
+    isBrushSelected(input.selection, input.hoverSelection.brushId)
+  ) {
+    const brush = findBrush(input.document, input.hoverSelection.brushId);
+    const face =
+      brush &&
+      deriveBrush(brush).faces.find(
+        (candidate) => candidate.faceId === input.hoverSelection?.faceId,
+      );
+    if (face) {
+      for (let i = 0; i < face.vertices.length; i++)
+        resizeLines.push(
+          ...face.vertices[i]!,
+          1,
+          0.92,
+          0,
+          ...face.vertices[(i + 1) % face.vertices.length]!,
+          1,
+          0.92,
+          0,
+        );
+    }
+  }
   const selectedBrushes = selectedBrushIdsForScene(input.selection);
   const brushIds = new Set([...selectedBrushes, ...selectedBrushIdsForScene(input.hoverSelection)]);
   const context = {
@@ -490,12 +490,40 @@ export function buildToolPreviewBuffers(
       selectionGuideLines,
       context.selectedBounds,
       input.theme.edgeSelected,
-      [input.theme.background[0], input.theme.background[1], input.theme.background[2]],
+      [0, 0, 0],
     );
   }
+  const hull = buildHullOverlay(input);
   const lineData = new Float32Array(lines);
   const guideData = new Float32Array(selectionGuideLines);
   return {
+    resizeFaceSelection:
+      resizeLines.length && input.hoverSelection?.faceId
+        ? { brushId: input.hoverSelection.brushId, faceId: input.hoverSelection.faceId }
+        : null,
+    resizeFace: {
+      buffer: uploadFloatBuffer(device, new Float32Array(resizeLines), GPUBufferUsage.VERTEX),
+      count: resizeLines.length / 6,
+    },
+    hull: {
+      polygon: hull.polygon,
+      grid: {
+        buffer: uploadFloatBuffer(device, new Float32Array(hull.grid), GPUBufferUsage.VERTEX),
+        count: hull.grid.length / 6,
+      },
+      lines: {
+        buffer: uploadFloatBuffer(device, new Float32Array(hull.lines), GPUBufferUsage.VERTEX),
+        count: hull.lines.length / 6,
+      },
+      handles: {
+        buffer: uploadFloatBuffer(device, new Float32Array(hull.handles), GPUBufferUsage.VERTEX),
+        count: hull.handles.length / 8,
+      },
+      face: {
+        buffer: uploadFloatBuffer(device, new Float32Array(hull.face), GPUBufferUsage.VERTEX),
+        count: hull.face.length / 8,
+      },
+    },
     lines: {
       buffer: uploadFloatBuffer(device, lineData, GPUBufferUsage.VERTEX, 'Tool previews'),
       count: lineData.length / 6,

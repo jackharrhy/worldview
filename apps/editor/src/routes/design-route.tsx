@@ -1,3 +1,4 @@
+import './design.css';
 import { useState } from 'react';
 import {
   ActionButton,
@@ -37,7 +38,12 @@ const colorTokens = [
 
 const specimenTools: readonly { readonly id: string; readonly icon: IconName }[] = [
   { id: 'select', icon: 'select' },
-  { id: 'viewport-3d', icon: 'viewport-3d' },
+  { id: 'entity', icon: 'entity' },
+  { id: 'hull', icon: 'hull' },
+  { id: 'face', icon: 'face' },
+  { id: 'vertex', icon: 'vertex' },
+  { id: 'edge', icon: 'edge' },
+  { id: 'rotate', icon: 'rotate' },
   { id: 'clip', icon: 'clip' },
   { id: 'scale', icon: 'scale' },
 ];
@@ -101,18 +107,18 @@ function ThemeSpecimen({ theme }: { readonly theme: 'dark' | 'light' }) {
         </div>
         <div className="design-state-group">
           <strong>Menu</strong>
-          <div className="wv-popover design-menu-specimen">
+          <div className="wv-popover viewport-context-menu design-menu-specimen">
             <Menu
               aria-label={`${theme} menu specimen`}
               selectionMode="single"
               defaultSelectedKeys={['grid']}
             >
-              <MenuSection label="Selection">
+              <MenuSection label="Selection" showHeading={false}>
                 <MenuItem id="focus" label="Focus selection" shortcut="Home" />
                 <MenuItem id="grid" label="Snap to grid" shortcut="Ctrl+G" />
                 <MenuItem id="disabled" label="Unavailable action" isDisabled />
               </MenuSection>
-              <MenuSection label="Create here">
+              <MenuSection label="Create here" showHeading={false}>
                 <MenuItem id="entity" label="Create point entity" submenu referenceState="open" />
                 <MenuItem
                   id="long"
@@ -151,7 +157,7 @@ function ThemeSpecimen({ theme }: { readonly theme: 'dark' | 'light' }) {
           <strong>Semantic icons</strong>
           <div className="design-icon-grid">
             {ICON_NAMES.map((name) => (
-              <div key={name} className="design-icon-cell">
+              <div key={name} className="design-icon-cell" data-tool={name}>
                 <Icon name={name} />
                 <code>{name}</code>
               </div>
@@ -167,17 +173,101 @@ export function Component() {
   const [selectedTool, setSelectedTool] = useState('select');
   const [dialogOpen, setDialogOpen] = useState(false);
   return (
-    <ProductPage wide>
+    <ProductPage wide className="design-page">
       <ProductHeader
         title="Interface system"
-        description="The shared visual language for project setup, editor chrome, controls, state, and themes."
+        description="Compact tools, zinc surfaces, quiet borders, and editable geometry. The working reference for Worldview."
         backTo="/"
         backLabel="Editor home"
-        aside={<span className="design-branch">design/pre-editor-system</span>}
+        aside={<span className="design-branch">Interface / V2</span>}
       />
 
+      <section className="design-section design-assets">
+        <SectionHeading title="Icons V2" detail="84 named glyphs / editable SVG" />
+        <p>
+          A 24-unit grid, 1.5-unit structural strokes, smaller handles, and color reserved for the
+          part you manipulate.
+        </p>
+        <div className="control-row">
+          <a className="wv-button wv-button-regular" href="/design/worldview-icons-v2.svg" download>
+            Download editable SVG
+          </a>
+          <a
+            className="wv-button wv-button-regular"
+            href="/design/worldview-icons-v2.svg"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open icon sheet
+          </a>
+          <a className="wv-button wv-button-regular" href="/design/icons-v2-notes.md" download>
+            Editing notes
+          </a>
+        </div>
+        <details>
+          <summary>Preview the complete sheet</summary>
+          <img
+            className="design-icon-sheet"
+            src="/design/worldview-icons-v2.svg"
+            alt="All 84 Worldview icons, grouped and labeled for editing"
+          />
+        </details>
+      </section>
       <section className="design-section">
-        <SectionHeading title="Color" detail="OKLCH semantic roles" />
+        <SectionHeading title="Editor chrome" detail="Compact desktop controls" />
+        <div className="editor-specimen">
+          <header className="specimen-topbar">
+            <button className="specimen-document" aria-label="Example document menu">
+              <Icon name="viewport-3d" />
+            </button>
+            <nav className="specimen-toolbar" aria-label="Example tools">
+              {specimenTools.map(({ id, icon }) => (
+                <button
+                  key={id}
+                  data-tool={id}
+                  className={selectedTool === id ? 'active' : ''}
+                  onClick={() => setSelectedTool(id)}
+                  aria-label={id}
+                  aria-pressed={selectedTool === id}
+                >
+                  <Icon name={icon} />
+                </button>
+              ))}
+            </nav>
+            <span className="specimen-grid">
+              <Icon name="texture-lock" />
+              16
+            </span>
+            <div className="specimen-actions">
+              <Icon name="undo" />
+              <Icon name="redo" />
+            </div>
+          </header>
+          <div className="specimen-editor-body">
+            <div className="specimen-viewports">
+              {['3D', 'XY', 'XZ', 'YZ'].map((name) => (
+                <div key={name}>
+                  <span>{name}</span>
+                </div>
+              ))}
+            </div>
+            <aside className="specimen-inspector">
+              <strong>Selection</strong>
+              <p>No objects selected.</p>
+              <Field label="Grid">
+                <select>
+                  <option>16</option>
+                </select>
+              </Field>
+            </aside>
+          </div>
+          <footer className="specimen-status">
+            Ready <span>Issues 0</span>
+          </footer>
+        </div>
+      </section>
+      <section className="design-section">
+        <SectionHeading title="Color" detail="Zinc surfaces / semantic accents" />
         <div className="theme-specimens">
           <ThemeSpecimen theme="dark" />
           <ThemeSpecimen theme="light" />
@@ -259,55 +349,6 @@ export function Component() {
               <ActionButton tone="primary">Create map</ActionButton>
             </footer>
           </form>
-        </div>
-      </section>
-
-      <section className="design-section">
-        <SectionHeading title="Editor chrome" detail="Compact desktop controls" />
-        <div className="editor-specimen">
-          <header className="specimen-topbar">
-            <strong>WORLDVIEW</strong>
-            <span>untitled.map</span>
-            <div className="specimen-actions">
-              <ActionButton tone="quiet">Undo</ActionButton>
-              <ActionButton tone="quiet">Compile</ActionButton>
-            </div>
-          </header>
-          <div className="specimen-editor-body">
-            <nav className="specimen-toolrail" aria-label="Example tools">
-              {specimenTools.map(({ id, icon }) => {
-                return (
-                  <button
-                    key={icon}
-                    className={selectedTool === id ? 'active' : ''}
-                    onClick={() => setSelectedTool(id)}
-                    aria-label={id}
-                  >
-                    <Icon name={icon} />
-                  </button>
-                );
-              })}
-            </nav>
-            <div className="specimen-viewports">
-              {['Perspective', 'Top', 'Front', 'Side'].map((name) => (
-                <div key={name}>
-                  <span>{name}</span>
-                </div>
-              ))}
-            </div>
-            <aside className="specimen-inspector">
-              <strong>Selection</strong>
-              <p>No objects selected.</p>
-              <Field label="Grid">
-                <select>
-                  <option>16</option>
-                </select>
-              </Field>
-            </aside>
-          </div>
-          <footer className="specimen-status">
-            Grid 16 <span>Ready</span>
-          </footer>
         </div>
       </section>
     </ProductPage>

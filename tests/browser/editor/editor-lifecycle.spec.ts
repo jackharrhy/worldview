@@ -34,7 +34,8 @@ test.describe('Editor application lifetime', () => {
         ),
       ).toBe(1);
 
-      await page.getByRole('button', { name: 'New', exact: true }).click();
+      await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'New', exact: true }).click();
       await expect(page).toHaveURL(/\/new-map$/);
       await expect(page.locator('html')).not.toHaveAttribute('data-worldview-editor-ready', 'true');
       await expect(page.locator('html')).not.toHaveAttribute('data-worldview-site-tools', /.+/);

@@ -44,6 +44,21 @@ The current celld/Azurite deployment is suitable for one small host, not a quali
 Done when room ownership survives node loss without two writers, backup restoration is repeatable,
 and the browser and Worker protocols remain storage-provider-neutral.
 
+## Interactive performance
+
+### P1: Narrow preview inspector work
+
+Brush creation and transform previews still call `InspectorPresenter.updateInspector`, which walks
+brush diagnostics and refreshes issues, organization, document summary, selection, and tool state.
+Profile representative populated maps with CPU throttling before separating gesture readouts from
+committed-document inspection. Keep geometry preview and hit testing scene-owned, keep valid live
+selection/bounds feedback, and refresh committed inspector state exactly on commit or cancel.
+
+Done when drag previews, cancellation, undo, and inspector values remain correct, unrelated UI
+subtrees stay idle during gestures, and recorded active-frame timings improve on a slower-machine
+profile as well as the development host. CPU throttling is a proxy; validate on real lower-end GPU
+hardware before claiming a hardware performance guarantee.
+
 ## Editor conformance
 
 ### E1: Remaining desktop workflow parity

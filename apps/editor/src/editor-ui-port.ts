@@ -1,5 +1,15 @@
 import { SnapshotStore } from '@jackharrhy/worldview/runtime';
 
+/** UI snapshots are immutable records; compare fields, never walk scene/document graphs. */
+export function equalUiSnapshot<T extends object>(left: T, right: T): boolean {
+  if (Object.is(left, right)) return true;
+  const keys = Object.keys(left) as (keyof T)[];
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => Object.hasOwn(right, key) && Object.is(left[key], right[key]))
+  );
+}
+
 /** Snapshot publication and presenter lifetime shared by the editor's UI surfaces. */
 export class EditorUiPort<Snapshot extends object, Actions = never> {
   protected readonly store: SnapshotStore<Snapshot>;
@@ -26,6 +36,7 @@ export class EditorUiPort<Snapshot extends object, Actions = never> {
   }
 
   public set(snapshot: Snapshot): void {
+    if (equalUiSnapshot(this.getSnapshot(), snapshot)) return;
     this.store.set(snapshot);
   }
 

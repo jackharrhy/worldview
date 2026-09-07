@@ -74,7 +74,11 @@ test.describe('Editor compiled preview', () => {
     });
     await installSiteToolRegistry(page);
     await openEditor(page);
-    await expect(page.locator('.compile-state')).toHaveText('COMPILER READY');
+    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
+    await expect(page.getByRole('menuitem', { name: 'Compile', exact: true })).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
 
     const canvas = page.getByLabel('Perspective map viewport');
     const bounds = await canvas.boundingBox();
@@ -86,9 +90,10 @@ test.describe('Editor compiled preview', () => {
     await page.mouse.up({ button: 'right' });
     const compileCamera = await perspectiveCamera(page);
 
-    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
+    await page.getByRole('menuitem', { name: 'Compile', exact: true }).click();
     await compileStarted;
-    await expect(page.locator('.compile-state')).toHaveText('COMPILING PREVIEW');
 
     await page.mouse.move(center.x, center.y);
     await page.mouse.down({ button: 'right' });
@@ -99,7 +104,6 @@ test.describe('Editor compiled preview', () => {
 
     releaseCompile();
     await expect(page.getByLabel('Compiled BSP preview')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('.compile-state')).toHaveText('COMPILED R0');
     const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
     expect(inspection.build).toMatchObject({
       compiledCamera: {
@@ -121,7 +125,11 @@ test.describe('Editor compiled preview', () => {
     );
     await installSiteToolRegistry(page);
     await openEditor(page);
-    await expect(page.locator('.compile-state')).toHaveText('COMPILER READY');
+    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
+    await expect(page.getByRole('menuitem', { name: 'Compile', exact: true })).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
 
     const sourceCanvas = page.getByLabel('Perspective map viewport');
     const bounds = await sourceCanvas.boundingBox();
@@ -133,10 +141,11 @@ test.describe('Editor compiled preview', () => {
     await page.keyboard.up('Shift');
     const requestedCamera = await perspectiveCamera(page);
 
-    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
+    await page.getByRole('menuitem', { name: 'Compile', exact: true }).click();
     const compiledCanvas = page.getByLabel('Compiled BSP preview');
     await expect(compiledCanvas).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator('.compile-state')).toHaveText('COMPILED R0');
     const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
     expect(inspection.build).toMatchObject({
       compiledCamera: {

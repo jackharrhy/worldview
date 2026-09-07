@@ -1,3 +1,5 @@
+import { handleFaceDrag } from './face-drag.js';
+import { editorPerformance } from './editor-performance.js';
 import {
   EditorSourceRenderer,
   createBrushSelection,
@@ -6,7 +8,6 @@ import {
   createSimpleShapeBrushes,
   createSequentialIdFactory,
   editorGroupForObject,
-  extrudableBrushFaces,
   pointEntityDefinition,
   selectedBrushIds,
   selectedFaceReferences,
@@ -16,7 +17,6 @@ import {
   type EditorBrushDragEvent,
   type EditorCameraChangeEvent,
   type EditorClipPlaneEvent,
-  type EditorFaceDragEvent,
   type EditorFaceTransferEvent,
   type EditorHullCreateEvent,
   type EditorObjectViewState,
@@ -39,12 +39,7 @@ import type {
   ViewportWorkspaceActions,
   ViewportWorkspaceLayout,
 } from './viewport-workspace-contracts.js';
-import {
-  editedBrushIds,
-  facePreviewGeometryIds,
-  facePreviewObjectIds,
-  selectedObjectIds,
-} from './preview-object-ids.js';
+import { editedBrushIds, facePreviewObjectIds, selectedObjectIds } from './preview-object-ids.js';
 
 type RendererUi = Pick<
   EditorShellState,
@@ -222,17 +217,17 @@ export class RendererPresenter {
           app.viewportWorkspace.setCamera(event);
           if (event.viewport !== 'perspective') return;
           state.perspectiveCamera = event.camera;
+          ui.viewportPresentation.update({ fieldOfView: event.camera.fieldOfViewDegrees });
           if (!state.showingCompiled) {
             ui.viewportPresentation.update({
-              perspectiveMode:
-                event.mode === 'initial' ? 'EDIT' : `EDIT · ${event.mode.toUpperCase()}`,
-              perspectiveTitle: `Position ${app.build.formatVector(event.camera.position)} · ${Math.round(event.camera.fieldOfViewDegrees)}° FOV · ${Math.round(event.camera.flySpeed)} units/s`,
+              perspectiveMode: event.mode === 'initial' ? 'EDIT' : `${event.mode.toUpperCase()}`,
+              perspectiveTitle: `Position ${app.build.formatVector(event.camera.position)} / ${Math.round(event.camera.fieldOfViewDegrees)}° FOV / ${Math.round(event.camera.flySpeed)} units/s`,
             });
           }
           const position = event.camera.position.map((value) => Math.round(value));
           ui.pointerContext.set(
             `PERSPECTIVE / ${event.mode} ${app.build.formatVector(position)}` +
-              (event.mode === 'fly' ? ` · speed ${Math.round(event.camera.flySpeed)}` : ''),
+              (event.mode === 'fly' ? ` / speed ${Math.round(event.camera.flySpeed)}` : ''),
           );
         },
         onPick(selection, viewport, intent) {
@@ -445,7 +440,7 @@ export class RendererPresenter {
             const constraint =
               event.axisRestriction === undefined || event.axisRestriction === null
                 ? ''
-                : ` · ${['X', 'Y', 'Z'][event.axisRestriction]} locked`;
+                : ` / ${['X', 'Y', 'Z'][event.axisRestriction]} locked`;
             ui.statusMessage.set(
               event.pointMovePhase === 'commit'
                 ? `Moved clip point ${event.movingPointIndex + 1}${constraint}.`
@@ -538,7 +533,7 @@ export class RendererPresenter {
                 pointerContext.set(`${event.viewport.toUpperCase()} / duplicate move`);
                 return;
               }
-              state.session.commitDocumentCandidate(state.duplicationCandidate ?? candidate);
+              state.session.commitDocumentCandidate(candidate);
               state.duplicationBase = null;
               state.duplicationCandidate = null;
               pointerContext.set(`${event.viewport.toUpperCase()} / edit`);
@@ -564,7 +559,7 @@ export class RendererPresenter {
               pointerContext.set(`${event.viewport.toUpperCase()} / move`);
               return;
             }
-            state.session.commitDocumentCandidate(state.moveCandidate ?? candidate);
+            state.session.commitDocumentCandidate(candidate);
             state.moveCandidate = null;
             pointerContext.set(`${event.viewport.toUpperCase()} / edit`);
           } catch (error) {
@@ -629,121 +624,7 @@ export class RendererPresenter {
             pointerContext.set(`${event.viewport.toUpperCase()} / transfer invalid`);
           }
         },
-        onFaceDrag(event: EditorFaceDragEvent) {
-          const pointerContext = ui.pointerContext;
-          const hasMovement =
-            event.mode === 'translate'
-              ? event.delta.some((component) => Math.abs(component) > Number.EPSILON)
-              : Math.abs(event.distance) > Number.EPSILON;
-          if (event.phase === 'cancel' || !hasMovement) {
-            state.faceCandidate = null;
-            state.renderer?.setDocument(state.session.document, state.session.selection);
-            app.inspector.updateInspector();
-            ui.statusMessage.set(
-              event.phase === 'cancel'
-                ? event.mode === 'translate'
-                  ? 'Face move cancelled.'
-                  : event.stamp
-                    ? 'Face stamp cancelled.'
-                    : event.split
-                      ? 'Face split cancelled.'
-                      : 'Face extrusion cancelled.'
-                : 'Face stayed on its plane.',
-            );
-            pointerContext.set(`${event.viewport.toUpperCase()} / face`);
-            return;
-          }
-
-          try {
-            const selectedFaces = selectedFaceReferences(state.session.selection);
-            const selectedBrushes = selectedBrushIds(state.session.selection);
-            const eventFace = {
-              brushId: event.selection.brushId,
-              faceId: event.selection.faceId,
-            };
-            const faces = selectedFaces.some(
-              (face) => face.brushId === eventFace.brushId && face.faceId === eventFace.faceId,
-            )
-              ? selectedFaces
-              : selectedBrushes.includes(eventFace.brushId) &&
-                  event.mode === 'normal' &&
-                  !event.split &&
-                  !event.stamp
-                ? extrudableBrushFaces(state.session.document, eventFace, selectedBrushes)
-                : [eventFace];
-            const candidate =
-              event.mode === 'translate'
-                ? state.session.createFaceSetTranslationCandidate(
-                    faces,
-                    event.delta,
-                    createSequentialIdFactory(`face-move-${state.faceTranslationSequence + 1}`),
-                    state.textureLock,
-                  )
-                : event.stamp
-                  ? state.session.createFaceStampCandidate(
-                      faces,
-                      eventFace,
-                      event.distance,
-                      createSequentialIdFactory(`face-stamp-${state.faceStampSequence + 1}`),
-                      state.textureLock,
-                    )
-                  : event.split
-                    ? state.session.createFaceSetSplitCandidate(
-                        faces,
-                        eventFace,
-                        event.distance,
-                        createSequentialIdFactory(`face-split-${state.faceSplitSequence + 1}`),
-                      )
-                    : state.session.createFaceSetExtrusionCandidate(
-                        faces,
-                        eventFace,
-                        event.distance,
-                      );
-            if (!candidate) return;
-            if (event.phase === 'preview') {
-              state.faceCandidate = candidate;
-              state.renderer?.setPreviewDocument(
-                candidate.document,
-                state.session.selection,
-                facePreviewGeometryIds(candidate),
-                facePreviewObjectIds(candidate, state.session.selection),
-              );
-              // The viewport is the latency-critical feedback surface during a drag. Inspector
-              // values settle from the committed session change; rebuilding its derived model on
-              // every snapped pointer position only competes with the next visual frame.
-              ui.statusMessage.set(
-                event.mode === 'translate'
-                  ? `Face move preview: ${app.build.formatVector(event.delta)}. Release to commit.`
-                  : `${event.stamp ? 'Face stamp' : event.split ? 'Face split' : 'Face extrusion'} preview: ${event.distance > 0 ? '+' : ''}${event.distance}. Release to commit.`,
-              );
-              pointerContext.set(
-                event.mode === 'translate'
-                  ? `${event.viewport.toUpperCase()} / face move ${app.build.formatVector(event.delta)}`
-                  : `${event.viewport.toUpperCase()} / face ${event.stamp ? 'stamp ' : event.split ? 'split ' : ''}${event.distance}`,
-              );
-              return;
-            }
-            const committed = state.faceCandidate ?? candidate;
-            if ('insertions' in committed) {
-              state.session.commitBatchCreationCandidate(committed);
-              state.faceStampSequence += 1;
-            } else if ('mode' in committed) {
-              state.session.commitClipCandidate(committed);
-              state.faceSplitSequence += 1;
-            } else {
-              state.session.commitCandidate(committed);
-              if (event.mode === 'translate') state.faceTranslationSequence += 1;
-            }
-            state.faceCandidate = null;
-            pointerContext.set(`${event.viewport.toUpperCase()} / face`);
-          } catch (error) {
-            state.faceCandidate = null;
-            state.renderer?.setDocument(state.session.document, state.session.selection);
-            app.inspector.updateInspector();
-            ui.statusMessage.set(error instanceof Error ? error.message : String(error));
-            pointerContext.set(`${event.viewport.toUpperCase()} / face invalid`);
-          }
-        },
+        onFaceDrag: (event) => handleFaceDrag(event, state, ui, app.inspector, app.build),
         onHullCreate(event: EditorHullCreateEvent) {
           const pointerContext = ui.pointerContext;
           state.hullBuildPoints = event.points;
@@ -767,15 +648,18 @@ export class RendererPresenter {
             };
             if (event.phase === 'preview') {
               state.hullCandidate = candidate;
-              state.renderer?.setDocument(state.session.document, state.session.selection);
-              app.inspector.updateInspector();
+              const selection = { brushId: candidate.brush.id };
+              state.renderer?.setPreviewDocument(candidate.document, selection, [
+                candidate.brush.id,
+              ]);
+              app.inspector.updateInspector(candidate.document, selection);
               ui.statusMessage.set(
                 `${event.points.length} hull points enclose a valid brush. Press Enter or Create hull.`,
               );
               return;
             }
             state.hullBuildPoints = [];
-            state.session.commitCreationCandidate(state.hullCandidate ?? candidate);
+            state.session.commitCreationCandidate(candidate);
             state.hullCandidate = null;
             state.hullSequence += 1;
           } catch (error) {
@@ -858,6 +742,35 @@ export class RendererPresenter {
         signal.throwIfAborted();
       }
       state.renderer = renderer;
+      const fovStorageKey = 'worldview.editor.default-fov';
+      let defaultFov = 60;
+      try {
+        const stored = Number(localStorage.getItem(fovStorageKey));
+        if (Number.isFinite(stored) && stored >= 20 && stored <= 120) defaultFov = stored;
+      } catch {
+        /* Camera controls still work when preference storage is unavailable. */
+      }
+      ui.viewportPresentation.update({ defaultFieldOfView: defaultFov });
+      renderer.setPerspectiveFieldOfView(defaultFov);
+      const saveDefaultFov = (value: number) => {
+        try {
+          localStorage.setItem(fovStorageKey, String(value));
+        } catch {
+          ui.statusMessage.set(
+            'FOV default applies for this session; browser storage is unavailable.',
+          );
+        }
+        ui.viewportPresentation.update({ defaultFieldOfView: value });
+      };
+      ui.viewportPresentation.bind({
+        setFieldOfView: (value) => renderer.setPerspectiveFieldOfView(value),
+        saveDefaultFieldOfView: () =>
+          saveDefaultFov(ui.viewportPresentation.getSnapshot().fieldOfView),
+        restoreFactoryFieldOfView: () => {
+          saveDefaultFov(60);
+          renderer.setPerspectiveFieldOfView(60);
+        },
+      });
       const applyPerspectiveOnly = (enabled: boolean) => {
         renderer.setRenderedViewports(
           enabled ? ['perspective'] : ['perspective', 'xy', 'xz', 'yz'],
@@ -878,7 +791,17 @@ export class RendererPresenter {
           app.viewportWorkspace.setPerspectiveOnly(enabled);
         },
       });
-      renderScheduler.setTarget(renderer);
+      renderScheduler.setTarget({
+        render: () => {
+          if (!editorPerformance.enabled) return renderer.render();
+          const started = performance.now();
+          try {
+            return renderer.render();
+          } finally {
+            editorPerformance.recordRender(performance.now() - started);
+          }
+        },
+      });
       renderScheduler.start();
       ui.statusMessage.set('Source renderer ready. Select a brush in any viewport.');
     } catch (error) {
@@ -898,6 +821,7 @@ export class RendererPresenter {
     this.dependencies.state.renderer?.dispose();
     this.dependencies.state.renderer = null;
     this.dependencies.ui.viewportLayout.unbind();
+    this.dependencies.ui.viewportPresentation.unbind();
     this.dependencies.viewportWorkspace.unbind();
   }
 }

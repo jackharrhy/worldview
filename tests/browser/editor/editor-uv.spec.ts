@@ -59,6 +59,7 @@ test.describe('Editor texture alignment and UV tools', () => {
 
     await page.mouse.click(point.x, point.y);
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
+    await page.getByRole('tab', { name: 'Face', exact: true }).click();
     await page.locator('[data-texture-operation="auto-fit"]').click();
     let document = await readEditorDocument(page);
     expect(

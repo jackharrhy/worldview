@@ -72,4 +72,36 @@ describe('fly camera controller', () => {
     expect(canvas.dataset.cameraFocused).toBeUndefined();
     controller.dispose();
   });
+  it('boosts while Shift is held, restores normal speed on release, and clears boost on blur', () => {
+    const canvas = new FakeCanvas();
+    let now = 0;
+    const translate = vi.fn();
+    const controller = new FlyCameraController({
+      kind: 'perspective',
+      canvas: canvas as unknown as HTMLCanvasElement,
+      forward: () => [1, 0, 0],
+      speed: () => 100,
+      translate,
+      changed: vi.fn(),
+      requestFrame: vi.fn(),
+      now: () => now,
+    });
+    canvas.dispatchEvent(keyboardEvent('keydown', 'Shift'));
+    expect(controller.active).toBe(false);
+    canvas.dispatchEvent(keyboardEvent('keydown', 'w'));
+    now += 20;
+    controller.update();
+    expect(translate).toHaveBeenLastCalledWith([8, 0, 0]);
+    canvas.dispatchEvent(keyboardEvent('keyup', 'Shift'));
+    now += 20;
+    controller.update();
+    expect(translate).toHaveBeenLastCalledWith([2, 0, 0]);
+    canvas.dispatchEvent(keyboardEvent('keydown', 'Shift'));
+    canvas.dispatchEvent(new Event('blur'));
+    canvas.dispatchEvent(keyboardEvent('keydown', 'w'));
+    now += 20;
+    controller.update();
+    expect(translate).toHaveBeenLastCalledWith([2, 0, 0]);
+    controller.dispose();
+  });
 });

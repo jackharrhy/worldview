@@ -25,7 +25,6 @@ import {
   GroupToolSection,
   HullToolSection,
   NudgeSection,
-  SelectionBrushSection,
   TopologyToolSection,
   TransformToolSection,
 } from './object-tool-controls.js';
@@ -35,12 +34,23 @@ interface EntityPropertyValueProps {
   readonly shellState: EditorShellState;
 }
 
-function SimpleShapeTool({ shellState }: { readonly shellState: EditorShellState }) {
-  const tool = useSyncExternalStore(
+function SimpleShapeResult({ shellState }: { readonly shellState: EditorShellState }) {
+  const result = useSyncExternalStore(
     shellState.simpleShapeTool.subscribe,
-    shellState.simpleShapeTool.getSnapshot,
+    () => shellState.simpleShapeTool.getSnapshot().result,
   );
-  const { options } = tool;
+  return <span id="simple-shape-result">{result}</span>;
+}
+
+function SimpleShapeTool({ shellState }: { readonly shellState: EditorShellState }) {
+  const visible = useSyncExternalStore(
+    shellState.simpleShapeTool.subscribe,
+    () => shellState.simpleShapeTool.getSnapshot().visible,
+  );
+  const options = useSyncExternalStore(
+    shellState.simpleShapeTool.subscribe,
+    () => shellState.simpleShapeTool.getSnapshot().options,
+  );
   const circular = ['arch', 'cylinder', 'cone', 'uv-sphere'].includes(options.kind);
   const hollowable = options.kind === 'arch' || options.kind === 'cylinder';
 
@@ -48,11 +58,11 @@ function SimpleShapeTool({ shellState }: { readonly shellState: EditorShellState
     <div
       id="simple-shape-tool-section"
       className="simple-shape-tool-section inspector-section"
-      hidden={!tool.visible}
+      hidden={!visible}
     >
       <div className="section-heading">
         <h3>Simple shape</h3>
-        <span id="simple-shape-result">{tool.result}</span>
+        <SimpleShapeResult shellState={shellState} />
       </div>
       <div className="simple-shape-primary">
         <Select
@@ -688,7 +698,6 @@ const objectInspector = (shellState: EditorShellState) => (
       <SelectionInspectorFrame shellState={shellState}>
         <EntityPropertiesSection shellState={shellState} />
         <GroupToolSection shellState={shellState} />
-        <SelectionBrushSection shellState={shellState} />
         <FlipSection shellState={shellState} />
         <FaceExtrudeSection shellState={shellState} />
         <SweepTool shellState={shellState} />

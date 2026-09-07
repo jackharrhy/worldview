@@ -1,3 +1,4 @@
+import { faceMagnets } from './face-magnet.js';
 import {
   isFaceSelected,
   type BrushId,
@@ -195,9 +196,20 @@ export abstract class ViewportPointerDown extends ViewportTools {
           event.shiftKey && tool === 'select' && currentSelection && !currentSelection.faceId
             ? (this.proximateSelectedFaceAt(event.clientX, event.clientY)?.selection ?? null)
             : null;
+        const selectedHit =
+          event.shiftKey && tool === 'select'
+            ? this.interaction
+                .hitTests(ray.origin, ray.direction)
+                .find(
+                  (candidate) =>
+                    isBrushRayHit(candidate) && selectionContainsHit(currentSelection, candidate),
+                )
+            : hit;
         const selectedVisibleFaceSelection =
-          visibleFaceSelection && hit && selectionContainsHit(currentSelection, hit)
-            ? visibleFaceSelection
+          selectedHit &&
+          isBrushRayHit(selectedHit) &&
+          selectionContainsHit(currentSelection, selectedHit)
+            ? { brushId: selectedHit.brushId, faceId: selectedHit.faceId }
             : null;
         const togglingSelectedVisibleFace =
           event.shiftKey &&
@@ -216,6 +228,8 @@ export abstract class ViewportPointerDown extends ViewportTools {
                 proximateFaceSelection,
                 visibleFaceSelection,
               );
+        if (event.shiftKey && tool === 'select' && rawFaceSelection)
+          this.interaction.hover(rawFaceSelection);
         const faceTransferMode: FaceAttributeTransferMode | null =
           supportsFaceTransfer && this.faceTransferSequenceSource
             ? event.ctrlKey || event.metaKey
@@ -468,6 +482,11 @@ export abstract class ViewportPointerDown extends ViewportTools {
           lastAxisRestriction: null,
           lastDelta: [0, 0, 0],
           lastFaceDistance: 0,
+          faceMagnets: faceHandle
+            ? faceMagnets(faceHandle, this.interaction.faceSnapTargets())
+            : [],
+          faceMagnet: null,
+          faceAlignment: null,
           lastBounds: null,
           lastCreationConstraint: 'none',
           lastClipPoint: null,

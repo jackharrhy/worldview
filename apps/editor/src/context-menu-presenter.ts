@@ -5,6 +5,7 @@ import {
   findBrush,
   pointEntityDefinition,
   selectedBrushIds,
+  selectedFaceReferences,
   selectedEditorGroup,
   selectedPointEntityIds,
   selectionForEditorGroup,
@@ -27,6 +28,7 @@ type ContextMenuUi = Pick<
   | 'editorCommands'
   | 'inspectorLayout'
   | 'materialBrowser'
+  | 'objectTools'
   | 'pointEntityTool'
   | 'statusMessage'
   | 'viewportContextMenu'
@@ -276,6 +278,23 @@ export class ContextMenuPresenter {
       );
     }
 
+    const selection = this.state.session.selection;
+    const objectAlreadySelected =
+      !selection?.faceId &&
+      ((hit?.brushId && selectedBrushIds(selection).includes(hit.brushId)) ||
+        (hit?.entityId && selectedPointEntityIds(selection).includes(hit.entityId)));
+    const faceAlreadySelected = selectedFaceReferences(selection).some(
+      (face) => face.brushId === hit?.brushId && face.faceId === hit?.faceId,
+    );
+    for (let index = hitActions.length - 1; index >= 0; index--) {
+      const id = hitActions[index]!.id;
+      if (
+        (objectAlreadySelected && (id === 'hit:select-object' || id === 'hit:select-entity')) ||
+        (faceAlreadySelected && id === 'hit:select-face')
+      )
+        hitActions.splice(index, 1);
+    }
+
     const selectedBrushCount = selectedBrushIds(this.state.session.selection).length;
     const selectedEntityCount = selectedPointEntityIds(this.state.session.selection).length;
     const objectSelected =
@@ -383,11 +402,33 @@ export class ContextMenuPresenter {
       ),
     ];
 
+    const selectionBrushActions = this.ui.objectTools.getSnapshot().selectionBrush.visible
+      ? (
+          [
+            ['touching', 'Select touching'],
+            ['inside', 'Select enclosed'],
+            ['inside-projected', 'Select enclosed in 2D'],
+          ] as const
+        ).map(([mode, label]) =>
+          this.contextMenuAction(
+            `selection-brush:${mode}`,
+            label,
+            () => {
+              // Use the viewport that opened the menu, not a later pointer position.
+              this.state.lastPointerPosition = context.pointer;
+              this.ui.objectTools.dispatch({ type: 'selection-query', mode });
+            },
+            mode === 'inside-projected' && context.viewport === 'perspective',
+          ),
+        )
+      : [];
     const sections: readonly ContextMenuSectionSnapshot[] = [
+      ...(selectionBrushActions.length > 0
+        ? [{ id: 'selection-brush', label: 'Selection brush', actions: selectionBrushActions }]
+        : []),
       {
         id: 'under-cursor',
         label: 'Under cursor',
-        emptyMessage: 'No editable object',
         actions: hitActions,
       },
       { id: 'selection', label: 'Selection', actions: selectionActions },
@@ -396,8 +437,6 @@ export class ContextMenuPresenter {
     this.ui.viewportContextMenu.show({
       x: context.clientX,
       y: context.clientY,
-      heading: `${context.viewport === 'perspective' ? '3D' : context.viewport.toUpperCase()} view`,
-      detail: this.formatVector(context.pointer.point),
       sections,
     });
   }

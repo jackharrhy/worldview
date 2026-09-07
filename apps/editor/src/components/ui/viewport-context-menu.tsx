@@ -69,10 +69,6 @@ export function ViewportContextMenu({ menu }: { readonly menu: ViewportContextMe
         offset={2}
         containerPadding={8}
       >
-        <header className="viewport-context-heading">
-          <strong>{snapshot.heading}</strong>
-          <span>{snapshot.detail}</span>
-        </header>
         <div
           onKeyDownCapture={(event) => {
             if (event.key !== 'Escape') return;
@@ -82,21 +78,15 @@ export function ViewportContextMenu({ menu }: { readonly menu: ViewportContextMe
           }}
         >
           <Menu aria-label="Map view actions" autoFocus="first">
-            {snapshot.sections.map((section) => (
-              <MenuSection key={section.id} label={section.label}>
-                {section.actions.length > 0 ? (
-                  section.actions.map((action) => (
+            {snapshot.sections
+              .filter((section) => section.actions.length > 0)
+              .map((section) => (
+                <MenuSection key={section.id} label={section.label} showHeading={false}>
+                  {section.actions.map((action) => (
                     <ContextAction key={action.id} action={action} menu={menu} />
-                  ))
-                ) : (
-                  <MenuItem
-                    id={`${section.id}:empty`}
-                    label={section.emptyMessage ?? 'No actions available'}
-                    isDisabled
-                  />
-                )}
-              </MenuSection>
-            ))}
+                  ))}
+                </MenuSection>
+              ))}
           </Menu>
         </div>
       </Popover>

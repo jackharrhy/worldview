@@ -32,8 +32,11 @@ Status terms:
 | Scheduling             | Delivered | Rendering is invalidation-driven and continues only for active camera or animated-material work. Visibility and device-loss lifetimes are explicit.                                         |
 | Navigation             | Delivered | TrenchBroom-style right-drag look, Alt-right orbit, middle pan, wheel travel, fly keys, focus, linked 2D pan/zoom, pointer-centered zoom, and persisted cameras.                            |
 | Grid                   | Delivered | Power-of-two grid selection uses number keys and brackets. Creation, movement, implicit 2D depth, vertex/face snapping, perspective face grids, and world-axis lines share the active grid. |
-| Themes and icons       | Delivered | Dark and light themes drive DOM and renderer colors through semantic CSS variables. A typed Phosphor registry is the single browser icon source.                                            |
+| Themes and icons       | Delivered | Dark and light themes drive DOM and renderer colors through semantic CSS variables. A typed icon registry combines original geometry SVGs and Phosphor UI glyphs.                           |
 | Shortcut customization | Deferred  | Shortcuts are currently fixed and browser-safe. A preference system must resolve conflicts by viewport and tool context.                                                                    |
+
+The top toolbar groups scene tools beside a Worldview document menu for file, save, export, and
+recovery actions, plus collaboration, appearance, and builds. The compact cube menu reveals the current map name. Viewports use 3D/XY/XZ/YZ headers; idle compiler status is omitted. When the inspector is open, Shift-clicking a face switches to Face; selecting a brush or entity switches to Entity. Selection never opens a closed inspector. Manual tab choices persist until the next nonempty selection change.
 
 ## Selection and object transforms
 

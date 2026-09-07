@@ -39,10 +39,10 @@ test.describe('Editor clip and object transforms', () => {
     await page.mouse.move(partialMove.x, partialMove.y, { steps: 5 });
     await page.keyboard.down('Shift');
     await page.mouse.move(movedFirst.x, movedFirst.y, { steps: 5 });
-    await expect(page.locator('#status-message')).toContainText('Clip point 1 preview · X locked');
+    await expect(page.locator('#status-message')).toContainText('Clip point 1 preview / X locked');
     await page.mouse.up();
     await page.keyboard.up('Shift');
-    await expect(page.locator('#status-message')).toContainText('Moved clip point 1 · X locked');
+    await expect(page.locator('#status-message')).toContainText('Moved clip point 1 / X locked');
     await expect(page.locator('#clip-point-count')).toHaveText('2 / 3 points');
     await expect(page.locator('#clip-point-positions')).toHaveText('1: 32 -16 64 · 2: 0 -128 -16');
 
@@ -108,6 +108,7 @@ test.describe('Editor clip and object transforms', () => {
     await page.mouse.click(trigger.x, trigger.y);
     await expect(page.locator('#selection-kind')).toHaveText('Entity');
     await expect(page.locator('#entity-link-count')).toHaveText('2 / 4 shown');
+    await page.getByRole('tab', { name: 'Map', exact: true }).click();
     await chooseSelectOption(page, 'Visibility', 'Transitive selected');
     await expect(page.locator('#entity-link-count')).toHaveText('4 / 4 shown');
     await expect(page.locator('#document-revision')).toHaveText('0');

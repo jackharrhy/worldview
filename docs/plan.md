@@ -88,6 +88,27 @@ High-frequency camera, pointer, preview, and GPU state stays outside React. Immu
 snapshots cross into React through narrow external-store ports. The initiating client renders a
 preview immediately; collaboration transport never sits in the local feedback path.
 
+Scene feedback subscriptions belong at the smallest consuming UI component. Composition roots
+select layout values (such as issue-panel visibility), not entire issue or camera snapshots.
+Status and shape-result readouts update independently of sibling controls. Editor UI ports preserve
+snapshot identity for shallow-equal immutable fields, and command updates retain unchanged action
+identities. Equality must not recursively traverse map or geometry data. These publication contracts
+and camera/brush-preview isolation have focused unit and browser regression coverage.
+
+The editor uses one horizontal top toolbar. The Worldview document menu contains new/open,
+saving, export, recovery, collaboration, theme, and build controls. Its compact cube trigger
+opens the current map name above separated file, recovery, and application action groups without headings, aligned flush beneath the button with larger labels and fixed icon/text columns; scene tools, grid, view, and history sit alongside it. Compact dividers group editing concerns, and the numeric grid control sits beside texture lock. The toolbar scrolls horizontally when space is limited and has no left rail.
+Original SVG geometry glyphs combine neutral structure with colored faces, edges, handles, and transforms; general UI actions retain Phosphor. The neutral zinc dark theme, 18px axis-only viewport headers, and 20px status bar prioritize canvas space. Idle compiler status is omitted from the footer and zero issues use neutral text. Explicit nonempty selection changes
+switch an already-open inspector to Face for faces or Entity for brushes/entities without stealing viewport focus; a closed inspector stays closed and keeps its chosen tab;
+hover, camera updates, and empty selections do not change the user's chosen inspector tab.
+Drag release is handled in the window capture phase. Capture-loss cancellation allows a bounded 250ms recovery window and checks gesture identity: browsers that emit lostpointercapture before pointerup can finish the release, while genuine interruptions still cancel without affecting a newer drag. It processes any final pointer position through the same preview constraints before committing; object moves commit the candidate calculated for that release rather than a cached preview. Face resizing retains the latest valid candidate across invalid pointer samples, commits it on release outside the valid range, and resumes normal previews when the pointer returns to valid geometry; explicit cancellation still restores the pre-drag document.
+
+The perspective header includes a vertical FOV control (20–120°, factory default 60°). A modified
+indicator compares the current lens to a browser-local preferred default; users can reset, save the
+current lens as default, or restore 60°. Stored per-map cameras still restore their own lens. The
+control subscribes only to FOV/default/compiled-state values, not camera motion. The renderer public
+`setPerspectiveFieldOfView` method changes only the perspective lens and preserves camera pose.
+
 ### React and routing
 
 React owns visible application DOM. Presenters expose immutable snapshots and typed commands; they
@@ -112,6 +133,16 @@ semantic CSS variables, density, iconography, and renderer colors. The canonical
 rules live in [the interface system](./interface-system.md).
 
 ### Source rendering
+
+The editor status bar exposes opt-in Performance diagnostics: visible-tab browser frame cadence,
+a bounded frame-time graph, slow-frame counts, and CPU time around editor render calls. A local
+30-second capture retains timing samples and exposes JSON for inspection while the user navigates,
+including empty maps. Idle on-demand rendering is distinguished from browser FPS; these are not GPU
+execution timings. Monitoring is disabled by default and stops when the editor unmounts.
+Camera and pointer readouts subscribe below the workspace and status controls. Camera-only changes
+do not reconcile the inspector trees or diagnostics panel; workspace subscriptions select only
+compiled-preview visibility and renderer errors. The navigation diagnostics browser test guards
+against updating the graph at camera-event frequency while preserving camera movement and map revision.
 
 The source renderer keeps committed world geometry separate from local previews, local selection,
 tool overlays, face grids, references, diagnostics, and remote presence. Each retained contribution
@@ -310,3 +341,103 @@ Adapted source must be license-compatible and recorded in
 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) with focused source comments. Commercial or
 shareware BSP, WAD, PAK, palette, sprite, model, texture, and sound data stays in ignored local
 directories and never enters repository gates or release artifacts.
+
+Convex hull authoring renders planar construction perimeters and a complete wireframe brush candidate
+as soon as points enclose a volume, including during Shift-drag and after release. The candidate is
+transient until Enter/Create Hull, which selects the committed brush as one undoable edit. Escape
+discards the candidate and restores the original scene. This follows TrenchBroom behavior using
+Worldview-owned geometry and renderer code.
+
+Hull assembly has tool-local undo/redo for each point placement and completed polygon drag.
+Toolbar and keyboard history use that draft while it is active; committing clears the draft
+history and records one selected brush in document history. `B` activates Hull (`G` remains an
+alias). Toolbar tooltips display available keyboard shortcuts in brackets.
+
+Hull assembly uses a dedicated GPU construction overlay: constant screen-size yellow circular
+handles (6 CSS pixels across), connected yellow perimeter/volume edges, and a double-sided 50% yellow planar face only
+while Shift targets its interior. Extrusion retains yellow wire edges over translucent neutral surfaces through release; committing
+restores the normal textured, selected brush appearance. A contrasting grid clipped to the preview surfaces
+uses the current construction-grid spacing, including the Shift-highlighted planar face. Modifier/hover feedback stays inside the
+viewport renderer, without React state updates or rebuilding geometry buffers on Shift changes.
+
+Shift-resize targets selected brush faces even through other geometry and falls back to the nearest
+projected silhouette edge when the cursor misses the selection, without a fixed distance cutoff.
+The hidden adjacent face remains available to pull. Shift press/release refreshes targeting at a
+stationary pointer; the proposed/dragged face has an opaque yellow outline rendered through
+occlusion while ordinary brush selection remains red.
+
+All source viewport tools share `viewport/drag-lifecycle.ts` for input termination. Window-capture
+pointer release and mouse compatibility release feed the same final-position sampling/commit path,
+with pointer/button matching and cleared-gesture deduplication. Capture loss allows a bounded 250 ms
+release-recovery window before cancellation; pointercancel, window blur, and explicit cancellation
+remain cancellation paths. Deferred loss never cancels a newer gesture and is cleared on disposal.
+
+Holding Shift during perspective keyboard flight temporarily multiplies movement speed by four.
+Release or focus loss restores normal speed; the stored base fly speed remains unchanged.
+
+The perspective source renderer applies a passive world-aligned grid in its textured surface shader,
+including unselected brushes. Spacing follows the active construction grid, with stronger eight-cell
+major lines, antialiased screen-space coverage, and subpixel-density fading. Line contrast adapts to
+the underlying material. This adds no per-brush grid geometry, draw calls, or React updates; saved
+materials, UVs, and exported maps are unchanged.
+
+Face extrusion now prototypes magnetic alignment to parallel faces on other visible brushes with
+projected footprint overlap or shared edges (including a supporting platform side). Candidates are fixed at gesture start; a 7 CSS-pixel attraction zone
+and 14-pixel release zone let continued dragging break free. Exact face alignment overrides grid
+spacing, including off-grid targets. The target outline is cyan; snap feedback has no text popup. Holding
+Ctrl/Command after starting a drag bypasses magnetism. This prototype applies to normal face drags;
+free face translation is unchanged. The playground is `tests/browser/editor/support/face-magnet.map`.
+
+Cyan face alignment feedback is independent of magnetic capture, but only appears alongside the
+yellow resize-face outline during Shift targeting or extrusion. Grid alignment still shows the cue
+while Ctrl/Command bypasses magnetism. Re-entering Shift targeting recalculates alignment from the
+current geometry. Leaving the face-targeting state hides it; the cyan outline uses full opacity for clear visibility through geometry.
+
+Magnet candidates include faces already aligned at gesture start, so returning to zero displacement
+restores cyan feedback. Once a face drag has started, its preview continues updating inside the
+initial movement threshold, including an exact return to the pointer-down position.
+
+World edges, construction lines, selection outlines, and tool/snap guides share
+`gpu-line-shaders.ts`. Stroke expansion uses physical pixel coordinates (avoiding aspect-ratio and
+angle-dependent widths), with analytic edge/cap coverage composed through each style's opacity.
+Existing 4× MSAA remains enabled. Procedural surface/2D grids keep their derivative-based shader
+coverage; no additional rendering pass or per-tool line implementation is introduced.
+
+Distant editor rendering filters detail at its source: the perspective ground grid uses a
+world-space procedural plane with derivative-based density fading instead of thousands of
+individually expanded lines. Shared strokes clip projected endpoints to the viewport before
+pixel-distance coverage calculations, preserving precision on long coordinate axes. Opaque editor
+materials build an original box-filtered mip chain once on upload, use linear minification and mip
+transitions, and retain nearest magnification. Alpha-tested materials keep a single level to preserve
+cutout coverage. No additional per-frame CPU work or render pass is introduced.
+
+Selection-brush queries are exposed as a leading section in the viewport context menu rather than
+an inspector panel: Select touching, Select enclosed, and Select enclosed in 2D. They appear for
+eligible structural-brush selections, work with the inspector closed, and use the viewport that
+opened the menu for projected queries (disabled in perspective). They reuse the existing command
+path, consuming the query brushes and changing selection in one undoable transaction.
+
+Viewport context menus use compact action rows and separators without view/coordinate headers,
+visible section titles, or empty-section placeholders. Selection actions omit objects/faces already
+in the current selection. The document menu retains file, recovery, and application action groups
+as separators only, with left-aligned text in a shared icon/text column including iconless entries.
+
+The `/design` kitchen sink is the V2 interface reference: zinc surfaces, compact top-toolbar editor
+specimen, axis-only viewport labels, separator-only menus, restrained 2–3px corners, and shorter
+popover shadows. It uses the shared runtime geometry-icon styles. Bespoke geometry uses 24-unit
+view boxes, 1.5-unit structure and handle radii, and semantic color accents.
+
+`apps/editor/public/design/worldview-icons-v2.svg` is the canonical external-editing working sheet,
+linked and previewed on `/design` alongside editing notes. It contains all 84 semantic glyphs as
+named editable groups, including path-based Phosphor utility artwork and license metadata. The
+exporter `scripts/export-editor-icons.mjs` reads runtime sources and installed MIT Phosphor path
+data; it refuses to overwrite external edits without `--replace`. Edited SVG proposals must be
+ported into the runtime icon component/registry explicitly; the sheet is not an automatic import
+surface. Design-specific specimen styles live in `routes/design.css`.
+
+The reviewed implementation keeps transient hull history in `HullDraft` and tool-specific feedback
+in `ViewportToolOverlays`, rather than adding hull/alignment state to general viewport rendering.
+Visible canonical snap-target queries live with the source-renderer queries. The stateless
+`face-drag.ts` policy separates candidate construction from preview/commit handling and permits
+last-valid fallback only at the same canonical document revision. Source and base viewport modules
+remain below 1,000 lines; no architecture thresholds were raised for these changes.

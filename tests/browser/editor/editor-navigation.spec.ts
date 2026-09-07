@@ -32,6 +32,129 @@ import {
 } from './support/editor-browser-helpers.js';
 
 test.describe('Editor navigation and contextual actions', () => {
+  for (const withPreview of [false, true]) {
+    test(`commits a fast drag at release with ${withPreview ? 'an earlier' : 'no'} preview sample`, async ({
+      page,
+    }) => {
+      await installSiteToolRegistry(page);
+      await openEditor(page, { empty: true });
+      const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
+      await executeSiteTool(page, 'worldview_create_box', {
+        expectedDocumentId: inspection.documentId,
+        expectedRevision: inspection.revision,
+        min: [-32, -32, 0],
+        max: [32, 32, 64],
+        material: 'DEV_FLOOR',
+      });
+      const start = await topWorldPoint(page, 0, 0);
+      const preview = await topWorldPoint(page, 32, 0);
+      const release = await topWorldPoint(page, 96, 0);
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      if (withPreview) await page.mouse.move(preview.x, preview.y);
+      // Model an undelivered/coalesced last move while retaining a real pointerup at its position.
+      await page.locator('[data-viewport="xy"] .source-canvas').evaluate((canvas) => {
+        canvas.addEventListener('pointermove', (event) => event.stopImmediatePropagation(), {
+          capture: true,
+          once: true,
+        });
+      });
+      await page.mouse.move(release.x, release.y);
+      await page.mouse.up();
+      const document = await readEditorDocument(page);
+      expect(deriveBrush(brushesInDocument(document)[0]!).bounds).toEqual({
+        min: [64, -32, 0],
+        max: [128, 32, 64],
+      });
+      await page.getByRole('button', { name: 'Undo', exact: true }).click();
+      const undone = await readEditorDocument(page);
+      expect(deriveBrush(brushesInDocument(undone)[0]!).bounds).toEqual({
+        min: [-32, -32, 0],
+        max: [32, 32, 64],
+      });
+    });
+  }
+
+  test('rapid perspective creation and movement retain their committed geometry', async ({
+    page,
+  }) => {
+    // Reproduce the live browser's lost-capture-before-release order using a native release.
+    await page.addInitScript(() => {
+      window.addEventListener(
+        'pointerup',
+        (event) => {
+          if (!(event.target instanceof HTMLCanvasElement)) return;
+          event.target.dispatchEvent(
+            new PointerEvent('lostpointercapture', {
+              bubbles: true,
+              pointerId: event.pointerId,
+              buttons: 0,
+              clientX: event.clientX,
+              clientY: event.clientY,
+            }),
+          );
+        },
+        { capture: true },
+      );
+    });
+    await installSiteToolRegistry(page);
+    await openEditor(page, { empty: true });
+    await page.getByRole('button', { name: 'Show Perspective only', exact: true }).click();
+    const canvas = page.getByLabel('Perspective map viewport', { exact: true });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const start = await perspectiveWorldPoint(page, [-64, -64, 0]);
+      const end = await perspectiveWorldPoint(page, [64, 32, 0]);
+      await page.keyboard.down('Shift');
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      // Model a release swallowed/retargeted at the canvas after reaching the window.
+      await canvas.evaluate((element) =>
+        element.addEventListener('pointerup', (event) => event.stopImmediatePropagation(), {
+          capture: true,
+          once: true,
+        }),
+      );
+      await page.mouse.move(end.x, end.y);
+      await page.mouse.up();
+      await page.keyboard.up('Shift');
+      await expect(page.locator('#status-message')).not.toContainText('cancelled');
+      const created = brushesInDocument(await readEditorDocument(page));
+      expect(created).toHaveLength(1);
+      const before = deriveBrush(created[0]!).bounds!;
+      const center: [number, number, number] = [
+        (before.min[0] + before.max[0]) / 2,
+        (before.min[1] + before.max[1]) / 2,
+        before.max[2],
+      ];
+      const moveStart = await perspectiveWorldPoint(page, center);
+      const moveEnd = await perspectiveWorldPoint(page, [
+        center[0] + 64,
+        center[1] + 32,
+        center[2],
+      ]);
+      await page.mouse.move(moveStart.x, moveStart.y);
+      await page.mouse.down();
+      await canvas.evaluate((element) =>
+        element.addEventListener('pointerup', (event) => event.stopImmediatePropagation(), {
+          capture: true,
+          once: true,
+        }),
+      );
+      await page.mouse.move(moveEnd.x, moveEnd.y);
+      await page.mouse.up();
+      const moved = brushesInDocument(await readEditorDocument(page));
+      expect(deriveBrush(moved[0]!).bounds).not.toEqual(before);
+      await canvas.focus();
+      await page.keyboard.press('Control+z');
+      expect(deriveBrush(brushesInDocument(await readEditorDocument(page))[0]!).bounds).toEqual(
+        before,
+      );
+      await canvas.focus();
+      await page.keyboard.press('Control+z');
+      expect(brushesInDocument(await readEditorDocument(page))).toHaveLength(0);
+    }
+  });
+
   test('navigates the perspective camera without changing the active tool or map', async ({
     page,
   }) => {
@@ -154,7 +277,8 @@ test.describe('Editor navigation and contextual actions', () => {
     await openEditor(page);
     const brushPoint = await perspectivePoint(page, 0.5, 0.58);
     await page.mouse.click(brushPoint.x, brushPoint.y);
-    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await page.getByRole('button', { name: 'More edit actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Copy', exact: true }).click();
 
     const point = await perspectivePoint(page, 0.8, 0.2);
     await page.mouse.move(point.x, point.y);
@@ -163,9 +287,11 @@ test.describe('Editor navigation and contextual actions', () => {
     await page.mouse.up({ button: 'right' });
     // Paste immediately, without another hover event to refresh the surface pick.
     await page.keyboard.press('Control+v');
+    await expect(page.locator('#document-revision')).toHaveText('1');
     const releaseBounds = await page.locator('#brush-bounds').textContent();
     await page.keyboard.press('Control+z');
 
+    await expect(page.locator('#document-revision')).toHaveText('2');
     await page.mouse.move(point.x + 41, point.y + 20);
     await page.mouse.move(point.x + 40, point.y + 20);
     await page.keyboard.press('Control+v');
@@ -231,8 +357,11 @@ test.describe('Editor navigation and contextual actions', () => {
     if (!topBounds) throw new Error('Top viewport bounds are unavailable');
     await top.hover({ position: { x: topBounds.width / 2, y: topBounds.height / 2 } });
     await expect(top).toBeFocused();
-    await expect(perspective).toHaveAttribute('data-selection-guide', 'true');
+    await expect(perspective).toHaveAttribute('data-selection-guide', 'false');
     await expect(top).toHaveAttribute('data-selection-guide', 'false');
+
+    await perspective.hover({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
+    await expect(perspective).toHaveAttribute('data-selection-guide', 'true');
 
     await perspective.hover({ position: emptyPerspective });
     await expect(perspective).toBeFocused();
@@ -316,7 +445,9 @@ test.describe('Editor navigation and contextual actions', () => {
       }),
       'a Windows-style contextmenu event retargeted after the popover opens',
     ).toBe(true);
-    await expect(menu.locator('.viewport-context-heading')).toContainText('3D view');
+    await expect(menu.locator('.viewport-context-heading, .wv-menu-section-heading')).toHaveCount(
+      0,
+    );
     await expect(page.locator(':focus')).toHaveAttribute('role', 'menuitem');
     await page.keyboard.press('End');
     await expect(page.locator(':focus')).not.toHaveAttribute('aria-disabled', 'true');
@@ -330,6 +461,7 @@ test.describe('Editor navigation and contextual actions', () => {
     await expect(page.locator('#document-revision')).toHaveText('0');
 
     await page.mouse.click(point.x, point.y, { button: 'right' });
+    await expect(menu.getByRole('menuitem', { name: 'Select face', exact: true })).toHaveCount(0);
     await menu.getByRole('menuitem', { name: 'Reveal DEV_FLOOR', exact: true }).click();
     await expect(page.getByRole('tab', { name: 'Face', exact: true })).toHaveAttribute(
       'aria-selected',
@@ -345,6 +477,7 @@ test.describe('Editor navigation and contextual actions', () => {
     await expect(menu).toBeHidden();
     await expect(page.locator('#selection-kind')).toHaveText('Brush');
     await page.mouse.click(point.x, point.y, { button: 'right' });
+    await expect(menu.getByRole('menuitem', { name: 'Select object', exact: true })).toHaveCount(0);
     await menu.getByRole('menuitem', { name: 'Focus selection', exact: true }).click();
     await expect(page.locator('#status-message')).toContainText(
       'Framed the selection in every viewport.',
@@ -419,13 +552,14 @@ test.describe('Editor navigation and contextual actions', () => {
     const first = await topWorldPoint(page, -128, 0);
     await page.mouse.click(first.x, first.y);
 
-    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await page.getByRole('button', { name: 'More edit actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Copy', exact: true }).click();
     await expect(page.locator('#status-message')).toContainText('Copied selected objects');
 
     const destination = await perspectiveWorldPoint(page, [0, 0, 64]);
     await page.mouse.move(destination.x, destination.y);
-    await expect(page.getByRole('button', { name: 'Paste', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Paste', exact: true }).click();
+    await page.getByRole('button', { name: 'More edit actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Paste', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('4');
     await expect(page.locator('#brush-bounds')).toHaveText('-32 -32 64 to 32 32 128');
     await expect(page.locator('#status-message')).toContainText('PERSPECTIVE pointer');
@@ -433,7 +567,8 @@ test.describe('Editor navigation and contextual actions', () => {
 
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('3');
-    await page.getByRole('button', { name: 'Paste at original position', exact: true }).click();
+    await page.getByRole('button', { name: 'More edit actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Paste at original position', exact: true }).click();
     await expect(page.locator('#brush-count')).toHaveText('4');
     await expect(page.locator('#brush-bounds')).toHaveText('-160 -32 0 to -96 32 64');
     await expect(page.locator('#status-message')).toContainText('original position');
@@ -460,12 +595,14 @@ test.describe('Editor navigation and contextual actions', () => {
     await page.getByRole('button', { name: 'Apply source', exact: true }).click();
     const source = await topWorldPoint(page, -128, 0);
     await page.mouse.click(source.x, source.y);
-    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await page.getByRole('button', { name: 'More edit actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Copy', exact: true }).click();
 
     const empty = await viewportPoint(page, 0, 0.08, 0.08);
     await page.mouse.move(empty.x, empty.y);
     const camera = await perspectiveCamera(page);
-    await page.getByRole('button', { name: 'Paste', exact: true }).click();
+    await page.getByRole('button', { name: 'More edit actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Paste', exact: true }).click();
 
     const document = await readEditorDocument(page);
     const pasted = brushesInDocument(document).at(-1)!;

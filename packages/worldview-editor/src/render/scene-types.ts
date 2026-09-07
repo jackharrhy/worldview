@@ -1,5 +1,6 @@
 import type {
   Bounds,
+  FaceSelection,
   EditorObjectViewState,
   EditorSelection,
   EntityDefinitionCatalog,
@@ -55,6 +56,15 @@ export interface SelectionBuffers {
 }
 
 export interface ToolPreviewBuffers {
+  readonly resizeFace: LineBuffer;
+  readonly resizeFaceSelection: FaceSelection | null;
+  readonly hull: {
+    readonly polygon: readonly Vec3[];
+    readonly grid: LineBuffer;
+    readonly lines: LineBuffer;
+    readonly handles: LineBuffer;
+    readonly face: LineBuffer;
+  };
   readonly lines: LineBuffer;
   readonly selectionGuide: LineBuffer;
   readonly scaleBounds: Bounds | null;

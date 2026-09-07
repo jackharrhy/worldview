@@ -131,16 +131,27 @@ export class WorkspaceLayoutPort extends EditorUiPort<WorkspaceLayoutSnapshot> {
 }
 
 export interface ViewportPresentationSnapshot {
+  readonly fieldOfView: number;
+  readonly defaultFieldOfView: number;
   readonly showingCompiled: boolean;
   readonly perspectiveMode: string;
   readonly perspectiveTitle: string;
   readonly error: string | null;
 }
 
-export class ViewportPresentationPort extends EditorUiPort<ViewportPresentationSnapshot> {
+export class ViewportPresentationPort extends EditorUiPort<
+  ViewportPresentationSnapshot,
+  {
+    setFieldOfView(value: number): void;
+    saveDefaultFieldOfView(): void;
+    restoreFactoryFieldOfView(): void;
+  }
+> {
   public constructor() {
     super({
       showingCompiled: false,
+      fieldOfView: 60,
+      defaultFieldOfView: 60,
       perspectiveMode: 'EDIT',
       perspectiveTitle: '',
       error: null,
@@ -262,8 +273,6 @@ export interface ViewportContextMenuSnapshot {
   readonly open: boolean;
   readonly x: number;
   readonly y: number;
-  readonly heading: string;
-  readonly detail: string;
   readonly sections: readonly ContextMenuSectionSnapshot[];
 }
 
@@ -276,8 +285,6 @@ const CLOSED_VIEWPORT_CONTEXT_MENU: ViewportContextMenuSnapshot = {
   open: false,
   x: 0,
   y: 0,
-  heading: '',
-  detail: '',
   sections: [],
 };
 

@@ -2,6 +2,7 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import { Tooltip, TooltipTrigger } from 'react-aria-components/Tooltip';
 
 import { Button, type ButtonProps } from './button.js';
+import { GeometryIcon, hasGeometryIcon } from './geometry-icon.js';
 import { ICON_GLYPHS, type IconName } from './icon-registry.js';
 
 export type { IconName } from './icon-registry.js';
@@ -11,6 +12,12 @@ export interface IconProps extends Omit<HTMLAttributes<HTMLElement>, 'children'>
 }
 
 export function Icon({ name, className = '', ...props }: IconProps) {
+  if (hasGeometryIcon(name))
+    return (
+      <span className={`wv-icon ${className}`.trim()} aria-hidden="true" {...props}>
+        <GeometryIcon name={name} />
+      </span>
+    );
   return (
     <i
       className={`ph ph-${ICON_GLYPHS[name]} wv-icon ${className}`.trim()}

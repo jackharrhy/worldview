@@ -254,7 +254,7 @@
 }
 
 #issue-status[data-state='clean'] {
-  color: var(--success);
+  color: var(--muted);
 }
 
 .statusbar {

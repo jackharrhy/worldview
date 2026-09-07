@@ -11,12 +11,13 @@ with two-pixel control corners and square structural surfaces. Gradients, decora
 cards, and large ambient shadows do not belong on product routes. Motion is reserved for direct
 interaction feedback and must respect reduced-motion preferences.
 
-The live editor is viewport-first. Its top command bar keeps Home, New, Save, Undo, Redo, Source,
-and Compile visible, while open/create, recovery, build-result, and other document commands live in
-short named menus. Editing modes occupy a single vertical rail beside the viewports. Selection
-commands appear contextually in that rail, and persistent grid, texture-lock, visibility, and less
-common edit controls remain anchored at its foot. This is command hierarchy, not feature removal:
-stable action contracts and keyboard paths remain available to presenters and automation.
+The live editor is viewport-first. One compact top bar groups map-editing tools with separators;
+there is no vertical tool rail. The top-left document menu contains file operations, checkpoints,
+collaboration, build commands, and appearance settings. Its groups use separators without headings,
+and every label shares a left-aligned column with reserved icon space. Grid size is numeric beside
+texture lock. View headers use 3D/XY/XZ/YZ labels, and the status bar omits inactive compiler status.
+Selection commands live in the viewport context menu. Stable action contracts and keyboard paths
+remain available to presenters and automation.
 
 Shared route components begin in `apps/editor/src/components/ui.tsx`; focused control primitives may
 be split beneath `apps/editor/src/components/ui/` as the system grows. New UI must use these
@@ -59,7 +60,7 @@ states. React Spectrum styling is not used.
 
 ## Iconography
 
-Phosphor is the single icon family for Worldview-authored browser UI. Product components consume a
+Phosphor supplies general application icons; original geometric SVGs represent map-editing tools. Product components consume a
 typed semantic `Icon` registry instead of embedding raw `ph-*` names, Unicode action glyphs, copied
 SVGs, or icons from another family. Phosphor Regular is the default weight; shared components own
 optical size, color, focus, pressed, selected, disabled, tooltip, and accessible-name behavior.
@@ -69,6 +70,12 @@ composition. It must use the shared view box and optical rules and have its prov
 GPL editor artwork is a behavior reference, not an asset source. The application-wide migration is
 complete and the architecture check rejects raw Phosphor classes, action SVGs, and competing icon
 dialects outside the documented renderer allowlist.
+
+The editable V2 sheet at `apps/editor/public/design/worldview-icons-v2.svg` is linked from `/design`.
+It uses named vector groups and explicit geometry so external editors can modify each symbol.
+`icons-v2-notes.md` documents regeneration, provenance, and how to port edits into the semantic icon
+registry. Dark surfaces use neutral zinc-derived tokens; geometry icons use restrained colored
+accents with neutral construction lines. Menus have three-pixel corners and a compact drop shadow.
 
 ## Implemented primitives
 

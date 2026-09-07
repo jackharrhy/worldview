@@ -7,7 +7,7 @@ import {
 } from '../core/index.js';
 
 const GUIDE_LENGTH = 1_024;
-const GUIDE_FADE_START = GUIDE_LENGTH * 0.75;
+const GUIDE_FADE_START = GUIDE_LENGTH * 0.15;
 
 export function selectionContainsHoveredObject(
   selection: EditorSelection | null,
@@ -72,8 +72,15 @@ export function appendSelectionBoundsGuide(
   bounds: Bounds,
   color: Vec3,
   fadeColor: Vec3,
+  guideTint: Vec3 = color,
 ): void {
   appendBoundsWireframe(lines, bounds, color);
+  // A light red source fades to transparent in the dedicated premultiplied-alpha pipeline.
+  const guideColor: Vec3 = [
+    0.35 + guideTint[0] * 0.65,
+    0.35 + guideTint[1] * 0.65,
+    0.35 + guideTint[2] * 0.65,
+  ];
   for (const x of [bounds.min[0], bounds.max[0]]) {
     for (const y of [bounds.min[1], bounds.max[1]]) {
       for (const z of [bounds.min[2], bounds.max[2]]) {
@@ -86,11 +93,11 @@ export function appendSelectionBoundsGuide(
           end[axis] += direction * GUIDE_LENGTH;
           lines.push(
             ...corner,
-            ...color,
+            ...guideColor,
             ...fadeStart,
-            ...color,
+            ...guideColor,
             ...fadeStart,
-            ...color,
+            ...guideColor,
             ...end,
             ...fadeColor,
           );

@@ -1,14 +1,3 @@
-.selection-brush-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.selection-brush-actions button {
-  min-width: 0;
-  padding-inline: 4px;
-}
-
 .transform-tool-section p {
   margin: 8px 0 0;
   color: var(--quiet);

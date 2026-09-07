@@ -43,6 +43,7 @@ async function openToolbarMenu(page: Page, name: string): Promise<void> {
 }
 
 async function chooseMaterialAction(page: Page, name: string): Promise<void> {
+  await page.getByRole('tab', { name: 'Face', exact: true }).click();
   await page.getByRole('button', { name: 'Material actions', exact: true }).click();
   await page.getByRole('menuitem', { name, exact: true }).click();
 }
@@ -333,6 +334,12 @@ async function controlContrast(locator: Locator): Promise<number> {
 }
 
 async function chooseSelectOption(page: Page, label: string, option: string): Promise<void> {
+  if (label === 'Editor theme') {
+    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Appearance', exact: true }).hover();
+    await page.getByRole('menuitemradio', { name: option, exact: true }).click();
+    return;
+  }
   await page.getByRole('button', { name: new RegExp(`${label}$`) }).click();
   await page.getByRole('option', { name: option, exact: true }).click();
 }

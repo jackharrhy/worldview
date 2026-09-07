@@ -50,7 +50,15 @@ function selectionBuffers(value: SelectionBuffers): readonly GPUBuffer[] {
 }
 
 function toolPreviewBuffers(value: ToolPreviewBuffers): readonly GPUBuffer[] {
-  return [value.lines.buffer, value.selectionGuide.buffer];
+  return [
+    value.lines.buffer,
+    value.selectionGuide.buffer,
+    value.resizeFace.buffer,
+    value.hull.lines.buffer,
+    value.hull.grid.buffer,
+    value.hull.handles.buffer,
+    value.hull.face.buffer,
+  ];
 }
 
 function referenceBuffers(value: ReferenceBuffers): readonly GPUBuffer[] {
@@ -146,6 +154,7 @@ export function sceneContributionKeys(input: SceneBuildInput): SceneDependencyKe
       input.theme,
     ],
     toolPreviews: [
+      input.tools.gridSize,
       activeDocument,
       input.selection.current,
       input.selection.hovered,
@@ -295,6 +304,7 @@ export function buildSceneBuffers(
     transformPivotTrace: input.tools.transformPivotTrace,
     movementTraces: input.tools.movementTraces,
     clipPoints: input.tools.clipPoints,
+    gridSize: input.tools.gridSize,
     hullPoints: input.tools.hullPoints,
     hullPreviewPoints: input.tools.hullPreviewPoints,
     sweepCaps: input.tools.sweepCaps,

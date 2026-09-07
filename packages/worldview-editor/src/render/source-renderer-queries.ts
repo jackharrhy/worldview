@@ -1,5 +1,8 @@
 import {
   deriveBrush,
+  createBrushSelection,
+  selectedBrushIds,
+  selectedFaceReferences,
   findBrush,
   intersectBrushRay,
   intersectPointEntityRay,
@@ -17,6 +20,7 @@ import type { IndexedEditorObject } from './object-spatial-index.js';
 import type { EditorObjectRayHit } from './viewport-common.js';
 import {
   addScaled,
+  availableFaceHandles,
   dot,
   isTransformTool,
   topologyHandleBounds,
@@ -135,4 +139,24 @@ export function snapClipHitToGrid(
   ];
   const correction = face.distance - dot(face.normal, snapped);
   return addScaled(snapped, face.normal, correction);
+}
+
+/** Visible canonical geometry only: moving previews never become their own snap targets. */
+export function faceSnapTargets(
+  document: MapDocument,
+  selection: EditorSelection | null,
+  view: EditorObjectViewState,
+): readonly FaceHandle[] {
+  const excluded = new Set([
+    ...selectedBrushIds(selection),
+    ...selectedFaceReferences(selection).map((face) => face.brushId),
+  ]);
+  const hiddenBrushes = new Set(view.hiddenBrushIds);
+  const hiddenEntities = new Set(view.hiddenEntityIds);
+  const ids = document.entities
+    .filter((entity) => !hiddenEntities.has(entity.id))
+    .flatMap((entity) => entity.primitives)
+    .filter((brush) => !excluded.has(brush.id) && !hiddenBrushes.has(brush.id))
+    .map((brush) => brush.id);
+  return availableFaceHandles(document, createBrushSelection(ids));
 }

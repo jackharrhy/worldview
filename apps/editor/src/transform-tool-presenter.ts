@@ -249,8 +249,10 @@ export class TransformToolPresenter {
     return delta;
   }
 
-  public selectedObjectBounds(document: MapDocument = this.state.session.document) {
-    const selection = this.state.session.selection;
+  public selectedObjectBounds(
+    document: MapDocument = this.state.session.document,
+    selection = this.state.session.selection,
+  ) {
     if (!selection || selection.faceId) return null;
     const selectionBrushBounds = selectedBrushIds(selection).flatMap((selectedBrushId) => {
       const brush = findBrush(document, selectedBrushId);

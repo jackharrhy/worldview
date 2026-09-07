@@ -18,6 +18,7 @@ type CommandEventState = EditorStatePort<
   | 'leakOverlayVisible'
   | 'portalOverlayVisible'
   | 'referenceSequence'
+  | 'renderer'
   | 'session'
   | 'showingCompiled'
   | 'textureLock',
@@ -66,10 +67,10 @@ export class CommandEvents {
   private invokeCommand(command: EditorCommandId): void {
     switch (command) {
       case 'undo':
-        this.state.session.undo();
+        if (!this.state.renderer?.undoHull()) this.state.session.undo();
         return;
       case 'redo':
-        this.state.session.redo();
+        if (!this.state.renderer?.redoHull()) this.state.session.redo();
         return;
       case 'repeat-commands':
         this.ports.document.repeatRecordedCommands();

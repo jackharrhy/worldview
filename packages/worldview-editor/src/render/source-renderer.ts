@@ -1,3 +1,4 @@
+import { HullDraft } from './hull-draft.js';
 import {
   brushesInDocument,
   createObjectSelection,
@@ -42,7 +43,6 @@ import { SourceMaterialResources } from './materials/source-material-resources.j
 import {
   availableFaceHandles as deriveAvailableFaceHandles,
   availableTopologyHandles as deriveAvailableTopologyHandles,
-  dedupeHullPoints,
   encodedTopologyPoint,
   inferClipPlane,
   isTransformTool,
@@ -72,6 +72,7 @@ import {
   selectedFaceHandle,
   selectionCenter,
   snapClipHitToGrid,
+  faceSnapTargets,
 } from './source-renderer-queries.js';
 const EMPTY_PREVIEW_OBJECT_IDS: readonly string[] = [];
 
@@ -106,8 +107,10 @@ export class EditorSourceRenderer {
   private topologyHover: TopologyHandle | null = null;
   private clipPoints: readonly Vec3[] = [];
   private clipPlanePoints: readonly [Vec3, Vec3, Vec3] | null = null;
-  private hullPoints: readonly Vec3[] = [];
-  private hullPreviewPoints: readonly Vec3[] = [];
+  private readonly hullDraft = new HullDraft(
+    (event) => this.onHullCreate?.(event),
+    () => this.rebuildScene(),
+  );
   private sweepCaps: readonly (readonly Vec3[])[] = [];
   private lastClipViewport: EditorViewportKind = 'perspective';
   private referenceScenes: readonly EditorReferenceScene[];
@@ -203,6 +206,8 @@ export class EditorSourceRenderer {
         interactionSelectionBounds(this.document, selection, this.tool, this.topologySelection),
       faceHandle: (selection) => selectedFaceHandle(this.document, selection),
       faceHandles: () => this.availableFaceHandles(),
+      faceSnapTargets: () =>
+        faceSnapTargets(this.canonicalDocument, this.selection, this.objectViewState),
       snapClipHit: (hit, gridSize) => snapClipHitToGrid(this.document, hit, gridSize),
       clipPoints: () => this.clipPoints,
       addClipPoints: (points, viewport, viewDirection) => {
@@ -300,21 +305,10 @@ export class EditorSourceRenderer {
       contextMenu: (event) => options.onContextMenu?.(event),
       create: (event) => options.onBrushCreate?.(event),
       hull: (event) => this.onHullCreate?.(event),
-      hullPoints: () => this.hullPoints,
-      previewHullPoints: (points) => {
-        this.hullPreviewPoints = dedupeHullPoints(points);
-        this.rebuildScene();
-      },
-      addHullPoints: (points, viewport) => {
-        this.hullPoints = dedupeHullPoints([...this.hullPoints, ...points]);
-        this.hullPreviewPoints = [];
-        this.rebuildScene();
-        this.onHullCreate?.({
-          phase: 'preview',
-          viewport,
-          points: this.hullPoints,
-        });
-      },
+      hullPoints: () => this.hullDraft.points,
+      previewHullPoints: (points) => this.hullDraft.setPreview(points),
+      addHullPoints: (points, viewport) =>
+        this.hullDraft.replace([...this.hullDraft.points, ...points], viewport),
       addHullFace: (face, viewport, clickedPoint) => {
         const brush = findBrush(this.document, face.brushId);
         const derivedFace = brush
@@ -322,22 +316,16 @@ export class EditorSourceRenderer {
           : null;
         if (!derivedFace) return;
         const clickedKey = clickedPoint ? encodedTopologyPoint(clickedPoint) : null;
-        this.hullPoints = dedupeHullPoints([
-          ...this.hullPoints.filter((point) => encodedTopologyPoint(point) !== clickedKey),
-          ...derivedFace.vertices,
-        ]);
-        this.hullPreviewPoints = [];
-        this.rebuildScene();
-        this.onHullCreate?.({
-          phase: 'preview',
+        this.hullDraft.replace(
+          [
+            ...this.hullDraft.points.filter((point) => encodedTopologyPoint(point) !== clickedKey),
+            ...derivedFace.vertices,
+          ],
           viewport,
-          points: this.hullPoints,
-        });
+        );
       },
       clearHullPreview: () => {
-        if (this.hullPreviewPoints.length === 0) return;
-        this.hullPreviewPoints = [];
-        this.rebuildScene();
+        if (this.hullDraft.preview.length) this.hullDraft.setPreview([]);
       },
       brushFaceSelections: (brushId) => {
         const brush = findBrush(this.document, brushId);
@@ -657,8 +645,8 @@ export class EditorSourceRenderer {
         transformPivotTrace: this.transformPivotTrace,
         movementTraces: this.movementTraces,
         clipPoints: this.clipPoints,
-        hullPoints: this.hullPoints,
-        hullPreviewPoints: this.hullPreviewPoints,
+        hullPoints: this.hullDraft.points,
+        hullPreviewPoints: this.hullDraft.preview,
         sweepCaps: this.sweepCaps,
         topologySelection: this.topologySelection,
         topologyHover: this.topologyHover,
@@ -821,27 +809,33 @@ export class EditorSourceRenderer {
     this.notifyClipPlaneChange();
   }
 
-  public commitHullBrush(): boolean {
-    if (this.tool !== 'hull' || this.hullPoints.length === 0) return false;
-    const points = this.hullPoints;
-    this.onHullCreate?.({ phase: 'commit', viewport: 'perspective', points });
-    this.hullPoints = [];
-    this.hullPreviewPoints = [];
-    this.rebuildScene();
+  public get hullHistoryActive(): boolean {
+    return this.tool === 'hull' && this.hullDraft.hasHistory;
+  }
+  public get canUndoHull(): boolean {
+    return this.hullHistoryActive && this.hullDraft.canUndo;
+  }
+  public get canRedoHull(): boolean {
+    return this.hullHistoryActive && this.hullDraft.canRedo;
+  }
+  public undoHull(): boolean {
+    return this.changeHullHistory('undo');
+  }
+  public redoHull(): boolean {
+    return this.changeHullHistory('redo');
+  }
+  private changeHullHistory(direction: 'undo' | 'redo'): boolean {
+    if (!this.hullHistoryActive) return false;
+    this.hullDraft.changeHistory(direction);
     return true;
   }
-
-  public clearHullPoints(): boolean {
-    if (this.hullPoints.length === 0 && this.hullPreviewPoints.length === 0) return false;
-    this.hullPoints = [];
-    this.hullPreviewPoints = [];
-    this.rebuildScene();
-    this.onHullCreate?.({
-      phase: 'cancel',
-      viewport: 'perspective',
-      points: [],
-    });
+  public commitHullBrush(): boolean {
+    if (this.tool !== 'hull' || !this.hullDraft.points.length) return false;
+    this.hullDraft.commit();
     return true;
+  }
+  public clearHullPoints(): boolean {
+    return this.hullDraft.clear();
   }
 
   public removeLastClipPoint(): boolean {
@@ -924,6 +918,13 @@ export class EditorSourceRenderer {
 
   public viewportCamera(kind: EditorViewportKind): EditorViewportCameraState | null {
     return this.viewports.find((viewport) => viewport.kind === kind)?.camera ?? null;
+  }
+
+  /** Adjusts the perspective lens without moving the camera or changing other views. */
+  public setPerspectiveFieldOfView(fieldOfViewDegrees: number): void {
+    if (this.disposed || !Number.isFinite(fieldOfViewDegrees)) return;
+    const viewport = this.viewports.find((view) => view.kind === 'perspective');
+    if (viewport) viewport.restoreCamera({ ...viewport.camera, fieldOfViewDegrees });
   }
 
   public restoreViewportCameras(

@@ -8,6 +8,7 @@ type KeyboardState = EditorStatePort<
   | 'activeGridSize'
   | 'activeTool'
   | 'openGroupId'
+  | 'renderer'
   | 'recovery'
   | 'session'
   | 'uvEditor'
@@ -174,7 +175,7 @@ export class KeyboardEvents {
         if (!editingText && this.ports.tools.handleKeyDown(event)) return;
         if (!editingText && event.key.toLowerCase() === 'b' && !event.metaKey && !event.ctrlKey) {
           event.preventDefault();
-          this.ports.tools.activate('create');
+          this.ports.tools.activate(this.state.activeTool === 'hull' ? 'select' : 'hull');
           return;
         }
         if (!editingText && event.key.toLowerCase() === 'n' && !event.metaKey && !event.ctrlKey) {
@@ -260,8 +261,9 @@ export class KeyboardEvents {
         }
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
           event.preventDefault();
-          if (event.shiftKey) this.state.session.redo();
-          else this.state.session.undo();
+          if (event.shiftKey) {
+            if (!this.state.renderer?.redoHull()) this.state.session.redo();
+          } else if (!this.state.renderer?.undoHull()) this.state.session.undo();
         }
       },
       { signal },

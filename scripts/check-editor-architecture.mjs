@@ -8,6 +8,10 @@ const MAX_APPLICATION_COMPOSITION_LINES = 350;
 const EDITOR_ARCHITECTURE_CONTRACT = 'docs/plan.md#editor-architecture';
 const roots = ['apps/editor/src', 'packages/worldview-editor/src'];
 const svgOwnershipAllowlist = new Set([
+  // Original semantic geometry glyphs, rendered only through the shared Icon component.
+  'apps/editor/src/components/ui/geometry-icon.tsx',
+  // Timing graph, not a product action icon.
+  'apps/editor/src/components/editor-shell/performance-panel.tsx',
   // React owns the element; the focused UV renderer owns only this SVG's drawing children.
   'apps/editor/src/components/editor-shell/texture-inspector.tsx',
   'apps/editor/src/uv-editor.ts',

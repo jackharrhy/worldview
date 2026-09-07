@@ -1,3 +1,4 @@
+import { connectDragLifecycle } from './viewport/drag-lifecycle.js';
 import { type Vec3 } from '../core/index.js';
 import type { EditorSweepDragEvent, EditorTransformDragEvent } from './types.js';
 import { topologyHandleBrushIds, topologyHandleVertices } from './viewport-geometry.js';
@@ -8,267 +9,13 @@ export class Viewport extends ViewportPointerMove {
   protected connectInput(): void {
     this.connectPointerDown();
     this.connectPointerMove();
-    this.canvas.addEventListener(
-      'pointerup',
-      (event) => {
-        const drag = this.dragState;
-        if (!drag || drag.pointerId !== event.pointerId) return;
-        this.dragState = null;
-        if (drag.button === 2 && drag.moved < 5 && drag.cameraMode !== 'orbit') {
-          const pointer = this.pointerPositionAt(event.clientX, event.clientY);
-          if (pointer) {
-            const hit = this.selectionHitAt(event.clientX, event.clientY);
-            this.interaction.contextMenu({
-              viewport: this.kind,
-              clientX: event.clientX,
-              clientY: event.clientY,
-              pointer,
-              hit: hit
-                ? isBrushRayHit(hit)
-                  ? { brushId: hit.brushId, faceId: hit.faceId }
-                  : { entityId: hit.entityId }
-                : null,
-              pointEntityOrigin: this.pointEntityOriginAt(event.clientX, event.clientY),
-            });
-          }
-        } else if (drag.button === 0 && drag.clipping) {
-          if (drag.clipMoving && drag.clipPointIndex !== null && drag.lastClipPoint) {
-            this.interaction.moveClipPoint(
-              drag.clipPointIndex,
-              drag.lastClipPoint,
-              this.kind,
-              this.viewDirection(),
-              drag.lastAxisRestriction,
-              'commit',
-            );
-          } else if (drag.clipPointIndex === null && drag.clipPoint) {
-            const end = this.clipPointAt(event.clientX, event.clientY);
-            const points = drag.moved >= 5 && end ? [drag.clipPoint, end] : [drag.clipPoint];
-            this.interaction.addClipPoints(points, this.kind, this.viewDirection());
-          }
-        } else if (drag.button === 0 && drag.hullBuilding) {
-          if (this.kind === 'perspective') {
-            if (drag.hullMoving && drag.lastHullPoints.length > 0) {
-              this.interaction.addHullPoints(drag.lastHullPoints, 'perspective');
-            } else if (drag.moved < 5 && drag.hullPoint) {
-              this.interaction.addHullPoints([drag.hullPoint], 'perspective');
-            } else {
-              this.interaction.clearHullPreview();
-            }
-          }
-        } else if (drag.button === 0 && drag.faceTransferMode && drag.faceTransferSource) {
-          if (drag.faceTransferTargets.length > 0) {
-            const transfer = () =>
-              this.interaction.transfer({
-                phase: 'commit',
-                viewport: this.kind,
-                mode: drag.faceTransferMode!,
-                source: drag.faceTransferSource!,
-                targets: drag.faceTransferTargets,
-              });
-            if (drag.faceTransferMoving || drag.moved >= 5) {
-              transfer();
-            } else {
-              if (this.pendingFaceTransferClick !== null) {
-                window.clearTimeout(this.pendingFaceTransferClick);
-              }
-              this.pendingFaceTransferClick = window.setTimeout(() => {
-                this.pendingFaceTransferClick = null;
-                transfer();
-              }, 220);
-            }
-          }
-        } else if (drag.button === 0 && drag.facePainting) {
-          // The shared interaction cleanup below clears the paint affordance.
-        } else if (drag.button === 0 && drag.sweepMoving && drag.lastSweep) {
-          this.interaction.sweep({
-            ...drag.lastSweep,
-            phase: 'commit',
-          } as EditorSweepDragEvent);
-        } else if (drag.button === 0 && drag.pivotMoving && drag.lastPivot) {
-          this.interaction.moveTransformPivot({
-            ...drag.lastPivot,
-            phase: 'commit',
-          });
-        } else if (drag.button === 0 && drag.transformMoving && drag.lastTransform) {
-          this.interaction.transform({
-            ...drag.lastTransform,
-            phase: 'commit',
-          } as EditorTransformDragEvent);
-        } else if (drag.button === 0 && drag.faceLasso) {
-          this.interaction.selectFaceLasso(
-            this.faceHandlesInRectangle(drag.startX, drag.startY, event.clientX, event.clientY),
-            drag.faceLassoEnsureSelected || event.shiftKey,
-            this.kind,
-          );
-        } else if (drag.button === 0 && drag.topologyLasso && drag.topologyKind) {
-          this.interaction.selectTopologyLasso(
-            this.topologyHandlesInRectangle(
-              drag.topologyKind,
-              drag.startX,
-              drag.startY,
-              event.clientX,
-              event.clientY,
-            ),
-            drag.topologyLassoAdditive || event.ctrlKey || event.metaKey,
-          );
-        } else if (
-          drag.button === 0 &&
-          drag.moved < 5 &&
-          drag.topologyKind === 'vertex' &&
-          drag.topologySnapTarget &&
-          drag.topologySelection &&
-          drag.topologyHandles.length > 0
-        ) {
-          const target = drag.topologySnapTarget.center;
-          const anchor = drag.topologyHandles.reduce((closest, handle) => {
-            const distance = Math.hypot(
-              handle.center[0] - target[0],
-              handle.center[1] - target[1],
-              handle.center[2] - target[2],
-            );
-            const closestDistance = Math.hypot(
-              closest.center[0] - target[0],
-              closest.center[1] - target[1],
-              closest.center[2] - target[2],
-            );
-            return distance < closestDistance ? handle : closest;
-          });
-          const delta: Vec3 = [
-            target[0] - anchor.center[0],
-            target[1] - anchor.center[1],
-            target[2] - anchor.center[2],
-          ];
-          this.interaction.topology(
-            {
-              phase: 'commit',
-              viewport: this.kind,
-              kind: 'vertex',
-              operation: 'snap',
-              selection: drag.topologySelection,
-              brushIds: topologyHandleBrushIds(drag.topologyHandles),
-              vertices: topologyHandleVertices(drag.topologyHandles),
-              delta,
-              anchor: anchor.center,
-              target,
-              snapMode: 'absolute',
-              movementPlane: 'viewport',
-              axisRestriction: null,
-            },
-            drag.topologyHandles,
-          );
-        } else if (
-          drag.button === 0 &&
-          drag.topologyMoving &&
-          drag.topologyKind &&
-          drag.topologySelection
-        ) {
-          this.interaction.topology(
-            {
-              phase: drag.lastDelta.some((component) => Math.abs(component) > Number.EPSILON)
-                ? 'commit'
-                : 'cancel',
-              viewport: this.kind,
-              kind: drag.topologyKind,
-              operation: drag.topologyOperation,
-              selection: drag.topologySelection,
-              brushIds: topologyHandleBrushIds(drag.topologyHandles),
-              vertices: topologyHandleVertices(drag.topologyHandles),
-              delta: drag.lastDelta,
-              snapMode: drag.lastTopologySnapMode,
-              movementPlane: drag.lastMovementPlane,
-              axisRestriction: drag.lastAxisRestriction,
-            },
-            drag.topologyHandles,
-          );
-        } else if (
-          drag.button === 0 &&
-          drag.faceMoving &&
-          drag.faceTranslating &&
-          drag.faceSelection
-        ) {
-          this.interaction.face({
-            phase: drag.lastDelta.some((component) => Math.abs(component) > Number.EPSILON)
-              ? 'commit'
-              : 'cancel',
-            viewport: this.kind,
-            selection: drag.faceSelection,
-            mode: 'translate',
-            delta: drag.lastDelta,
-            split: false,
-            stamp: false,
-          });
-        } else if (drag.button === 0 && drag.faceMoving && drag.faceSelection) {
-          this.interaction.face({
-            phase: Math.abs(drag.lastFaceDistance) > Number.EPSILON ? 'commit' : 'cancel',
-            viewport: this.kind,
-            selection: drag.faceSelection,
-            mode: 'normal',
-            distance: drag.lastFaceDistance,
-            split: drag.faceSplitting,
-            stamp: drag.faceStamping,
-          });
-        } else if (drag.button === 0 && drag.creating && drag.lastBounds) {
-          this.interaction.create({
-            phase: 'commit',
-            viewport: this.kind,
-            bounds: drag.lastBounds,
-            constraint: drag.lastCreationConstraint,
-          });
-        } else if (drag.button === 0 && drag.placingEntity && drag.moved < 5) {
-          const origin = this.pointEntityOriginAt(event.clientX, event.clientY);
-          if (origin) this.interaction.placePointEntity({ viewport: this.kind, origin });
-        } else if (drag.button === 0 && drag.moving && drag.moveSelection) {
-          this.interaction.drag(
-            {
-              phase: 'commit',
-              viewport: this.kind,
-              selection: drag.moveSelection,
-              delta: drag.lastDelta,
-              movementPlane: drag.lastMovementPlane,
-              axisRestriction: drag.lastAxisRestriction,
-              duplicate: drag.duplicating,
-            },
-            drag.planePoint ? [drag.planePoint] : [],
-          );
-        } else if (
-          drag.button === 0 &&
-          drag.moved < 5 &&
-          this.interaction.currentTool() !== 'sweep' &&
-          !drag.placingEntity &&
-          !drag.transform &&
-          !drag.topologyHandle &&
-          !drag.topologyKind
-        ) {
-          const currentSelection = this.interaction.currentSelection();
-          this.interaction.pick(drag.hit, this.kind, {
-            additive: Boolean(event.shiftKey && currentSelection?.faceId),
-            objectAdditive: Boolean(
-              drag.hit &&
-              !drag.hit.faceId &&
-              !currentSelection?.faceId &&
-              (event.ctrlKey || event.metaKey),
-            ),
-            expansion: 'single',
-          });
-        } else if (
-          drag.button === 0 &&
-          drag.moved < 5 &&
-          drag.topologyKind &&
-          !drag.topologyHandle
-        ) {
-          this.interaction.selectTopology(null, event.ctrlKey || event.metaKey);
-        }
-        if (drag.cameraMode && drag.moved >= 5) {
-          const pointerPosition = this.pointerPositionAt(event.clientX, event.clientY);
-          if (pointerPosition) this.interaction.pointerPosition(pointerPosition);
-        }
-        this.removeHandleLasso();
-        this.clearInteractionState();
-        if (!drag.pivotMoving) this.hideTransformReadout();
-      },
-      { signal: this.inputSignal },
-    );
+    connectDragLifecycle({
+      canvas: this.canvas,
+      signal: this.inputSignal,
+      current: () => this.dragState,
+      release: (event) => this.releaseDrag(event),
+      cancel: () => this.cancelDrag(),
+    });
     this.canvas.addEventListener(
       'dblclick',
       (event) => {
@@ -362,23 +109,6 @@ export class Viewport extends ViewportPointerMove {
               : event.ctrlKey || event.metaKey,
           expansion: event.altKey ? 'coplanar' : 'brush',
         });
-      },
-      { signal: this.inputSignal },
-    );
-    this.canvas.addEventListener(
-      'pointercancel',
-      (event) => {
-        if (this.dragState?.pointerId === event.pointerId) this.cancelDrag();
-      },
-      { signal: this.inputSignal },
-    );
-    this.canvas.addEventListener(
-      'lostpointercapture',
-      () => {
-        // Capture can be lost without a pointerup when the browser, OS, or another element takes
-        // ownership. End our transient candidate immediately so the next gesture cannot inherit a
-        // logically stuck drag.
-        if (this.dragState) this.cancelDrag();
       },
       { signal: this.inputSignal },
     );
@@ -490,6 +220,260 @@ export class Viewport extends ViewportPointerMove {
     );
   }
 
+  private releaseDrag(event: PointerEvent): void {
+    const drag = this.dragState;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    // A release can carry a position newer than the last delivered pointermove.
+    // Resolve that sample through the same constraints/previews before committing.
+    if (event.clientX !== drag.x || event.clientY !== drag.y) {
+      this.updatePointerPosition(event);
+    }
+    this.dragState = null;
+    if (drag.button === 2 && drag.moved < 5 && drag.cameraMode !== 'orbit') {
+      const pointer = this.pointerPositionAt(event.clientX, event.clientY);
+      if (pointer) {
+        const hit = this.selectionHitAt(event.clientX, event.clientY);
+        this.interaction.contextMenu({
+          viewport: this.kind,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          pointer,
+          hit: hit
+            ? isBrushRayHit(hit)
+              ? { brushId: hit.brushId, faceId: hit.faceId }
+              : { entityId: hit.entityId }
+            : null,
+          pointEntityOrigin: this.pointEntityOriginAt(event.clientX, event.clientY),
+        });
+      }
+    } else if (drag.button === 0 && drag.clipping) {
+      if (drag.clipMoving && drag.clipPointIndex !== null && drag.lastClipPoint) {
+        this.interaction.moveClipPoint(
+          drag.clipPointIndex,
+          drag.lastClipPoint,
+          this.kind,
+          this.viewDirection(),
+          drag.lastAxisRestriction,
+          'commit',
+        );
+      } else if (drag.clipPointIndex === null && drag.clipPoint) {
+        const end = this.clipPointAt(event.clientX, event.clientY);
+        const points = drag.moved >= 5 && end ? [drag.clipPoint, end] : [drag.clipPoint];
+        this.interaction.addClipPoints(points, this.kind, this.viewDirection());
+      }
+    } else if (drag.button === 0 && drag.hullBuilding) {
+      if (this.kind === 'perspective') {
+        if (drag.hullMoving && drag.lastHullPoints.length > 0) {
+          this.interaction.addHullPoints(drag.lastHullPoints, 'perspective');
+        } else if (drag.moved < 5 && drag.hullPoint) {
+          this.interaction.addHullPoints([drag.hullPoint], 'perspective');
+        } else {
+          this.interaction.clearHullPreview();
+        }
+      }
+    } else if (drag.button === 0 && drag.faceTransferMode && drag.faceTransferSource) {
+      if (drag.faceTransferTargets.length > 0) {
+        const transfer = () =>
+          this.interaction.transfer({
+            phase: 'commit',
+            viewport: this.kind,
+            mode: drag.faceTransferMode!,
+            source: drag.faceTransferSource!,
+            targets: drag.faceTransferTargets,
+          });
+        if (drag.faceTransferMoving || drag.moved >= 5) {
+          transfer();
+        } else {
+          if (this.pendingFaceTransferClick !== null) {
+            window.clearTimeout(this.pendingFaceTransferClick);
+          }
+          this.pendingFaceTransferClick = window.setTimeout(() => {
+            this.pendingFaceTransferClick = null;
+            transfer();
+          }, 220);
+        }
+      }
+    } else if (drag.button === 0 && drag.facePainting) {
+      // The shared interaction cleanup below clears the paint affordance.
+    } else if (drag.button === 0 && drag.sweepMoving && drag.lastSweep) {
+      this.interaction.sweep({
+        ...drag.lastSweep,
+        phase: 'commit',
+      } as EditorSweepDragEvent);
+    } else if (drag.button === 0 && drag.pivotMoving && drag.lastPivot) {
+      this.interaction.moveTransformPivot({
+        ...drag.lastPivot,
+        phase: 'commit',
+      });
+    } else if (drag.button === 0 && drag.transformMoving && drag.lastTransform) {
+      this.interaction.transform({
+        ...drag.lastTransform,
+        phase: 'commit',
+      } as EditorTransformDragEvent);
+    } else if (drag.button === 0 && drag.faceLasso) {
+      this.interaction.selectFaceLasso(
+        this.faceHandlesInRectangle(drag.startX, drag.startY, event.clientX, event.clientY),
+        drag.faceLassoEnsureSelected || event.shiftKey,
+        this.kind,
+      );
+    } else if (drag.button === 0 && drag.topologyLasso && drag.topologyKind) {
+      this.interaction.selectTopologyLasso(
+        this.topologyHandlesInRectangle(
+          drag.topologyKind,
+          drag.startX,
+          drag.startY,
+          event.clientX,
+          event.clientY,
+        ),
+        drag.topologyLassoAdditive || event.ctrlKey || event.metaKey,
+      );
+    } else if (
+      drag.button === 0 &&
+      drag.moved < 5 &&
+      drag.topologyKind === 'vertex' &&
+      drag.topologySnapTarget &&
+      drag.topologySelection &&
+      drag.topologyHandles.length > 0
+    ) {
+      const target = drag.topologySnapTarget.center;
+      const anchor = drag.topologyHandles.reduce((closest, handle) => {
+        const distance = Math.hypot(
+          handle.center[0] - target[0],
+          handle.center[1] - target[1],
+          handle.center[2] - target[2],
+        );
+        const closestDistance = Math.hypot(
+          closest.center[0] - target[0],
+          closest.center[1] - target[1],
+          closest.center[2] - target[2],
+        );
+        return distance < closestDistance ? handle : closest;
+      });
+      const delta: Vec3 = [
+        target[0] - anchor.center[0],
+        target[1] - anchor.center[1],
+        target[2] - anchor.center[2],
+      ];
+      this.interaction.topology(
+        {
+          phase: 'commit',
+          viewport: this.kind,
+          kind: 'vertex',
+          operation: 'snap',
+          selection: drag.topologySelection,
+          brushIds: topologyHandleBrushIds(drag.topologyHandles),
+          vertices: topologyHandleVertices(drag.topologyHandles),
+          delta,
+          anchor: anchor.center,
+          target,
+          snapMode: 'absolute',
+          movementPlane: 'viewport',
+          axisRestriction: null,
+        },
+        drag.topologyHandles,
+      );
+    } else if (
+      drag.button === 0 &&
+      drag.topologyMoving &&
+      drag.topologyKind &&
+      drag.topologySelection
+    ) {
+      this.interaction.topology(
+        {
+          phase: drag.lastDelta.some((component) => Math.abs(component) > Number.EPSILON)
+            ? 'commit'
+            : 'cancel',
+          viewport: this.kind,
+          kind: drag.topologyKind,
+          operation: drag.topologyOperation,
+          selection: drag.topologySelection,
+          brushIds: topologyHandleBrushIds(drag.topologyHandles),
+          vertices: topologyHandleVertices(drag.topologyHandles),
+          delta: drag.lastDelta,
+          snapMode: drag.lastTopologySnapMode,
+          movementPlane: drag.lastMovementPlane,
+          axisRestriction: drag.lastAxisRestriction,
+        },
+        drag.topologyHandles,
+      );
+    } else if (drag.button === 0 && drag.faceMoving && drag.faceTranslating && drag.faceSelection) {
+      this.interaction.face({
+        phase: drag.lastDelta.some((component) => Math.abs(component) > Number.EPSILON)
+          ? 'commit'
+          : 'cancel',
+        viewport: this.kind,
+        selection: drag.faceSelection,
+        mode: 'translate',
+        delta: drag.lastDelta,
+        split: false,
+        stamp: false,
+      });
+    } else if (drag.button === 0 && drag.faceMoving && drag.faceSelection) {
+      this.interaction.face({
+        phase: Math.abs(drag.lastFaceDistance) > Number.EPSILON ? 'commit' : 'cancel',
+        viewport: this.kind,
+        selection: drag.faceSelection,
+        mode: 'normal',
+        distance: drag.lastFaceDistance,
+        split: drag.faceSplitting,
+        stamp: drag.faceStamping,
+      });
+    } else if (drag.button === 0 && drag.creating && drag.lastBounds) {
+      this.interaction.create({
+        phase: 'commit',
+        viewport: this.kind,
+        bounds: drag.lastBounds,
+        constraint: drag.lastCreationConstraint,
+      });
+    } else if (drag.button === 0 && drag.placingEntity && drag.moved < 5) {
+      const origin = this.pointEntityOriginAt(event.clientX, event.clientY);
+      if (origin) this.interaction.placePointEntity({ viewport: this.kind, origin });
+    } else if (drag.button === 0 && drag.moving && drag.moveSelection) {
+      this.interaction.drag(
+        {
+          phase: 'commit',
+          viewport: this.kind,
+          selection: drag.moveSelection,
+          delta: drag.lastDelta,
+          movementPlane: drag.lastMovementPlane,
+          axisRestriction: drag.lastAxisRestriction,
+          duplicate: drag.duplicating,
+        },
+        drag.planePoint ? [drag.planePoint] : [],
+      );
+    } else if (
+      drag.button === 0 &&
+      drag.moved < 5 &&
+      this.interaction.currentTool() !== 'sweep' &&
+      !drag.placingEntity &&
+      !drag.transform &&
+      !drag.topologyHandle &&
+      !drag.topologyKind
+    ) {
+      const currentSelection = this.interaction.currentSelection();
+      this.interaction.pick(drag.hit, this.kind, {
+        additive: Boolean(event.shiftKey && currentSelection?.faceId),
+        objectAdditive: Boolean(
+          drag.hit &&
+          !drag.hit.faceId &&
+          !currentSelection?.faceId &&
+          (event.ctrlKey || event.metaKey),
+        ),
+        expansion: 'single',
+      });
+    } else if (drag.button === 0 && drag.moved < 5 && drag.topologyKind && !drag.topologyHandle) {
+      this.interaction.selectTopology(null, event.ctrlKey || event.metaKey);
+    }
+    if (drag.cameraMode && drag.moved >= 5) {
+      const pointerPosition = this.pointerPositionAt(event.clientX, event.clientY);
+      if (pointerPosition) this.interaction.pointerPosition(pointerPosition);
+    }
+    delete this.canvas.dataset.faceMagnet;
+    this.removeHandleLasso();
+    this.clearInteractionState();
+    if (!drag.pivotMoving) this.hideTransformReadout();
+  }
+
   protected cancelDrag(): void {
     const drag = this.dragState;
     if (!drag) return;
@@ -596,6 +580,7 @@ export class Viewport extends ViewportPointerMove {
     }
     this.clearInteractionState();
     this.hideTransformReadout();
+    delete this.canvas.dataset.faceMagnet;
     this.removeHandleLasso();
   }
 }

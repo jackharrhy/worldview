@@ -12,12 +12,12 @@ interface EditorShellProps {
 }
 
 export function EditorShell({ shellState, onReady }: EditorShellProps) {
-  const issues = useSyncExternalStore(
+  const issuesOpen = useSyncExternalStore(
     shellState.issueBrowser.subscribe,
-    shellState.issueBrowser.getSnapshot,
+    () => shellState.issueBrowser.getSnapshot().open,
   );
   return (
-    <main ref={onReady} className={`editor-shell${issues.open ? ' issues-open' : ''}`}>
+    <main ref={onReady} className={`editor-shell${issuesOpen ? ' issues-open' : ''}`}>
       <EditorChrome shellState={shellState} />
       <EditorDialogs shellState={shellState} />
       <EditorWorkspace shellState={shellState} />

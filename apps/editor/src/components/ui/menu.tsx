@@ -18,6 +18,7 @@ export function Menu<T extends object>({ className = '', ...props }: AriaMenuPro
 
 export interface MenuItemProps extends Omit<AriaMenuItemProps, 'children' | 'className'> {
   readonly label: string;
+  readonly title?: string;
   readonly icon?: IconName;
   readonly shortcut?: string;
   readonly submenu?: boolean;
@@ -32,6 +33,7 @@ export function MenuItem({
   label,
   icon,
   shortcut,
+  title,
   submenu = false,
   referenceState,
   ...props
@@ -44,9 +46,9 @@ export function MenuItem({
       aria-keyshortcuts={accessibleShortcut(shortcut)}
       {...props}
     >
-      <span className="wv-menu-item-label">
+      <span className="wv-menu-item-label" title={title}>
         {icon ? <Icon name={icon} /> : null}
-        {label}
+        <span className="wv-menu-item-text">{label}</span>
       </span>
       {shortcut ? (
         <kbd className="wv-menu-shortcut" aria-hidden="true">
@@ -58,10 +60,14 @@ export function MenuItem({
   );
 }
 
-export function MenuSection({ label, children }: PropsWithChildren<{ readonly label: string }>) {
+export function MenuSection({
+  label,
+  children,
+  showHeading = true,
+}: PropsWithChildren<{ readonly label: string; readonly showHeading?: boolean }>) {
   return (
-    <AriaMenuSection className="wv-menu-section">
-      <Header className="wv-menu-section-heading">{label}</Header>
+    <AriaMenuSection className="wv-menu-section" aria-label={label}>
+      {showHeading ? <Header className="wv-menu-section-heading">{label}</Header> : null}
       {children}
     </AriaMenuSection>
   );
@@ -80,17 +86,19 @@ export function Popover({ className = '', ...props }: PopoverProps) {
 export function Submenu({
   label,
   disabled = false,
+  menuProps,
   children,
 }: {
   readonly label: string;
   readonly disabled?: boolean;
+  readonly menuProps?: Omit<AriaMenuProps<object>, 'children'>;
   readonly children: ReactNode;
 }) {
   return (
     <SubmenuTrigger delay={100}>
       <MenuItem label={label} isDisabled={disabled} submenu />
       <Popover className="wv-submenu-popover" placement="right top" offset={2}>
-        <Menu aria-label={label} autoFocus="first">
+        <Menu aria-label={label} autoFocus="first" {...menuProps}>
           {children}
         </Menu>
       </Popover>

@@ -105,8 +105,8 @@ texture and grid treatment and gain only an amber face boundary on top of the br
 selection outline. Confirm the other brush edges stay red and the document selection and revision do
 not change until the actual drag or click begins.
 
-Resize targeting extends ten CSS pixels beyond selected-brush silhouette edges. Verify this with a
-pointer just outside the projected edge: Shift-hover must propose the hidden adjacent face and a
+Resize targeting falls back to the nearest selected-brush silhouette edge without a distance cutoff. Verify this with a
+pointer well outside the projected edge: Shift-hover must propose the hidden adjacent face and a
 Shift-drag must commit a face move. Direct face hits retain priority, and edges between two equally
 front-facing or equally back-facing faces are not eligible.
 
@@ -146,3 +146,118 @@ tab and require the matching `[data-inspector-panel]` to be visible while forced
 panels are inert and hidden. Quake II surface checkboxes should be toggled with keyboard Space on the
 named checkbox (their native inputs are visually hidden); verify the serialized face flags/value,
 not only the visual control state.
+
+Performance diagnostics: activate Performance in the status bar. Verify live browser FPS, the
+frame-time graph, and editor CPU timing in an empty map; idle render-call counts may be zero.
+Record a short camera navigation, stop recording, then Show capture JSON and inspect the summary
+and bounded samples. Hidden-tab intervals are excluded. Closing the panel stops monitoring;
+these diagnostics do not measure GPU execution time. Do not automate the camera while a user
+is navigating the shared browser.
+
+Camera responsiveness regression coverage lives in `editor-performance-diagnostics.spec.ts`: hold
+W in an empty map, verify movement and unchanged map revision, then inspect the capture. The graph
+must update at its 250 ms publication interval rather than on each camera event. Keep the live
+camera/pointer readout subscriptions below inspector and status-control component boundaries.
+
+The diagnostics regression also draws a brush with many pointer samples: preview feedback must
+remain visible, map revision stays unchanged until release, and the diagnostics graph must remain
+at its publication cadence. Issue-list updates must not propagate through the editor shell when
+the issue panel open/closed state is unchanged.
+
+Toolbar and selection-driven inspector coverage is in `editor-toolbar.spec.ts`. Tools live in the
+horizontal `.topbar`; `.workspace` begins at the left window edge. Open the `Worldview document menu`
+for New, Open, Project, Save, Export normalized, and recovery actions. Secondary selection commands
+live in `More edit actions`. Grid choices display only the number (`16`, etc.), beside texture lock. Shift-click a face and require Face
+to become active without moving focus from the canvas; selecting a brush/entity activates Entity.
+Hover must preserve a manually chosen inspector tab. Verify both menu downloads and narrow-width
+horizontal access to the tools, and keep camera-performance regression coverage passing.
+
+The cube document menu also owns Collaboration, Appearance theme choices, and the Build submenu.
+Viewport labels are 3D, XY, XZ, and YZ; accessible canvas names remain descriptive. Verify these
+controls through `editor-toolbar.spec.ts`, including theme changes and opening collaboration.
+
+Fast-drag regression coverage in `editor-navigation.spec.ts` suppresses the last movement sample
+and requires the native release position to commit, with and without an earlier preview. One undo
+must restore the original geometry.
+
+Perspective drag coverage also blocks target-level pointerup delivery for rapid brush creation and
+movement. Window capture must still commit both gestures and restore their geometry on undo.
+
+The rapid perspective regression reproduces the live browser order `lostpointercapture` then
+`pointerup`. Both creation and movement must commit, including when target-level pointerup is
+suppressed. `editor-face-geometry.spec.ts` separately verifies genuine capture loss and pointercancel
+still cancel previews and leave the next gesture usable.
+
+Invalid face resizing retains the last valid preview and commits it on release. The focused face
+geometry regressions cover both invalid release and returning to the valid range, including undo.
+
+The perspective header FOV popup edits vertical FOV from 20–120 degrees. `editor-toolbar.spec.ts`
+verifies current/default indicators, reset, persisted preferred default, factory 60-degree reset, and
+Shift-scroll updates through the real camera.
+
+Selection switches inspector tabs only when the inspector is already open. A closed inspector stays
+closed for face and object selection and retains its previously chosen tab when reopened.
+
+Hull verification in `editor-brush-construction.spec.ts` checks the selected volumetric preview
+during Shift-drag, retained bounds after release, unchanged canonical WebMCP revision before commit,
+and selection/bounds after Enter plus undo. Screenshots go to `artifacts/verification/hull/`.
+
+`B` activates Hull (`G` is an alias). Verify hull draft undo/redo via toolbar and Ctrl/Command+Z,
+then verify committed brush undo/redo. Tooltips show bracketed shortcuts; controls with no
+registered shortcut omit the suffix.
+
+Hull construction previews use yellow circular handles and wire edges rather than shaded brush
+selection. Verify Shift press/release over the planar interior toggles `data-hull-face` even with
+no mouse movement, then extrusion removes the fill and expands `data-hull-handles` from 4 to 8.
+Capture the planar, Shift-highlighted, extruding, and committed frames; commit clears construction
+handles and restores normal brush selection. Geometry and undo assertions remain unchanged.
+
+Verify hull surface visibility in the dark theme: the volumetric preview has translucent neutral
+faces and a contrasting surface grid, including after release. Require nonzero submitted
+`data-hull-grid-segments` and `data-hull-surface-triangles`, then inspect the GPU screenshot.
+
+Resize browser coverage also presses/releases Shift without pointer movement, checks the submitted
+`data-resize-face-edges`, and captures the hidden-face outline before and during extrusion.
+
+The shared drag lifecycle regression delays native pointerup after capture loss while retaining
+compatibility mouseup. Face resize must commit once, survive the delayed duplicate release and
+capture-loss recovery window, and undo exactly. Keep the rapid perspective creation/move and genuine
+pointercancel/capture-loss cancellation tests passing alongside it.
+
+`editor-surface-grid.spec.ts` captures unselected textured brushes with 16/32-unit grids in dark and
+light themes and verifies the source document stays unchanged. Inspect the GPU screenshots under
+`artifacts/verification/surface-grid/` for visible face-aligned lines and distance fading.
+
+Magnetic face extrusion: `editor-face-magnet.spec.ts` loads the dedicated playground, snaps to its
+75-unit off-grid plane, continues beyond the attraction zone, returns and commits exactly, then
+undoes. `data-face-magnet` reports the current snapped distance during a gesture. Unit tests cover
+footprint filtering and separate attraction/release thresholds.
+
+The face-magnet regression also checks cyan alignment while Ctrl bypasses magnetism, removal on Shift release, recalculation on Shift re-entry after an aligned commit, and removal after Undo. `data-face-alignment` identifies the displayed
+target independently of `data-face-magnet`.
+
+The face-magnet browser regression starts a second drag from an aligned position, moves away, then
+returns exactly to the original pointer position. Require zero-distance magnetism and cyan feedback,
+unchanged final bounds, and no extra undo step.
+
+Shared stroke rendering uses pixel-space expansion plus analytic coverage with 4× MSAA. After line
+shader changes, run the near-plane grid, selection-guide, face-magnet and surface-grid browser
+regressions; inspect diagonal outlines and thin grids in the saved GPU images.
+
+Distant rendering checks in `editor-surface-grid.spec.ts` capture multiple perspective distances and
+reject GPU/console errors. Inspect `distant-*.png` for dense-grid moiré and texture minification;
+`material-mipmaps.test.ts` verifies checkerboard averaging and non-power-of-two edge coverage. Keep
+near-plane and selection/magnet stroke checks when changing homogeneous clipping.
+
+Selection-brush queries now live in the viewport right-click menu. The selection browser regression
+checks Touching, Enclosed, and Enclosed in 2D with undo, including invoking Enclosed with the
+inspector closed. The 2D query must use the menu's originating viewport; perspective disables it.
+
+Context-menu browser coverage checks that selected objects and faces omit redundant selection
+commands, while other commands and keyboard navigation remain available. Toolbar coverage checks
+that document-menu section headings are absent and iconless labels align with icon-bearing labels.
+
+The design-route browser specimen check verifies the V2 toolbar, both themes, interactive controls,
+and the downloadable 84-icon SVG (named vector groups and a successfully rendered image). Evidence
+is under `artifacts/verification/design-v2/`. Keep previews using the shared runtime icon styles;
+external sheet edits are explicitly ported back to the runtime components, not auto-imported.

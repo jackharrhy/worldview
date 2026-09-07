@@ -196,46 +196,6 @@ export function GroupToolSection({ shellState }: { readonly shellState: EditorSh
   );
 }
 
-export function SelectionBrushSection({ shellState }: { readonly shellState: EditorShellState }) {
-  const { selectionBrush } = useSyncExternalStore(
-    shellState.objectTools.subscribe,
-    shellState.objectTools.getSnapshot,
-  );
-  return (
-    <div
-      id="selection-brush-section"
-      className="selection-brush-section inspector-section"
-      hidden={!selectionBrush.visible}
-    >
-      <div className="section-heading">
-        <h3>Selection brush</h3>
-        <span id="selection-brush-count">{selectionBrush.countLabel}</span>
-      </div>
-      <div className="selection-brush-actions">
-        {[
-          ['touching', 'Touching'],
-          ['inside', 'Enclosed'],
-          ['inside-projected', 'Enclosed in 2D'],
-        ].map(([mode, label]) => (
-          <Button
-            key={mode}
-            type="button"
-            size="compact"
-            onPress={() =>
-              shellState.objectTools.dispatch({
-                type: 'selection-query',
-                mode: mode as 'touching' | 'inside' | 'inside-projected',
-              })
-            }
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function FlipSection({ shellState }: { readonly shellState: EditorShellState }) {
   const { flipVisible } = useSyncExternalStore(
     shellState.objectTools.subscribe,

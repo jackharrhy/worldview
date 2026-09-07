@@ -397,7 +397,8 @@ test.describe('Editor face materials', () => {
     await page.locator('#texture-rotation').fill('45');
     await page.locator('#texture-rotation').press('Enter');
 
-    const copy = page.getByRole('button', { name: 'Copy', exact: true });
+    await page.getByRole('button', { name: 'More edit actions', exact: true }).click();
+    const copy = page.getByRole('menuitem', { name: 'Copy', exact: true });
     await expect(copy).toBeEnabled();
     await copy.click();
     await expect(page.locator('#status-message')).toContainText(
@@ -410,7 +411,8 @@ test.describe('Editor face materials', () => {
     await page.mouse.click(targetPoint.x, targetPoint.y);
     await page.keyboard.up('Shift');
     await expect(page.locator('#selection-kind')).toHaveText('Face');
-    await page.getByRole('button', { name: 'Paste', exact: true }).click();
+    await page.getByRole('button', { name: 'More edit actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Paste', exact: true }).click();
     await expect(page.locator('#status-message')).toContainText(
       'Pasted CLIPBOARD_SOURCE and its attributes onto 1 face',
     );

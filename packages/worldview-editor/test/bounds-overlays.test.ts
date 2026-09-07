@@ -25,7 +25,8 @@ describe('selection bounds guides', () => {
       (boundsSegmentCount + 2) * floatsPerSegment,
     );
     expect(firstSpike).toEqual([
-      0, 0, 0, 1, 0, 0, -768, 0, 0, 1, 0, 0, -768, 0, 0, 1, 0, 0, -1024, 0, 0, 0.1, 0.1, 0.1,
+      0, 0, 0, 1, 0.35, 0.35, -153.6, 0, 0, 1, 0.35, 0.35, -153.6, 0, 0, 1, 0.35, 0.35, -1024, 0, 0,
+      0.1, 0.1, 0.1,
     ]);
   });
 
