@@ -88,7 +88,7 @@ export interface ViewportInteraction {
   transformPivot(): Vec3 | null;
   faceHandle(selection: BrushSelection): FaceHandle | null;
   faceHandles(): readonly FaceHandle[];
-  faceSnapTargets(): readonly FaceHandle[];
+  faceSnapTargets(source: FaceHandle, distance: number, padding: number): readonly FaceHandle[];
   snapClipHit(hit: BrushRayHit, gridSize: number): Vec3 | null;
   clipPoints(): readonly Vec3[];
   addClipPoints(points: readonly Vec3[], viewport: EditorViewportKind, viewDirection: Vec3): void;
@@ -264,9 +264,9 @@ export interface PointerDrag {
   lastAxisRestriction: TransformAxis | null;
   lastDelta: Vec3;
   lastFaceDistance: number;
-  readonly faceMagnets: readonly FaceMagnet[];
+  readonly faceSource: FaceHandle | null;
   faceMagnet: FaceMagnet | null;
-  faceAlignment: FaceMagnet | null;
+  faceAlignment: readonly FaceHandle[];
   lastBounds: Bounds | null;
   lastCreationConstraint: EditorBrushCreateEvent['constraint'];
   lastClipPoint: Vec3 | null;

@@ -11,10 +11,10 @@ import { containsProjectedHull } from '../hull-overlay.js';
 /** Owns transient tool feedback and its GPU resources, independently of world rendering. */
 export class ViewportToolOverlays {
   private magnetBuffer: GPUBuffer | null = null;
-  private magnetFace: FaceHandle | null = null;
+  private magnetFaces: readonly FaceHandle[] = [];
   private magnetCount = 0;
   private alignmentScene: SceneBuffers['toolPreviews'] | null = null;
-  private hoverAlignment: FaceHandle | null = null;
+  private hoverAlignment: readonly FaceHandle[] = [];
   private wasDragging = false;
   private hullShift = false;
   private hullPointer: readonly [number, number] | null = null;
@@ -77,28 +77,31 @@ export class ViewportToolOverlays {
     if (this.alignmentScene !== previews || this.wasDragging !== Boolean(drag)) {
       this.alignmentScene = previews;
       this.wasDragging = Boolean(drag);
-      const resizeSelection = previews.value.resizeFaceSelection;
-      const source = resizeSelection ? this.interaction.faceHandle(resizeSelection) : null;
-      this.hoverAlignment =
-        !drag && source
-          ? (faceMagnets(source, this.interaction.faceSnapTargets()).find(
-              (candidate) => Math.abs(candidate.distance) < 0.001,
-            )?.face ?? null)
-          : null;
+      const aligned = !drag
+        ? previews.value.resizeFaceSelections.flatMap((selection) => {
+            const source = this.interaction.faceHandle(selection);
+            return source
+              ? faceMagnets(source, this.interaction.faceSnapTargets(source, 0, 0.001))
+                  .filter((candidate) => Math.abs(candidate.distance) < 0.001)
+                  .map((candidate) => candidate.face)
+              : [];
+          })
+        : [];
+      this.hoverAlignment = [...new Set(aligned)];
     }
-    const magnet =
-      previews.value.resizeFace.count > 0
-        ? drag
-          ? (drag.faceAlignment?.face ?? null)
-          : this.hoverAlignment
-        : null;
-    this.canvas.dataset.faceAlignment = magnet ? magnet.selection.faceId : '';
-    if (magnet !== this.magnetFace) {
+    const magnets =
+      previews.value.resizeFace.count > 0 ? (drag ? drag.faceAlignment : this.hoverAlignment) : [];
+    this.canvas.dataset.faceAlignment = magnets.map((face) => face.selection.faceId).join(' ');
+    this.canvas.dataset.faceAlignmentCount = String(magnets.length);
+    if (
+      magnets.length !== this.magnetFaces.length ||
+      magnets.some((face, i) => face !== this.magnetFaces[i])
+    ) {
       this.magnetBuffer?.destroy();
       this.magnetBuffer = null;
-      this.magnetFace = magnet;
+      this.magnetFaces = magnets;
       const vertices: number[] = [];
-      if (magnet)
+      for (const magnet of magnets)
         for (let i = 0; i < magnet.vertices.length; i++)
           vertices.push(
             ...magnet.vertices[i]!,
@@ -132,6 +135,7 @@ export class ViewportToolOverlays {
       pass.draw(6, resizeFace.count / 2);
     }
     this.canvas.dataset.resizeFaceEdges = String(resizeFace.count / 2);
+    this.canvas.dataset.resizeFaceCount = String(previews.value.resizeFaceSelections.length);
     const hull = previews.value.hull;
     const rect = this.canvas.getBoundingClientRect();
     const hullFaceVisible =

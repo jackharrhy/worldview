@@ -112,7 +112,7 @@ helpers, GPU billboards, shaders, and input feedback are original implementation
 or assets were copied.
 
 `ExtrudeTool.cpp` and `ExtrudeToolController.cpp` informed selected-face targeting, nearest
-silhouette fallback, and on-top drag outlines. Worldview implements these behaviors independently.
+silhouette fallback, full selected-face extrusion previews, and on-top drag outlines. Its outward split selection and moving-cap behavior also informed the multi-face split workflow. Worldview implements these behaviors independently.
 
 TrenchBroom's `Face.fragsh` and `GridCommon.fragsh` informed the passive surface-grid behavior
 (world alignment, antialiasing, distance suppression, and texture-aware contrast). Worldview's

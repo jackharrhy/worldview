@@ -59,6 +59,20 @@ subtrees stay idle during gestures, and recorded active-frame timings improve on
 profile as well as the development host. CPU throttling is a proxy; validate on real lower-end GPU
 hardware before claiming a hardware performance guarantee.
 
+### P2: Avoid rebuilding the whole picking index for local previews
+
+`SourceRenderer.installActiveDocument` currently rebuilds `objectSpatialIndex` through
+`buildEditorObjectSpatialIndex` whenever the active document object changes, including every
+snapped drag preview. The builder walks all brushes and point entities and constructs a new AABB
+tree. Cached brush geometry reduces derivation cost, but does not remove the full traversal and
+sorting on large maps. This is separate from the face-magnet index, which retains committed data.
+
+Retain the committed picking tree and overlay changed preview objects, excluding replaced entries
+from committed hits; verify picking, undo, cancellation, definitions changes, and document replacement.
+Done when preview picking sees current geometry without rebuilding a whole-map tree per sample,
+and populated-map profiles demonstrate the improvement. Preserve selected-set extrusion semantics:
+same-facing coplanar selected faces need not be physically adjacent.
+
 ## Editor conformance
 
 ### E1: Remaining desktop workflow parity

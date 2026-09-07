@@ -57,7 +57,7 @@ export interface SelectionBuffers {
 
 export interface ToolPreviewBuffers {
   readonly resizeFace: LineBuffer;
-  readonly resizeFaceSelection: FaceSelection | null;
+  readonly resizeFaceSelections: readonly FaceSelection[];
   readonly hull: {
     readonly polygon: readonly Vec3[];
     readonly grid: LineBuffer;
@@ -106,6 +106,7 @@ export interface SceneBuildInput {
     readonly document: MapDocument | null;
     readonly objectIds: readonly string[];
     readonly selectionObjectIds: readonly string[];
+    readonly faceOutlines?: readonly FaceSelection[] | null;
   };
   readonly selection: {
     readonly current: EditorSelection | null;

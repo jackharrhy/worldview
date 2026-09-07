@@ -192,13 +192,13 @@ export class SessionGeometryCommands {
     primary: FaceSelection,
     distance: number,
     ids: IdFactory,
-  ): BrushClipCandidate | BrushBatchClipCandidate | null {
+  ): BrushBatchClipCandidate | null {
     if (faces.length === 0 || Math.abs(distance) <= Number.EPSILON) return null;
     const unique = new Map(
       faces.map((face) => [`${face.brushId}\u0000${face.faceId}`, face] as const),
     );
     const normalized = [...unique.values()];
-    const matching = matchingBrushFaces(
+    const matching = extrudableBrushFaces(
       this.kernel.document,
       primary,
       normalized.map((face) => face.brushId),
@@ -208,7 +208,7 @@ export class SessionGeometryCommands {
       matchingKeys.size !== normalized.length ||
       normalized.some((face) => !matchingKeys.has(`${face.brushId}\u0000${face.faceId}`))
     ) {
-      throw new Error('Split extrusion requires faces with exactly the same vertices');
+      throw new Error('Split extrusion requires compatible coplanar faces');
     }
     const primaryBrush = findBrush(this.kernel.document, primary.brushId);
     const primaryFace = primaryBrush
@@ -260,34 +260,18 @@ export class SessionGeometryCommands {
           afterInsertionIndex: edit.insertionIndex + offset,
         });
       });
-    if (edits.length === 1) {
-      const edit = edits[0]!;
-      return {
-        label: 'Split-extrude face',
-        mode: 'split',
-        entityId: edit.entityId,
-        insertionIndex: edit.insertionIndex,
-        baseDocumentRevision: this.kernel.document.revision,
-        baseBrushRevision: edit.baseBrushRevision,
-        before: edit.before,
-        after: edit.after,
-        document: replaceBrushSequence(
-          this.kernel.document,
-          edit.entityId,
-          edit.insertionIndex,
-          [edit.before.id],
-          edit.after,
-        ),
-      };
-    }
     const selectionBefore = [...new Set(normalized.map((face) => face.brushId))];
     return {
-      label: 'Split-extrude faces',
+      label: edits.length === 1 ? 'Split-extrude face' : 'Split-extrude faces',
       mode: 'split',
       baseDocumentRevision: this.kernel.document.revision,
       edits,
       selectionBefore,
-      selectionAfter: edits.flatMap((edit) => edit.after.map((brush) => brush.id)),
+      selectionAfter: edits.flatMap((edit) =>
+        edit.after
+          .filter((brush) => distance < 0 || brush.id !== edit.before.id)
+          .map((brush) => brush.id),
+      ),
       document: replaceBrushSequences(
         this.kernel.document,
         edits.map((edit) => ({

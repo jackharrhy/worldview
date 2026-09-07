@@ -1,13 +1,13 @@
 import {
   deriveBrush,
-  createBrushSelection,
+  BoundsSpatialIndex,
   selectedBrushIds,
   selectedFaceReferences,
   findBrush,
   intersectBrushRay,
   intersectPointEntityRay,
   type Bounds,
-  type BoundsSpatialIndex,
+  type EntityId,
   type BrushRayHit,
   type EditorObjectViewState,
   type EditorSelection,
@@ -20,7 +20,7 @@ import type { IndexedEditorObject } from './object-spatial-index.js';
 import type { EditorObjectRayHit } from './viewport-common.js';
 import {
   addScaled,
-  availableFaceHandles,
+  brushFaceHandles,
   dot,
   isTransformTool,
   topologyHandleBounds,
@@ -141,22 +141,65 @@ export function snapClipHitToGrid(
   return addScaled(snapped, face.normal, correction);
 }
 
-/** Visible canonical geometry only: moving previews never become their own snap targets. */
-export function faceSnapTargets(
-  document: MapDocument,
-  selection: EditorSelection | null,
-  view: EditorObjectViewState,
-): readonly FaceHandle[] {
-  const excluded = new Set([
-    ...selectedBrushIds(selection),
-    ...selectedFaceReferences(selection).map((face) => face.brushId),
-  ]);
-  const hiddenBrushes = new Set(view.hiddenBrushIds);
-  const hiddenEntities = new Set(view.hiddenEntityIds);
-  const ids = document.entities
-    .filter((entity) => !hiddenEntities.has(entity.id))
-    .flatMap((entity) => entity.primitives)
-    .filter((brush) => !excluded.has(brush.id) && !hiddenBrushes.has(brush.id))
-    .map((brush) => brush.id);
-  return availableFaceHandles(document, createBrushSelection(ids));
+interface IndexedSnapFace {
+  readonly face: FaceHandle;
+  readonly entityId: EntityId;
+}
+
+function faceBounds(face: FaceHandle, offset = 0, padding = 0): Bounds {
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (const point of face.vertices)
+    for (const axis of [0, 1, 2] as const) {
+      const value = point[axis] + face.normal[axis] * offset;
+      min[axis] = Math.min(min[axis], value - padding);
+      max[axis] = Math.max(max[axis], value + padding);
+    }
+  return { min, max };
+}
+
+/** Retains only the current committed index, not an index for every undo-history document. */
+export class FaceSnapQuery {
+  private document: MapDocument | null = null;
+  private index: BoundsSpatialIndex<IndexedSnapFace> | null = null;
+
+  query(
+    document: MapDocument,
+    selection: EditorSelection | null,
+    view: EditorObjectViewState,
+    source: FaceHandle,
+    distance: number,
+    padding: number,
+  ): readonly FaceHandle[] {
+    if (this.document !== document || !this.index) {
+      this.index = new BoundsSpatialIndex(
+        document.entities.flatMap((entity) =>
+          entity.primitives.flatMap((brush) =>
+            brush.kind === 'brush'
+              ? brushFaceHandles(brush).map((face) => ({
+                  bounds: faceBounds(face),
+                  value: { face, entityId: entity.id },
+                }))
+              : [],
+          ),
+        ),
+      );
+      this.document = document;
+    }
+    const excluded = new Set([
+      ...selectedBrushIds(selection),
+      ...selectedFaceReferences(selection).map((face) => face.brushId),
+    ]);
+    const hiddenBrushes = new Set(view.hiddenBrushIds);
+    const hiddenEntities = new Set(view.hiddenEntityIds);
+    return this.index
+      .queryBounds(faceBounds(source, distance, padding + 0.001))
+      .filter(
+        ({ face, entityId }) =>
+          !excluded.has(face.selection.brushId) &&
+          !hiddenBrushes.has(face.selection.brushId) &&
+          !hiddenEntities.has(entityId),
+      )
+      .map(({ face }) => face);
+  }
 }

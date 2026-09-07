@@ -1,6 +1,9 @@
 import {
   createSequentialIdFactory,
   extrudableBrushFaces,
+  deriveBrush,
+  findBrush,
+  type BrushBatchClipCandidate,
   selectedFaceReferences,
   selectedBrushIds,
   type EditorFaceDragEvent,
@@ -37,12 +40,7 @@ function createFaceCandidate(
     )
   )
     faces = selectedFaces;
-  else if (
-    selectedBrushes.includes(eventFace.brushId) &&
-    event.mode === 'normal' &&
-    !event.split &&
-    !event.stamp
-  )
+  else if (selectedBrushes.includes(eventFace.brushId) && event.mode === 'normal' && !event.stamp)
     faces = extrudableBrushFaces(session.document, eventFace, selectedBrushes);
   if (event.mode === 'translate')
     return session.createFaceSetTranslationCandidate(
@@ -79,6 +77,30 @@ function resolveFaceCandidate(event: EditorFaceDragEvent, state: FaceDragState) 
       throw error;
     return { candidate, limited: true };
   }
+}
+
+/** Track the moved caps by plane, since splitting creates new face and brush IDs. */
+function splitFaceOutlines(
+  candidate: BrushBatchClipCandidate,
+  event: Extract<EditorFaceDragEvent, { mode: 'normal' }>,
+  state: FaceDragState,
+): readonly FaceSelection[] {
+  const before = findBrush(state.session.document, event.selection.brushId);
+  const source =
+    before && deriveBrush(before).faces.find((face) => face.faceId === event.selection.faceId);
+  if (!source) return [];
+  return candidate.edits.flatMap((edit) =>
+    edit.after.flatMap((brush) =>
+      deriveBrush(brush)
+        .faces.filter(
+          (face) =>
+            face.normal.every(
+              (component, axis) => Math.abs(component - source.normal[axis]!) < 0.00001,
+            ) && Math.abs(face.distance - source.distance - event.distance) < 0.001,
+        )
+        .map((face) => ({ brushId: brush.id, faceId: face.faceId })),
+    ),
+  );
 }
 
 /** Face gesture policy: sample, keep last valid geometry, then commit or cancel once. */
@@ -126,7 +148,12 @@ export function handleFaceDrag(
         candidate.document,
         state.session.selection,
         facePreviewGeometryIds(candidate),
-        facePreviewObjectIds(candidate, state.session.selection),
+        event.split && 'selectionAfter' in candidate
+          ? candidate.selectionAfter
+          : facePreviewObjectIds(candidate, state.session.selection),
+        event.split && 'mode' in candidate && 'edits' in candidate
+          ? splitFaceOutlines(candidate, event, state)
+          : null,
       );
       // The viewport is the latency-critical feedback surface during a drag. Inspector
       // values settle from the committed session change; rebuilding its derived model on

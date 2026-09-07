@@ -6,6 +6,7 @@ import {
   brushVertices,
   createBoxBrush,
   createSequentialIdFactory,
+  createBrushSelection,
   createStarterDocument,
   deriveBrush,
   extrudableBrushFaces,
@@ -310,8 +311,9 @@ describe('editor selection and face transactions', () => {
     )!;
 
     expect(candidate.label).toBe('Split-extrude face');
-    if ('edits' in candidate) throw new Error('Expected a single face split candidate');
-    expect(candidate.after).toHaveLength(2);
+    expect(candidate.edits).toHaveLength(1);
+    expect(candidate.edits[0]!.after).toHaveLength(2);
+    expect(candidate.selectionAfter).toEqual([candidate.edits[0]!.after[1]!.id]);
     expect(brushesInDocument(candidate.document)).toHaveLength(3);
     session.commitClipCandidate(candidate);
     expect(session.document.revision).toBe(1);
@@ -359,15 +361,58 @@ describe('editor selection and face transactions', () => {
     if (!('edits' in candidate)) throw new Error('Expected a batch face split candidate');
     expect(candidate.label).toBe('Split-extrude faces');
     expect(candidate.edits).toHaveLength(2);
-    expect(candidate.selectionAfter).toHaveLength(4);
+    expect(candidate.selectionAfter).toHaveLength(2);
     expect(brushesInDocument(candidate.document)).toHaveLength(4);
     session.commitClipCandidate(candidate);
     expect(session.document.revision).toBe(1);
     expect(brushesInDocument(session.document)).toHaveLength(4);
-    expect(selectedBrushIds(session.selection)).toHaveLength(4);
+    expect(selectedBrushIds(session.selection)).toHaveLength(2);
     expect(session.undo()).toBe(true);
     expect(brushesInDocument(session.document)).toHaveLength(2);
     expect(selectedBrushIds(session.selection)).toEqual([first.id, second.id]);
+  });
+
+  it('split-extrudes different coplanar polygons and continues from only the new pieces', () => {
+    const ids = createSequentialIdFactory('different-split');
+    const first = createBoxBrush([-32, -64, 0], [0, 0, 32], 'FIRST', ids);
+    const second = createBoxBrush([-64, 0, 0], [0, 64, 48], 'SECOND', ids);
+    const starter = createStarterDocument();
+    const document = {
+      ...starter,
+      entities: [{ ...starter.entities[0]!, primitives: [first, second] }],
+    };
+    const session = new EditorSession(document);
+    session.select(createBrushSelection([first.id, second.id]));
+    for (const [iteration, expectedStart] of [
+      [0, 0],
+      [1, 16],
+    ] as const) {
+      const selected = selectedBrushIds(session.selection);
+      const brush = findBrush(session.document, selected[0]!)!;
+      const cap = deriveBrush(brush).faces.find((face) => face.normal[0] > 0.99)!;
+      const seed = { brushId: brush.id, faceId: cap.faceId };
+      const faces = extrudableBrushFaces(session.document, seed, selected);
+      const candidate = session.createFaceSetSplitCandidate(
+        faces,
+        seed,
+        16,
+        createSequentialIdFactory(`split-${iteration}`),
+      )!;
+      session.commitClipCandidate(candidate);
+      const newIds = selectedBrushIds(session.selection);
+      expect(newIds).toHaveLength(2);
+      expect(newIds.some((id) => selected.includes(id))).toBe(false);
+      for (const id of newIds)
+        expect(deriveBrush(findBrush(session.document, id)!).bounds).toMatchObject({
+          min: [expectedStart, expect.any(Number), 0],
+          max: [expectedStart + 16, expect.any(Number), expect.any(Number)],
+        });
+    }
+    const finalSelection = selectedBrushIds(session.selection);
+    expect(session.undo()).toBe(true);
+    expect(session.redo()).toBe(true);
+    expect(selectedBrushIds(session.selection)).toEqual(finalSelection);
+    expect(brushesInDocument(session.document)).toHaveLength(6);
   });
 
   it('previews and commits one undoable selected-face extrusion', () => {

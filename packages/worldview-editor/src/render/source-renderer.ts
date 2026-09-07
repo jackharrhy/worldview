@@ -10,6 +10,7 @@ import {
   selectedPointEntityIds,
   selectionForEditorGroup,
   type Bounds,
+  type FaceSelection,
   type EditorObjectViewState,
   type EditorSelection,
   type EditorMaterial,
@@ -72,7 +73,7 @@ import {
   selectedFaceHandle,
   selectionCenter,
   snapClipHitToGrid,
-  faceSnapTargets,
+  FaceSnapQuery,
 } from './source-renderer-queries.js';
 const EMPTY_PREVIEW_OBJECT_IDS: readonly string[] = [];
 
@@ -90,7 +91,9 @@ export class EditorSourceRenderer {
   private scene: SceneBuffers;
   private theme: EditorRenderTheme;
   private canonicalDocument: MapDocument;
+  private readonly faceSnapQuery = new FaceSnapQuery();
   private document: MapDocument;
+  private previewFaceOutlines: readonly FaceSelection[] | null = null;
   private previewDocument: MapDocument | null = null;
   private previewObjectIds = EMPTY_PREVIEW_OBJECT_IDS;
   private previewSelectionObjectIds = EMPTY_PREVIEW_OBJECT_IDS;
@@ -206,8 +209,15 @@ export class EditorSourceRenderer {
         interactionSelectionBounds(this.document, selection, this.tool, this.topologySelection),
       faceHandle: (selection) => selectedFaceHandle(this.document, selection),
       faceHandles: () => this.availableFaceHandles(),
-      faceSnapTargets: () =>
-        faceSnapTargets(this.canonicalDocument, this.selection, this.objectViewState),
+      faceSnapTargets: (source, distance, padding) =>
+        this.faceSnapQuery.query(
+          this.canonicalDocument,
+          this.selection,
+          this.objectViewState,
+          source,
+          distance,
+          padding,
+        ),
       snapClipHit: (hit, gridSize) => snapClipHitToGrid(this.document, hit, gridSize),
       clipPoints: () => this.clipPoints,
       addClipPoints: (points, viewport, viewDirection) => {
@@ -513,6 +523,7 @@ export class EditorSourceRenderer {
     if (this.disposed) return;
     this.canonicalDocument = document;
     this.previewDocument = null;
+    this.previewFaceOutlines = null;
     this.previewObjectIds = EMPTY_PREVIEW_OBJECT_IDS;
     this.previewSelectionObjectIds = EMPTY_PREVIEW_OBJECT_IDS;
     this.installActiveDocument(document, selection, objectViewState);
@@ -524,6 +535,7 @@ export class EditorSourceRenderer {
     selection: EditorSelection | null,
     affectedObjectIds: readonly string[],
     highlightedObjectIds: readonly string[] = affectedObjectIds,
+    faceOutlines: readonly FaceSelection[] | null = null,
   ): void {
     if (this.disposed) return;
     this.previewObjectIds = retainedObjectIds(this.previewObjectIds, affectedObjectIds);
@@ -532,6 +544,7 @@ export class EditorSourceRenderer {
       highlightedObjectIds,
     );
     this.previewDocument = document;
+    this.previewFaceOutlines = faceOutlines;
     this.installActiveDocument(document, selection, this.objectViewState);
   }
 
@@ -635,6 +648,7 @@ export class EditorSourceRenderer {
         document: this.previewDocument,
         objectIds: this.previewObjectIds,
         selectionObjectIds: this.previewSelectionObjectIds,
+        faceOutlines: this.previewFaceOutlines,
       },
       selection: { current: this.selection, hovered: this.hoverSelection },
       tools: {

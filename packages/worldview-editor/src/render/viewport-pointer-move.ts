@@ -1,4 +1,4 @@
-import { pickFaceMagnet } from './face-magnet.js';
+import { pickFaceMagnet, faceMagnets, alignedFaces } from './face-magnet.js';
 import {
   isBrushSelected,
   isFaceSelected,
@@ -541,16 +541,33 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
       const projectedPixels =
         totalX * drag.faceScreenDirection[0] + totalY * drag.faceScreenDirection[1];
       const rawDistance = projectedPixels / drag.facePixelsPerWorld;
+      const candidatesAt = (distance: number) =>
+        drag.faceSource
+          ? faceMagnets(
+              drag.faceSource,
+              this.interaction.faceSnapTargets(
+                drag.faceSource,
+                distance,
+                14 / Math.max(0.001, drag.facePixelsPerWorld),
+              ),
+            )
+          : [];
       drag.faceMagnet =
         event.ctrlKey || event.metaKey
           ? null
-          : pickFaceMagnet(rawDistance, drag.facePixelsPerWorld, drag.faceMagnets, drag.faceMagnet);
+          : pickFaceMagnet(
+              rawDistance,
+              drag.facePixelsPerWorld,
+              candidatesAt(rawDistance),
+              drag.faceMagnet,
+            );
       const distance =
         drag.faceMagnet?.distance ?? Math.round(rawDistance / this.gridSize) * this.gridSize;
-      const alignment =
-        drag.faceMagnet ??
-        pickFaceMagnet(distance, drag.facePixelsPerWorld, drag.faceMagnets, null);
-      if (alignment !== drag.faceAlignment) {
+      const alignment = alignedFaces(distance, drag.facePixelsPerWorld, candidatesAt(distance));
+      if (
+        alignment.length !== drag.faceAlignment.length ||
+        alignment.some((face, i) => face !== drag.faceAlignment[i])
+      ) {
         drag.faceAlignment = alignment;
         this.invalidateRender();
       }

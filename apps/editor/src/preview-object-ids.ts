@@ -38,7 +38,10 @@ export function facePreviewGeometryIds(candidate: FacePreviewCandidate): readonl
     ? candidate.insertions.map((insertion) => insertion.brush.id)
     : 'mode' in candidate
       ? 'selectionBefore' in candidate
-        ? [...candidate.selectionBefore, ...candidate.selectionAfter]
+        ? candidate.edits.flatMap((edit) => [
+            edit.before.id,
+            ...edit.after.map((brush) => brush.id),
+          ])
         : [candidate.before.id, ...candidate.after.map((brush) => brush.id)]
       : editedBrushIds(candidate);
 }

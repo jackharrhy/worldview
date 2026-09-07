@@ -6,6 +6,8 @@ import {
 import { coplanarBrushSource } from './support/editor-fixtures.js';
 import {
   openEditor,
+  installSiteToolRegistry,
+  executeSiteTool,
   readEditorDocument,
   perspectivePoint,
   perspectiveWorldPoint,
@@ -42,6 +44,108 @@ test.describe('Editor select resize and sweep tools', () => {
     await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
+    );
+  });
+
+  test('Shift targeting outlines every selected coplanar extrusion face before and during the drag', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(coplanarBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const lower = await topWorldPoint(page, -16, -40);
+    const upper = await topWorldPoint(page, -16, 40);
+    const start = await topWorldPoint(page, 6, -40);
+    const end = await topWorldPoint(page, 38, -40);
+    const canvas = page.locator('[data-viewport="xy"] .source-canvas');
+    await page.mouse.click(lower.x, lower.y);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(start.x, start.y);
+    await expect(canvas).toHaveAttribute('data-resize-face-count', '1');
+    await page.keyboard.up('Shift');
+    await page.keyboard.down('Control');
+    await page.mouse.click(upper.x, upper.y);
+    await page.keyboard.up('Control');
+    await page.keyboard.down('Shift');
+    await page.mouse.move(start.x, start.y);
+    await expect(canvas).toHaveAttribute('data-resize-face-count', '2');
+    await expect(canvas).toHaveAttribute('data-resize-face-edges', '8');
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 6 });
+    await expect(canvas).toHaveAttribute('data-resize-face-count', '2');
+    await page.screenshot({ path: 'artifacts/verification/extrusion/multiple-yellow-faces.png' });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(canvas).toHaveAttribute('data-resize-face-count', '0');
+    const brushes = brushesInDocument(await readEditorDocument(page));
+    expect(brushes.map((brush) => deriveBrush(brush).bounds?.max[0])).toEqual([32, 32]);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    expect(
+      brushesInDocument(await readEditorDocument(page)).map(
+        (brush) => deriveBrush(brush).bounds?.max[0],
+      ),
+    ).toEqual([0, 0]);
+  });
+
+  test('split-extrusion creates every yellow face and continues with only the new pieces selected', async ({
+    page,
+  }) => {
+    await installSiteToolRegistry(page);
+    await openEditor(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.locator('#map-source').fill(coplanarBrushSource());
+    await page.getByRole('button', { name: 'Apply source', exact: true }).click();
+    const lower = await topWorldPoint(page, -16, -40);
+    const upper = await topWorldPoint(page, -16, 40);
+    await page.mouse.click(lower.x, lower.y);
+    await page.keyboard.down('Control');
+    await page.mouse.click(upper.x, upper.y);
+    await page.keyboard.up('Control');
+    const canvas = page.locator('[data-viewport="xy"] .source-canvas');
+    for (const iteration of [0, 1]) {
+      const start = await topWorldPoint(page, iteration * 16 + 6, -40);
+      const end = await topWorldPoint(page, iteration * 16 + 22, -40);
+      await page.mouse.move(start.x, start.y);
+      await page.keyboard.down('Shift');
+      await expect(canvas).toHaveAttribute('data-resize-face-count', '2');
+      await page.keyboard.down('Control');
+      await page.mouse.down();
+      await page.mouse.move(end.x, end.y, { steps: 6 });
+      await expect(canvas).toHaveAttribute('data-resize-face-count', '2');
+      await page.screenshot({ path: `artifacts/verification/extrusion/split-${iteration}.png` });
+      await page.mouse.up();
+      await page.keyboard.up('Control');
+      await page.keyboard.up('Shift');
+      await expect(page.locator('#brush-count')).toHaveText(String(4 + iteration * 2));
+      await expect(page.locator('#selection-kind')).toHaveText('2 Brushes');
+      const listed = await executeSiteTool(page, 'worldview_list_objects', {
+        kind: 'brush',
+        limit: 20,
+      });
+      const objects = listed.objects as {
+        id: string;
+        selected: boolean;
+        bounds: { min: number[]; max: number[] };
+      }[];
+      const pieces = objects.filter((brush) => brush.bounds.min[0] === iteration * 16);
+      expect(pieces).toHaveLength(2);
+      expect(objects.filter((brush) => brush.selected)).toEqual(pieces);
+      for (const piece of pieces) expect(piece.bounds.max[0]).toBe((iteration + 1) * 16);
+      const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
+      expect(inspection.selection).toMatchObject({
+        kind: 'objects',
+        brushIds: expect.arrayContaining(pieces.map((brush) => brush.id)),
+      });
+      expect((inspection.selection as { brushIds: string[] }).brushIds).toHaveLength(2);
+    }
+    const final = await executeSiteTool(page, 'worldview_inspect_editor');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('4');
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(page.locator('#brush-count')).toHaveText('6');
+    expect((await executeSiteTool(page, 'worldview_inspect_editor')).selection).toEqual(
+      final.selection,
     );
   });
 

@@ -154,6 +154,7 @@ export function sceneContributionKeys(input: SceneBuildInput): SceneDependencyKe
       input.theme,
     ],
     toolPreviews: [
+      input.localPreview.faceOutlines,
       input.tools.gridSize,
       activeDocument,
       input.selection.current,
@@ -297,6 +298,7 @@ export function buildSceneBuffers(
     document: activeDocument,
     selection: input.selection.current,
     hoverSelection: input.selection.hovered,
+    faceOutlines: input.localPreview.faceOutlines ?? null,
     objectViewState: input.world.objectViewState,
     tool: input.tools.active,
     transformPivot: input.tools.transformPivot,

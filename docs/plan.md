@@ -382,14 +382,32 @@ the underlying material. This adds no per-brush grid geometry, draw calls, or Re
 materials, UVs, and exported maps are unchanged.
 
 Face extrusion now prototypes magnetic alignment to parallel faces on other visible brushes with
-projected footprint overlap or shared edges (including a supporting platform side). Candidates are fixed at gesture start; a 7 CSS-pixel attraction zone
+projected footprint overlap or shared edges (including a supporting platform side). A renderer-owned AABB tree indexes canonical brush faces and queries the moving face’s padded
+world-space bounds; only nearby results undergo parallel-plane and footprint filtering. The index
+is reused across previews and rebuilt for a different committed document (including undo). A 7 CSS-pixel attraction zone
 and 14-pixel release zone let continued dragging break free. Exact face alignment overrides grid
-spacing, including off-grid targets. The target outline is cyan; snap feedback has no text popup. Holding
+spacing, including off-grid targets. All matching target outlines are cyan; snap feedback has no text popup. Holding
 Ctrl/Command after starting a drag bypasses magnetism. This prototype applies to normal face drags;
 free face translation is unchanged. The playground is `tests/browser/editor/support/face-magnet.map`.
 
+The yellow Shift-extrusion outline includes every coplanar/shared-seam face returned by the same
+`extrudableBrushFaces` resolver used by the edit, before and during dragging. This resolver scans
+only the selected brush set, using cached ID lookup and derived geometry; separated selected
+coplanar faces remain eligible, so a nearby-only query would change the intended behavior.
+Cyan hover alignment checks the complete yellow face set and deduplicates shared targets.
+
+Split extrusion (Shift+Ctrl/Command drag in Select) resolves the same selected coplanar face set
+as normal extrusion, without requiring identical polygons. Outward splits select only the newly
+added pieces, so another extrusion continues from them; inward partitions retain both pieces.
+`createFaceSetSplitCandidate` returns a batch clip candidate even for one face, keeping selection
+and undo/redo atomic. Opposing shared faces remain unsupported for split extrusion.
+Renderer preview documents can supply explicit `faceOutlines`: split previews track the moving
+caps by plane after their face/brush IDs change, while geometry invalidation still includes every
+replacement, independently of which pieces will be selected.
+
 Cyan face alignment feedback is independent of magnetic capture, but only appears alongside the
-yellow resize-face outline during Shift targeting or extrusion. Grid alignment still shows the cue
+yellow resize-face outline during Shift targeting or extrusion. Every matching face is included,
+including edge contacts with multiple neighboring brushes; the drag still chooses one snap distance. Grid alignment still shows the cue
 while Ctrl/Command bypasses magnetism. Re-entering Shift targeting recalculates alignment from the
 current geometry. Leaving the face-targeting state hides it; the cyan outline uses full opacity for clear visibility through geometry.
 

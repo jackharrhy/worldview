@@ -1,4 +1,3 @@
-import { faceMagnets } from './face-magnet.js';
 import {
   isFaceSelected,
   type BrushId,
@@ -482,11 +481,9 @@ export abstract class ViewportPointerDown extends ViewportTools {
           lastAxisRestriction: null,
           lastDelta: [0, 0, 0],
           lastFaceDistance: 0,
-          faceMagnets: faceHandle
-            ? faceMagnets(faceHandle, this.interaction.faceSnapTargets())
-            : [],
+          faceSource: faceHandle,
           faceMagnet: null,
-          faceAlignment: null,
+          faceAlignment: [],
           lastBounds: null,
           lastCreationConstraint: 'none',
           lastClipPoint: null,

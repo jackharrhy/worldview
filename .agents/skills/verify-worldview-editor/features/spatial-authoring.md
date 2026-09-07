@@ -233,8 +233,11 @@ Magnetic face extrusion: `editor-face-magnet.spec.ts` loads the dedicated playgr
 undoes. `data-face-magnet` reports the current snapped distance during a gesture. Unit tests cover
 footprint filtering and separate attraction/release thresholds.
 
-The face-magnet regression also checks cyan alignment while Ctrl bypasses magnetism, removal on Shift release, recalculation on Shift re-entry after an aligned commit, and removal after Undo. `data-face-alignment` identifies the displayed
-target independently of `data-face-magnet`.
+The face-magnet regression also checks cyan alignment while Ctrl bypasses magnetism, removal on Shift release, recalculation on Shift re-entry after an aligned commit, and removal after Undo. `data-face-alignment` lists the displayed face IDs independently of `data-face-magnet`;
+`data-face-alignment-count` reports the number of cyan faces. The regression adds a second
+edge-touching neighbor and requires both faces during a drag, Ctrl bypass, Shift re-entry, and
+return to zero displacement. `face-snap-query.test.ts` covers the canonical spatial query, distant
+geometry exclusion, hidden targets, reuse, and rebuilding after document changes.
 
 The face-magnet browser regression starts a second drag from an aligned position, moves away, then
 returns exactly to the original pointer position. Require zero-distance magnetism and cyan feedback,
@@ -261,3 +264,16 @@ The design-route browser specimen check verifies the V2 toolbar, both themes, in
 and the downloadable 84-icon SVG (named vector groups and a successfully rendered image). Evidence
 is under `artifacts/verification/design-v2/`. Keep previews using the shared runtime icon styles;
 external sheet edits are explicitly ported back to the runtime components, not auto-imported.
+
+Multi-face extrusion: `editor-select-resize-and-sweep.spec.ts` verifies that one selected brush
+shows one yellow face, selecting its coplanar neighbor shows both before and during Shift-drag,
+both move in one undoable edit, and releasing Shift hides the preview. The renderer reports
+`data-resize-face-count` and `data-resize-face-edges`; inspect the screenshot under
+`artifacts/verification/extrusion/`. The selected-only resolver intentionally includes separated
+coplanar selected faces, and the core face-selection tests cover opposing shared seams.
+
+Split-extrusion continuation: the select/resize regression Shift+Ctrl-drags two yellow coplanar
+faces twice, verifies both new pieces become the only selected brushes, and checks undo/redo
+selection restoration. Inspect `artifacts/verification/extrusion/split-0.png` and `split-1.png` for
+yellow outlines on the moving caps rather than the original face planes. Core face-selection
+coverage additionally uses different polygon sizes and verifies the originals remain unselected.

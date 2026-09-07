@@ -4,6 +4,7 @@ import {
   deriveEditorGroups,
   deriveEntityLinks,
   findBrush,
+  extrudableBrushFaces,
   isBrushSelected,
   isFaceSelected,
   isPointEntitySelected,
@@ -18,6 +19,7 @@ import {
   selectedPointEntityIds,
   visibleEntityLinks,
   type Bounds,
+  type FaceSelection,
   type BrushId,
   type EditorObjectViewState,
   type EditorSelection,
@@ -59,6 +61,7 @@ export interface ToolPreviewInput {
   readonly document: MapDocument;
   readonly selection: EditorSelection | null;
   readonly hoverSelection: EditorSelection | null;
+  readonly faceOutlines?: readonly FaceSelection[] | null;
   readonly objectViewState: EditorObjectViewState;
   readonly tool: EditorTool;
   readonly transformPivot: Vec3 | null;
@@ -436,30 +439,33 @@ export function buildToolPreviewBuffers(
 ): ToolPreviewBuffers {
   const lines: number[] = [];
   const resizeLines: number[] = [];
-  if (
-    input.tool === 'select' &&
+  const resizeFaceSelections =
+    input.faceOutlines ??
+    (input.tool === 'select' &&
     input.hoverSelection?.faceId &&
     isBrushSelected(input.selection, input.hoverSelection.brushId)
-  ) {
-    const brush = findBrush(input.document, input.hoverSelection.brushId);
+      ? extrudableBrushFaces(
+          input.document,
+          { brushId: input.hoverSelection.brushId, faceId: input.hoverSelection.faceId },
+          selectedBrushIds(input.selection),
+        )
+      : []);
+  for (const selection of resizeFaceSelections) {
+    const brush = findBrush(input.document, selection.brushId);
     const face =
-      brush &&
-      deriveBrush(brush).faces.find(
-        (candidate) => candidate.faceId === input.hoverSelection?.faceId,
+      brush && deriveBrush(brush).faces.find((candidate) => candidate.faceId === selection.faceId);
+    if (!face) continue;
+    for (let i = 0; i < face.vertices.length; i++)
+      resizeLines.push(
+        ...face.vertices[i]!,
+        1,
+        0.92,
+        0,
+        ...face.vertices[(i + 1) % face.vertices.length]!,
+        1,
+        0.92,
+        0,
       );
-    if (face) {
-      for (let i = 0; i < face.vertices.length; i++)
-        resizeLines.push(
-          ...face.vertices[i]!,
-          1,
-          0.92,
-          0,
-          ...face.vertices[(i + 1) % face.vertices.length]!,
-          1,
-          0.92,
-          0,
-        );
-    }
   }
   const selectedBrushes = selectedBrushIdsForScene(input.selection);
   const brushIds = new Set([...selectedBrushes, ...selectedBrushIdsForScene(input.hoverSelection)]);
@@ -497,10 +503,7 @@ export function buildToolPreviewBuffers(
   const lineData = new Float32Array(lines);
   const guideData = new Float32Array(selectionGuideLines);
   return {
-    resizeFaceSelection:
-      resizeLines.length && input.hoverSelection?.faceId
-        ? { brushId: input.hoverSelection.brushId, faceId: input.hoverSelection.faceId }
-        : null,
+    resizeFaceSelections,
     resizeFace: {
       buffer: uploadFloatBuffer(device, new Float32Array(resizeLines), GPUBufferUsage.VERTEX),
       count: resizeLines.length / 6,

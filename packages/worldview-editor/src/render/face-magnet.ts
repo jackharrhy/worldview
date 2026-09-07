@@ -5,7 +5,7 @@ export interface FaceMagnet {
   readonly distance: number;
   readonly face: FaceHandle;
 }
-/** Snapshot candidates once per gesture; never chase the moving preview's own geometry. */
+/** Narrow spatial candidates to parallel planes with overlapping or touching footprints. */
 export function faceMagnets(source: FaceHandle, targets: readonly FaceHandle[]): FaceMagnet[] {
   const dropped = [0, 1, 2].reduce((a, b) =>
     Math.abs(source.normal[a]!) > Math.abs(source.normal[b]!) ? a : b,
@@ -46,4 +46,16 @@ export function pickFaceMagnet(
     if (error <= 7 && (!best || error < Math.abs(raw - best.distance) * scale)) best = candidate;
   }
   return best;
+}
+
+/** Highlight every nearby alignment, independently of the single magnetic drag constraint. */
+export function alignedFaces(
+  distance: number,
+  pixelsPerWorld: number,
+  candidates: readonly FaceMagnet[],
+): readonly FaceHandle[] {
+  const tolerance = 7 / Math.max(0.001, pixelsPerWorld);
+  return candidates
+    .filter((candidate) => Math.abs(candidate.distance - distance) <= tolerance)
+    .map((candidate) => candidate.face);
 }

@@ -9,6 +9,7 @@ import {
   type EditorSelection,
   type FaceSelection,
   type MapDocument,
+  type MapBrush,
   type TransformAxis,
   type Vec3,
 } from '../core/index.js';
@@ -95,23 +96,27 @@ export function availableFaceHandles(
   return brushIds.flatMap((brushId) => {
     const brush = findBrush(document, brushId);
     if (!brush) return [];
-    return deriveBrush(brush).faces.map((face) => {
-      const sum = face.vertices.reduce<[number, number, number]>(
-        (total, point) => [total[0] + point[0], total[1] + point[1], total[2] + point[2]],
-        [0, 0, 0],
-      );
-      const center: Vec3 = [
-        sum[0] / face.vertices.length,
-        sum[1] / face.vertices.length,
-        sum[2] / face.vertices.length,
-      ];
-      return {
-        selection: { brushId, faceId: face.faceId },
-        center,
-        normal: face.normal,
-        vertices: face.vertices,
-      };
-    });
+    return brushFaceHandles(brush);
+  });
+}
+
+export function brushFaceHandles(brush: MapBrush): readonly FaceHandle[] {
+  return deriveBrush(brush).faces.map((face) => {
+    const sum = face.vertices.reduce<[number, number, number]>(
+      (total, point) => [total[0] + point[0], total[1] + point[1], total[2] + point[2]],
+      [0, 0, 0],
+    );
+    const center: Vec3 = [
+      sum[0] / face.vertices.length,
+      sum[1] / face.vertices.length,
+      sum[2] / face.vertices.length,
+    ];
+    return {
+      selection: { brushId: brush.id, faceId: face.faceId },
+      center,
+      normal: face.normal,
+      vertices: face.vertices,
+    };
   });
 }
 
