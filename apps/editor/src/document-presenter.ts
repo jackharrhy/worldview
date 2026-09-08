@@ -1,5 +1,6 @@
 import {
   createSequentialIdFactory,
+  createCompilerToolMaterials,
   deriveEditorGroups,
   documentWithoutOmittedLayers,
   encodeQuakeWad2,
@@ -7,6 +8,7 @@ import {
   selectedBrushIds,
   selectedPointEntityIds,
   serializeMap,
+  serializeMapForCompile,
   type EditorSelection,
   type EditorTool,
   type MapDocument,
@@ -36,6 +38,7 @@ function isWorkspaceResizeKind(value: string | undefined): value is WorkspaceRes
 
 type DocumentState = EditorStatePort<
   | 'activeGridSize'
+  | 'activeGameProfile'
   | 'activeTool'
   | 'builtInMaterials'
   | 'currentDocumentName'
@@ -47,6 +50,7 @@ type DocumentState = EditorStatePort<
   | 'lastPointerPosition'
   | 'loadedWadSources'
   | 'openGroupId'
+  | 'quakePalette'
   | 'session'
   | 'textureLock',
   'currentDocumentName' | 'documentDirty' | 'duplicateSequence'
@@ -80,7 +84,10 @@ export class DocumentPresenter {
     const assets: CompileAssetEntry[] = [
       {
         name: 'worldview_dev.wad',
-        data: encodeQuakeWad2(this.state.builtInMaterials, this.state.diagnosticQuakePalette),
+        data: encodeQuakeWad2(
+          [...this.state.builtInMaterials, ...createCompilerToolMaterials()],
+          this.state.quakePalette ?? this.state.diagnosticQuakePalette,
+        ),
       },
     ];
     let index = 0;
@@ -95,6 +102,13 @@ export class DocumentPresenter {
   }
 
   public serializeCompileDocument(assets: readonly CompileAssetEntry[]): string {
+    if (this.state.activeGameProfile !== 'quake2') {
+      return serializeMapForCompile(
+        this.state.session.document,
+        assets,
+        this.state.activeGameProfile,
+      );
+    }
     const document = documentWithoutOmittedLayers(this.state.session.document);
     const worldspawn = document.entities.find(
       (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',

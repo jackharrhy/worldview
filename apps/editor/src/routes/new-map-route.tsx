@@ -67,6 +67,15 @@ export function Component() {
               </select>
             </Field>
             <p>{selected.description}</p>
+            {profile !== 'quake2' ? (
+              <div>
+                <strong>Included texture pack</strong>
+                <p>
+                  Worldview development textures — available in the editor and included when you
+                  build.
+                </p>
+              </div>
+            ) : null}
             {actionData && 'error' in actionData ? (
               <p className="landing-error" role="alert">
                 {actionData.error}

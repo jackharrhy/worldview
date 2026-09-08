@@ -1,4 +1,9 @@
 import { describe, expect, test } from 'vitest';
+import {
+  createDevelopmentMaterials,
+  createDiagnosticQuakePalette,
+  encodeQuakeWad2,
+} from '@jackharrhy/worldview-editor/core';
 import { verifyRealtimeTicket } from '../src/realtime-ticket.js';
 import { fixture, session, TEST_REALTIME_TICKET_SECRET } from './service-fixture.js';
 
@@ -57,7 +62,9 @@ async function createAccessFixture() {
     format: 'quake',
   });
   await app.maps.initialize(mapId, '{\n"classname" "worldspawn"\n}\n');
-  const resource = await app.blobs.put(new TextEncoder().encode('resource bytes'));
+  const resource = await app.blobs.put(
+    new Uint8Array(encodeQuakeWad2(createDevelopmentMaterials(), createDiagnosticQuakePalette())),
+  );
   const mount = app.database.createResourceMount({
     projectId: project.id,
     userId: owner.user.id,

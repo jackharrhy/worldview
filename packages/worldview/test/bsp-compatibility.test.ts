@@ -189,6 +189,25 @@ describe('Quake-family BSP compatibility', () => {
     ]);
   });
 
+  it.each([29, 30, 'BSP2'] as const)(
+    'keeps faces drawable when a %s MIPTEX table entry is missing',
+    (version) => {
+      const bytes = version === 'BSP2' ? makeBsp2() : makeBsp({ version });
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const textureLumpOffset = view.getUint32(4 + 2 * 8, true);
+      view.setInt32(textureLumpOffset + 4, -1, true);
+
+      const world = parseBsp(bytes);
+
+      expect(world.materials[0]).toEqual({ name: '__missing_0__', kind: 'opaque' });
+      expect(world.batches).toHaveLength(1);
+      expect(world.batches[0]).toMatchObject({ kind: 'opaque', indexCount: 6 });
+      expect(world.warnings).toContainEqual(
+        expect.objectContaining({ code: 'unusable-miptex', textureIndex: 0 }),
+      );
+    },
+  );
+
   it('substitutes a missing material for an unusable MIPTEX record', () => {
     const bytes = makeBsp({ version: 29, textureName: 'somemissingtext' });
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);

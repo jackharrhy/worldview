@@ -83,6 +83,7 @@ export function EditorRoute({ hostedMap, detachedMap }: EditorRouteProps = {}) {
                 name: hostedMap.name,
                 source: hostedMap.source,
                 projectName: hostedMap.projectName,
+                projectId: hostedMap.projectId,
                 game: hostedMap.game,
                 mapVersion: hostedMap.mapVersion,
                 actorId: hostedMap.actorId,

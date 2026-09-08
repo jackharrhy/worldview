@@ -489,3 +489,10 @@ export {
   type PrimitiveId,
   type PatchId,
 } from './types.js';
+export {
+  createDeveloperMaterial,
+  createDevelopmentMaterials,
+  createCompilerToolMaterials,
+  createDiagnosticQuakePalette,
+} from './development-materials.js';
+export { serializeMapForCompile, type MapCompileWad } from './compile-materials.js';

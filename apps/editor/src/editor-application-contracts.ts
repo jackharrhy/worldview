@@ -60,6 +60,7 @@ export type EditorApplicationLaunch =
       readonly name: string;
       readonly source: string;
       readonly projectName: string;
+      readonly projectId: string;
       readonly game: WorldviewGameProfile;
       readonly mapVersion: number;
       readonly actorId: string;

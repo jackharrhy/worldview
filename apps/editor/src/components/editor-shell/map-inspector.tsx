@@ -86,17 +86,25 @@ function ResourceSettings({ shellState }: MapInspectorProps) {
       <div className="section-heading">
         <h3>Map resources</h3>
         <span>
-          {resources.loadedWadCount} WAD{resources.loadedWadCount === 1 ? '' : 's'}
+          {resources.loadedWadCount + 1} texture pack{resources.loadedWadCount === 0 ? '' : 's'}
         </span>
       </div>
       <p className={resources.tone === 'error' ? 'error-text' : undefined}>{resources.message}</p>
       <div className="resource-settings-actions">
-        <Button size="compact" onPress={() => wadInput.current?.click()}>
-          <Icon name="texture-source" /> Add WAD
-        </Button>
-        <Button size="compact" onPress={() => paletteInput.current?.click()}>
-          <Icon name="palette" /> {resources.paletteLoaded ? 'Replace palette' : 'Add palette'}
-        </Button>
+        {resources.projectResourcesUrl ? (
+          <a href={resources.projectResourcesUrl} target="_blank" rel="noreferrer">
+            Project texture packs
+          </a>
+        ) : (
+          <>
+            <Button size="compact" onPress={() => wadInput.current?.click()}>
+              <Icon name="texture-source" /> Add WAD
+            </Button>
+            <Button size="compact" onPress={() => paletteInput.current?.click()}>
+              <Icon name="palette" /> {resources.paletteLoaded ? 'Replace palette' : 'Add palette'}
+            </Button>
+          </>
+        )}
       </div>
       <input ref={wadInput} id="wad-files" type="file" accept=".wad" multiple hidden />
       <input ref={paletteInput} id="palette-file" type="file" accept=".lmp,.pal,.dat" hidden />

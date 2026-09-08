@@ -44,7 +44,17 @@ export function parseQuakeTextures(
   for (let index = 0; index < textureCount; index += 1) {
     const offset = textureOffsets[index]!;
     if (offset < 0) {
-      materials.push({ name: `__invalid_${index}__`, kind: 'tool' });
+      // A missing MIPTEX has no name from which to infer surface semantics. Keep its
+      // faces drawable with a fallback instead of treating missing artwork as a tool.
+      const name = `__missing_${index}__`;
+      materials.push({ name, kind: 'opaque' });
+      warnings.push({
+        code: 'unusable-miptex',
+        message: `MIPTEX ${index} is missing and will use a fallback material`,
+        textureIndex: index,
+        textureName: name,
+        reason: 'Texture offset is negative; no MIPTEX record is present',
+      });
       continue;
     }
     invariant(offset >= textureTableEnd, `MIPTEX ${index} overlaps the texture offset table`);

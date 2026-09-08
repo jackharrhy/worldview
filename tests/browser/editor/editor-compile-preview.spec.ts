@@ -22,6 +22,17 @@ test.describe('Editor compiled preview', () => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
     const bsp = makeBsp({ version: 29 });
+    // A compiler without its WADs writes -1 MIPTEX offsets. A broad floor keeps the
+    // fallback visible from the source camera while exercising the real preview handoff.
+    const bspView = new DataView(bsp.buffer, bsp.byteOffset, bsp.byteLength);
+    const textureOffset = bspView.getUint32(4 + 2 * 8, true);
+    bspView.setInt32(textureOffset + 4, -1, true);
+    const faceOffset = bspView.getUint32(4 + 7 * 8, true);
+    bspView.setInt32(faceOffset + 16, -1, true);
+    const vertexOffset = bspView.getUint32(4 + 3 * 8, true);
+    [-2048, -2048, 0, -2048, 2048, 0, 2048, 2048, 0, 2048, -2048, 0].forEach((value, index) =>
+      bspView.setFloat32(vertexOffset + index * 4, value, true),
+    );
     let announceCompileStarted!: () => void;
     let releaseCompile!: () => void;
     const compileStarted = new Promise<void>((resolve) => (announceCompileStarted = resolve));
@@ -118,9 +129,29 @@ test.describe('Editor compiled preview', () => {
       compiledRevision: 0,
       showingCompiled: true,
     });
-    await page.getByLabel('Compiled BSP preview').screenshot({
+    const previewImage = await page.getByLabel('Compiled BSP preview').screenshot({
       path: testInfo.outputPath('compiled-preview.png'),
     });
+    const fallbackPixels = await page.evaluate(async (base64) => {
+      const response = await fetch(`data:image/png;base64,${base64}`);
+      const bitmap = await createImageBitmap(await response.blob());
+      const sample = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = sample.getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+      let count = 0;
+      for (let index = 0; index < pixels.length; index += 4) {
+        if (
+          pixels[index]! > 100 &&
+          pixels[index]! > pixels[index + 1]! * 2 &&
+          pixels[index + 2]! > pixels[index + 1]! * 2
+        )
+          count += 1;
+      }
+      return count;
+    }, previewImage.toString('base64'));
+    expect(fallbackPixels).toBeGreaterThan(100);
     await expect(page.locator('.viewport-error')).toBeHidden();
     expect(pageErrors).toEqual([]);
 

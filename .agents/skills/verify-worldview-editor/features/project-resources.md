@@ -29,3 +29,8 @@ Hosted resource tests must prove that all project roles can read a mounted resou
 unauthenticated users cannot, and only the owner can begin an Artbin mount. Reject authorization
 before Artbin metadata/content or blob-cache work so forbidden requests cannot consume upstream
 resources.
+
+Hosted source materials and builds share the included Worldview development pack and pinned project
+WADs. Prove an actual native compile embeds the used developer/project textures, and reject missing
+or hash-mismatched pinned bytes and unresolved texture names before invoking the compiler. Check
+that hosted resource controls link to project packs and do not expose browser-only WAD imports.

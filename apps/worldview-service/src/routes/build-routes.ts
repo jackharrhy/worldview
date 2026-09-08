@@ -5,6 +5,7 @@ import {
 } from '@worldview/protocol';
 
 import { canEditProject } from '../access-policy.js';
+import { prepareHostedBuildResources } from '../build-resources.js';
 import {
   allowMutation,
   MAX_HOSTED_MAP_BYTES,
@@ -80,6 +81,23 @@ export function createBuildRoutes(
         if (new TextEncoder().encode(snapshot.source).byteLength > MAX_HOSTED_MAP_BYTES) {
           return sendError(context.response, 413, 'Hosted builds are limited to 2 MiB map sources');
         }
+        const initialAdmission = options.database.buildAdmission(user.id);
+        if (initialAdmission !== 'allowed') return rejectBuildAdmission(context, initialAdmission);
+        let resources;
+        try {
+          resources = await prepareHostedBuildResources(
+            snapshot.source,
+            map.game,
+            options.database.listResourceMounts(map.projectId, user.id) ?? [],
+            options.blobs,
+          );
+        } catch (error) {
+          return sendError(
+            context.response,
+            422,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
         const admission = options.database.buildAdmission(user.id);
         if (admission !== 'allowed') return rejectBuildAdmission(context, admission);
         const build = options.database.createBuild({
@@ -93,12 +111,12 @@ export function createBuildRoutes(
           id: build.id,
           game: map.game,
           mapName: map.name,
-          source: snapshot.source,
+          source: resources.mapText,
           mapVersion: snapshot.mapVersion,
           sourceSha256: snapshot.sourceSha256,
           profileId: 'default',
           quality: input.quality,
-          assets: [],
+          assets: resources.assets,
         });
         if (!queued) {
           options.database.updateBuild(build.id, 'failed', { error: 'Build queue is full' });

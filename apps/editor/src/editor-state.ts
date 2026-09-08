@@ -46,7 +46,7 @@ import { DocumentRecoveryService } from './document-recovery.js';
 import { EditorClipboard } from './editor-clipboard.js';
 import type { EditorShellState } from './editor-shell-state.js';
 import {
-  createDeveloperMaterial,
+  createDevelopmentMaterials,
   createDiagnosticQuakePalette,
 } from './editor-material-fixtures.js';
 import type { EditorFileHandle } from './project-files.js';
@@ -190,12 +190,7 @@ export class EditorState {
   public readonly projectLocalState = new ProjectLocalStateService();
   public readonly assetMountState = new AssetMountStateService();
   public readonly materialCatalog = new EditorMaterialCatalog();
-  public readonly builtInMaterials = [
-    createDeveloperMaterial('DEV_FLOOR', [205, 82, 13], [255, 214, 154]),
-    createDeveloperMaterial('DEV_PILLAR', [70, 75, 79], [214, 219, 216]),
-    createDeveloperMaterial('DEV_ORANGE_64', [220, 91, 12], [255, 220, 164]),
-    createDeveloperMaterial('DEV_GREY_64', [83, 88, 91], [224, 228, 225]),
-  ] as const;
+  public readonly builtInMaterials = createDevelopmentMaterials();
   public readonly uvEditor: TextureUvEditor;
   public readonly loadedWadSources = new Map<string, ArrayBuffer>();
   public readonly loadedGameAssets = new Map<string, ArrayBuffer>();

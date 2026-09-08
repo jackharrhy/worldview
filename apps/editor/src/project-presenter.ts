@@ -61,6 +61,7 @@ type ProjectState = EditorStatePort<
   | 'currentFileHandle'
   | 'currentMapSource'
   | 'documentKey'
+  | 'diagnosticQuakePalette'
   | 'entityDefinitions'
   | 'lastDiskFingerprint'
   | 'lastRecoveryLabel'
@@ -506,6 +507,7 @@ export class ProjectPresenter {
   }
 
   public async restoreBrowserAssetMounts(): Promise<void> {
+    if (this.state.documentKey.startsWith('hosted-map:')) return;
     const mounts = await this.state.assetMountState.list(this.state.documentKey).catch(() => []);
     this.signal.throwIfAborted();
     for (const mount of mounts) {
@@ -525,12 +527,32 @@ export class ProjectPresenter {
       readonly kind: string;
       readonly data: ArrayBuffer;
     }[],
+    projectId: string,
   ): void {
     for (const resource of resources) {
+      if (resource.kind !== 'palette') continue;
+      if (resource.data.byteLength !== 768)
+        throw new Error(`Palette ${resource.name} must contain 768 bytes.`);
+      this.state.quakePalette = new Uint8Array(resource.data);
+    }
+    for (const resource of resources) {
       if (resource.kind !== 'wad' && !resource.name.toLowerCase().endsWith('.wad')) continue;
-      this.state.materialCatalog.importWad(resource.name, resource.data, this.state.quakePalette);
+      const imported = this.state.materialCatalog.importWad(
+        resource.name,
+        resource.data,
+        this.state.quakePalette ?? this.state.diagnosticQuakePalette,
+      );
+      const error = imported.diagnostics.find(({ severity }) => severity === 'error');
+      if (error) throw new Error(`Texture pack ${resource.name}: ${error.message}`);
       this.state.loadedWadSources.set(resource.name, resource.data);
     }
+    this.ui.resourceSettings.update({
+      loadedWadCount: this.state.loadedWadSources.size,
+      paletteLoaded: Boolean(this.state.quakePalette),
+      projectResourcesUrl: `/project/${projectId}`,
+      message:
+        'Worldview development textures and project texture packs are included in builds. Manage packs in Project resources.',
+    });
     this.materials.renderMaterialCatalog();
     this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
   }

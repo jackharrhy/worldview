@@ -28,6 +28,8 @@ preview reports the same position, yaw, pitch, and field of view in
 compiler response while moving the source camera when testing the click-time snapshot rule.
 Check browser page errors after the preview renders and after switching back to source: the hidden
 source viewport must skip GPU frames with zero layout extent, then resume rendering when shown.
+Assert visible rendered pixels, including fallback geometry when the compiler emits missing MIPTEX
+entries. A visible canvas and successful build status alone do not prove that the map renders.
 For a hosted map, additionally prove the submitted revision equals the canonical map version and
 that anonymous artifact retrieval is rejected.
 For Quake II, prove the helper advertises `game: quake2`, preserves the requested document revision,

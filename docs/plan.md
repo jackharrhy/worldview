@@ -215,11 +215,21 @@ definitions use the same catalog boundary regardless of whether they came from F
 sources.
 
 Build requests name a source revision, fixed profile, and preview or final quality. Results carry
-logs, diagnostics, artifacts, and the source fingerprint. A stale result remains inspectable but
+logs, diagnostics, artifacts, and the source fingerprint. Worldview development textures are an
+explicitly listed default pack shared by editor and compiler. Hosted maps inherit pinned project
+WADs; browser-only WAD imports are unavailable in hosted workspaces. Builds verify pinned bytes and
+used non-tool texture names, attach the WADs, and rewrite only transient compile-source references.
+Later project packs override earlier packs and defaults, matching sidebar resolution. Missing,
+corrupt, or oversized inputs stop the build. The public editor core exports development-material
+generators and `serializeMapForCompile` to share validation, omitted-layer handling, and precedence.
+
+A stale result remains inspectable but
 cannot replace the current compiled preview. Browsers never provide arbitrary executable paths,
 commands, or hosted build source. A newly installed preview starts in fly mode from the perspective
 camera captured with the request; camera position, orientation, and field of view are applied before
 the compiled viewer's first frame and remain separate from source viewport state afterward.
+Missing BSP29/30/BSP2 texture-table entries remain drawable using diagnostic fallback materials and
+emit warnings; missing artwork must not silently discard compiled geometry as tool surfaces.
 
 ### Browser persistence
 

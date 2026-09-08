@@ -134,6 +134,7 @@ export class ToolEvents {
       'change',
       async () => {
         const file = this.ports.elements.paletteFile.files?.[0];
+        if (this.ui.resourceSettings.getSnapshot().projectResourcesUrl) return;
         if (!file) return;
         const bytes = new Uint8Array(await file.arrayBuffer());
         if (bytes.byteLength < 768) {
@@ -163,6 +164,7 @@ export class ToolEvents {
       'change',
       async () => {
         const files = [...(this.ports.elements.wadFiles.files ?? [])];
+        if (this.ui.resourceSettings.getSnapshot().projectResourcesUrl) return;
         if (files.length === 0) return;
         const summaries: string[] = [];
         let hasErrors = false;

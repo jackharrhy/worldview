@@ -22,6 +22,9 @@ const malformedHumanTokenFetch: typeof fetch = async (input) => {
 const successfulCompilerFetch: typeof fetch = async (_input, init) => {
   const request = RemoteCompileRequestSchema.parse(JSON.parse(String(init?.body)));
   expect(request.mapText).toContain('worldspawn');
+  expect(request.mapText).toContain('worldview_dev.wad');
+  expect(request.assets?.[0]?.name).toBe('worldview_dev.wad');
+  expect(Buffer.from(request.assets![0]!.base64, 'base64').subarray(0, 4).toString()).toBe('WAD2');
   expect(request.expectedDocumentRevision).toBe(0);
   return Response.json({
     status: 'succeeded',

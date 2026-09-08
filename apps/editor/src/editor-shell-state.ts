@@ -510,6 +510,7 @@ export class MaterialBrowserPort extends EditorUiPort<
 }
 
 export interface ResourceSettingsSnapshot {
+  readonly projectResourcesUrl: string | null;
   readonly loadedWadCount: number;
   readonly paletteLoaded: boolean;
   readonly message: string;
@@ -521,8 +522,10 @@ export class ResourceSettingsPort extends EditorUiPort<ResourceSettingsSnapshot>
   public constructor() {
     super({
       loadedWadCount: 0,
+      projectResourcesUrl: null,
       paletteLoaded: false,
-      message: 'Material resources are local to this browser until added to a project mount.',
+      message:
+        'Worldview development textures are included. Added WADs are included in local builds.',
       tone: 'normal',
       revealVersion: 0,
     });

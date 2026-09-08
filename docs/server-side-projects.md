@@ -93,6 +93,14 @@ implement the same editor build contract; hosted artifacts are downloaded throug
 membership-checked content-addressed routes. Browser-provided source or executable paths are not
 accepted.
 
+Every build includes Worldview development textures and named compiler tool textures, plus the
+project's pinned WADs. The service verifies content hashes, rejects unavailable packs and unresolved
+map textures, and supplies safe WAD basenames in a transient compile source without changing the
+canonical map. Later mounts take precedence over earlier mounts and the development pack. A pinned
+768-byte palette is used for generated indexed textures and hosted preview colors. Builds allow up
+to 15 project WADs and 24 MiB of texture inputs. Hosted editor resource controls lead to project
+resources; browser-only imports cannot silently enter a hosted material catalog.
+
 Hosted map source is limited to 2 MiB. One user may have one active build and submit at most six
 builds per hour; the process admits no more than four active/queued jobs globally and retains only
 three pending jobs behind its single worker. Interrupted jobs fail closed on service restart.

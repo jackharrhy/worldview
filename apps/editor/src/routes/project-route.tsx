@@ -64,6 +64,10 @@ export function Component() {
               {actionData && 'error' in actionData ? (
                 <p className="landing-error">{actionData.error}</p>
               ) : null}
+              <p>
+                Includes Worldview development textures and this project's texture packs. Add packs
+                below to use them in the editor and in builds.
+              </p>
             </div>
             <footer>
               <button className="primary" disabled={navigation.state !== 'idle'}>
@@ -119,10 +123,14 @@ export function Component() {
         <section className="landing-recents">
           <div className="landing-recents-heading">
             <h2>Project resources</h2>
-            <span>{mounts.length}</span>
+            <span>{mounts.length + 1}</span>
+          </div>
+          <div className="landing-recent">
+            <strong>Worldview development textures</strong>
+            <span>Included in every map and build</span>
           </div>
           {mounts.length === 0 ? (
-            <p className="landing-empty">No remote resources mounted.</p>
+            <p className="landing-empty">No additional texture packs or resources.</p>
           ) : (
             <div className="landing-recent-list">
               {mounts.map((mount) => (
