@@ -26,6 +26,8 @@ Capture `worldview_inspect_editor.camera.perspective`, request a build, and veri
 preview reports the same position, yaw, pitch, and field of view in
 `worldview_inspect_editor.build.compiledCamera`, plus `compiledMovementMode: "fly"`. Hold the
 compiler response while moving the source camera when testing the click-time snapshot rule.
+Check browser page errors after the preview renders and after switching back to source: the hidden
+source viewport must skip GPU frames with zero layout extent, then resume rendering when shown.
 For a hosted map, additionally prove the submitted revision equals the canonical map version and
 that anonymous artifact retrieval is rejected.
 For Quake II, prove the helper advertises `game: quake2`, preserves the requested document revision,

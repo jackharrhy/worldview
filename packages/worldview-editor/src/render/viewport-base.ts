@@ -371,6 +371,10 @@ export abstract class ViewportBase {
     encoder: GPUCommandEncoder,
   ): boolean {
     if (this.disposed) return false;
+    const bounds = this.canvas.getBoundingClientRect();
+    // Compiled previews hide the source canvas. Keep its frame pending until it has a
+    // drawable extent again, before allocating targets or computing CSS-pixel scales.
+    if (bounds.width <= 0 || bounds.height <= 0) return false;
     this.flyCamera.update();
     this.resize();
     this.positionTransformReadout();
@@ -404,12 +408,7 @@ export abstract class ViewportBase {
     });
     this.overlayUniform.write({
       ...uniformValue,
-      viewport: d.vec4f(
-        this.width,
-        this.height,
-        0.9,
-        this.width / this.canvas.getBoundingClientRect().width,
-      ),
+      viewport: d.vec4f(this.width, this.height, 0.9, this.width / bounds.width),
     });
     const swapchainView = this.context.getCurrentTexture().createView();
     const pass = encoder.beginRenderPass({

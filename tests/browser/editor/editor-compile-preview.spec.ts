@@ -18,7 +18,9 @@ const corsHeaders = {
 test.describe('Editor compiled preview', () => {
   test('opens a new BSP preview in fly mode at the perspective camera captured for compile', async ({
     page,
-  }) => {
+  }, testInfo) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
     const bsp = makeBsp({ version: 29 });
     let announceCompileStarted!: () => void;
     let releaseCompile!: () => void;
@@ -116,6 +118,21 @@ test.describe('Editor compiled preview', () => {
       compiledRevision: 0,
       showingCompiled: true,
     });
+    await page.getByLabel('Compiled BSP preview').screenshot({
+      path: testInfo.outputPath('compiled-preview.png'),
+    });
+    await expect(page.locator('.viewport-error')).toBeHidden();
+    expect(pageErrors).toEqual([]);
+
+    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
+    await page.getByRole('menuitem', { name: 'Show source', exact: true }).click();
+    await expect(canvas).toBeVisible();
+    await canvas.screenshot({ path: testInfo.outputPath('restored-source.png') });
+    expect((await executeSiteTool(page, 'worldview_inspect_editor')).build).toMatchObject({
+      showingCompiled: false,
+    });
+    expect(pageErrors).toEqual([]);
   });
 
   test('preserves the requested view through the configured native compiler', async ({ page }) => {
