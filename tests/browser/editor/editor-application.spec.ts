@@ -388,9 +388,10 @@ test.describe('WebMCP site authoring', () => {
     await expect(page.getByRole('menuitem', { name: 'Versions', exact: true })).toBeHidden();
     await openToolbarMenu(page, 'Worldview document menu');
     await expect(page.getByRole('menuitem', { name: 'Versions', exact: true })).toBeVisible();
-    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
+    await page.keyboard.press('Escape');
+    await openToolbarMenu(page, 'Build menu');
     await expect(
-      page.getByRole('menuitem', { name: 'Compile', exact: true }).locator('.wv-icon'),
+      page.getByRole('menuitem', { name: 'Build & preview', exact: true }).locator('.wv-icon'),
     ).toHaveCount(1);
   });
 

@@ -1,3 +1,4 @@
+import { BuildExportDialog } from './build-menu.js';
 import { useState, useSyncExternalStore } from 'react';
 import { EDITOR_SPECIAL_BRUSH_FILTER_INFO } from '@jackharrhy/worldview-editor';
 import type { EditorShellState } from '../../editor-shell-state.js';
@@ -144,6 +145,10 @@ function BuildLogDialog({ shellState }: { readonly shellState: EditorShellState 
     shellState.buildLog.subscribe,
     shellState.buildLog.getSnapshot,
   );
+  const commands = useSyncExternalStore(
+    shellState.editorCommands.subscribe,
+    shellState.editorCommands.getSnapshot,
+  );
   const close = () => shellState.buildLog.setOpen(false);
   const dialog = useModalDialog(build.open, close);
   return (
@@ -154,7 +159,7 @@ function BuildLogDialog({ shellState }: { readonly shellState: EditorShellState 
       aria-labelledby="build-log-dialog-title"
     >
       <header>
-        <strong id="build-log-dialog-title">Build diagnostics</strong>
+        <strong id="build-log-dialog-title">Build results</strong>
         <Select
           id="build-history"
           label="Build history"
@@ -164,10 +169,38 @@ function BuildLogDialog({ shellState }: { readonly shellState: EditorShellState 
           isDisabled={build.history.length === 0}
           onSelectionChange={(key) => shellState.buildLog.inspect(String(key))}
         />
+        <Button
+          size="compact"
+          isDisabled={!build.canDownloadBsp}
+          onPress={() => shellState.buildLog.downloadBsp()}
+        >
+          Download BSP
+        </Button>
         <Button size="compact" onPress={close}>
           Close
         </Button>
       </header>
+      <div className="build-result-actions">
+        {(['toggle-leak', 'toggle-portals', 'launch'] as const).map((action) => (
+          <Button
+            key={action}
+            size="compact"
+            isDisabled={commands.actions[action]?.disabled ?? true}
+            onPress={() => shellState.editorCommands.invoke(action)}
+            {...(action === 'launch'
+              ? {}
+              : { 'aria-pressed': commands.actions[action]?.active ?? false })}
+          >
+            {
+              {
+                'toggle-leak': 'Leak path',
+                'toggle-portals': 'Portals',
+                launch: 'Launch in engine',
+              }[action]
+            }
+          </Button>
+        ))}
+      </div>
       <pre id="build-log-output">{build.output}</pre>
     </dialog>
   );
@@ -278,6 +311,7 @@ export function EditorDialogs({ shellState }: { readonly shellState: EditorShell
   return (
     <>
       <BuildLogDialog shellState={shellState} />
+      <BuildExportDialog shellState={shellState} />
       <RecoveryDialog shellState={shellState} />
       <CheckpointDialog shellState={shellState} />
       <CollaborationDialog port={shellState.collaborationUi} />

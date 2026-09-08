@@ -1,3 +1,4 @@
+import { BuildMenu } from './build-menu.js';
 import { useSyncExternalStore } from 'react';
 import { MenuTrigger } from 'react-aria-components/Menu';
 
@@ -76,45 +77,6 @@ const historyActions: readonly ActionSpec[] = [
     icon: 'source',
     label: 'Source',
     title: 'Edit map source',
-  },
-];
-
-const buildActions: readonly ActionSpec[] = [
-  { action: 'compile', icon: 'compile', label: 'Compile', title: 'Compile map' },
-  {
-    action: 'toggle-preview',
-    icon: 'preview',
-    label: 'Preview',
-    title: 'Toggle compiled preview',
-    disabled: true,
-  },
-  {
-    action: 'toggle-leak',
-    icon: 'warning',
-    label: 'Leak',
-    title: 'Toggle leak path',
-    disabled: true,
-  },
-  {
-    action: 'toggle-portals',
-    icon: 'portals',
-    label: 'Portals',
-    title: 'Toggle portals',
-    disabled: true,
-  },
-  {
-    action: 'build-log',
-    icon: 'build-log',
-    label: 'Log',
-    title: 'Build diagnostics',
-    disabled: true,
-  },
-  {
-    action: 'launch',
-    icon: 'launch',
-    label: 'Launch',
-    title: 'Launch external game',
-    disabled: true,
   },
 ];
 
@@ -547,40 +509,6 @@ function TopBar({ shellState }: EditorChromeProps) {
                 <MenuItem id="dark" label="Dark" />
                 <MenuItem id="light" label="Light" />
               </Submenu>
-              <Submenu label="Build" menuProps={{ onAction: (key) => invokeAction(String(key)) }}>
-                {project.buildProfiles.length > 0 ? (
-                  <Submenu
-                    label="Build profile"
-                    menuProps={{
-                      selectionMode: 'single',
-                      selectedKeys: project.selectedBuildProfileId
-                        ? [project.selectedBuildProfileId]
-                        : [],
-                      onAction: (key) => shellState.projectToolbar.selectBuildProfile(String(key)),
-                    }}
-                  >
-                    {project.buildProfiles.map((profile) => (
-                      <MenuItem key={profile.id} id={profile.id} label={profile.label} />
-                    ))}
-                  </Submenu>
-                ) : null}
-                {buildActions.map((action) => (
-                  <MenuItem
-                    key={action.action}
-                    id={action.action}
-                    icon={action.icon}
-                    label={
-                      commands.actions[action.action as keyof typeof commands.actions]?.label ??
-                      action.label
-                    }
-                    isDisabled={
-                      commands.actions[action.action as keyof typeof commands.actions]?.disabled ??
-                      action.disabled ??
-                      false
-                    }
-                  />
-                ))}
-              </Submenu>
             </MenuSection>
           </Menu>
         </Popover>
@@ -601,6 +529,7 @@ function TopBar({ shellState }: EditorChromeProps) {
           onClick={() => invokeAction('show-source')}
         />
       </nav>
+      <BuildMenu shellState={shellState} />
       <IconButton
         icon="inspector"
         label="Inspector"

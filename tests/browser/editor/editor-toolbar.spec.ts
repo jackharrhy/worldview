@@ -103,9 +103,8 @@ test('groups application controls into the icon menu and keeps viewport chrome c
   await menu.click();
   await page.getByRole('menuitem', { name: 'Appearance', exact: true }).hover();
   await page.getByRole('menuitemradio', { name: 'Dark', exact: true }).click();
-  await menu.click();
-  await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
-  await expect(page.getByRole('menuitem', { name: 'Compile', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Build menu', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Build & preview', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await menu.click();

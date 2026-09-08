@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { openDB } from 'idb';
 import {
   createStarterDocument,
   rebaseMapSource,
@@ -15,6 +16,7 @@ import {
   completeEditorTransaction,
   deleteEditorDatabase,
   EDITOR_DATABASE_VERSION,
+  EDITOR_DATABASE_NAME,
   EDITOR_STORES,
   openEditorDatabase,
 } from '../src/editor-database.js';
@@ -38,7 +40,20 @@ function compileResult(buildId: string): MapCompileResult {
 }
 
 describe('typed editor database', () => {
-  it('creates the complete v1 schema and its query indexes in one upgrade', async () => {
+  it('adds export settings to an existing v1 database without losing records', async () => {
+    const previous = await openDB(EDITOR_DATABASE_NAME, 1, {
+      upgrade(database) {
+        database.createObjectStore('local-projects');
+      },
+    });
+    await previous.put('local-projects', { name: 'Keep me' }, 'existing');
+    previous.close();
+    const upgraded = await openEditorDatabase();
+    expect(upgraded.objectStoreNames.contains('build-exports')).toBe(true);
+    expect(await upgraded.get('local-projects', 'existing')).toEqual({ name: 'Keep me' });
+  });
+
+  it('creates the complete schema and its query indexes in one upgrade', async () => {
     const database = await openEditorDatabase();
 
     expect(database.version).toBe(EDITOR_DATABASE_VERSION);

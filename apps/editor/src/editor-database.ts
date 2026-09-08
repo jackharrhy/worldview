@@ -1,5 +1,6 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 
+import type { BuildExportSettings } from './build-export-settings.js';
 import type { StoredAssetMount } from './asset-mount-state.js';
 import type { MapBuildHistoryRecord } from './build-history.js';
 import type {
@@ -11,9 +12,10 @@ import type { DocumentRecoverySnapshot } from './document-recovery.js';
 import type { LocalProjectState } from './project-local-state.js';
 
 export const EDITOR_DATABASE_NAME = 'worldview-editor';
-export const EDITOR_DATABASE_VERSION = 1;
+export const EDITOR_DATABASE_VERSION = 2;
 
 export const EDITOR_STORES = {
+  buildExports: 'build-exports',
   assetMounts: 'asset-mounts',
   buildHistory: 'build-history',
   collaborationOperations: 'collaboration-operations',
@@ -25,6 +27,7 @@ export const EDITOR_STORES = {
 } as const;
 
 interface EditorDatabaseSchema extends DBSchema {
+  'build-exports': { readonly key: string; readonly value: BuildExportSettings };
   'asset-mounts': {
     readonly key: string;
     readonly value: StoredAssetMount;
@@ -109,6 +112,8 @@ export function openEditorDatabase(): Promise<EditorDatabase> {
   const pending = openDB<EditorDatabaseSchema>(EDITOR_DATABASE_NAME, EDITOR_DATABASE_VERSION, {
     upgrade(database, oldVersion) {
       if (oldVersion === 0) createStores(database);
+      if (oldVersion < 2)
+        database.createObjectStore(EDITOR_STORES.buildExports, { keyPath: 'scopeId' });
     },
     blocking() {
       connection?.close();

@@ -96,7 +96,7 @@ identities. Equality must not recursively traverse map or geometry data. These p
 and camera/brush-preview isolation have focused unit and browser regression coverage.
 
 The editor uses one horizontal top toolbar. The Worldview document menu contains new/open,
-saving, export, recovery, collaboration, theme, and build controls. Its compact cube trigger
+saving, source export, recovery, collaboration, and theme controls. Build has its own menu at the right beside the inspector toggle. Its compact cube trigger
 opens the current map name above separated file, recovery, and application action groups without headings, aligned flush beneath the button with larger labels and fixed icon/text columns; scene tools, grid, view, and history sit alongside it. Compact dividers group editing concerns, and the numeric grid control sits beside texture lock. The toolbar scrolls horizontally when space is limited and has no left rail.
 Original SVG geometry glyphs combine neutral structure with colored faces, edges, handles, and transforms; general UI actions retain Phosphor. The neutral zinc dark theme, 18px axis-only viewport headers, and 20px status bar prioritize canvas space. Idle compiler status is omitted from the footer and zero issues use neutral text. Explicit nonempty selection changes
 switch an already-open inspector to Face for faces or Entity for brushes/entities without stealing viewport focus; a closed inspector stays closed and keeps its chosen tab;
@@ -230,6 +230,26 @@ camera captured with the request; camera position, orientation, and field of vie
 the compiled viewer's first frame and remain separate from source viewport state afterward.
 Missing BSP29/30/BSP2 texture-table entries remain drawable using diagnostic fallback materials and
 emit warnings; missing artwork must not silently discard compiled geometry as tool surfaces.
+Build results offers Download BSP for the selected build, including retained history. Downloads
+preserve the compiler's filename and exact artifact bytes for use in a compatible local engine.
+
+The Build menu offers Build & preview, remembered Preview/Final quality, Export latest build,
+Build & export, Export settings, Build results, and the source/compiled view switch. Leak paths,
+portals, and native launch live in Build results. Export uses the last successful build in the current
+session and rejects a changed document or revision. Historical builds remain available as raw BSPs.
+Automatic export returns a BSP when the supported map resources are embedded, otherwise a ZIP with
+engine-root paths (`maps/<name>.bsp`, WADs at the root, and referenced sounds, sprites, skyboxes, and
+Quake II WAL textures). Quake BSPs with missing embedded textures must be rebuilt; GoldSrc may use
+external WADs. Missing resources, unsafe paths, and model formats whose secondary dependencies cannot
+yet be resolved stop automatic packaging instead of producing an incomplete archive. The normal game
+installation still supplies engine/game data such as palettes and entity-class resources.
+An optional source checkbox includes the compile-time `.map` and WAD snapshot, never later edits.
+One machine-local setting set per project remembers quality, source inclusion, a download or selected
+directory destination, and export after successful builds. The directory receives one BSP or ZIP,
+replacing that map's same-named export; it does not unpack into arbitrary game directories.
+Native directory handles are stored in IndexedDB schema v2. Browsers without directory access use
+downloads. Revoked directory permission requires choosing the directory again; background builds
+never prompt for filesystem access. Export settings and directory handles never enter collaboration.
 
 ### Browser persistence
 

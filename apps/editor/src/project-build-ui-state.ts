@@ -157,6 +157,7 @@ export interface BuildHistorySnapshot {
 }
 
 export interface BuildLogSnapshot {
+  readonly canDownloadBsp: boolean;
   readonly open: boolean;
   readonly output: string;
   readonly history: readonly BuildHistorySnapshot[];
@@ -164,6 +165,7 @@ export interface BuildLogSnapshot {
 }
 
 export interface BuildLogActions {
+  downloadBsp(): void;
   inspect(buildId: string): void;
 }
 
@@ -172,12 +174,16 @@ export class BuildLogPort extends EditorUiPort<BuildLogSnapshot, BuildLogActions
     super({
       open: false,
       output: '',
+      canDownloadBsp: false,
       history: [],
       selectedBuildId: null,
     });
   }
   public inspect(buildId: string): void {
     this.actions?.inspect(buildId);
+  }
+  public downloadBsp(): void {
+    this.actions?.downloadBsp();
   }
   public setOpen(open: boolean): void {
     this.update({ open });

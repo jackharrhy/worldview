@@ -1,3 +1,4 @@
+import { BuildExportSession } from './build-export-session.js';
 import {
   compiledBspVersion,
   parseLeakPath,
@@ -14,13 +15,16 @@ import type { EditorShellState } from './editor-shell-state.js';
 import type { CompileAssetEntry } from './editor-application-contracts.js';
 import type { EditorStatePort } from './editor-state-port.js';
 import { resolveEditorRenderTheme } from './render-theme.js';
+import { downloadFileCopy } from './project-files.js';
 
 type BuildUi = Pick<
   EditorShellState,
   | 'buildLog'
+  | 'buildExport'
   | 'compileState'
   | 'editorCommands'
   | 'projectToolbar'
+  | 'resourceSettings'
   | 'statusMessage'
   | 'viewportPresentation'
 >;
@@ -38,6 +42,8 @@ type BuildState = EditorStatePort<
   | 'compiledViewer'
   | 'compilerCoordinator'
   | 'currentDocumentName'
+  | 'documentKey'
+  | 'workspaceId'
   | 'diagnosticQuakePalette'
   | 'latestBuild'
   | 'launchProfileId'
@@ -72,6 +78,7 @@ interface BuildDocumentCommands {
 }
 
 export class BuildPresenter {
+  private readonly exports: BuildExportSession;
   public constructor(
     private readonly state: BuildState,
     private readonly ui: BuildUi,
@@ -79,11 +86,38 @@ export class BuildPresenter {
     private readonly document: BuildDocumentCommands,
     private readonly signal: AbortSignal,
   ) {
-    this.ui.buildLog.bind({ inspect: (buildId) => void this.inspectHistoricalBuild(buildId) });
+    this.exports = new BuildExportSession(
+      ui.buildExport,
+      () => ({
+        scopeId:
+          state.projectKey ??
+          ui.resourceSettings.getSnapshot().projectResourcesUrl ??
+          state.workspaceId,
+        documentKey: state.documentKey,
+        documentId: state.session.document.id,
+        revision: state.session.document.revision,
+      }),
+      (quality) => {
+        state.activeCompileQuality = quality;
+      },
+      () => this.compilePreview(true),
+      (message) => ui.statusMessage.set(message),
+      signal,
+    );
+    this.ui.buildLog.bind({
+      inspect: (buildId) => void this.inspectHistoricalBuild(buildId),
+      downloadBsp: () => {
+        const artifact = this.state.latestBuild?.artifacts.find(
+          (entry) => entry.kind === 'bsp' || entry.name.toLowerCase().endsWith('.bsp'),
+        );
+        if (artifact) downloadFileCopy(artifact.name, artifact.data, artifact.mediaType);
+      },
+    });
   }
 
   public dispose(): void {
     this.ui.buildLog.unbind();
+    this.exports.dispose();
   }
 
   public formatVector(value: readonly number[]): string {
@@ -203,6 +237,9 @@ export class BuildPresenter {
         ),
       ].join('\n'),
       selectedBuildId: result.buildId,
+      canDownloadBsp: result.artifacts.some(
+        (entry) => entry.kind === 'bsp' || entry.name.toLowerCase().endsWith('.bsp'),
+      ),
     });
     this.ui.editorCommands.updateActions({
       launch: {
@@ -308,8 +345,9 @@ export class BuildPresenter {
     return true;
   }
 
-  public async compilePreview(): Promise<void> {
+  public async compilePreview(exportRequested = false): Promise<void> {
     this.signal.throwIfAborted();
+    if (this.ui.compileState.getSnapshot().state === 'busy') return;
     const previewCamera = this.compiledPreviewCamera();
     const quality = this.state.activeCompileQuality;
     this.ui.editorCommands.updateActions({ compile: { disabled: true } });
@@ -319,10 +357,22 @@ export class BuildPresenter {
     );
     try {
       const assets = this.document.compileAssets();
+      const source = this.document.serializeCompileDocument(assets);
+      const inputs = {
+        documentKey: this.state.documentKey,
+        documentId: this.state.session.document.id,
+        revision: this.state.session.document.revision,
+        name: this.state.currentDocumentName,
+        source,
+        wads: assets.map(({ name, data }) => ({ name, data: data.slice(0) })),
+        gameAssets: new Map(
+          [...this.state.loadedGameAssets].map(([name, data]) => [name, data.slice(0)]),
+        ),
+      };
       const outcome = await this.state.compilerCoordinator.compile(
         {
           mapName: 'worldview_preview',
-          mapText: this.document.serializeCompileDocument(assets),
+          mapText: source,
           quality,
           profileId: this.state.activeCompileProfileId,
           expectedDocumentRevision: this.state.session.document.revision,
@@ -340,7 +390,11 @@ export class BuildPresenter {
         this.ui.statusMessage.set('Compile cancelled.');
         return;
       }
-      if (outcome.status === 'stale') {
+      if (
+        outcome.status === 'stale' ||
+        inputs.documentKey !== this.state.documentKey ||
+        inputs.documentId !== this.state.session.document.id
+      ) {
         this.setCompileState('RESULT STALE', 'stale');
         this.ui.statusMessage.set(
           'Compile finished, but the source changed. Result was not installed.',
@@ -362,11 +416,11 @@ export class BuildPresenter {
         );
         return;
       }
-      const previewInstalled = await this.installCompiledPreview(outcome.result, previewCamera);
-      this.setCompileState(`COMPILED R${outcome.result.sourceDocumentRevision}`, 'ready');
-      this.ui.statusMessage.set(
-        `${previewInstalled ? 'Compiled preview installed' : 'Compile completed'} in ${Math.round(outcome.result.elapsedMilliseconds)} ms.${this.state.compiledPreviewWarning ?? ''}`,
-      );
+      const bsp = outcome.result.artifacts.find((artifact) => artifact.kind === 'bsp');
+      if (bsp) this.exports.accept({ ...inputs, bsp: bsp.data });
+      await this.presentSuccessfulBuild(outcome.result, previewCamera);
+      if (exportRequested || this.exports.exportAfterBuild)
+        await this.exports.run(() => this.exports.exportLatest());
     } catch (error) {
       if (this.signal.aborted) return;
       this.showCompiledPreview(false);
@@ -378,8 +432,27 @@ export class BuildPresenter {
     }
   }
 
+  private async presentSuccessfulBuild(
+    result: MapCompileResult,
+    camera: CameraUpdate | null,
+  ): Promise<void> {
+    let previewInstalled = false;
+    try {
+      previewInstalled = await this.installCompiledPreview(result, camera);
+    } catch (error) {
+      this.signal.throwIfAborted();
+      this.showCompiledPreview(false);
+      this.state.compiledPreviewWarning = ` Preview unavailable: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    this.setCompileState(`COMPILED R${result.sourceDocumentRevision}`, 'ready');
+    this.ui.statusMessage.set(
+      `${previewInstalled ? 'Compiled preview installed' : 'Compile completed'} in ${Math.round(result.elapsedMilliseconds)} ms.${this.state.compiledPreviewWarning ?? ''}`,
+    );
+  }
+
   public async checkCompilerService(): Promise<void> {
     this.signal.throwIfAborted();
+    await this.exports.loadSettings();
     if (!this.state.buildServiceEnabled) {
       this.ui.editorCommands.updateActions({
         compile: { disabled: true },
@@ -404,7 +477,7 @@ export class BuildPresenter {
       const compileProfile = selectMapBuildProfile(capabilities, {
         game: activeGame,
         ...(preferredCompileProfileId ? { preferredId: preferredCompileProfileId } : {}),
-        ...(logicalProfile ? { quality: logicalProfile.quality } : {}),
+        quality: this.state.activeCompileQuality,
       });
       if (this.state.projectWorkspace && this.state.projectKey && logicalProfile) {
         if (compileProfile && preferredCompileProfileId !== compileProfile.id) {
@@ -418,7 +491,7 @@ export class BuildPresenter {
         }
       }
       this.state.activeCompileProfileId = compileProfile?.id ?? 'default';
-      this.state.activeCompileQuality = logicalProfile?.quality ?? 'preview';
+      this.ui.buildExport.update({ quality: this.state.activeCompileQuality });
       this.ui.editorCommands.updateActions({
         compile: { label: logicalProfile ? `Build ${logicalProfile.label}` : 'Compile' },
       });

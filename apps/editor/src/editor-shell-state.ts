@@ -1,3 +1,4 @@
+import { BuildExportPort } from './build-export-ui-state.js';
 import { EditorUiPort } from './editor-ui-port.js';
 import { SnapshotStore } from '@jackharrhy/worldview/runtime';
 import type {
@@ -651,6 +652,7 @@ export interface EditorShellState {
   readonly projectUi: ProjectUiPort;
   readonly recoveryVersions: RecoveryVersionsPort;
   readonly buildLog: BuildLogPort;
+  readonly buildExport: BuildExportPort;
   readonly pointEntityTool: PointEntityToolPort;
   readonly toolSettings: EditorToolSettingsPort;
   readonly editorCommands: EditorCommandPort;
@@ -689,6 +691,7 @@ export function createEditorShellState(): EditorShellState {
     projectUi: new ProjectUiPort(),
     recoveryVersions: new RecoveryVersionsPort(),
     buildLog: new BuildLogPort(),
+    buildExport: new BuildExportPort(),
     pointEntityTool: new PointEntityToolPort(),
     toolSettings: new EditorToolSettingsPort(),
     editorCommands: new EditorCommandPort(),

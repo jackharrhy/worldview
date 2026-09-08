@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 import { makeBsp } from '../../../packages/worldview/test/fixtures.js';
 import {
@@ -87,9 +88,10 @@ test.describe('Editor compiled preview', () => {
     });
     await installSiteToolRegistry(page);
     await openEditor(page);
-    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
-    await expect(page.getByRole('menuitem', { name: 'Compile', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Build menu', exact: true }).click();
+    await expect(
+      page.getByRole('menuitem', { name: 'Build & preview', exact: true }),
+    ).toBeEnabled();
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
 
@@ -103,9 +105,8 @@ test.describe('Editor compiled preview', () => {
     await page.mouse.up({ button: 'right' });
     const compileCamera = await perspectiveCamera(page);
 
-    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
-    await page.getByRole('menuitem', { name: 'Compile', exact: true }).click();
+    await page.getByRole('button', { name: 'Build menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Build & preview', exact: true }).click();
     await compileStarted;
 
     await page.mouse.move(center.x, center.y);
@@ -155,8 +156,21 @@ test.describe('Editor compiled preview', () => {
     await expect(page.locator('.viewport-error')).toBeHidden();
     expect(pageErrors).toEqual([]);
 
-    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
+    await page.getByRole('button', { name: 'Build menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Build results…', exact: true }).click();
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download BSP', exact: true }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe('camera-handoff.bsp');
+    const path = await download.path();
+    expect(path).not.toBeNull();
+    expect(await readFile(path!)).toEqual(Buffer.from(bsp));
+    await page
+      .getByRole('dialog', { name: 'Build results' })
+      .getByRole('button', { name: 'Close', exact: true })
+      .click();
+
+    await page.getByRole('button', { name: 'Build menu', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Show source', exact: true }).click();
     await expect(canvas).toBeVisible();
     await canvas.screenshot({ path: testInfo.outputPath('restored-source.png') });
@@ -166,16 +180,19 @@ test.describe('Editor compiled preview', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('preserves the requested view through the configured native compiler', async ({ page }) => {
+  test('preserves the requested view through the configured native compiler', async ({
+    page,
+  }, testInfo) => {
     test.skip(
       process.env.WORLDVIEW_LIVE_COMPILER !== '1',
       'Requires a configured compiler service on 127.0.0.1:8788',
     );
     await installSiteToolRegistry(page);
     await openEditor(page);
-    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
-    await expect(page.getByRole('menuitem', { name: 'Compile', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Build menu', exact: true }).click();
+    await expect(
+      page.getByRole('menuitem', { name: 'Build & preview', exact: true }),
+    ).toBeEnabled();
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
 
@@ -189,9 +206,12 @@ test.describe('Editor compiled preview', () => {
     await page.keyboard.up('Shift');
     const requestedCamera = await perspectiveCamera(page);
 
-    await page.getByRole('button', { name: 'Worldview document menu', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Build', exact: true }).hover();
-    await page.getByRole('menuitem', { name: 'Compile', exact: true }).click();
+    await page.getByRole('button', { name: 'Build menu', exact: true }).click();
+    const downloadPromise = page.waitForEvent('download');
+    const responsePromise = page.waitForResponse(
+      (response) => response.url().endsWith('/compile') && response.request().method() === 'POST',
+    );
+    await page.getByRole('menuitem', { name: 'Build & export', exact: true }).click();
     const compiledCanvas = page.getByLabel('Compiled BSP preview');
     await expect(compiledCanvas).toBeVisible({ timeout: 30_000 });
     const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
@@ -207,5 +227,12 @@ test.describe('Editor compiled preview', () => {
       showingCompiled: true,
     });
     await expect(page.locator('.viewport-error')).toBeHidden();
+    const result = await (await responsePromise).json();
+    const artifact = result.artifacts.find((entry: { kind: string }) => entry.kind === 'bsp');
+    const download = await downloadPromise;
+    expect(await readFile((await download.path())!)).toEqual(
+      Buffer.from(artifact.base64, 'base64'),
+    );
+    await page.screenshot({ path: testInfo.outputPath('native-build-export.png') });
   });
 });

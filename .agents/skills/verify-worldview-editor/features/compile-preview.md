@@ -17,6 +17,8 @@ replacement images, and skyboxes; genuinely missing materials use the visible fa
 
 Open a configured project, choose a profile and quality, compile the current revision, inspect
 artifacts, and switch to the compiled preview.
+Choose the top-right Build menu → Build results → Download BSP to save the selected build's compiled map. Build history can
+select older artifacts; the download button is disabled when the selected build has no BSP.
 
 ## Driving it with Playwright
 
@@ -30,6 +32,13 @@ Check browser page errors after the preview renders and after switching back to 
 source viewport must skip GPU frames with zero layout extent, then resume rendering when shown.
 Assert visible rendered pixels, including fallback geometry when the compiler emits missing MIPTEX
 entries. A visible canvas and successful build status alone do not prove that the map renders.
+Capture Playwright's download event and compare the saved BSP bytes and filename with the selected
+compiler artifact.
+`editor-build-export.spec.ts` additionally checks automatic BSP output, ZIP source/WAD contents,
+remembered quality, and export-after-build writes through a real browser filesystem directory handle.
+The native-compiler case downloads the real compiled BSP through Build & export and checks exact bytes.
+Export settings select downloads or a remembered directory; out-of-date builds cannot use automatic
+export. Missing dependencies produce an explicit message, while raw BSP downloads stay available.
 For a hosted map, additionally prove the submitted revision equals the canonical map version and
 that anonymous artifact retrieval is rejected.
 For Quake II, prove the helper advertises `game: quake2`, preserves the requested document revision,

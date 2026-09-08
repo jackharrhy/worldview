@@ -75,10 +75,20 @@ export async function saveMapFile(
 }
 
 export function downloadMapCopy(fileName: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  downloadFileCopy(fileName, text, 'text/plain');
+}
+
+export function downloadFileCopy(
+  fileName: string,
+  data: string | ArrayBuffer,
+  mediaType: string,
+): void {
+  const url = URL.createObjectURL(new Blob([data], { type: mediaType }));
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = fileName;
+  document.body.append(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }

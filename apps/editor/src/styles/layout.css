@@ -339,7 +339,7 @@ textarea:focus-visible {
   height: 100%;
   border-width: 0 0 0 1px;
   border-radius: 0;
-  margin-left: auto;
+  margin-left: 0;
   border-left: 1px solid var(--line);
 }
 
@@ -889,10 +889,10 @@ textarea:focus-visible {
   flex: 1;
   text-align: right;
 }
-.document-menu-popover {
+:is(.document-menu-popover, .build-menu-popover) {
   min-width: 248px;
 }
-.document-menu-popover .wv-menu-item,
+:is(.document-menu-popover, .build-menu-popover) .wv-menu-item,
 .wv-submenu-popover .wv-menu-item {
   grid-template-columns: minmax(0, 1fr) 12px;
   gap: 8px;
@@ -900,23 +900,23 @@ textarea:focus-visible {
   font-size: 13px;
   color: var(--text);
 }
-.document-menu-popover .wv-menu-item-label,
+:is(.document-menu-popover, .build-menu-popover) .wv-menu-item-label,
 .wv-submenu-popover .wv-menu-item-label {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
   gap: 12px;
 }
-.document-menu-popover .wv-menu-item-text,
+:is(.document-menu-popover, .build-menu-popover) .wv-menu-item-text,
 .wv-submenu-popover .wv-menu-item-text {
   grid-column: 2;
   text-align: left;
 }
-.document-menu-popover .wv-menu-item-label .wv-icon,
+:is(.document-menu-popover, .build-menu-popover) .wv-menu-item-label .wv-icon,
 .wv-submenu-popover .wv-menu-item-label .wv-icon {
   font-size: 16px;
   justify-self: start;
 }
-.document-menu-popover .wv-menu-section-heading {
+:is(.document-menu-popover, .build-menu-popover) .wv-menu-section-heading {
   font-size: 11px;
   font-family: inherit;
   font-weight: 500;
@@ -924,4 +924,34 @@ textarea:focus-visible {
   letter-spacing: 0;
   text-transform: none;
   color: var(--muted);
+}
+
+.build-menu-trigger {
+  margin-left: auto;
+  height: 100%;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  flex: none;
+}
+.build-export-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+.build-export-fields {
+  font-size: 12px;
+  line-height: 1.5;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+.build-export-fields p {
+  margin: 0;
+}
+.build-result-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+}
+
+.build-export-fields .wv-checkbox-label {
+  font-size: 12px;
 }
