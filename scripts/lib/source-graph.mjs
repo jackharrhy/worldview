@@ -43,9 +43,7 @@ export async function resolveRelativeSource(importer, specifier, sourceFiles) {
     if (sourceFiles.has(candidate)) return candidate;
     try {
       if ((await stat(candidate)).isFile()) return candidate;
-    } catch {
-      // Continue through the TypeScript source candidates.
-    }
+    } catch {}
   }
   return null;
 }

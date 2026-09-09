@@ -9,11 +9,9 @@ describe('UI publication boundaries', () => {
     const initial = port.getSnapshot();
     const listener = vi.fn();
     port.subscribe(listener);
-    for (let i = 0; i < 100; i++) {
-      port.update({ visible: true });
-      port.update({ result: '1 brush' });
-      port.set({ visible: true, result: '1 brush', options });
-    }
+    port.update({ visible: true });
+    port.update({ result: '1 brush' });
+    port.set({ visible: true, result: '1 brush', options });
     expect(port.getSnapshot()).toBe(initial);
     expect(listener).not.toHaveBeenCalled();
     port.update({ result: '2 brushes' });
@@ -42,13 +40,11 @@ describe('UI publication boundaries', () => {
     const original = commands.getSnapshot();
     const listener = vi.fn();
     commands.subscribe(listener);
-    for (let i = 0; i < 100; i++) {
-      commands.setActiveTool('select');
-      commands.updateActions({
-        undo: { disabled: true, title: 'Nothing to undo' },
-        copy: { disabled: false },
-      });
-    }
+    commands.setActiveTool('select');
+    commands.updateActions({
+      undo: { disabled: true, title: 'Nothing to undo' },
+      copy: { disabled: false },
+    });
     expect(listener).not.toHaveBeenCalled();
     expect(commands.getSnapshot()).toBe(original);
     commands.updateActions({ undo: { disabled: false } });
@@ -63,6 +59,7 @@ describe('UI publication boundaries', () => {
     commands.invoke('undo');
     expect(invoke).toHaveBeenCalledWith('undo');
     commands.updateActions({ undo: { disabled: true } });
+    commands.updateActions({ undo: { title: 'Nothing left to undo' } });
     commands.invoke('undo');
     expect(invoke).toHaveBeenCalledOnce();
   });

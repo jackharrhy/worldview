@@ -68,7 +68,6 @@ interface ActiveCollaboration {
   readonly clearRemotePresence: () => void;
 }
 
-/** Owns the transport/runtime lifetime for one optional hosted-map collaboration session. */
 export class CollaborationSession {
   private attempt: AbortController | null = null;
   private active: ActiveCollaboration | null = null;

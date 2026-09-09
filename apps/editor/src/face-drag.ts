@@ -155,9 +155,7 @@ export function handleFaceDrag(
           ? splitFaceOutlines(candidate, event, state)
           : null,
       );
-      // The viewport is the latency-critical feedback surface during a drag. Inspector
-      // values settle from the committed session change; rebuilding its derived model on
-      // every snapped pointer position only competes with the next visual frame.
+      // Defer inspector derivation until commit to keep drag frames responsive.
       ui.statusMessage.set(
         event.mode === 'translate'
           ? `Face move preview: ${formatting.formatVector(event.delta)}. Release to commit.`

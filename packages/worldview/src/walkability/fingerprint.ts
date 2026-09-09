@@ -23,10 +23,7 @@ function mixNumber(hash: number, value: number, integer: boolean): number {
   return hash;
 }
 
-/**
- * A fast compatibility fingerprint for persisted walkability files. It is intended to catch stale
- * sidecars, not to authenticate map data.
- */
+/** Detects stale walkability sidecars; does not authenticate map data. */
 export function walkabilityWorldFingerprint(world: ParsedWorld): string {
   let hash = mixString(FNV_OFFSET, `${world.format}:${world.version}`);
   for (const value of [...world.bounds.min, ...world.bounds.max])

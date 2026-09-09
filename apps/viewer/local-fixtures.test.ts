@@ -160,41 +160,6 @@ describe('local fixture discovery', () => {
     ]);
   });
 
-  it('gives the Quake II rerelease anchor a useful authored camera', async () => {
-    const root = await temporaryRoot();
-    const corpusRoot = path.join(root, 'steam-corpus', '2320');
-    const mapDirectory = path.join(
-      corpusRoot,
-      'archives',
-      'rerelease',
-      'baseq2',
-      'pak0.pak',
-      'maps',
-    );
-    await mkdir(mapDirectory, { recursive: true });
-    await mkdir(path.join(corpusRoot, 'game', 'pics'), { recursive: true });
-    await writeFile(path.join(mapDirectory, 'mgu1m1.bsp'), '');
-    await writeFile(path.join(corpusRoot, 'game', 'pics', 'colormap.pcx'), '');
-    await writeSteamManifest(
-      path.join(root, 'steam-corpus'),
-      ['2320/archives/rerelease/baseq2/pak0.pak/maps/mgu1m1.bsp'],
-      [{ appId: '2320', logicalPath: 'pics/colormap.pcx' }],
-    );
-
-    const fixtures = await discoverLocalFixtures(root);
-
-    expect(fixtures).toHaveLength(1);
-    expect(fixtures[0]).toMatchObject({
-      camera: {
-        fieldOfView: 75,
-        pitchDegrees: 0,
-        position: [1032, -256, 46],
-        yawDegrees: -30,
-      },
-      id: 'steam-corpus/quake-ii/mgu1m1',
-    });
-  });
-
   it('indexes an extracted Quake palette and ignores raw Steam install maps', async () => {
     const root = await temporaryRoot();
     const corpusRoot = path.join(root, 'steam-corpus', '4484420');

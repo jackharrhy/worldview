@@ -90,7 +90,6 @@ export function deriveEntityLinks(document: MapDocument): readonly EntityLink[] 
   return links;
 }
 
-/** Maps point, brush, and face selections back to the entities that own the selected objects. */
 export function selectedEntityIdsForLinks(
   document: MapDocument,
   selection: EditorSelection | null,

@@ -349,7 +349,6 @@ export class SessionSelectionCommands {
     this.kernel.notify('selection', `Select issue: ${issue.message}`);
     return this.kernel.selection;
   }
-  /** Applies one advertised issue quick fix as a single undoable document edit. */
   public fixIssue(issueId: string): boolean {
     const result = applyEditorIssueFix(this.kernel.document, issueId, this.kernel.issueFixIds);
     if (!result) return false;

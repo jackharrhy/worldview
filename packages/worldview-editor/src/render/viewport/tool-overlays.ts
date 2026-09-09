@@ -8,7 +8,6 @@ import { uploadFloatBuffer } from '../gpu-buffer.js';
 import { faceMagnets } from '../face-magnet.js';
 import { containsProjectedHull } from '../hull-overlay.js';
 
-/** Owns transient tool feedback and its GPU resources, independently of world rendering. */
 export class ViewportToolOverlays {
   private magnetBuffer: GPUBuffer | null = null;
   private magnetFaces: readonly FaceHandle[] = [];

@@ -5,7 +5,6 @@ export interface SnapshotReader<T> {
   readonly subscribe: (listener: SnapshotStoreListener) => () => void;
 }
 
-/** Minimal framework-neutral immutable snapshot store for browser application shells. */
 export class SnapshotStore<T> {
   private readonly listeners = new Set<SnapshotStoreListener>();
 

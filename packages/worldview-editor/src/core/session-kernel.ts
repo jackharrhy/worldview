@@ -16,13 +16,7 @@ import type {
   EditorSessionChange,
 } from './session-common.js';
 
-/**
- * The mutable authority shared by the session's command domains.
- *
- * Command domains receive this kernel through a deliberately narrow interface and never own a
- * second document, selection, or history stack. Document/history mutations are reserved for the
- * commit coordinator; the remaining setters support non-document selection and view commands.
- */
+/** Shared session state; document/history mutations belong to the commit coordinator. */
 export class SessionKernel {
   public document: MapDocument;
   public selection: EditorSelection | null = null;

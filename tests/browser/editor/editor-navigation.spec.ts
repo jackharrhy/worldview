@@ -201,8 +201,7 @@ test.describe('Editor navigation and contextual actions', () => {
     expect(lookEnd.pitch).toBeLessThan(lookStart.pitch);
     await expect(page.locator('#perspective-mode')).toContainText('LOOK');
 
-    // Looking and keyboard flight must compose. The look gesture used to retain the eye from
-    // pointer-down and snap back to it after WASD translated the camera.
+    // Looking must preserve keyboard flight that occurs during the same gesture.
     await page.mouse.move(lookPoint.x, lookPoint.y);
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(lookPoint.x + 12, lookPoint.y + 6);

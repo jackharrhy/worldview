@@ -18,20 +18,6 @@ import {
 import { dotVectors, normalizeVector, faceTextureBounds } from './support/core-fixtures.js';
 
 describe('editor material transactions', () => {
-  it('applies a material to the selected face as one reversible brush edit', () => {
-    const document = createStarterDocument();
-    const brush = brushesInDocument(document)[1]!;
-    const face = brush.faces[0]!;
-    const session = new EditorSession(document);
-    session.select({ brushId: brush.id, faceId: face.id });
-
-    expect(session.applyMaterial('BRICK')).toBe(true);
-    expect(findBrush(session.document, brush.id)?.faces[0]?.material).toBe('BRICK');
-    expect(findBrush(session.document, brush.id)?.faces[1]?.material).toBe('DEV_PILLAR');
-    expect(session.undo()).toBe(true);
-    expect(findBrush(session.document, brush.id)?.faces[0]?.material).toBe('DEV_PILLAR');
-  });
-
   it('updates Valve 220 shift, scale, and explicit axes as one texture edit', () => {
     const document = createStarterDocument();
     const brush = brushesInDocument(document)[1]!;

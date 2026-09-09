@@ -32,9 +32,6 @@ describe('SolidBatchBuilder', () => {
     expect(brushSolidSignature(firstPreview, [0, 0, 0])).not.toBe(
       brushSolidSignature(laterPreview, [0, 0, 0]),
     );
-    expect(brushSolidSignature(laterPreview, [0, 0, 0])).toBe(
-      brushSolidSignature(laterPreview, [0, 0, 0]),
-    );
     expect(brushSolidSignature(laterPreview, [0, 0, 0])).not.toBe(
       brushSolidSignature(laterPreview, [16, 0, 0]),
     );

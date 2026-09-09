@@ -23,18 +23,6 @@ describe('WAD and MIPTEX', () => {
     expect(findMipTexture(wad, 'FIXTURE')).toBeDefined();
   });
 
-  it('retains compressed directory records as recoverable warnings', () => {
-    const bytes = makeWad(3);
-    const directory = new DataView(bytes.buffer).getUint32(8, true);
-    bytes[directory + 13] = 1;
-    const wad = parseWad(bytes);
-    expect(wad.lumps[0]).toMatchObject({ sourceIndex: 0, compression: 1 });
-    expect(wad.lumps[0]?.mipTexture).toBeUndefined();
-    expect(wad.warnings).toContainEqual(
-      expect.objectContaining({ code: 'unsupported-wad-compression', lumpIndex: 0 }),
-    );
-  });
-
   it('uses palette index 255 as transparency for decal textures', () => {
     const bytes = makeMipTexture(30, '{fence');
     bytes[40] = 255;

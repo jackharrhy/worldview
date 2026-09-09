@@ -9,7 +9,6 @@ export type CollaborationLifecycleSnapshot =
 
 export type CollaborationLifecycleListener = (snapshot: CollaborationLifecycleSnapshot) => void;
 
-/** Transport- and UI-independent owner of collaboration lifecycle transitions. */
 export class CollaborationLifecycle {
   private snapshot: CollaborationLifecycleSnapshot = { status: 'solo' };
   private readonly listeners = new Set<CollaborationLifecycleListener>();

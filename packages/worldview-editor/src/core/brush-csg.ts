@@ -183,7 +183,6 @@ function assertCsgBrush(brush: MapBrush, operation: string): MapBrush {
   return brush;
 }
 
-/** Computes the smallest convex brush containing every input brush vertex. */
 export function convexMergeBrushes(
   brushes: readonly MapBrush[],
   ids: IdFactory,
@@ -216,7 +215,6 @@ export function convexMergeBrushes(
   );
 }
 
-/** Creates a new convex brush from an arbitrary point cloud using one current material. */
 export function createConvexHullBrush(
   points: readonly Vec3[],
   material: string,

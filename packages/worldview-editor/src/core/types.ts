@@ -167,17 +167,11 @@ export interface BrushSelection {
   readonly groupId?: string;
   /** The primary brush used by single-object tools and inspector presentation. */
   readonly brushId: BrushId;
-  /**
-   * The complete normalized object set when more than one brush is selected. The primary brush is
-   * always included. Omitted for the common single-brush and face-selection cases.
-   */
+  /** Normalized multi-brush selection, including the primary brush; omitted for single/face selections. */
   readonly brushIds?: readonly BrushId[];
   /** The primary face. Its presence distinguishes face selection from object selection. */
   readonly faceId?: FaceId;
-  /**
-   * The complete normalized face set when more than one face is selected. The primary face is
-   * always included. Omitted for the common single-face and object-selection cases.
-   */
+  /** Normalized multi-face selection, including the primary face; omitted for single/object selections. */
   readonly faces?: readonly FaceSelection[];
   /** Point entities retained when an additive object selection is mixed. */
   readonly entityIds?: readonly EntityId[];

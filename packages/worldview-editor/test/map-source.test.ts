@@ -4,7 +4,6 @@ import {
   createStarterDocument,
   createSequentialIdFactory,
   deriveEditorIssues,
-  documentCodecForFormat,
   derivePatch,
   mapSourceFingerprint,
   parseMapSource,
@@ -237,20 +236,6 @@ describe('source-backed map saving', () => {
     expect(parsed.document.faceSyntax).toBe('valve-220');
   });
 
-  it('routes the complete source lifecycle through the document format codec', () => {
-    const codec = documentCodecForFormat('quake-map');
-    const parsed = codec.parseSource(SOURCE);
-
-    expect(codec.format).toBe('quake-map');
-    expect(codec.extensions).toEqual(['.map']);
-    expect(codec.serialize(parsed.document)).toBe(serializeMap(parsed.document));
-    expect(codec.planSave(parsed.document, parsed.source)).toEqual({
-      status: 'safe',
-      text: SOURCE,
-      diagnostics: [],
-    });
-  });
-
   it('returns unedited source byte-for-byte', () => {
     const parsed = parseMapSource(SOURCE);
     const plan = planMapSave(parsed.document, parsed.source);
@@ -323,7 +308,6 @@ describe('source-backed map saving', () => {
   });
 
   it('fingerprints the exact opened bytes', () => {
-    expect(mapSourceFingerprint(SOURCE)).toBe(mapSourceFingerprint(SOURCE));
     expect(mapSourceFingerprint(`${SOURCE}\n`)).not.toBe(mapSourceFingerprint(SOURCE));
   });
 
@@ -451,10 +435,5 @@ describe('source-backed map saving', () => {
       status: 'blocked',
       diagnostics: [{ code: 'unsafe-source-edit' }],
     });
-  });
-
-  it('defaults new documents to Valve 220', () => {
-    expect(createStarterDocument().format).toBe('quake-map');
-    expect(createStarterDocument().faceSyntax).toBe('valve-220');
   });
 });

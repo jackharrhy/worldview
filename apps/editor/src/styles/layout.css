@@ -872,7 +872,6 @@ textarea:focus-visible {
   max-width: 250px;
   font-size: 12px;
 }
-/* Thin boundaries keep each editing concern legible without widening the toolbar. */
 .toolstrip [data-tool='entity'],
 .toolstrip [data-tool='vertex'],
 .toolstrip [data-tool='rotate'],

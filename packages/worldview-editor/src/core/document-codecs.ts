@@ -4,13 +4,7 @@ import { serializeMap } from './map-serializer.js';
 import type { MapSavePlan, MapSourceState, ParsedMapSource } from './map-source-types.js';
 import type { IdFactory, MapDocument, MapDocumentFormat } from './types.js';
 
-/**
- * The complete source lifecycle for one document container.
- *
- * Codecs are selected by document format, not by game profile or face syntax. The registry is
- * intentionally closed: adding a format means extending MapDocumentFormat and satisfying this
- * record, rather than growing format conditionals throughout the editor.
- */
+/** Selected by document format, independently of game profile and face syntax. */
 export interface MapDocumentCodec<TSourceState, TParsedSource, TSavePlan> {
   readonly format: MapDocumentFormat;
   readonly extensions: readonly string[];

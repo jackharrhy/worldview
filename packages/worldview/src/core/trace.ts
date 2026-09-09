@@ -38,7 +38,6 @@ function planeDistance(trace: ParsedBspTrace, planeIndex: number, point: Vec3Tup
   );
 }
 
-/** Returns the leaf containing a point in the world hull. */
 export function findBspLeaf(trace: ParsedBspTrace | null, point: Vec3Tuple): number | null {
   if (!trace || trace.headNode < 0) return null;
   let node = trace.headNode;

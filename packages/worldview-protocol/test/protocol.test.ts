@@ -14,7 +14,18 @@ describe('Worldview wire protocols', () => {
       parseCollaborationClientFrame(
         JSON.stringify({
           type: 'presence',
-          presence: { actorId: 'alice', pointer: [1, 2, 3], sentAt: 1 },
+          presence: {
+            actorId: 'alice',
+            viewport: 'xy',
+            pointer: [1, 2, 3],
+            sentAt: 1,
+            preview: {
+              interactionId: 'drag-1',
+              sequence: 4,
+              baseMapVersion: 2,
+              edits: [{ kind: 'delete-brush', brushId: 'brush', baseRevision: 0 }],
+            },
+          },
         }),
       ),
     ).toMatchObject({ type: 'presence' });
@@ -23,6 +34,30 @@ describe('Worldview wire protocols', () => {
         JSON.stringify({
           type: 'presence',
           presence: { actorId: 'alice', sentAt: 1, unexpected: true },
+        }),
+      ),
+    ).toThrow(/Invalid collaboration frame/);
+    expect(() =>
+      parseCollaborationClientFrame(
+        JSON.stringify({
+          type: 'presence',
+          presence: { actorId: 'alice', pointer: [0, 'bad', 0], sentAt: 1 },
+        }),
+      ),
+    ).toThrow(/Invalid collaboration frame/);
+    expect(() =>
+      parseCollaborationClientFrame(
+        JSON.stringify({
+          type: 'operation',
+          operation: {
+            schemaVersion: 1,
+            operationId: 'bad',
+            transactionId: 'bad',
+            actorId: 'mallory',
+            baseMapVersion: 0,
+            label: 'Malformed',
+            edits: [{ kind: 'replace-brush', brushId: 'brush', baseRevision: 0 }],
+          },
         }),
       ),
     ).toThrow(/Invalid collaboration frame/);

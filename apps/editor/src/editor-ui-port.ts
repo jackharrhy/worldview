@@ -10,7 +10,6 @@ export function equalUiSnapshot<T extends object>(left: T, right: T): boolean {
   );
 }
 
-/** Snapshot publication and presenter lifetime shared by the editor's UI surfaces. */
 export class EditorUiPort<Snapshot extends object, Actions = never> {
   protected readonly store: SnapshotStore<Snapshot>;
   protected actions: Actions | null = null;

@@ -291,7 +291,6 @@ export class SessionMaterialCommands {
     return true;
   }
 
-  /** Applies a standalone face-attribute clipboard payload to the current face selection. */
   public pasteFaceAttributes(
     source: FaceAttributeClipboard,
     selection: EditorSelection | null = this.kernel.selection,

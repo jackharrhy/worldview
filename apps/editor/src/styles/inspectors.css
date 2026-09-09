@@ -224,8 +224,6 @@
   line-height: 1.45;
 }
 
-/* The Face tab is a single dense authoring surface. React owns every control while
-   the UV renderer owns only the contents of its SVG viewport. */
 .inspector-scroll[data-inspector-panel='textures'] {
   overflow: hidden;
 }

@@ -146,9 +146,7 @@ export abstract class ViewportPointerMove extends ViewportPointerDown {
     drag.y = event.clientY;
     drag.moved = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
     if (drag.cameraMode === 'look' && drag.cameraEye && drag.moved >= 5) {
-      // Preserve the live eye rather than the eye captured on pointer-down. Keyboard fly can
-      // translate the camera while this look gesture is held; rebuilding from drag.cameraEye
-      // would otherwise snap that movement away on every subsequent pointer event.
+      // Keyboard flight can move the eye during a look gesture; preserve its current position.
       const cameraEye = this.perspectiveEye();
       this.state.yaw -= deltaX * 0.006;
       this.state.pitch = Math.max(-1.45, Math.min(1.45, this.state.pitch - deltaY * 0.006));

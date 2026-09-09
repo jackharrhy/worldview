@@ -666,7 +666,6 @@
   line-height: 1.35;
 }
 
-/* The design route inventories the same semantic icon contract used by product controls. */
 .design-icon-states {
   grid-column: 1 / -1;
 }

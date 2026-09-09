@@ -39,7 +39,6 @@ export function materialUsageInDocument(document: MapDocument): readonly EditorM
     .toSorted((left, right) => left.material.localeCompare(right.material));
 }
 
-/** Finds every face using a material, optionally constrained to a known brush set. */
 export function faceReferencesWithMaterial(
   document: MapDocument,
   material: string,
@@ -62,7 +61,6 @@ export function faceReferencesWithMaterial(
   );
 }
 
-/** Finds every brush containing at least one face using a material. */
 export function brushIdsWithMaterial(
   document: MapDocument,
   material: string,

@@ -119,6 +119,10 @@ describe('recoverable WAD records', () => {
     const wad = parseWad(bytes);
 
     expect(wad.lumps.map(({ sourceIndex }) => sourceIndex)).toEqual([0, 1]);
+    expect(wad.lumps[0]?.compression).toBe(1);
+    expect(wad.warnings).toContainEqual(
+      expect.objectContaining({ code: 'unsupported-wad-compression', lumpIndex: 0 }),
+    );
     expect(wad.lumps[0]?.mipTexture).toBeUndefined();
     expect(wad.lumps[1]?.mipTexture).toMatchObject({ sourceIndex: 1, name: 'usable' });
     expect(findMipTexture(wad, 'usable')).toBeDefined();
@@ -126,7 +130,6 @@ describe('recoverable WAD records', () => {
 
   it('keeps unusable MIPTEX records and their source directory indices', () => {
     const bytes = makeWad(3);
-    const directory = new DataView(bytes.buffer).getUint32(8, true);
     const texture = new DataView(bytes.buffer, bytes.byteOffset + 12, bytes.byteLength - 12);
     texture.setUint32(28, 20, true);
     const wad = parseWad(bytes);
@@ -137,7 +140,6 @@ describe('recoverable WAD records', () => {
       expect.objectContaining({ code: 'unusable-wad-miptex', lumpIndex: 0 }),
     );
     expect(findMipTexture(wad, 'fixture')).toBeUndefined();
-    expect(directory).toBeGreaterThan(12);
   });
 
   it('still rejects invalid directory and source ranges', () => {

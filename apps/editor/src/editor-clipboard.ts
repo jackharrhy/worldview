@@ -28,7 +28,6 @@ export interface EditorClipboardOptions {
 
 export type ObjectPastePlacement = 'cursor' | 'original';
 
-/** Owns clipboard parsing, fallback storage, paste IDs, and user-facing outcomes. */
 export class EditorClipboard {
   private sequence = 0;
   private fallbackText: string | null = null;

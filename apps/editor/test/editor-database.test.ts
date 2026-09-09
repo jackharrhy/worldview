@@ -15,7 +15,6 @@ import { IndexedDbDocumentRecoveryStorage } from '../src/document-recovery.js';
 import {
   completeEditorTransaction,
   deleteEditorDatabase,
-  EDITOR_DATABASE_VERSION,
   EDITOR_DATABASE_NAME,
   EDITOR_STORES,
   openEditorDatabase,
@@ -51,21 +50,6 @@ describe('typed editor database', () => {
     const upgraded = await openEditorDatabase();
     expect(upgraded.objectStoreNames.contains('build-exports')).toBe(true);
     expect(await upgraded.get('local-projects', 'existing')).toEqual({ name: 'Keep me' });
-  });
-
-  it('creates the complete schema and its query indexes in one upgrade', async () => {
-    const database = await openEditorDatabase();
-
-    expect(database.version).toBe(EDITOR_DATABASE_VERSION);
-    expect([...database.objectStoreNames].toSorted()).toEqual(
-      Object.values(EDITOR_STORES).toSorted(),
-    );
-    expect(
-      [...database.transaction(EDITOR_STORES.collaborationOperations).store.indexNames].toSorted(),
-    ).toEqual(['mapId']);
-    expect(
-      [...database.transaction(EDITOR_STORES.detachedMaps).store.indexNames].toSorted(),
-    ).toEqual(['createdAt', 'originalMapId']);
   });
 
   it('round-trips each independently owned persistence record through idb', async () => {

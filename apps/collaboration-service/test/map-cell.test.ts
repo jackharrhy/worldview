@@ -14,7 +14,6 @@ import {
   type CollaborationOperation,
   type MapDocument,
 } from '@jackharrhy/worldview-editor/core';
-import { parseCollaborationClientFrame } from '@worldview/protocol';
 import type { MapCell } from '../src/map-cell.js';
 
 function hostedTicket(mapId: string, role: 'owner' | 'editor' | 'viewer' = 'editor') {
@@ -63,58 +62,6 @@ function nextSocketFrame(socket: WebSocket): Promise<unknown> {
 }
 
 describe('MapCell', () => {
-  it('rejects malformed and oversized operation frames before state access', () => {
-    expect(() =>
-      parseCollaborationClientFrame(
-        JSON.stringify({
-          type: 'operation',
-          operation: {
-            schemaVersion: 1,
-            operationId: 'bad',
-            transactionId: 'bad',
-            actorId: 'mallory',
-            baseMapVersion: 0,
-            label: 'Malformed',
-            edits: [{ kind: 'replace-brush', brushId: 'brush', baseRevision: 0 }],
-          },
-        }),
-      ),
-    ).toThrow('Invalid collaboration frame');
-    expect(() => parseCollaborationClientFrame('x'.repeat(512 * 1024 + 1))).toThrow(
-      'Collaboration frame is too large',
-    );
-  });
-
-  it('accepts bounded gesture presence and rejects malformed pointers', () => {
-    expect(
-      parseCollaborationClientFrame(
-        JSON.stringify({
-          type: 'presence',
-          presence: {
-            actorId: 'alice',
-            viewport: 'xy',
-            pointer: [32, 64, 0],
-            sentAt: 1,
-            preview: {
-              interactionId: 'drag-1',
-              sequence: 4,
-              baseMapVersion: 2,
-              edits: [{ kind: 'delete-brush', brushId: 'brush', baseRevision: 0 }],
-            },
-          },
-        }),
-      ).type,
-    ).toBe('presence');
-    expect(() =>
-      parseCollaborationClientFrame(
-        JSON.stringify({
-          type: 'presence',
-          presence: { actorId: 'alice', pointer: [0, 'bad', 0], sentAt: 1 },
-        }),
-      ),
-    ).toThrow('Invalid collaboration frame');
-  });
-
   it('requires signed map access and initializes one canonical snapshot', async () => {
     const mapId = 'map-auth';
     const preflight = await SELF.fetch(`https://map.test/sync/maps/${mapId}/initialize`, {

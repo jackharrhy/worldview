@@ -75,10 +75,6 @@ function createRendererParts(
   }
 }
 
-/**
- * Small lifecycle facade for one loaded compiled world. GPU allocations, frame planning, pass
- * encoding, sprites, walkability, and render targets each retain their own focused owner.
- */
 export class TypeGpuWorldRenderer {
   private readonly root: TgpuRoot;
   private readonly device: GPUDevice;

@@ -87,7 +87,6 @@ function faceAttributeClipboardFromUnknown(value: unknown): FaceAttributeClipboa
   };
 }
 
-/** Serializes the primary selected face as a standalone plain-text attribute payload. */
 export function serializeFaceAttributeClipboard(
   document: MapDocument,
   selection: EditorSelection | null,
@@ -230,7 +229,6 @@ export function serializeObjectClipboard(
   return clipboard ? serializeMap(clipboard) : null;
 }
 
-/** Computes bounds for every brush and point entity in a clipboard map. */
 export function objectClipboardBounds(document: MapDocument): Bounds | null {
   const bounds = [
     ...document.entities.flatMap((entity) =>

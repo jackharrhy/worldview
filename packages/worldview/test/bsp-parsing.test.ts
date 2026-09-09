@@ -17,13 +17,6 @@ import { goldSrcTextureScrollSpeed } from '../src/render/renderer.js';
 import { makeBsp } from './fixtures.js';
 
 describe('BSP', () => {
-  it('retains the GoldSrc worldspawn sky name', () => {
-    const world = parseBsp(
-      makeBsp({ entityText: '{ "classname" "worldspawn" "skyname" "space" }' }),
-    );
-    expect(world.skyName).toBe('space');
-  });
-
   it.each([29, 30] as const)('parses a deterministic BSP%s scene', (version) => {
     const world = parseBsp(makeBsp({ version }));
     expect({

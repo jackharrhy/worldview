@@ -161,7 +161,6 @@ const TOOL_CONTROLLERS: Readonly<Record<EditorTool, ToolController>> = {
   },
 };
 
-/** Singular owner of editor-tool activation, cleanup, and user-facing mode presentation. */
 export class EditorToolControllerRegistry {
   public constructor(
     private readonly state: ToolControllerState,

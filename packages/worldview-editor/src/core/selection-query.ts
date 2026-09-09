@@ -233,10 +233,7 @@ function matchesQuery(
   );
 }
 
-/**
- * Evaluates temporary convex selection brushes against ordinary brushes and point-entity bounds.
- * Query brushes are deliberately excluded from their own results and are not mutated here.
- */
+/** Tests convex selection volumes without mutating them or including them in the results. */
 export function querySelectionBrushes(
   document: MapDocument,
   selectionBrushIds: readonly BrushId[],

@@ -43,10 +43,7 @@ function clampCell(value: number, size: number): number {
   return Math.max(0, Math.min(size - 1, Math.floor(value)));
 }
 
-/**
- * Builds a sparse local height field from walkability samples. It removes ceilings near reachable
- * player space without pretending that unprobed parts of the map are safe to cut open.
- */
+/** Cuts ceilings near reachable samples while leaving unprobed space intact. */
 export function planWalkabilityCutaway(
   walkability: WalkabilityMap,
   bounds: Bounds,

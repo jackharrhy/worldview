@@ -464,7 +464,6 @@ export function deriveEditorIssues(document: MapDocument): readonly EditorIssue[
   );
 }
 
-/** Creates an object selection suitable for locating an issue in every source viewport. */
 export function selectionForEditorIssue(issue: EditorIssue): EditorSelection | null {
   return createObjectSelection(issue.brushIds, issue.entityIds);
 }
@@ -496,7 +495,6 @@ function nextPersistentId(document: MapDocument): string {
   return String(next);
 }
 
-/** Applies one current issue's advertised quick fix as a pure document transformation. */
 export function applyEditorIssueFix(
   document: MapDocument,
   issueId: string,

@@ -934,7 +934,6 @@ export class EditorSourceRenderer {
     return this.viewports.find((viewport) => viewport.kind === kind)?.camera ?? null;
   }
 
-  /** Adjusts the perspective lens without moving the camera or changing other views. */
   public setPerspectiveFieldOfView(fieldOfViewDegrees: number): void {
     if (this.disposed || !Number.isFinite(fieldOfViewDegrees)) return;
     const viewport = this.viewports.find((view) => view.kind === 'perspective');

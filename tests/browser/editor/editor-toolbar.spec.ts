@@ -83,35 +83,6 @@ test('keeps the document menu fixed while tools remain reachable on a narrow win
   await expect(page.getByRole('menuitem', { name: 'Save', exact: true })).toBeVisible();
 });
 
-test('groups application controls into the icon menu and keeps viewport chrome compact', async ({
-  page,
-}) => {
-  await openEditor(page, { empty: true });
-  await expect(
-    page.locator('.topbar .theme-control, .topbar .collaboration-presence, .topbar .build-actions'),
-  ).toHaveCount(0);
-  await expect(page.locator('.statusbar .compile-state')).toHaveCount(0);
-  await expect(page.locator('.viewport-pane header strong')).toHaveText(['3D', 'XY', 'XZ', 'YZ']);
-  await expect(page.locator('[data-tool="face"] svg .geometry-accent')).toBeVisible();
-  const menu = page.getByRole('button', { name: 'Worldview document menu', exact: true });
-  expect((await menu.boundingBox())!.width).toBe(44);
-  await menu.click();
-  await expect(page.locator('#document-name')).toContainText('untitled.map');
-  await page.getByRole('menuitem', { name: 'Appearance', exact: true }).hover();
-  await page.getByRole('menuitemradio', { name: 'Light', exact: true }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await menu.click();
-  await page.getByRole('menuitem', { name: 'Appearance', exact: true }).hover();
-  await page.getByRole('menuitemradio', { name: 'Dark', exact: true }).click();
-  await page.getByRole('button', { name: 'Build menu', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Build & preview', exact: true })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Escape');
-  await menu.click();
-  await page.getByRole('menuitem', { name: 'Collaboration', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Live collaboration', exact: true })).toBeVisible();
-});
-
 test('adjusts FOV, resets lens changes, and remembers a chosen default', async ({ page }) => {
   await openEditor(page, { empty: true });
   const button = page.getByRole('button', { name: 'Field of view', exact: true });

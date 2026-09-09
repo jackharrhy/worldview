@@ -5,7 +5,6 @@ import { transformWithOxc } from 'vite';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-// Exports the actual runtime glyphs as ordinary editable SVG geometry, without font dependencies.
 const output = resolve('apps/editor/public/design/worldview-icons-v2.svg');
 if (!process.argv.includes('--replace')) {
   try {

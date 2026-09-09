@@ -7,7 +7,6 @@ import {
 import type { EditorSpriteMaterial } from '../types.js';
 import type { TgpuBindGroup, TgpuRoot, TgpuSampler } from 'typegpu';
 
-/** Owns the source view's fallback, map-material, and sprite-material GPU resources. */
 export class SourceMaterialResources {
   private readonly resources = new Map<string, MaterialResource>();
   private readonly materialByKey = new Map<string, EditorMaterial>();

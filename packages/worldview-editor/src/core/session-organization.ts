@@ -129,7 +129,6 @@ export class SessionOrganizationCommands {
     private readonly ports: SessionOrganizationPorts,
   ) {}
 
-  /** Live, deterministic diagnostics for the current document revision. */
   public get issues(): readonly EditorIssue[] {
     return deriveEditorIssues(this.kernel.document);
   }
@@ -310,7 +309,6 @@ export class SessionOrganizationCommands {
     return this.kernel.repeatableCommands.map(repeatableCommandLabel);
   }
 
-  /** Explicitly starts a new macro-like command-repetition sequence. */
   public clearRepeatableCommands(): boolean {
     if (this.kernel.repeatableCommands.length === 0) return false;
     this.kernel.discardRepeatableCommands();
@@ -624,6 +622,4 @@ export class SessionOrganizationCommands {
         )
       : document;
   }
-
-  /** Wraps the current object selection in a TrenchBroom-compatible named group. */
 }

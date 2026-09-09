@@ -66,7 +66,6 @@ export function appendBoundsWireframe(
   }
 }
 
-/** Adds the 3D selection box and three outward, softly fading guides at every corner. */
 export function appendSelectionBoundsGuide(
   lines: number[],
   bounds: Bounds,

@@ -17,7 +17,6 @@ interface ExportContext {
   readonly revision: number;
 }
 
-/** Owns local export preferences and the last successful build's immutable inputs. */
 export class BuildExportSession {
   private bundle: BuildExportBundle | null = null;
   private settings = BuildExportSettingsSchema.parse({ scopeId: '' });

@@ -22,12 +22,7 @@ type MethodKey<T> = {
   [K in keyof T]-?: T[K] extends (...args: never[]) => unknown ? K : never;
 }[keyof T];
 
-/**
- * Stable public façade over explicitly composed editor command domains.
- *
- * The façade intentionally contains no editing behavior. Every bound command below has one domain
- * owner, while every domain reads and commits through the same kernel.
- */
+/** Command domains share one kernel and commit coordinator. */
 export class EditorSession implements SessionReplayTarget {
   private readonly kernel: SessionKernel;
   private readonly organization: SessionOrganizationCommands;

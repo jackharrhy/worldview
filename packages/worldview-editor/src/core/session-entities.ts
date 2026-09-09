@@ -16,7 +16,6 @@ export interface SessionEntityPorts {
   readonly commitDocumentCandidate: (candidate: DocumentEditCandidate) => void;
 }
 
-/** Entity creation and brush/entity ownership operations. */
 export class SessionEntityCommands {
   public constructor(
     private readonly kernel: SessionEntityKernel,

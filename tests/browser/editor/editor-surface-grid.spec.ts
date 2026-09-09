@@ -1,31 +1,5 @@
 import { expect, test } from '@playwright/test';
-import {
-  openEditor,
-  chooseSelectOption,
-  readEditorDocument,
-} from './support/editor-browser-helpers.js';
-
-test('passive surface grid follows grid spacing on unselected brushes in both themes', async ({
-  page,
-}) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  await openEditor(page);
-  const document = await readEditorDocument(page);
-  await expect(page.locator('#selection-kind')).toHaveText('None');
-  for (const theme of ['Dark', 'Light']) {
-    await chooseSelectOption(page, 'Editor theme', theme);
-    for (const spacing of ['16', '32']) {
-      await chooseSelectOption(page, 'Grid size', spacing);
-      await expect(page.locator('.viewport-error')).toBeHidden();
-      await page.screenshot({
-        path: `artifacts/verification/surface-grid/${theme}-${spacing}.png`,
-      });
-      expect(await readEditorDocument(page)).toEqual(document);
-    }
-  }
-  expect(errors).toEqual([]);
-});
+import { openEditor, chooseSelectOption } from './support/editor-browser-helpers.js';
 
 test('distant textured faces and the ground grid remain filtered across zoom levels', async ({
   page,

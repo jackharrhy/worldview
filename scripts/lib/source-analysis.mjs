@@ -40,7 +40,6 @@ export function moduleReferences(filename, source) {
   return references;
 }
 
-/** Returns the explicit properties of a named TypeScript interface, or null when it is absent. */
 export function interfacePropertyNames(filename, source, interfaceName) {
   const parsed = parseSource(filename, source);
   const properties = [];

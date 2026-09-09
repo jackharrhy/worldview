@@ -3,7 +3,6 @@ import { invariant } from './errors.js';
 import type { MipTextureHeader } from './miptex.js';
 import type { ParsedMipTexture } from './types.js';
 
-/** Validates and copies a complete embedded MIPTEX record. */
 export function parseMipTexturePayload(
   texture: BinaryView,
   header: MipTextureHeader,

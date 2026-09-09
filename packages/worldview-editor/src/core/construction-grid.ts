@@ -71,11 +71,7 @@ function pointOnFace(
   return point;
 }
 
-/**
- * Projects a world-aligned grid onto one convex face by dropping its dominant normal axis. The
- * resulting lines remain on exact world-grid coordinates along the two retained axes, so sloped
- * faces naturally stretch the grid in the same way a 3D construction grid does.
- */
+/** Drops the dominant normal axis so the face grid keeps exact world coordinates on the other axes. */
 export function projectedFaceGridSegments(
   face: Pick<DerivedFace, 'normal' | 'distance' | 'vertices'>,
   gridSize: number,

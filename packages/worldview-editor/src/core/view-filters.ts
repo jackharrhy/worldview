@@ -108,7 +108,6 @@ function brushMatchesSpecialFilter(
   return materials.some((material) => material.startsWith('sky'));
 }
 
-/** Lists filterable entity definitions with live usage counts. */
 export function entityClassFiltersInDocument(
   document: MapDocument,
 ): readonly EditorEntityClassFilter[] {

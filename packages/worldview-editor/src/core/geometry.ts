@@ -53,7 +53,6 @@ function uniquePoints(points: readonly Vec3[]): Vec3[] {
   return result;
 }
 
-/** Returns the deduplicated authored corner positions derived from a convex brush. */
 export function brushVertices(brush: MapBrush): readonly Vec3[] {
   return uniquePoints(deriveBrush(brush).faces.flatMap((face) => face.vertices));
 }
