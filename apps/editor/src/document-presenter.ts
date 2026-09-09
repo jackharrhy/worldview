@@ -1,9 +1,8 @@
 import {
   createSequentialIdFactory,
-  createCompilerToolMaterials,
+  developmentTexturePack,
   deriveEditorGroups,
   documentWithoutOmittedLayers,
-  encodeQuakeWad2,
   planMapSave,
   selectedBrushIds,
   selectedPointEntityIds,
@@ -40,10 +39,8 @@ type DocumentState = EditorStatePort<
   | 'activeGridSize'
   | 'activeGameProfile'
   | 'activeTool'
-  | 'builtInMaterials'
   | 'currentDocumentName'
   | 'currentMapSource'
-  | 'diagnosticQuakePalette'
   | 'documentDirty'
   | 'duplicateSequence'
   | 'editorClipboard'
@@ -81,15 +78,8 @@ export class DocumentPresenter {
   }
 
   public compileAssets(): readonly CompileAssetEntry[] {
-    const assets: CompileAssetEntry[] = [
-      {
-        name: 'worldview_dev.wad',
-        data: encodeQuakeWad2(
-          [...this.state.builtInMaterials, ...createCompilerToolMaterials()],
-          this.state.quakePalette ?? this.state.diagnosticQuakePalette,
-        ),
-      },
-    ];
+    const pack = developmentTexturePack(this.state.activeGameProfile, this.state.quakePalette);
+    const assets: CompileAssetEntry[] = pack ? [{ name: 'worldview_dev.wad', data: pack.wad }] : [];
     let index = 0;
     for (const [name, data] of this.state.loadedWadSources) {
       let safeName = this.compileAssetName(name, index++);

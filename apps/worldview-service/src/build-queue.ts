@@ -2,6 +2,7 @@ import type { BlobStore } from './blob-store.js';
 import type { WorldviewDatabase } from './database.js';
 import {
   RemoteCompileResultSchema,
+  compiledBspVersion,
   type RemoteCompileRequest,
 } from '@jackharrhy/worldview-editor/core';
 import { HostedErrorResponseSchema } from '@worldview/protocol';
@@ -74,6 +75,16 @@ export class RemoteBuildQueue {
       }
       if (result.data.sourceDocumentRevision !== input.mapVersion) {
         throw new Error('Build worker returned a different map revision');
+      }
+      if (result.data.status === 'succeeded') {
+        const bsp = result.data.artifacts.find((artifact) => artifact.kind === 'bsp');
+        const version = bsp
+          ? compiledBspVersion(Uint8Array.from(Buffer.from(bsp.base64, 'base64')).buffer)
+          : null;
+        if (input.game === 'goldsrc' ? version !== 30 : version !== 29 && version !== 'BSP2')
+          throw new Error(
+            `Build worker returned the wrong BSP format for ${input.game}. Check its game profile configuration.`,
+          );
       }
       const artifacts = [];
       for (const artifact of result.data.artifacts) {

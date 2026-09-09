@@ -15,7 +15,8 @@
     "deploy:collaboration:celld": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/protocol && node scripts/deploy-celld.mjs",
     "build": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/protocol && npm run build --workspace @worldview/compiler-service && npm run build --workspace @worldview/collaboration-service && npm run build --workspace @worldview/service && npm run build --workspace @worldview/viewer && npm run build --workspace @worldview/editor",
     "build:browser-tests": "npm run build --workspace @jackharrhy/worldview && npm run build --workspace @jackharrhy/worldview-editor && npm run build --workspace @worldview/protocol",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test:engine-capture && npm run test --workspaces --if-present",
+    "test:engine-capture": "node --test scripts/engine-capture/scene.test.mjs",
     "test:browser": "npm run build:browser-tests && npm run test:consumer && playwright test",
     "test:browser:ci": "npm run build:browser-tests && npm run test:consumer && playwright test --grep @ci-smoke --workers=1",
     "test:browser:editor": "npm run build:browser-tests && WORLDVIEW_PLAYWRIGHT_SCOPE=editor playwright test tests/browser/editor/ --project=chromium --workers=1",
@@ -46,7 +47,9 @@
     "check:editor-routes:build": "node scripts/check-editor-route-boundaries.mjs --build",
     "check:theme": "node scripts/check-editor-theme.mjs",
     "check": "npm run format:check && npm run check:architecture && npm run check:theme && npm run lint && npm run typecheck && npm run test && npm run test:collaboration-bakeoff && npm run test:collaboration-celld-compat && npm run build && npm run check:editor-routes:build && npm run test:consumer && npm run test:package",
-    "check:viewer": "npm run format:check:viewer && npm run lint:viewer && npm run typecheck:viewer && npm run test:viewer"
+    "check:viewer": "npm run format:check:viewer && npm run lint:viewer && npm run typecheck:viewer && npm run test:viewer",
+    "engines:build": "docker build --platform linux/amd64 -t worldview-engine-capture:local scripts/engine-capture",
+    "engines:capture": "node scripts/capture-engine.mjs"
   },
   "devDependencies": {
     "@automerge/automerge": "^3.4.1",

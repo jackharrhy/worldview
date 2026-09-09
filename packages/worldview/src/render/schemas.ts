@@ -21,6 +21,7 @@ export const MaterialUniform = d.struct({
   sizes: d.vec4f,
   options: d.vec4f,
   renderColor: d.vec4f,
+  lightmapScale: d.f32,
 });
 
 export const sceneLayout = tgpu
@@ -34,6 +35,7 @@ export const materialLayout = tgpu
   .bindGroupLayout({
     material: { uniform: MaterialUniform },
     diffuse: { texture: d.texture2d(d.f32) },
+    fullbright: { texture: d.texture2d(d.f32) },
     lightmap: { texture: d.texture2d(d.f32) },
     skyAlpha: { texture: d.texture2d(d.f32) },
     skybox: { texture: d.texture2dArray(d.f32) },

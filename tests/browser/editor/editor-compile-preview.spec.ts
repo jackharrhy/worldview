@@ -1,7 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
 import { makeBsp } from '../../../packages/worldview/test/fixtures.js';
+import {
+  createQuakePalette,
+  decodeMipTexture,
+  parseBsp,
+} from '../../../packages/worldview/src/core/index.js';
 import {
   executeSiteTool,
   installSiteToolRegistry,
@@ -182,59 +187,106 @@ test.describe('Editor compiled preview', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('preserves the requested view through the configured native compiler', async ({
-    page,
-  }, testInfo) => {
-    test.skip(
-      process.env.WORLDVIEW_LIVE_COMPILER !== '1',
-      'Requires a configured compiler service on 127.0.0.1:8788',
-    );
-    await installSiteToolRegistry(page);
-    await openEditor(page);
-    await page.getByRole('button', { name: 'Build menu', exact: true }).click();
-    await expect(
-      page.getByRole('menuitem', { name: 'Build & preview', exact: true }),
-    ).toBeEnabled();
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
+  for (const game of ['quake', 'goldsrc'] as const)
+    test(`preserves the requested view and target textures through the ${game} native compiler`, async ({
+      page,
+    }, testInfo) => {
+      test.skip(
+        process.env.WORLDVIEW_LIVE_COMPILER !== '1',
+        'Requires Quake and GoldSrc compiler services on 127.0.0.1:8788 and :8790',
+      );
+      if (game === 'goldsrc')
+        await page.route(`${compilerOrigin}/**`, async (route) => {
+          const response = await route.fetch({
+            url: route.request().url().replace(':8788', ':8790'),
+          });
+          await route.fulfill({ response });
+        });
+      const pageErrors: string[] = [];
+      page.on('pageerror', (error) => pageErrors.push(error.message));
+      await installSiteToolRegistry(page);
+      await openEditor(page, { game });
+      if (process.env.WORLDVIEW_TEST_MAP) {
+        const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
+        await executeSiteTool(page, 'worldview_replace_map_source', {
+          expectedDocumentId: inspection.documentId,
+          expectedRevision: inspection.revision,
+          source: await readFile(process.env.WORLDVIEW_TEST_MAP, 'utf8'),
+          name: `${game}-textures.map`,
+          confirmDestructive: true,
+        });
+      }
+      await page.getByRole('button', { name: 'Build menu', exact: true }).click();
+      await expect(
+        page.getByRole('menuitem', { name: 'Build & preview', exact: true }),
+      ).toBeEnabled();
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
 
-    const sourceCanvas = page.getByLabel('Perspective map viewport');
-    const bounds = await sourceCanvas.boundingBox();
-    if (!bounds) throw new Error('Perspective viewport has no bounds');
-    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-    await page.mouse.move(center.x, center.y);
-    await page.keyboard.down('Shift');
-    await page.mouse.wheel(0, -80);
-    await page.keyboard.up('Shift');
-    const requestedCamera = await perspectiveCamera(page);
+      const sourceCanvas = page.getByLabel('Perspective map viewport');
+      const bounds = await sourceCanvas.boundingBox();
+      if (!bounds) throw new Error('Perspective viewport has no bounds');
+      const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+      await page.mouse.move(center.x, center.y);
+      await page.keyboard.down('Shift');
+      await page.mouse.wheel(0, -80);
+      await page.keyboard.up('Shift');
+      const requestedCamera = await perspectiveCamera(page);
+      await page.getByRole('tab', { name: 'Face', exact: true }).click();
+      const previewPixels = await page
+        .locator('[data-material-name="DEV_FLOOR"] canvas')
+        .evaluate((element) => {
+          const canvas = element as HTMLCanvasElement;
+          return [...canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data];
+        });
+      await sourceCanvas.screenshot({ path: testInfo.outputPath('native-source.png') });
 
-    await page.getByRole('button', { name: 'Build menu', exact: true }).click();
-    const downloadPromise = page.waitForEvent('download');
-    const responsePromise = page.waitForResponse(
-      (response) => response.url().endsWith('/compile') && response.request().method() === 'POST',
-    );
-    await page.getByRole('menuitem', { name: 'Build & export', exact: true }).click();
-    const compiledCanvas = page.getByLabel('Compiled BSP preview');
-    await expect(compiledCanvas).toBeVisible({ timeout: 30_000 });
-    const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
-    expect(inspection.build).toMatchObject({
-      compiledCamera: {
-        position: requestedCamera.position,
-        yaw: requestedCamera.yaw,
-        pitch: requestedCamera.pitch,
-        fieldOfView: requestedCamera.fieldOfViewDegrees,
-      },
-      compiledMovementMode: 'fly',
-      compiledRevision: 0,
-      showingCompiled: true,
+      await page.getByRole('button', { name: 'Build menu', exact: true }).click();
+      const downloadPromise = page.waitForEvent('download');
+      const responsePromise = page.waitForResponse(
+        (response) => response.url().endsWith('/compile') && response.request().method() === 'POST',
+      );
+      await page.getByRole('menuitem', { name: 'Build & export', exact: true }).click();
+      const compiledCanvas = page.getByLabel('Compiled BSP preview');
+      await expect(compiledCanvas).toBeVisible({ timeout: 30_000 });
+      const inspection = await executeSiteTool(page, 'worldview_inspect_editor');
+      expect(inspection.build).toMatchObject({
+        compiledCamera: {
+          position: requestedCamera.position,
+          yaw: requestedCamera.yaw,
+          pitch: requestedCamera.pitch,
+          fieldOfView: requestedCamera.fieldOfViewDegrees,
+        },
+        compiledMovementMode: 'fly',
+        compiledRevision: 0,
+        showingCompiled: true,
+      });
+      await expect(page.locator('.viewport-error')).toBeHidden();
+      const result = await (await responsePromise).json();
+      const artifact = result.artifacts.find((entry: { kind: string }) => entry.kind === 'bsp');
+      const bsp = Buffer.from(artifact.base64, 'base64');
+      expect(bsp.readInt32LE(0)).toBe(game === 'quake' ? 29 : 30);
+      const floor = parseBsp(bsp).materials.find(({ name }) => name.toUpperCase() === 'DEV_FLOOR');
+      expect(floor?.embeddedTexture).toBeDefined();
+      const palette =
+        game === 'quake'
+          ? process.env.WORLDVIEW_TEST_PALETTE
+            ? await readFile(process.env.WORLDVIEW_TEST_PALETTE)
+            : createQuakePalette()
+          : undefined;
+      expect([...decodeMipTexture(floor!.embeddedTexture!.data, palette).levels[0]!.rgba]).toEqual(
+        previewPixels,
+      );
+      await writeFile(testInfo.outputPath(`${game}.bsp`), bsp);
+      await writeFile(
+        testInfo.outputPath('native-result.json'),
+        JSON.stringify({ result, inspection }, null, 2),
+      );
+      const download = await downloadPromise;
+      expect(await readFile((await download.path())!)).toEqual(
+        Buffer.from(artifact.base64, 'base64'),
+      );
+      await page.screenshot({ path: testInfo.outputPath('native-build-export.png') });
+      expect(pageErrors).toEqual([]);
     });
-    await expect(page.locator('.viewport-error')).toBeHidden();
-    const result = await (await responsePromise).json();
-    const artifact = result.artifacts.find((entry: { kind: string }) => entry.kind === 'bsp');
-    const download = await downloadPromise;
-    expect(await readFile((await download.path())!)).toEqual(
-      Buffer.from(artifact.base64, 'base64'),
-    );
-    await page.screenshot({ path: testInfo.outputPath('native-build-export.png') });
-  });
 });

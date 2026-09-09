@@ -37,6 +37,7 @@ in the backlog.
 - [TrenchBroom conformance](./trenchbroom-conformance.md): pinned reference behavior, matches, and
   intentional differences.
 - [Quake II compatibility](./quake2-compatibility.md): source, BSP38, asset, and corpus evidence.
+- [Rendering compatibility](./rendering-compatibility.md): engine-family lighting rules and comparisons.
 - [Viewer API](./viewer-api.md): consumer installation and examples.
 - [Format core](./format-core.md): renderer-free BSP identification, texture and WAD inspection,
   and external asset planning.
@@ -48,6 +49,7 @@ in the backlog.
   infrastructure tests.
 - [Compiler service](../apps/compiler-service/README.md): local and production compiler adapter.
 - [Development viewer](../apps/viewer/README.md): ignored local fixture layout.
+- [Native engine captures](./engine-capture.md): QSS-M and Xash headless screenshots with verified cameras.
 - [Local fixture directory](../apps/viewer/public/local/README.md): generated corpus location and
   safety rules.
 

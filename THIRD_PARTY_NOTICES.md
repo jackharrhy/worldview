@@ -27,6 +27,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## Standard Quake palette
+
+`packages/worldview/src/core/quake-palette.ts` contains the standard Quake 256-color RGB lookup
+table from id Software's `gfx/palette.lmp`. The 768 bytes were extracted from the local Quake
+installation's `id1/PAK0.PAK` and have SHA-256
+`6b20b5bc4ea965ef1852b05670d043ca16148a0ecad4e63028121c8aebc268fe`.
+
+This table is included under the project's explicitly approved compatibility-data exception so
+Quake authoring, builds, and viewing use the engine's expected colors without an asset upload.
+Its data provenance is separate from the MIT implementation; no GPL engine implementation was
+copied. The exception is limited to this palette and does not cover game artwork or archives.
+
 ## LibreQuake test map
 
 `packages/worldview-editor/test/fixtures/librequake-b_batt0.map` is a normalized-LF copy of
@@ -139,8 +151,28 @@ Xash3D FWGS `engine/common/imagelib/img_wad.c` and `ref/gl/gl_rsurf.c` at commit
 were consulted to confirm Quake fullbright palette indices and dark sampleless surfaces in lit
 maps. id Software's Quake II `ref_gl/gl_light.c` was consulted to preserve that format's different
 sampleless-surface behavior. These GPL sources are compatibility references only; no engine
-implementation code or game palettes are included. Worldview's fixes and synthetic tests are
+implementation code was copied. Worldview's fixes and synthetic tests are
 independently authored.
+
+[QSS-M 1.6.5](https://github.com/timbergeron/QSS-M/releases/tag/1.6.5), built from commit
+[`3de3009ec672492ea06088b2ccca98c500503faf`](https://github.com/timbergeron/QSS-M/tree/3de3009ec672492ea06088b2ccca98c500503faf),
+was run locally as a Quake rendering oracle. Its `Quake/gl_texmgr.c`, `Quake/r_world.c`, and
+`Quake/r_brush.c` were inspected for fullbright palette separation, lightstyle scaling, and neutral
+gamma/contrast behavior. Xash3D FWGS's `engine/client/gamma.c` at the commit above was also consulted
+to distinguish GoldSrc texture/light gamma from Quake palette behavior. These are GPL compatibility
+references only. The decoded fullbright metadata, TypeGPU composition, and format lighting rules
+are original MIT implementations; no engine source was copied into this repository. The separately
+approved standard palette is documented above.
+
+The optional [native capture tooling](./docs/engine-capture.md) downloads that QSS-M release and
+builds that Xash revision in a local Docker image. It also builds
+[CS16Client at `57607ab038be0fc49b67c7a4a741ef8a44031577`](https://github.com/Velaron/cs16-client/tree/57607ab038be0fc49b67c7a4a741ef8a44031577),
+which is GPL-2.0-or-later with its stated Valve linking exception. Xash's documented
+[CS client recommendation](https://github.com/FWGS/xash3d-fwgs/blob/1de8289f2980aa34c70760ae0ebfb2e00ddb0f9e/Documentation/supported-mod-list.md)
+informs this setup. Native console/entity command behavior and CS16Client view offsets were
+consulted to position and verify cameras. Dockerfiles and automation are independently authored;
+engine/client source and binaries remain outside the MIT package, with their upstream license
+files in the image. Users supply their own commercial CS and Quake data.
 
 ## fflate
 

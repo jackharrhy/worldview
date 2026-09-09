@@ -38,6 +38,7 @@ export function EditorRoute({ hostedMap, detachedMap }: EditorRouteProps = {}) {
       }),
   );
   const editor = useRef<EditorApplication | null>(null);
+  const pendingLaunch = useRef<EditorApplicationLaunch | null>(null);
   shellState.workspaceHome.bind({
     newMap: () => location.assign('/new-map'),
     showHome: () => location.assign('/'),
@@ -90,7 +91,7 @@ export function EditorRoute({ hostedMap, detachedMap }: EditorRouteProps = {}) {
                 displayName: hostedMap.displayName,
                 resources: hostedMap.resources ?? [],
               }
-            : takePendingEditorLaunch();
+            : (pendingLaunch.current ??= takePendingEditorLaunch());
       void (async () => {
         await application.start(launch);
         application.signal.throwIfAborted();

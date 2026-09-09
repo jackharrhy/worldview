@@ -33,7 +33,9 @@ source viewport must skip GPU frames with zero layout extent, then resume render
 Assert visible rendered pixels, including fallback geometry when the compiler emits missing MIPTEX
 entries. A visible canvas and successful build status alone do not prove that the map renders.
 `tests/browser/viewer-lighting.spec.ts` verifies dark sampleless faces, wholly unlit BSPs, and
-smooth lighting with nearest-filtered textures through the shared public viewer. For lighting
+smooth lighting with nearest-filtered textures through the shared public viewer. It also checks
+Quake's authored fullbright pixels and neutral light levels separately from GoldSrc palette colors.
+`docs/rendering-compatibility.md` records the engine reference and format-specific limits. For lighting
 reports, inspect the actual retained BSP and compiler logs and capture it before and after changes;
 do not replace authored shadows with ambient light just to make the preview brighter.
 Capture Playwright's download event and compare the saved BSP bytes and filename with the selected
@@ -41,6 +43,11 @@ compiler artifact.
 `editor-build-export.spec.ts` additionally checks automatic BSP output, ZIP source/WAD contents,
 remembered quality, and export-after-build writes through a real browser filesystem directory handle.
 The native-compiler case downloads the real compiled BSP through Build & export and checks exact bytes.
+Run it with `WORLDVIEW_LIVE_COMPILER=1`, a Quake helper on port 8788 and GoldSrc helper on 8790.
+`WORLDVIEW_TEST_PALETTE` and `WORLDVIEW_TEST_MAP` select ignored local game-palette and map fixtures.
+Both target cases must return the correct BSP version and preserve the requested camera. Run
+without `WORLDVIEW_TEST_PALETTE` to prove Quake builds and previews use the included standard
+palette without any upload. GoldSrc generates WAD3 and requests `-hlbsp` for BSP30 output.
 Export settings select downloads or a remembered directory; out-of-date builds cannot use automatic
 export. Missing dependencies produce an explicit message, while raw BSP downloads stay available.
 For a hosted map, additionally prove the submitted revision equals the canonical map version and

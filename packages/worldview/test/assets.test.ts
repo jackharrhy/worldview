@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 
 import { loadWorldAssets, resolveWorldSource } from '../src/viewer/assets.js';
 import type { ProgressDetail } from '../src/viewer/types.js';
@@ -24,10 +25,11 @@ function assetContext() {
 }
 
 describe('asset resolution', () => {
-  it('requires an external palette for BSP29', async () => {
-    await expect(
-      loadWorldAssets({ bsp: makeBsp({ version: 29 }) }, assetContext()),
-    ).rejects.toMatchObject({ code: 'missing-palette' });
+  it('loads BSP29 with the included standard Quake palette', async () => {
+    const loaded = await loadWorldAssets({ bsp: makeBsp({ version: 29 }) }, assetContext());
+    expect(createHash('sha256').update(loaded.palette!).digest('hex')).toBe(
+      '6b20b5bc4ea965ef1852b05670d043ca16148a0ecad4e63028121c8aebc268fe',
+    );
   });
 
   it('does not misclassify a raw palette whose first byte matches the PCX manufacturer', async () => {
@@ -41,6 +43,19 @@ describe('asset resolution', () => {
     );
 
     expect(loaded.palette).toEqual(palette.slice(0, 768));
+  });
+
+  it('prefers explicit palettes over game-root palettes, and both over the bundled default', async () => {
+    const gamePalette = makePalette();
+    const source = {
+      bsp: makeBsp({ version: 29 }),
+      gameAssets: { 'gfx/palette.lmp': gamePalette },
+    };
+    expect((await loadWorldAssets(source, assetContext())).palette).toEqual(gamePalette);
+    const explicit = new Uint8Array(768).fill(120);
+    expect(
+      (await loadWorldAssets({ ...source, palette: explicit }, assetContext())).palette,
+    ).toEqual(explicit);
   });
 
   it('starts independent sprite and sound resolvers concurrently', async () => {

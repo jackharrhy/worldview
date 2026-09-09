@@ -20,8 +20,22 @@ describe('browser asset mounts', () => {
   it('persists WAD bytes with a content identity and deterministic priority', async () => {
     const storage = new MemoryAssetMountStorage();
     const service = new AssetMountStateService(storage);
-    await service.addBrowserWad('map-a', 'quake', 'later.wad', new Uint8Array([2]).buffer, 20);
-    await service.addBrowserWad('map-a', 'quake', 'earlier.wad', new Uint8Array([1]).buffer, 10);
+    await service.addBrowserAsset(
+      'browser-wad',
+      'map-a',
+      'quake',
+      'later.wad',
+      new Uint8Array([2]).buffer,
+      20,
+    );
+    await service.addBrowserAsset(
+      'browser-wad',
+      'map-a',
+      'quake',
+      'earlier.wad',
+      new Uint8Array([1]).buffer,
+      10,
+    );
     const mounts = await service.list('map-a');
     expect(mounts.map(({ label }) => label)).toEqual(['earlier.wad', 'later.wad']);
     expect(mounts[0]).toMatchObject({

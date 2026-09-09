@@ -29,6 +29,9 @@ The exact Quake II boundary and test corpus are recorded in the
 Local BSPs and game assets belong under `apps/viewer/public/local`, which Git ignores. The
 [development viewer README](apps/viewer/README.md) describes the fixture layout.
 
+[Native engine captures](docs/engine-capture.md) run QSS-M and Xash with local game assets to
+produce headless screenshots at verified camera positions.
+
 ## Development
 
 Worldview requires Node.js 24 or newer and npm 11.
@@ -48,7 +51,8 @@ The main project documents have distinct jobs:
 - [Viewer API guide](docs/viewer-api.md)
 - [Complete documentation index](docs/README.md)
 
-Worldview does not include game data. You must provide the BSPs, WADs, palettes, textures,
+Worldview includes the standard Quake color palette for previews and builds. You provide BSPs,
+WADs, custom or Quake II palettes, textures,
 skyboxes, sprites, and sounds you use, and you must have permission to use them.
 
 Worldview is licensed under the [MIT license](LICENSE). Adapted code and research sources are

@@ -71,24 +71,21 @@ export function skyboxVertex(input: VertexInput) {
   };
 }
 
-function adjustedColor(color: d.v3f): d.v3f {
-  'use gpu';
-  if (materialLayout.$.material.options.x > 0.5) {
-    return std.pow(color.mul(1.4), d.vec3f(0.9));
-  }
-  return d.vec3f(color);
-}
-
-function sampleDiffuse(uv: d.v2f): d.v4f {
+function diffuseCoordinates(uv: d.v2f): d.v2f {
   'use gpu';
   const scrolledUv = d.vec2f(
     uv.x - sceneLayout.$.scene.eyeTime.w * materialLayout.$.material.options.w,
     uv.y,
   );
+  return scrolledUv.div(materialLayout.$.material.sizes.xy);
+}
+
+function sampleDiffuse(uv: d.v2f): d.v4f {
+  'use gpu';
   return std.textureSample(
     materialLayout.$.diffuse,
     materialLayout.$.textureSampler,
-    scrolledUv.div(materialLayout.$.material.sizes.xy),
+    diffuseCoordinates(uv),
   );
 }
 
@@ -97,14 +94,24 @@ function lightmapped(input: FragmentInput): d.v4f {
   clipOverview(input.worldPosition);
   const diffuse = sampleDiffuse(input.diffuseUv);
   if (sceneLayout.$.scene.frameOptions.z > 0.5) {
-    return d.vec4f(adjustedColor(diffuse.rgb), diffuse.a);
+    return d.vec4f(diffuse.rgb, diffuse.a);
   }
   const lightmap = std.textureSample(
     materialLayout.$.lightmap,
     materialLayout.$.lightmapSampler,
     input.lightmapUv.div(materialLayout.$.material.sizes.zw),
   );
-  return d.vec4f(adjustedColor(diffuse.rgb.mul(lightmap.rgb).mul(2)), diffuse.a);
+  const fullbright = std.textureSample(
+    materialLayout.$.fullbright,
+    materialLayout.$.textureSampler,
+    diffuseCoordinates(input.diffuseUv),
+  );
+  // Subtract before lighting so filtered fullbright edges retain their original color.
+  const base = std.max(diffuse.rgb.sub(fullbright.rgb), d.vec3f(0));
+  return d.vec4f(
+    base.mul(lightmap.rgb).mul(materialLayout.$.material.lightmapScale).add(fullbright.rgb),
+    diffuse.a,
+  );
 }
 
 export function opaqueFragment(input: FragmentInput): d.v4f {
@@ -123,7 +130,7 @@ export function unlitFragment(input: FragmentInput): d.v4f {
   'use gpu';
   clipOverview(input.worldPosition);
   const diffuse = sampleDiffuse(input.diffuseUv);
-  return d.vec4f(adjustedColor(diffuse.rgb), diffuse.a);
+  return d.vec4f(diffuse.rgb, diffuse.a);
 }
 
 export function unlitAlphaFragment(input: FragmentInput): d.v4f {
@@ -137,7 +144,7 @@ export function translucentTextureFragment(input: FragmentInput): d.v4f {
   'use gpu';
   clipOverview(input.worldPosition);
   const diffuse = sampleDiffuse(input.diffuseUv);
-  return d.vec4f(adjustedColor(diffuse.rgb), diffuse.a * materialLayout.$.material.renderColor.w);
+  return d.vec4f(diffuse.rgb, diffuse.a * materialLayout.$.material.renderColor.w);
 }
 
 export function translucentColorFragment(input: FragmentInput): d.v4f {
@@ -150,7 +157,7 @@ export function additiveFragment(input: FragmentInput): d.v4f {
   'use gpu';
   clipOverview(input.worldPosition);
   const diffuse = sampleDiffuse(input.diffuseUv);
-  return d.vec4f(adjustedColor(diffuse.rgb).mul(materialLayout.$.material.renderColor.w), 1);
+  return d.vec4f(diffuse.rgb.mul(materialLayout.$.material.renderColor.w), 1);
 }
 
 export function spriteFragment(input: FragmentInput): d.v4f {
@@ -208,7 +215,7 @@ export function waterFragment(input: FragmentInput): d.v4f {
     );
   }
   const diffuse = sampleDiffuse(uv);
-  return d.vec4f(adjustedColor(diffuse.rgb), diffuse.a * materialLayout.$.material.renderColor.w);
+  return d.vec4f(diffuse.rgb, diffuse.a * materialLayout.$.material.renderColor.w);
 }
 
 export function unlitSkyFragment(input: FragmentInput): d.v4f {

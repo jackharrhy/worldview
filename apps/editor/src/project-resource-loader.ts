@@ -1,7 +1,12 @@
-import { EditorMaterialCatalog, type EditorMaterial } from '@jackharrhy/worldview-editor/core';
+import {
+  EditorMaterialCatalog,
+  developmentTexturePack,
+  type EditorMaterial,
+} from '@jackharrhy/worldview-editor/core';
 import { readPcxPalette, readWalTextureHeader } from '@jackharrhy/worldview/core';
 
 import { decodeProjectMaterialImage, projectMaterialName } from './project-material-assets.js';
+import { importGameWad } from './game-materials.js';
 import {
   loadProjectEntityDefinitions,
   loadProjectGameAssets,
@@ -166,7 +171,6 @@ async function decodeReplacementMaterials(
 
 export async function loadWorkspaceResources(
   workspace: WorldviewProjectWorkspace,
-  builtInMaterials: readonly EditorMaterial[],
   signal: AbortSignal,
 ): Promise<LoadedProjectResources> {
   const wadPaths = workspace.manifest.resources.wads;
@@ -181,21 +185,28 @@ export async function loadWorkspaceResources(
   ]);
   signal.throwIfAborted();
 
-  const gamePalette = gameAssets.get('pics/colormap.pcx');
-  const palette = configuredPalette ?? (gamePalette ? readPcxPalette(gamePalette.data) : undefined);
+  const gamePalette = gameAssets.get(
+    workspace.manifest.game === 'quake' ? 'gfx/palette.lmp' : 'pics/colormap.pcx',
+  );
+  const palette =
+    configuredPalette ??
+    (gamePalette
+      ? workspace.manifest.game === 'quake'
+        ? new Uint8Array(gamePalette.data)
+        : readPcxPalette(gamePalette.data)
+      : undefined);
   const catalog = new EditorMaterialCatalog();
   const wadSources = new Map<string, ArrayBuffer>();
   const messages: string[] = [];
-  for (const material of builtInMaterials) catalog.set(material);
+  for (const material of developmentTexturePack(workspace.manifest.game, palette)?.materials ?? [])
+    catalog.set(material);
 
   for (const [index, path] of wadPaths.entries()) {
     const data = wadData[index];
     if (!data) throw new Error(`${path} could not be read`);
-    const result = catalog.importWad(path, data, palette);
+    const result = importGameWad(catalog, workspace.manifest.game, path, data, palette);
     wadSources.set(path, data);
     messages.push(`${path}: ${result.added} added, ${result.replaced} replaced`);
-    const error = result.diagnostics.find(({ severity }) => severity === 'error');
-    if (error) throw new Error(error.message);
   }
 
   const walAssets = [...gameAssets].filter(([path]) => path.endsWith('.wal'));

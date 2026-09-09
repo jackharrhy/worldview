@@ -44,7 +44,6 @@ type BuildState = EditorStatePort<
   | 'currentDocumentName'
   | 'documentKey'
   | 'workspaceId'
-  | 'diagnosticQuakePalette'
   | 'latestBuild'
   | 'launchProfileId'
   | 'leakOverlayVisible'
@@ -305,11 +304,7 @@ export class BuildPresenter {
       this.showCompiledPreview(false);
       return false;
     }
-    const needsDiagnosticPalette =
-      (bspVersion === 29 || bspVersion === 38 || bspVersion === 'BSP2') && !this.state.quakePalette;
-    this.state.compiledPreviewWarning = needsDiagnosticPalette
-      ? ' Using the diagnostic palette; load the game palette for exact texture colors.'
-      : null;
+    this.state.compiledPreviewWarning = null;
     this.state.compiledViewer?.dispose();
     this.state.compiledViewer = null;
     const { createWorldview } = await import('@jackharrhy/worldview');
@@ -320,8 +315,9 @@ export class BuildPresenter {
         bsp: artifact.data,
         wads: [...this.state.loadedWadSources.values()],
         gameAssets: Object.fromEntries(this.state.loadedGameAssets),
-        ...(bspVersion === 29 || bspVersion === 38 || bspVersion === 'BSP2'
-          ? { palette: this.state.quakePalette ?? this.state.diagnosticQuakePalette }
+        ...((bspVersion === 29 || bspVersion === 38 || bspVersion === 'BSP2') &&
+        this.state.quakePalette
+          ? { palette: this.state.quakePalette }
           : {}),
       },
       controls: 'fly',
@@ -361,6 +357,8 @@ export class BuildPresenter {
         documentKey: this.state.documentKey,
         documentId: this.state.session.document.id,
         revision: this.state.session.document.revision,
+        palette: this.state.quakePalette,
+        wadSources: [...this.state.loadedWadSources],
         name: this.state.currentDocumentName,
         source,
         wads: assets.map(({ name, data }) => ({ name, data: data.slice(0) })),
@@ -392,11 +390,14 @@ export class BuildPresenter {
       if (
         outcome.status === 'stale' ||
         inputs.documentKey !== this.state.documentKey ||
-        inputs.documentId !== this.state.session.document.id
+        inputs.documentId !== this.state.session.document.id ||
+        inputs.palette !== this.state.quakePalette ||
+        inputs.wadSources.length !== this.state.loadedWadSources.size ||
+        inputs.wadSources.some(([name, data]) => this.state.loadedWadSources.get(name) !== data)
       ) {
         this.setCompileState('RESULT STALE', 'stale');
         this.ui.statusMessage.set(
-          'Compile finished, but the source changed. Result was not installed.',
+          'Compile finished, but the source or texture resources changed. Result was not installed.',
         );
         return;
       }

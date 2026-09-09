@@ -14,6 +14,7 @@ import type { EditorElements } from './editor-elements.js';
 import type { EditorShellState } from './editor-shell-state.js';
 import type { EditorStatePort } from './editor-state-port.js';
 import type { ObjectToolsCommand } from './object-tools-state.js';
+import { importGameWad, installDevelopmentMaterials } from './game-materials.js';
 
 type ToolEventState = EditorStatePort<
   | 'activeGameProfile'
@@ -136,16 +137,37 @@ export class ToolEvents {
         const file = this.ports.elements.paletteFile.files?.[0];
         if (this.ui.resourceSettings.getSnapshot().projectResourcesUrl) return;
         if (!file) return;
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        if (bytes.byteLength < 768) {
-          this.ui.resourceSettings.update({
-            message: `${file.name} is ${bytes.byteLength} bytes; a Quake palette needs at least 768.`,
-            tone: 'error',
-          });
-        } else {
-          this.state.quakePalette = bytes.slice(0, 768);
+        const { documentKey, activeGameProfile } = this.state;
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          if (signal.aborted || this.state.documentKey !== documentKey) return;
+          if (bytes.byteLength !== 768)
+            throw new Error(
+              `${file.name} is ${bytes.byteLength} bytes; a Quake palette needs 768.`,
+            );
+          await this.state.assetMountState.addBrowserAsset(
+            'browser-palette',
+            documentKey,
+            activeGameProfile,
+            file.name,
+            bytes.buffer,
+            -1,
+          );
+          if (signal.aborted || this.state.documentKey !== documentKey) return;
+          this.state.quakePalette = bytes;
+          installDevelopmentMaterials(
+            this.state.materialCatalog,
+            this.state.activeGameProfile,
+            bytes,
+          );
           for (const [name, data] of this.state.loadedWadSources) {
-            this.state.materialCatalog.importWad(name, data, this.state.quakePalette);
+            importGameWad(
+              this.state.materialCatalog,
+              this.state.activeGameProfile,
+              name,
+              data,
+              this.state.quakePalette,
+            );
           }
           this.ports.renderMaterialCatalog();
           this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
@@ -154,8 +176,14 @@ export class ToolEvents {
             paletteLoaded: true,
             tone: 'normal',
           });
+        } catch (error) {
+          this.ui.resourceSettings.update({
+            message: error instanceof Error ? error.message : String(error),
+            tone: 'error',
+          });
+        } finally {
+          this.ports.elements.paletteFile.value = '';
         }
-        this.ports.elements.paletteFile.value = '';
       },
       { signal },
     );
@@ -166,33 +194,35 @@ export class ToolEvents {
         const files = [...(this.ports.elements.wadFiles.files ?? [])];
         if (this.ui.resourceSettings.getSnapshot().projectResourcesUrl) return;
         if (files.length === 0) return;
+        const { documentKey, activeGameProfile } = this.state;
         const summaries: string[] = [];
         let hasErrors = false;
         const wadData = await Promise.allSettled(files.map((file) => file.arrayBuffer()));
+        if (signal.aborted || this.state.documentKey !== documentKey) return;
         for (const [index, file] of files.entries()) {
           try {
             const data = wadData[index];
             if (!data || data.status === 'rejected') {
               throw data?.reason ?? new Error('WAD file could not be read');
             }
-            const result = this.state.materialCatalog.importWad(
+            const result = importGameWad(
+              this.state.materialCatalog,
+              this.state.activeGameProfile,
               file.name,
               data.value,
               this.state.quakePalette,
             );
             this.state.loadedWadSources.set(file.name, data.value);
-            await this.state.assetMountState.addBrowserWad(
-              this.state.documentKey,
-              this.state.activeGameProfile,
+            await this.state.assetMountState.addBrowserAsset(
+              'browser-wad',
+              documentKey,
+              activeGameProfile,
               file.name,
               data.value,
               this.state.loadedWadSources.size,
             );
-            summaries.push(
-              `${file.name}: ${result.added} added, ${result.replaced} replaced, ${result.skipped} skipped`,
-            );
-            hasErrors ||= result.diagnostics.some((diagnostic) => diagnostic.severity === 'error');
-            if (result.diagnostics[0]) summaries.push(result.diagnostics[0].message);
+            if (signal.aborted || this.state.documentKey !== documentKey) return;
+            summaries.push(`${file.name}: ${result.added} added, ${result.replaced} replaced`);
           } catch (error) {
             hasErrors = true;
             summaries.push(

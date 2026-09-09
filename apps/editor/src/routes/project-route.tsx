@@ -65,8 +65,9 @@ export function Component() {
                 <p className="landing-error">{actionData.error}</p>
               ) : null}
               <p>
-                Includes Worldview development textures and this project's texture packs. Add packs
-                below to use them in the editor and in builds.
+                {project.game === 'quake'
+                  ? 'Includes Worldview development textures and the standard Quake palette. Add a custom palette below for mods that use different colors.'
+                  : 'Includes Worldview development textures and this project’s GoldSrc texture packs, with their own palettes.'}
               </p>
             </div>
             <footer>

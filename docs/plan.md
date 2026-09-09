@@ -222,10 +222,20 @@ used non-tool texture names, attach the WADs, and rewrite only transient compile
 Later project packs override earlier packs and defaults, matching sidebar resolution. Missing,
 corrupt, or oversized inputs stop the build. The public editor core exports development-material
 generators and `serializeMapForCompile` to share validation, omitted-layer handling, and precedence.
-Generated WAD2 colours use only Quake's non-emissive palette range (0–223); index 255 is
-reserved for explicitly masked pixels. The diagnostic palette remains a preview fallback, not
-a replacement for the target game's palette: matching exported colours requires the project
-palette and a rebuild.
+The public `developmentTexturePack` generates target-specific WAD bytes and decodes editor previews
+from those same bytes. The standard 768-byte Quake palette is bundled as an explicitly approved
+compatibility-data exception, exposed by the viewer core's `createQuakePalette`. Quake authoring,
+WAD2 imports, hosted builds, and BSP29/BSP2 viewing use it by default. Explicit palettes and
+game-root palettes override it for mods. Generated WAD2 colours use the selected palette's
+non-emissive range (0–223), with index 255 reserved for masked pixels. No diagnostic palette is
+silently substituted. Custom standalone palette uploads persist alongside the document's WAD mounts.
+GoldSrc development textures use WAD3 with per-texture palettes, preserving their original colours.
+Imported WAD bytes, authored mipmaps, and intentional Quake fullbrights remain untouched. Invalid
+or wrong-game WADs are rejected before changing the live catalog, and texture-resource changes
+during compilation make its result stale. Quake II requires its own game resources rather than a
+generated WAD.
+GoldSrc compiler profiles explicitly request `qbsp -hlbsp` and validate BSP30 output; the hosted
+queue also rejects successful worker results with the wrong game's BSP format.
 
 A stale result remains inspectable but
 cannot replace the current compiled preview. Browsers never provide arbitrary executable paths,
@@ -242,6 +252,24 @@ sampleless opaque and masked faces stay dark; maps without baked lighting remain
 Quake II retains its sampleless-surface behavior. Lightmaps always use linear filtering independently
 of the diffuse-texture filtering setting. The compiled editor preview uses the same default linear
 texture filtering as the standalone viewer.
+Format-specific lighting rules live in `render/world-lighting.ts`: Quake BSP29/BSP2 follows QSS-M's
+neutral gamma/contrast baseline, including normal lightstyle scaling and palette-index fullbrights;
+GoldSrc BSP30 (Half-Life and Counter-Strike) keeps its separate neutral preview; Quake II retains
+its own sampleless-face rule. GoldSrc engine/user texgamma, lightgamma, brightness, and display
+settings are not yet emulated. A game's name does not override the loaded BSP's texture format.
+Decoded Quake mip levels optionally expose `fullbrightRgba` for indices 224–255, excluding masked
+index 255. The original `rgba` remains intact for texture previews. Rendering lights the ordinary
+color separately from the fullbright contribution, with matching UVs, mip levels, and filtering.
+Imported WAD bytes and palettes remain unchanged; WAD3 palette indices do not inherit this rule.
+The old Quake-only 1.4× color boost and 0.9 power curve are removed. See
+[rendering compatibility](./rendering-compatibility.md) for the reference checks and their limits.
+Local native-engine capture tooling runs pinned QSS-M and Xash3D FWGS in Docker with Xvfb and
+software OpenGL, using read-only game installations. It saves engine screenshots, settings, input
+hashes and camera readbacks. Xash uses CS16Client with the supplied original CS server library;
+scratch spawn overrides and native entity commands position the camera without altering BSP bytes.
+Both engines have captured the hosted test map; Xash has also captured the installed BSP30
+`de_dust` at a verified camera. These are optional local comparison tools, independent of the
+browser renderer and normal CI. See [native engine captures](./engine-capture.md).
 Build results offers Download BSP for the selected build, including retained history. Downloads
 preserve the compiler's filename and exact artifact bytes for use in a compatible local engine.
 

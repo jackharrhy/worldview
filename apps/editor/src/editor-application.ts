@@ -282,6 +282,7 @@ export class EditorApplication {
     switch (launch.kind) {
       case 'new-map':
         this.project.createNewMap(launch.profile, launch.format, launch.name, launch.workspaceId);
+        await this.project.restoreBrowserAssetMounts();
         return;
       case 'hosted-map': {
         this.state.activeGameProfile = launch.game;
@@ -308,6 +309,7 @@ export class EditorApplication {
       }
       case 'detached-map':
         this.project.openDetachedHostedMap(launch.copy);
+        await this.project.restoreBrowserAssetMounts();
         return;
       case 'project':
         await this.project.openProjectDirectory(launch.handle);

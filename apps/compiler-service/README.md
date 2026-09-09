@@ -10,6 +10,13 @@ ERICW_LIGHT=/absolute/path/to/light \
 npm run dev:compiler
 ```
 
+For Half-Life or Counter-Strike, also set `WORLDVIEW_GAME_PROFILE=goldsrc`. This passes `-hlbsp`
+to `qbsp` and requires a BSP30 result. Use an ericw-tools build with GoldSrc support (verified with
+2.0.0-alpha11); a compiler that returns Quake BSP29 cannot report a successful GoldSrc build.
+GoldSrc inputs use WAD3 texture palettes. Quake inputs use WAD2 and the included standard palette,
+unless the editor has a custom game palette; generated textures and their swatches share the
+exact encoded pixels.
+
 Quake II uses a separate, explicit q2tools-220 pipeline; the helper never advertises Quake II while
 only Quake tools are configured:
 

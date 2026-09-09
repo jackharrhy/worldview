@@ -16,5 +16,8 @@ Project invariants:
   them instead of duplicating them; the package keeps its own `LICENSE`.
 - Never commit commercial or shareware BSP, WAD, PAK, palette, sprite, or sound data. Local test
   data belongs in `apps/viewer/public/local`, which is ignored.
+- The standard 768-byte Quake palette in `packages/worldview/src/core/quake-palette.ts` is an
+  explicitly approved compatibility-data exception. Preserve its provenance in
+  `THIRD_PARTY_NOTICES.md`; this exception covers only that color lookup table.
 - V0.1 supports Quake BSP29 and GoldSrc BSP30 static map exhibits with a bounded, static-world
 - Use npm workspaces and the committed `package-lock.json`.

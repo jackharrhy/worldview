@@ -28,6 +28,8 @@ export interface DecodedMipLevel {
   readonly width: number;
   readonly height: number;
   readonly rgba: Uint8Array;
+  /** Quake palette indices 224–255, excluding transparent pixels; rgba keeps the original color. */
+  readonly fullbrightRgba?: Uint8Array;
 }
 
 export interface DecodedMipTexture {

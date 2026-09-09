@@ -19,6 +19,12 @@ export function serializeMapForCompile(
   const available = new Set<string>();
   for (const wad of wads) {
     const parsed = parseWad(wad.data);
+    const expected = game === 'quake' ? 2 : 3;
+    if (parsed.version !== expected) {
+      throw new Error(
+        `${game === 'quake' ? 'Quake' : 'GoldSrc'} builds require WAD${expected} textures; ${wad.name} is WAD${parsed.version}. Use texture packs for the selected game.`,
+      );
+    }
     if (parsed.warnings.length) {
       throw new Error(`Texture pack ${wad.name}: ${parsed.warnings[0]!.message}`);
     }

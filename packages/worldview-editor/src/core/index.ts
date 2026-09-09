@@ -372,6 +372,7 @@ export {
   orderAssetMounts,
   type AssetMountDescriptor,
   type AssetMountKind,
+  type BrowserPaletteAssetMount,
   type BrowserWadAssetMount,
   type BuiltinAssetMount,
   type ProjectWadAssetMount,
@@ -418,7 +419,6 @@ export {
   type GroupDocumentResult,
 } from './groups.js';
 export {
-  encodeQuakeWad2,
   EditorMaterialCatalog,
   type EditorMaterial,
   type MaterialImportDiagnostic,
@@ -496,3 +496,6 @@ export {
   createDiagnosticQuakePalette,
 } from './development-materials.js';
 export { serializeMapForCompile, type MapCompileWad } from './compile-materials.js';
+
+export { encodeQuakeWad2, encodeGoldSrcWad3 } from './wad-encoding.js';
+export { developmentTexturePack } from './development-texture-pack.js';

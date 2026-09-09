@@ -361,6 +361,7 @@ export class TypeGpuSpriteRenderer {
             spriteMipLevels(frame),
           );
           const uniform = this.root.createUniform(MaterialUniform, {
+            lightmapScale: 1,
             sizes: [frame.width, frame.height, 1, 1],
             options: [0, 0, entity.sprite.textureFormat === 3 ? 0.5 : 0, 0],
             renderColor: [
@@ -377,6 +378,7 @@ export class TypeGpuSpriteRenderer {
               material: uniform,
               diffuse,
               lightmap: white,
+              fullbright: white,
               skyAlpha: diffuse,
               skybox: skyboxView,
               textureSampler: this.sampler,

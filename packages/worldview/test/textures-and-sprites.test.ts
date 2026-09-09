@@ -36,6 +36,35 @@ describe('WAD and MIPTEX', () => {
     expect(decoded.levels[0]?.rgba.slice(0, 4)).toEqual(new Uint8Array([0, 255, 0, 255]));
   });
 
+  it('preserves authored Quake fullbrights at every mip without changing WAD3 colors or transparency', () => {
+    const palette = makePalette();
+    for (const name of ['fixture', '{fence']) {
+      for (const version of [29, 30] as const) {
+        const bytes = makeMipTexture(version, name);
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        for (let mip = 0; mip < 4; mip += 1) {
+          const offset = view.getUint32(24 + mip * 4, true);
+          bytes.set([223, 224, 246, 255], offset);
+        }
+        const decoded = decodeMipTexture(bytes, version === 29 ? palette : undefined);
+        for (const level of decoded.levels) {
+          for (const [pixel, index] of [223, 224, 246, 255].entries()) {
+            const transparent = name.startsWith('{') && index === 255;
+            const color = transparent
+              ? [0, 0, 0, 0]
+              : [...palette.slice(index * 3, index * 3 + 3), 255];
+            expect(level.rgba.subarray(pixel * 4, pixel * 4 + 4)).toEqual(new Uint8Array(color));
+            if (version === 29) {
+              expect(level.fullbrightRgba!.subarray(pixel * 4, pixel * 4 + 4)).toEqual(
+                new Uint8Array(index >= 224 ? color : [0, 0, 0, 0]),
+              );
+            } else expect(level.fullbrightRgba).toBeUndefined();
+          }
+        }
+      }
+    }
+  });
+
   it('rejects decoded textures wider than the portable WebGPU limit', () => {
     const texture = makeMipTexture(29);
     const view = new DataView(texture.buffer, texture.byteOffset, texture.byteLength);

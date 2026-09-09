@@ -67,6 +67,7 @@ export function decodeMipTexture(
     source.require(offset, width * height, `MIPTEX ${header.name} mip ${index}`);
     const indexed = source.uint8Array(offset, width * height);
     const rgba = new Uint8Array(width * height * 4);
+    let fullbrightRgba: Uint8Array | undefined;
     for (let pixel = 0; pixel < indexed.length; pixel += 1) {
       const paletteIndex = indexed[pixel] ?? 0;
       const destination = pixel * 4;
@@ -77,9 +78,13 @@ export function decodeMipTexture(
         rgba[destination + 1] = palette[paletteIndex * 3 + 1] ?? 0;
         rgba[destination + 2] = palette[paletteIndex * 3 + 2] ?? 0;
         rgba[destination + 3] = 255;
+        if (externalPalette && paletteIndex >= 224) {
+          fullbrightRgba ??= new Uint8Array(rgba.length);
+          fullbrightRgba.set(rgba.subarray(destination, destination + 4), destination);
+        }
       }
     }
-    levels.push({ width, height, rgba });
+    levels.push({ width, height, rgba, ...(fullbrightRgba ? { fullbrightRgba } : {}) });
   }
 
   return { name: header.name, width: header.width, height: header.height, levels, alphaTest };

@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import {
   createStarterDocument,
   parseMap,
@@ -22,14 +23,32 @@ function dotTestVectors(left: readonly number[], right: readonly number[]): numb
   return left.reduce((sum, component, index) => sum + component * right[index]!, 0);
 }
 
-async function openEditor(page: Page, options: { empty?: boolean } = {}): Promise<void> {
+async function openEditor(
+  page: Page,
+  options: { empty?: boolean; palette?: boolean; game?: 'quake' | 'goldsrc' } = {},
+): Promise<void> {
   await page.goto('http://127.0.0.1:5174/');
   await page.getByRole('button', { name: 'New map', exact: true }).click();
   await expect(page).toHaveURL(/\/new-map$/);
+  if (options.game)
+    await page.getByRole('combobox', { name: 'Game', exact: true }).selectOption(options.game);
   await page.getByRole('button', { name: 'Create map', exact: true }).click();
   await expect(page).toHaveURL('http://127.0.0.1:5174/editor');
   await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
   await expect(page.locator('.viewport-error')).toBeHidden();
+  if (
+    options.palette !== false &&
+    options.game !== 'goldsrc' &&
+    process.env.WORLDVIEW_TEST_PALETTE
+  ) {
+    const palette = await readFile(process.env.WORLDVIEW_TEST_PALETTE);
+    await page.locator('#palette-file').setInputFiles({
+      name: 'test-palette.lmp',
+      mimeType: 'application/octet-stream',
+      buffer: palette,
+    });
+    await expect(page.locator('#resource-settings')).toContainText('Loaded test-palette.lmp');
+  }
   if (!options.empty) {
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await page.locator('#map-source').fill(serializeMap(createStarterDocument()));

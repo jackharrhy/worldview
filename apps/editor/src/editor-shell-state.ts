@@ -526,7 +526,7 @@ export class ResourceSettingsPort extends EditorUiPort<ResourceSettingsSnapshot>
       projectResourcesUrl: null,
       paletteLoaded: false,
       message:
-        'Worldview development textures are included. Added WADs are included in local builds.',
+        'Standard Quake palette included. Custom palettes override it for previews and builds.',
       tone: 'normal',
       revealVersion: 0,
     });

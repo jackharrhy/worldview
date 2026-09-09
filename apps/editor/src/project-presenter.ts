@@ -41,6 +41,7 @@ import type { ProjectActionId } from './project-build-ui-state.js';
 import type { DetachedHostedMap } from './collaboration-outbox.js';
 import { loadWorkspaceResources } from './project-resource-loader.js';
 import type { LoadedProjectResources } from './project-resource-loader.js';
+import { importGameWad, installDevelopmentMaterials } from './game-materials.js';
 
 type ProjectUi = Pick<
   EditorShellState,
@@ -56,12 +57,10 @@ type ProjectUi = Pick<
 type ProjectState = EditorStatePort<
   | 'activeGameProfile'
   | 'assetMountState'
-  | 'builtInMaterials'
   | 'currentDocumentName'
   | 'currentFileHandle'
   | 'currentMapSource'
   | 'documentKey'
-  | 'diagnosticQuakePalette'
   | 'entityDefinitions'
   | 'lastDiskFingerprint'
   | 'lastRecoveryLabel'
@@ -179,16 +178,10 @@ export class ProjectPresenter {
     });
     this.state.entityDefinitions = new EntityDefinitionCatalog();
     this.state.projectSprites = [];
-    this.state.materialCatalog.clear();
-    for (const material of this.state.builtInMaterials) this.state.materialCatalog.set(material);
-    this.state.loadedWadSources.clear();
-    this.state.loadedGameAssets.clear();
-    this.state.quakePalette = undefined;
+    this.resetGameMaterials();
     this.state.renderer?.setEntityDefinitions(this.state.entityDefinitions);
     this.state.renderer?.setSprites([]);
-    this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
     this.refreshEntityDefinitionPresets();
-    this.materials.renderMaterialCatalog();
     this.ui.resourceSettings.update({
       loadedWadCount: 0,
       paletteLoaded: false,
@@ -211,22 +204,22 @@ export class ProjectPresenter {
           (map) => map.handle === handle && map.path === logicalName,
         ),
       );
-      const assertExpectedDocument = (): void => {
+      const assertExpectedDocument = (expected = options): void => {
         this.signal.throwIfAborted();
         if (
-          options.expectedDocumentId !== undefined &&
-          this.state.session.document.id !== options.expectedDocumentId
+          expected.expectedDocumentId !== undefined &&
+          this.state.session.document.id !== expected.expectedDocumentId
         ) {
           throw new Error(
-            `Stale document identity: expected ${options.expectedDocumentId}, current document is ${this.state.session.document.id}`,
+            `Stale document identity: expected ${expected.expectedDocumentId}, current document is ${this.state.session.document.id}`,
           );
         }
         if (
-          options.expectedRevision !== undefined &&
-          this.state.session.document.revision !== options.expectedRevision
+          expected.expectedRevision !== undefined &&
+          this.state.session.document.revision !== expected.expectedRevision
         ) {
           throw new Error(
-            `Stale document revision: expected ${options.expectedRevision}, current revision is ${this.state.session.document.revision}`,
+            `Stale document revision: expected ${expected.expectedRevision}, current revision is ${this.state.session.document.revision}`,
           );
         }
       };
@@ -257,6 +250,7 @@ export class ProjectPresenter {
       if (!belongsToCurrentProject) this.detachProjectContext();
       this.viewportWorkspace.beginDocumentChange();
       this.state.documentKey = documentKey;
+      let message: string;
       if (recovered && restoreRecovery) {
         const sourceMatchesDisk = recovered.source.fingerprint === fingerprint;
         if (sourceMatchesDisk) parsed = parseMapSource(text, recoverySourceIdFactory(recovered));
@@ -270,35 +264,34 @@ export class ProjectPresenter {
           focusView: true,
         });
         this.state.session.restoreDocument(recovered.document, `Restore ${recovered.label}`);
-        this.session.setEditorTool('select');
-        this.viewportWorkspace.restore(viewportWorkspaceKey);
-        this.ui.statusMessage.set(
-          sourceMatchesDisk
-            ? `Restored recovery for ${logicalName}; the on-disk map is unchanged.`
-            : `Restored recovery for ${logicalName} as a detached copy because the on-disk source changed.`,
-        );
-        return;
+        message = sourceMatchesDisk
+          ? `Restored recovery for ${logicalName}; the on-disk map is unchanged.`
+          : `Restored recovery for ${logicalName} as a detached copy because the on-disk source changed.`;
+      } else {
+        assertExpectedDocument();
+        this.session.replaceDocument(parsed.document, 'Open map', {
+          name: logicalName,
+          source: parsed.source,
+          fileHandle: handle,
+          diskFingerprint: fingerprint,
+          dirty: false,
+          savedRevision: parsed.document.revision,
+          focusView: true,
+        });
+        message = `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`;
       }
-      assertExpectedDocument();
-      this.session.replaceDocument(parsed.document, 'Open map', {
-        name: logicalName,
-        source: parsed.source,
-        fileHandle: handle,
-        diskFingerprint: fingerprint,
-        dirty: false,
-        savedRevision: parsed.document.revision,
-        focusView: true,
-      });
+      const openedDocument = this.state.session.document;
       this.session.setEditorTool('select');
       this.viewportWorkspace.restore(viewportWorkspaceKey);
       if (belongsToCurrentProject && this.state.projectKey) {
         await this.state.projectLocalState.setLastMap(this.state.projectKey, logicalName);
       }
       await this.restoreBrowserAssetMounts();
-      assertExpectedDocument();
-      this.ui.statusMessage.set(
-        `Opened ${logicalName}${handle ? ' with a writable browser handle' : ''}.`,
-      );
+      assertExpectedDocument({
+        expectedDocumentId: openedDocument.id,
+        expectedRevision: openedDocument.revision,
+      });
+      this.ui.statusMessage.set(message);
     } catch (error) {
       if (this.signal.aborted) throw error;
       this.ui.statusMessage.set(
@@ -381,11 +374,7 @@ export class ProjectPresenter {
     try {
       const workspace = await openWorldviewProject(handle);
       signal.throwIfAborted();
-      const resources = await loadWorkspaceResources(
-        workspace,
-        this.state.builtInMaterials,
-        signal,
-      );
+      const resources = await loadWorkspaceResources(workspace, signal);
       signal.throwIfAborted();
       const provisionalProjectKey = `${workspace.manifest.name.toLowerCase()}:${handle.name.toLowerCase()}`;
       const remembered = await this.state.projectLocalState.remember(
@@ -449,6 +438,7 @@ export class ProjectPresenter {
     this.state.workspaceId = `browser:${workspaceId}`;
     this.state.documentKey = `${this.state.workspaceId}:map`;
     this.state.activeGameProfile = profile;
+    this.resetGameMaterials();
     this.session.replaceDocument(document, `Create empty ${definition.label} map`, {
       name: name.toLowerCase().endsWith('.map') ? name : `${name}.map`,
       source: rebaseMapSource(document, serializeMap(document)),
@@ -459,6 +449,7 @@ export class ProjectPresenter {
       focusView: true,
     });
     this.viewportWorkspace.restore(this.state.documentKey);
+    void this.build.checkCompilerService();
     this.ui.statusMessage.set(`Created an empty ${definition.label} ${format} map.`);
   }
 
@@ -468,6 +459,8 @@ export class ProjectPresenter {
     this.state.workspaceId = `browser:${copy.id}`;
     this.state.documentKey = copy.documentKey;
     this.state.activeGameProfile = copy.profile;
+    this.resetGameMaterials();
+    void this.build.checkCompilerService();
     this.session.replaceDocument(copy.document, `Open detached copy of ${copy.fileName}`, {
       name: copy.fileName,
       source: copy.source,
@@ -507,18 +500,43 @@ export class ProjectPresenter {
   }
 
   public async restoreBrowserAssetMounts(): Promise<void> {
-    if (this.state.documentKey.startsWith('hosted-map:')) return;
-    const mounts = await this.state.assetMountState.list(this.state.documentKey).catch(() => []);
+    const { documentKey, activeGameProfile } = this.state;
+    if (documentKey.startsWith('hosted-map:')) return;
+    let restoreError: string | undefined;
+    try {
+      const mounts = (await this.state.assetMountState.list(documentKey)).filter(
+        (mount) => mount.profile === activeGameProfile,
+      );
+      this.signal.throwIfAborted();
+      if (
+        documentKey !== this.state.documentKey ||
+        activeGameProfile !== this.state.activeGameProfile
+      )
+        return;
+      const palette = mounts.find((mount) => mount.kind === 'browser-palette');
+      if (palette?.data) this.state.quakePalette = new Uint8Array(palette.data);
+      for (const mount of mounts) {
+        if (!mount.data || (mount.kind !== 'browser-wad' && mount.kind !== 'project-wad')) continue;
+        importGameWad(
+          this.state.materialCatalog,
+          activeGameProfile,
+          mount.sourceName,
+          mount.data,
+          this.state.quakePalette,
+        );
+        this.state.loadedWadSources.set(mount.sourceName, mount.data);
+      }
+    } catch (error) {
+      restoreError = `Could not restore texture resources: ${error instanceof Error ? error.message : String(error)}`;
+    }
     this.signal.throwIfAborted();
-    for (const mount of mounts) {
-      if (!mount.data || !('sourceName' in mount)) continue;
-      this.state.materialCatalog.importWad(mount.sourceName, mount.data, this.state.quakePalette);
-      this.state.loadedWadSources.set(mount.sourceName, mount.data);
-    }
-    if (mounts.length > 0) {
-      this.materials.renderMaterialCatalog();
-      this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
-    }
+    if (
+      documentKey !== this.state.documentKey ||
+      activeGameProfile !== this.state.activeGameProfile
+    )
+      return;
+    this.refreshGameMaterials();
+    if (restoreError) this.ui.resourceSettings.update({ tone: 'error', message: restoreError });
   }
 
   public loadHostedResources(
@@ -529,6 +547,7 @@ export class ProjectPresenter {
     }[],
     projectId: string,
   ): void {
+    this.state.quakePalette = undefined;
     for (const resource of resources) {
       if (resource.kind !== 'palette') continue;
       if (resource.data.byteLength !== 768)
@@ -537,24 +556,46 @@ export class ProjectPresenter {
     }
     for (const resource of resources) {
       if (resource.kind !== 'wad' && !resource.name.toLowerCase().endsWith('.wad')) continue;
-      const imported = this.state.materialCatalog.importWad(
+      importGameWad(
+        this.state.materialCatalog,
+        this.state.activeGameProfile,
         resource.name,
         resource.data,
-        this.state.quakePalette ?? this.state.diagnosticQuakePalette,
+        this.state.quakePalette,
       );
-      const error = imported.diagnostics.find(({ severity }) => severity === 'error');
-      if (error) throw new Error(`Texture pack ${resource.name}: ${error.message}`);
       this.state.loadedWadSources.set(resource.name, resource.data);
     }
-    this.ui.resourceSettings.update({
-      loadedWadCount: this.state.loadedWadSources.size,
-      paletteLoaded: Boolean(this.state.quakePalette),
-      projectResourcesUrl: `/project/${projectId}`,
-      message:
-        'Worldview development textures and project texture packs are included in builds. Manage packs in Project resources.',
-    });
+    this.ui.resourceSettings.update({ projectResourcesUrl: `/project/${projectId}` });
+    this.refreshGameMaterials();
+  }
+
+  private resetGameMaterials(): void {
+    this.state.materialCatalog.clear();
+    this.state.loadedWadSources.clear();
+    this.state.loadedGameAssets.clear();
+    this.state.quakePalette = undefined;
+    this.refreshGameMaterials();
+  }
+
+  private refreshGameMaterials(): void {
+    installDevelopmentMaterials(
+      this.state.materialCatalog,
+      this.state.activeGameProfile,
+      this.state.quakePalette,
+    );
     this.materials.renderMaterialCatalog();
     this.state.renderer?.setMaterials(this.state.materialCatalog.materials());
+    this.ui.resourceSettings.update({
+      paletteLoaded: Boolean(this.state.quakePalette),
+      loadedWadCount: this.state.loadedWadSources.size,
+      tone: 'normal',
+      message:
+        this.state.activeGameProfile === 'quake' && !this.state.quakePalette
+          ? 'Standard Quake palette included. Custom palettes override it for previews and builds.'
+          : this.state.activeGameProfile === 'quake2'
+            ? 'Add the Quake II game textures and palette in project Resources.'
+            : 'Texture previews and builds use the selected game’s palettes.',
+    });
   }
 
   private async projectDirectoryForOpen(): Promise<EditorDirectoryHandle | null> {

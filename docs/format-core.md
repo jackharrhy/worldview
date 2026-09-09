@@ -38,7 +38,8 @@ The `sourceIndex` is the original BSP texture-table index. Quake II BSP38 has no
 records, so it returns an empty texture list. Fatal table and range errors still throw. A malformed
 individual record is omitted and reported through the same typed `BspWarning` used by `parseBsp()`.
 GoldSrc records carry their embedded palette; Quake and BSP2 decoding still needs a caller-supplied
-768-byte palette.
+768-byte palette. `createQuakePalette()` from the core entrypoint returns an independent copy of
+the bundled standard Quake table for this low-level API. The viewer and editor select it by default.
 
 ## Inspect WAD files
 

@@ -105,6 +105,7 @@ export interface WorldSource {
   readonly resolveGameAsset?: (
     reference: GameAssetReference,
   ) => BinarySource | null | undefined | Promise<BinarySource | null | undefined>;
+  /** Overrides game-root palettes and the bundled standard Quake palette. */
   readonly palette?: BinarySource;
   readonly wads?: readonly BinarySource[];
   readonly wadBaseUrl?: string | URL;

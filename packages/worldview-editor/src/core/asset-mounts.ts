@@ -1,6 +1,6 @@
 import type { WorldviewGameProfile } from './worldview-project.js';
 
-export type AssetMountKind = 'builtin' | 'project-wad' | 'browser-wad';
+export type AssetMountKind = 'builtin' | 'project-wad' | 'browser-wad' | 'browser-palette';
 
 interface AssetMountBase {
   readonly id: string;
@@ -26,7 +26,15 @@ export interface BrowserWadAssetMount extends AssetMountBase {
   readonly contentFingerprint: string;
 }
 
-export type AssetMountDescriptor = BuiltinAssetMount | ProjectWadAssetMount | BrowserWadAssetMount;
+export interface BrowserPaletteAssetMount extends Omit<BrowserWadAssetMount, 'kind'> {
+  readonly kind: 'browser-palette';
+}
+
+export type AssetMountDescriptor =
+  | BuiltinAssetMount
+  | ProjectWadAssetMount
+  | BrowserWadAssetMount
+  | BrowserPaletteAssetMount;
 
 export function orderAssetMounts(
   mounts: readonly AssetMountDescriptor[],

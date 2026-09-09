@@ -47,7 +47,13 @@ describe('native compiler planning', () => {
       '/tmp/preview.bsp',
       {
         maxThreads: 2,
-        toolchain: { kind: 'ericw', qbsp: '/tools/qbsp', vis: '/tools/vis', light: '/tools/light' },
+        toolchain: {
+          kind: 'ericw',
+          game: 'quake',
+          qbsp: '/tools/qbsp',
+          vis: '/tools/vis',
+          light: '/tools/light',
+        },
       },
       '/tmp/assets',
     );
@@ -55,6 +61,7 @@ describe('native compiler planning', () => {
     expect(stages.map((stage) => stage.stage)).toEqual(['qbsp', 'vis', 'light']);
     expect(stages[0]?.args).toContain('/tmp/preview.map');
     expect(stages[0]?.args).toContain('-nofill');
+    expect(stages[0]?.args).not.toContain('-hlbsp');
     expect(stages[0]?.args).toEqual(expect.arrayContaining(['-wadpath', '/tmp/assets']));
     expect(stages[1]?.args).toContain('-fast');
     expect(stages[2]?.args).toEqual(
@@ -62,17 +69,26 @@ describe('native compiler planning', () => {
     );
   });
 
-  it('uses detailed vis and extra light sampling for final compiles', () => {
+  it('builds GoldSrc BSP30 with detailed vis and extra light sampling for final compiles', () => {
     const stages = compilerStages('final', '/tmp/final.map', '/tmp/final.bsp', {
       maxThreads: 4,
-      gameDirectory: '/srv/quake',
-      toolchain: { kind: 'ericw', qbsp: '/tools/qbsp', vis: '/tools/vis', light: '/tools/light' },
+      gameDirectory: '/srv/cstrike',
+      toolchain: {
+        kind: 'ericw',
+        game: 'goldsrc',
+        qbsp: '/tools/qbsp',
+        vis: '/tools/vis',
+        light: '/tools/light',
+      },
     });
 
     expect(stages[1]?.args).not.toContain('-fast');
     expect(stages[0]?.args).not.toContain('-nofill');
     expect(stages[2]?.args).toContain('-extra');
-    expect(stages.every((stage) => stage.args.includes('/srv/quake'))).toBe(true);
+    expect(stages.every((stage) => stage.args.includes('/srv/cstrike'))).toBe(true);
+    expect(stages[0]?.args).toContain('-hlbsp');
+    expect(stages[1]?.args).not.toContain('-hlbsp');
+    expect(stages[2]?.args).not.toContain('-hlbsp');
   });
 
   it('plans Quake II as one explicit q2tool pipeline', () => {

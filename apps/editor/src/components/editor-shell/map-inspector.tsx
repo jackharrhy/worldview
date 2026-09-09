@@ -86,7 +86,7 @@ function ResourceSettings({ shellState }: MapInspectorProps) {
       <div className="section-heading">
         <h3>Map resources</h3>
         <span>
-          {resources.loadedWadCount + 1} texture pack{resources.loadedWadCount === 0 ? '' : 's'}
+          {resources.loadedWadCount} imported pack{resources.loadedWadCount === 1 ? '' : 's'}
         </span>
       </div>
       <p className={resources.tone === 'error' ? 'error-text' : undefined}>{resources.message}</p>
@@ -101,7 +101,8 @@ function ResourceSettings({ shellState }: MapInspectorProps) {
               <Icon name="texture-source" /> Add WAD
             </Button>
             <Button size="compact" onPress={() => paletteInput.current?.click()}>
-              <Icon name="palette" /> {resources.paletteLoaded ? 'Replace palette' : 'Add palette'}
+              <Icon name="palette" />{' '}
+              {resources.paletteLoaded ? 'Replace custom palette' : 'Custom palette…'}
             </Button>
           </>
         )}

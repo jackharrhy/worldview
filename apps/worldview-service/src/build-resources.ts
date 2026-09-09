@@ -1,21 +1,11 @@
 import { createHash } from 'node:crypto';
 import {
-  createDevelopmentMaterials,
-  createCompilerToolMaterials,
-  createDiagnosticQuakePalette,
-  encodeQuakeWad2,
+  developmentTexturePack,
   parseMap,
   serializeMapForCompile,
 } from '@jackharrhy/worldview-editor/core';
 import type { HostedResourceMount } from '@worldview/protocol';
 import type { BlobStore } from './blob-store.js';
-
-const developmentWad = new Uint8Array(
-  encodeQuakeWad2(
-    [...createDevelopmentMaterials(), ...createCompilerToolMaterials()],
-    createDiagnosticQuakePalette(),
-  ),
-);
 
 /** Resolves pinned project bytes, never browser-provided files or remote mutable content. */
 export async function prepareHostedBuildResources(
@@ -24,10 +14,8 @@ export async function prepareHostedBuildResources(
   mounts: readonly HostedResourceMount[],
   blobs: BlobStore,
 ) {
-  const assets: { name: string; mediaType: string; bytes: Uint8Array }[] = [
-    { name: 'worldview_dev.wad', mediaType: 'application/x-wad', bytes: developmentWad },
-  ];
-  let totalBytes = developmentWad.byteLength;
+  const assets: { name: string; mediaType: string; bytes: Uint8Array }[] = [];
+  let totalBytes = 0;
   let palette: Uint8Array | undefined;
   for (const mount of mounts) {
     if (
@@ -53,20 +41,21 @@ export async function prepareHostedBuildResources(
       palette = bytes;
       continue;
     }
-    if (assets.length >= 16) throw new Error('Builds support at most 15 project texture packs.');
-    assets.push({ name: `project_${assets.length}.wad`, mediaType: 'application/x-wad', bytes });
-  }
-  if (palette)
-    assets[0] = {
-      name: 'worldview_dev.wad',
+    if (assets.length >= 15) throw new Error('Builds support at most 15 project texture packs.');
+    assets.push({
+      name: `project_${assets.length + 1}.wad`,
       mediaType: 'application/x-wad',
-      bytes: new Uint8Array(
-        encodeQuakeWad2(
-          [...createDevelopmentMaterials(), ...createCompilerToolMaterials()],
-          palette,
-        ),
-      ),
-    };
+      bytes,
+    });
+  }
+  const development = developmentTexturePack(game, palette)!;
+  assets.unshift({
+    name: 'worldview_dev.wad',
+    mediaType: 'application/x-wad',
+    bytes: new Uint8Array(development.wad),
+  });
+  if (totalBytes + development.wad.byteLength > 24 * 1024 * 1024)
+    throw new Error('Build texture packs exceed the 24 MiB limit.');
   const mapText = serializeMapForCompile(
     parseMap(source),
     assets.map(({ name, bytes }) => ({ name, data: bytes })),

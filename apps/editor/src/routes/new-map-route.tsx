@@ -71,8 +71,9 @@ export function Component() {
               <div>
                 <strong>Included texture pack</strong>
                 <p>
-                  Worldview development textures — available in the editor and included when you
-                  build.
+                  {profile === 'quake'
+                    ? 'Worldview development textures use the included standard Quake palette for matching previews and builds.'
+                    : 'Worldview development textures include their own palettes for Half-Life and Counter-Strike builds.'}
                 </p>
               </div>
             ) : null}

@@ -28,6 +28,7 @@ export function parseCompilerGameProfile(value: string | undefined): CompilerGam
 export type NativeCompilerToolchain =
   | {
       readonly kind: 'ericw';
+      readonly game: 'quake' | 'goldsrc';
       readonly qbsp: string;
       readonly vis: string;
       readonly light: string;
@@ -122,6 +123,7 @@ export function compilerStages(
       executable: config.toolchain.qbsp,
       args: [
         ...common,
+        ...(config.toolchain.game === 'goldsrc' ? ['-hlbsp'] : []),
         ...(assetDirectory ? ['-wadpath', assetDirectory] : []),
         ...(quality === 'preview' ? ['-nofill'] : []),
         mapPath,
@@ -333,6 +335,17 @@ export async function compileNativeMap(
     }
     const artifacts = await collectArtifacts(workingDirectory, config.maxArtifactBytes);
     const diagnostics = stages.flatMap(({ stage, output }) => stageDiagnostics(stage, output));
+    if (!failure && config.toolchain.kind === 'ericw' && config.toolchain.game === 'goldsrc') {
+      const bsp = artifacts.find((artifact) => artifact.kind === 'bsp');
+      const bytes = bsp ? Buffer.from(bsp.base64, 'base64') : null;
+      if (bytes && (bytes.length < 124 || bytes.readUInt32LE(0) !== 30)) {
+        failure = new NativeCompileError(
+          'qbsp',
+          'GoldSrc build did not produce BSP30. Use an ericw-tools version with -hlbsp support.',
+          '',
+        );
+      }
+    }
     if (failure) {
       diagnostics.push({ severity: 'error', stage: failure.stage, message: failure.message });
     } else if (!artifacts.some(({ kind }) => kind === 'bsp')) {

@@ -34,3 +34,12 @@ Hosted source materials and builds share the included Worldview development pack
 WADs. Prove an actual native compile embeds the used developer/project textures, and reject missing
 or hash-mismatched pinned bytes and unresolved texture names before invoking the compiler. Check
 that hosted resource controls link to project packs and do not expose browser-only WAD imports.
+
+Quake previews, WAD2 imports, and builds use the included standard palette by default. Custom
+project or standalone palettes override it; never use a diagnostic palette as an implicit fallback.
+The standard 768-byte table is the explicitly approved exception to the game-data exclusion rule.
+GoldSrc uses per-texture WAD3 palettes without an external palette. The
+editor's generated swatches are decoded from the exact target WAD. `editor-game-textures.spec.ts`
+checks known default swatch colors, custom palette replacement and reload with imported WADs, and
+atomic rejection of malformed or wrong-game packs. Its ordinary startup must not upload a palette
+to make the test pass.

@@ -46,6 +46,10 @@ Counter-Strike entities use a 250-unit player speed cap.
 uses the usual game paths for BSPs, WADs, palettes, skyboxes, sprites, sounds, and Quake II
 textures. Individual sources and resolvers can override that layout.
 
+Quake BSP29/BSP2 uses the bundled standard palette when none is supplied. An explicit `palette`
+source takes precedence over `gfx/palette.lmp` from game assets, which takes precedence over the
+bundled palette. GoldSrc retains its per-texture palettes; Quake II still uses its own PCX palette.
+
 Caller-supplied `wads` and `palette` sources start loading alongside the BSP. `resolveWad` runs
 after parsing because the WAD names come from the map. Progress events report bytes for the current
 transfer and stable item counts through `phaseProgress` when several WADs load at once:
@@ -205,7 +209,8 @@ import { AnimationFrameScheduler, SnapshotStore } from '@jackharrhy/worldview/ru
 
 ## Game data
 
-Worldview does not include game assets. You must provide the BSPs, WADs, palettes, textures,
-skyboxes, sprites, and sounds your map needs, and you must have permission to use them.
+Worldview includes the standard Quake color lookup table as a documented compatibility-data
+exception. Provide your maps, texture packs, custom or Quake II palettes, skyboxes, sprites, and
+sounds separately, with permission to use them.
 
 See the [Quake II compatibility notes](./quake2-compatibility.md) for the current format boundary.

@@ -368,14 +368,26 @@ describe('Worldview hosted project service', () => {
     expect(app.database.buildAdmission(user.id)).toBe('user-hourly');
   });
 
-  test.each([false, true])(
-    'builds canonical hosted maps, enforcing revision and artifact access (stale worker: %s)',
-    async (staleWorker) => {
+  test.each(['valid', 'stale', 'wrong-game'] as const)(
+    'builds canonical hosted maps, enforcing revision, game format and artifact access (%s worker)',
+    async (worker) => {
       const app = await fixture(undefined, async (input, init) => {
         const response = await successfulCompilerFetch(input, init);
-        if (!staleWorker) return response;
+        if (worker === 'valid') return response;
         const result = RemoteCompileResultSchema.parse(await response.json());
-        return Response.json({ ...result, sourceDocumentRevision: 9 });
+        return Response.json({
+          ...result,
+          ...(worker === 'stale'
+            ? { sourceDocumentRevision: 9 }
+            : {
+                artifacts: [
+                  {
+                    ...result.artifacts[0]!,
+                    base64: Buffer.from([30, 0, 0, 0]).toString('base64'),
+                  },
+                ],
+              }),
+        });
       });
       const { user, cookie } = session(app.database);
       const viewer = session(app.database, {
@@ -431,14 +443,19 @@ describe('Worldview hosted project service', () => {
           return builds.find(({ id }) => id === buildId);
         })
         .toMatchObject(
-          staleWorker
+          worker !== 'valid'
             ? {
                 status: 'failed',
-                result: { error: 'Build worker returned a different map revision' },
+                result: {
+                  error:
+                    worker === 'stale'
+                      ? 'Build worker returned a different map revision'
+                      : 'Build worker returned the wrong BSP format for quake. Check its game profile configuration.',
+                },
               }
             : { status: 'succeeded', result: { artifacts: [expect.any(Object)] } },
         );
-      if (staleWorker) return;
+      if (worker !== 'valid') return;
       const build = app.database.build(mapId, buildId, user.id)!;
       const artifact = build.result!.artifacts![0]!;
       const artifactUrl = `${app.origin}/api/maps/${map.id}/builds/${buildId}/artifacts/${artifact.sha256}`;

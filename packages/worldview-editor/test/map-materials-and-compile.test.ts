@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeMipTexture, parseWad } from '@jackharrhy/worldview/core';
+import { createQuakePalette, decodeMipTexture, parseWad } from '@jackharrhy/worldview/core';
 
 import {
   EditorSession,
@@ -14,6 +14,8 @@ import {
   deriveBrush,
   createDevelopmentMaterials,
   createDiagnosticQuakePalette,
+  developmentTexturePack,
+  encodeGoldSrcWad3,
   encodeQuakeWad2,
   parseMap,
   serializeMap,
@@ -82,7 +84,8 @@ describe('Valve 220 source documents', () => {
 describe('editor material catalog', () => {
   it('imports WAD3 previews and resolves material names case-insensitively', () => {
     const catalog = new EditorMaterialCatalog();
-    const result = catalog.importWad('fixture.wad', makeTestWad(3, 'BRICK'));
+    const bytes = makeTestWad(3, 'BRICK');
+    const result = catalog.importWad('fixture.wad', bytes, new Uint8Array(768));
 
     expect(result).toMatchObject({ wadVersion: 3, added: 1, replaced: 0, skipped: 0 });
     expect(catalog.find('brick')).toMatchObject({
@@ -92,15 +95,68 @@ describe('editor material catalog', () => {
       height: 16,
     });
     expect(catalog.find('brick')?.rgba).toHaveLength(16 * 16 * 4);
+    expect(catalog.find('brick')?.rgba).toEqual(
+      decodeMipTexture(parseWad(bytes).lumps[0]!.data).levels[0]!.rgba,
+    );
   });
 
-  it('reports the missing external palette required by WAD2', () => {
+  it('quantizes Quake development colors and preserves GoldSrc orange in previews and WADs', () => {
+    for (const [game, palette, color] of [
+      ['quake', undefined, [175, 103, 35, 255]],
+      ['quake', new Uint8Array(768).fill(120), [120, 120, 120, 255]],
+      ['goldsrc', undefined, [205, 82, 13, 255]],
+    ] as const) {
+      const pack = developmentTexturePack(game, palette)!;
+      const wad = parseWad(pack.wad);
+      expect(wad.version).toBe(game === 'quake' ? 2 : 3);
+      const floor = pack.materials.find(({ name }) => name === 'DEV_FLOOR')!;
+      const lump = wad.lumps.find(({ name }) => name === floor.name)!;
+      const decoded = decodeMipTexture(
+        lump.data,
+        game === 'quake' ? (palette ?? createQuakePalette()) : undefined,
+      );
+      const center = (32 * floor.width + 32) * 4;
+      expect(floor.rgba.slice(center, center + 4)).toEqual(new Uint8Array(color));
+      expect(decoded.levels[0]!.rgba.slice(center, center + 4)).toEqual(new Uint8Array(color));
+    }
+  });
+
+  it('rejects invalid image dimensions before writing a WAD', () => {
+    const material = createDevelopmentMaterials()[0]!;
+    for (const encode of [
+      encodeGoldSrcWad3,
+      (materials: (typeof material)[]) => encodeQuakeWad2(materials, createQuakePalette()),
+    ]) {
+      for (const width of [0, 7, 4097, Number.NaN])
+        expect(() => encode([{ ...material, width }])).toThrow(/dimensions/);
+      expect(() => encode([{ ...material, rgba: material.rgba.slice(4) }])).toThrow(
+        /RGBA dimensions/,
+      );
+    }
+  });
+
+  it('keeps GoldSrc transparency separate from opaque per-texture colors', () => {
+    const original = createDevelopmentMaterials()[0]!;
+    const rgba = original.rgba.slice();
+    rgba[3] = 0;
+    const wad = parseWad(
+      encodeGoldSrcWad3([{ ...original, name: '{MASK', alphaTest: true, rgba }]),
+    );
+    const decoded = decodeMipTexture(wad.lumps[0]!.data);
+    expect(decoded.levels[0]!.rgba.slice(0, 4)).toEqual(new Uint8Array(4));
+    expect(decoded.levels[0]!.rgba.slice(4)).toEqual(original.rgba.slice(4));
+    expect(decoded.levels).toHaveLength(4);
+  });
+
+  it('imports WAD2 with the included standard Quake palette', () => {
     const catalog = new EditorMaterialCatalog();
     const result = catalog.importWad('quake.wad', makeTestWad(2));
 
-    expect(result).toMatchObject({ wadVersion: 2, added: 0, skipped: 1 });
-    expect(result.diagnostics[0]?.message).toMatch(/768-byte Quake palette/);
-    expect(catalog.size).toBe(0);
+    expect(result).toMatchObject({ wadVersion: 2, added: 1, skipped: 0, diagnostics: [] });
+    expect(catalog.materials()[0]?.rgba).toEqual(
+      decodeMipTexture(parseWad(makeTestWad(2)).lumps[0]!.data, createQuakePalette()).levels[0]!
+        .rgba,
+    );
   });
 
   it('keeps generated Quake mip colors out of the fullbright range, preserving transparency', () => {

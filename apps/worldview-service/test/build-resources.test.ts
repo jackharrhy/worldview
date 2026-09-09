@@ -12,6 +12,7 @@ import {
 } from '@jackharrhy/worldview-editor/core';
 import type { HostedResourceMount } from '@worldview/protocol';
 import { prepareHostedBuildResources } from '../src/build-resources.js';
+import { createQuakePalette, parseWad, decodeMipTexture } from '@jackharrhy/worldview/core';
 
 const source = serializeMap(createStarterDocument());
 const palette = createDiagnosticQuakePalette();
@@ -35,6 +36,7 @@ function store(bytes: Uint8Array | null) {
     },
   };
 }
+const paletteMount: HostedResourceMount = { ...pack('palette.lmp', palette), kind: 'palette' };
 
 describe('hosted build textures', () => {
   test('uses a pinned palette for generated development textures', async () => {
@@ -52,12 +54,29 @@ describe('hosted build textures', () => {
     expect(result.assets[0]?.bytes).toEqual(new Uint8Array(expected));
   });
   test('includes the shared development pack without changing canonical source', async () => {
-    const result = await prepareHostedBuildResources(source, 'quake', [], store(null));
+    const result = await prepareHostedBuildResources(source, 'goldsrc', [], store(null));
     expect(result.assets.map(({ name }) => name)).toEqual(['worldview_dev.wad']);
     const document = parseMap(result.mapText);
     expect(document.entities[0]?.properties.wad).toBe('worldview_dev.wad');
     expect(result.mapText).toContain('DEV_FLOOR');
     expect(parseMap(source).entities[0]?.properties.wad).toBeUndefined();
+    const wad = parseWad(result.assets[0]!.bytes);
+    expect(wad.version).toBe(3);
+    const orange = decodeMipTexture(wad.lumps.find(({ name }) => name === 'DEV_FLOOR')!.data);
+    expect(orange.levels[0]!.rgba).toEqual(createDevelopmentMaterials()[0]!.rgba);
+  });
+
+  test('builds Quake with the standard palette when no custom palette is pinned', async () => {
+    const result = await prepareHostedBuildResources(source, 'quake', [], store(null));
+    const wad = parseWad(result.assets[0]!.bytes);
+    expect(wad.version).toBe(2);
+    const floor = decodeMipTexture(
+      wad.lumps.find(({ name }) => name === 'DEV_FLOOR')!.data,
+      createQuakePalette(),
+    );
+    expect(
+      floor.levels[0]!.rgba.slice((32 * floor.width + 32) * 4, (32 * floor.width + 32) * 4 + 4),
+    ).toEqual(new Uint8Array([175, 103, 35, 255]));
   });
 
   test('delivers pinned WAD bytes in the native compiler last-pack-wins order', async () => {
@@ -73,8 +92,11 @@ describe('hosted build textures', () => {
     const result = await prepareHostedBuildResources(
       source.replaceAll('DEV_FLOOR', 'CUSTOM'),
       'quake',
-      [pack('../custom pack.wad', bytes)],
-      store(bytes),
+      [paletteMount, pack('../custom pack.wad', bytes)],
+      {
+        ...store(bytes),
+        get: async (sha256: string) => (sha256 === paletteMount.expectedSha256 ? palette : bytes),
+      },
     );
     expect(result.assets[1]?.bytes).toEqual(bytes);
     expect(parseMap(result.mapText).entities[0]?.properties.wad).toBe(
@@ -100,12 +122,17 @@ describe('hosted build textures', () => {
       prepareHostedBuildResources(
         source.replaceAll('DEV_FLOOR', 'MISSING'),
         'quake',
-        [],
-        store(null),
+        [paletteMount],
+        store(palette),
       ),
     ).rejects.toThrow('Missing build textures: MISSING');
     await expect(
-      prepareHostedBuildResources(source.replaceAll('DEV_FLOOR', 'skip'), 'quake', [], store(null)),
+      prepareHostedBuildResources(
+        source.replaceAll('DEV_FLOOR', 'skip'),
+        'quake',
+        [paletteMount],
+        store(palette),
+      ),
     ).resolves.toHaveProperty('assets');
   });
 });

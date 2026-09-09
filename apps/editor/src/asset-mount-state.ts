@@ -34,6 +34,13 @@ export const StoredAssetMountSchema = z.discriminatedUnion('kind', [
     sourceName: z.string().min(1).max(4_096),
     contentFingerprint: z.string().min(1).max(256),
   }),
+  z.strictObject({
+    ...StoredAssetMountBaseSchema,
+    kind: z.literal('browser-palette'),
+    sourceName: z.string().min(1).max(4_096),
+    contentFingerprint: z.string().min(1).max(256),
+    data: z.instanceof(ArrayBuffer).refine((value) => value.byteLength === 768),
+  }),
 ]) satisfies z.ZodType<StoredAssetMount>;
 
 export interface AssetMountStorage {
@@ -66,7 +73,8 @@ export class AssetMountStateService {
     return orderAssetMounts(await this.storage.list(scopeId)) as readonly StoredAssetMount[];
   }
 
-  public async addBrowserWad(
+  public async addBrowserAsset(
+    kind: 'browser-wad' | 'browser-palette',
     scopeId: string,
     profile: WorldviewGameProfile,
     name: string,
@@ -78,9 +86,9 @@ export class AssetMountStateService {
       .map((value) => value.toString(16).padStart(2, '0'))
       .join('');
     const mount: StoredAssetMount = {
-      id: `${scopeId}:wad:${fingerprint}`,
+      id: kind === 'browser-palette' ? `${scopeId}:palette` : `${scopeId}:wad:${fingerprint}`,
       scopeId,
-      kind: 'browser-wad',
+      kind,
       label: name,
       sourceName: name,
       priority,

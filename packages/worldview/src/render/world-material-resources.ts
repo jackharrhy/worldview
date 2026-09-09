@@ -16,6 +16,7 @@ import type { LoadedMaterialTexture, RenderWorldAssets } from './assets.js';
 import { MaterialUniform, materialLayout } from './schemas.js';
 import type { TextureFiltering } from './types.js';
 import { goldSrcTextureScrollSpeed, worldRequiresContinuousAnimation } from './world-frame-plan.js';
+import { worldLighting } from './world-lighting.js';
 
 interface UploadedTexture {
   readonly texture: TgpuTexture;
@@ -26,6 +27,7 @@ interface UploadedTexture {
 
 interface UploadedMaterial {
   readonly diffuse: UploadedTexture;
+  readonly fullbright: UploadedTexture;
   readonly skyAlpha: UploadedTexture;
 }
 
@@ -149,15 +151,13 @@ export class WorldMaterialResources {
   }
 
   private upload(): void {
+    const lighting = worldLighting(this.loaded.world.format);
     const missing = this.uploadDecoded(checkerboard());
     const white = this.uploadRgba('__white__', 1, 1, [new Uint8Array([255, 255, 255, 255])]);
+    const black = this.uploadRgba('__black__', 1, 1, [new Uint8Array([0, 0, 0, 255])]);
     const skybox = this.uploadSkybox();
-    // In Quake/GoldSrc a sampleless face in a lit BSP is dark. Only a wholly unlit BSP
-    // gets the fullbright fallback; Quake II retains its sampleless-surface behavior.
     const missingLightmap =
-      this.loaded.world.hasLighting && this.loaded.world.format !== 'quake2-bsp38'
-        ? this.uploadRgba('__dark__', 1, 1, [new Uint8Array([0, 0, 0, 255])])
-        : white;
+      this.loaded.world.hasLighting && lighting.samplelessFaces === 'dark' ? black : white;
     this.lightmapTextures.set(-1, missingLightmap);
     for (const page of this.loaded.world.lightmapPages) {
       const rgba = buildLightmapPage(page, this.loaded.world.lightmapBytesPerTexel);
@@ -183,6 +183,7 @@ export class WorldMaterialResources {
       if (loadedMaterial.quakeSky) {
         const decoded = loadedMaterial.quakeSky;
         uploaded = {
+          fullbright: black,
           diffuse: this.uploadRgba(`${decoded.name}-solid`, decoded.width, decoded.height, [
             decoded.solid,
           ]),
@@ -191,8 +192,20 @@ export class WorldMaterialResources {
           ]),
         };
       } else {
-        const diffuse = this.uploadDecoded(loadedMaterial.texture);
-        uploaded = { diffuse, skyAlpha: diffuse };
+        const decoded = loadedMaterial.texture;
+        const diffuse = this.uploadDecoded(decoded);
+        const fullbright =
+          lighting.paletteFullbrights && decoded.levels.some((level) => level.fullbrightRgba)
+            ? this.uploadRgba(
+                `${decoded.name}-fullbright`,
+                decoded.width,
+                decoded.height,
+                decoded.levels.map(
+                  (level) => level.fullbrightRgba ?? new Uint8Array(level.rgba.length),
+                ),
+              )
+            : black;
+        uploaded = { diffuse, fullbright, skyAlpha: diffuse };
       }
       uploadedByTexture.set(loadedMaterial, uploaded);
       this.uploadedMaterials.set(materialIndex, uploaded);
@@ -213,10 +226,12 @@ export class WorldMaterialResources {
         const loadedTexture = this.loaded.materialTextures.get(materialIndex);
         const uploaded = this.uploadedMaterials.get(materialIndex) ?? {
           diffuse: missing,
+          fullbright: black,
           skyAlpha: missing,
         };
         const lightmap = this.lightmapTextures.get(batch.lightmapPage) ?? missingLightmap;
         const uniform = this.root.createUniform(MaterialUniform, {
+          lightmapScale: lighting.lightmapScale,
           sizes: [
             loadedTexture?.logicalWidth ?? uploaded.diffuse.width,
             loadedTexture?.logicalHeight ?? uploaded.diffuse.height,
@@ -240,6 +255,7 @@ export class WorldMaterialResources {
         const group = this.root.createBindGroup(materialLayout, {
           material: uniform,
           diffuse: uploaded.diffuse.view,
+          fullbright: uploaded.fullbright.view,
           lightmap: lightmap.view,
           skyAlpha: uploaded.skyAlpha.view,
           skybox: skybox.view,

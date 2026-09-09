@@ -39,6 +39,7 @@ const config: NativeCompilerConfig = {
       ? { kind: 'q2tool', executable: process.env.WORLDVIEW_Q2TOOL ?? '' }
       : {
           kind: 'ericw',
+          game: gameProfile,
           qbsp: process.env.ERICW_QBSP ?? '',
           vis: process.env.ERICW_VIS ?? '',
           light: process.env.ERICW_LIGHT ?? '',

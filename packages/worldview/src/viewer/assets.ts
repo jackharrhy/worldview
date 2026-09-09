@@ -4,6 +4,7 @@
  */
 
 import {
+  createQuakePalette,
   decodeMipTexture,
   decodeQuakeSky,
   decodeTga,
@@ -109,7 +110,7 @@ async function loadDerivedPalette(
     const bytes = await gameAssets.read(candidate, 'palette');
     if (bytes) return parsePalette(bytes);
   }
-  throw new WorldviewError('missing-palette', 'Quake BSP maps require an external palette');
+  return createQuakePalette();
 }
 
 async function loadSkybox(

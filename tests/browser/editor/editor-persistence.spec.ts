@@ -12,6 +12,54 @@ import {
 import { installSiteToolRegistry, executeSiteTool } from './support/editor-browser-helpers.js';
 
 test.describe('Editor local persistence', () => {
+  test('opens a project map through WebMCP without treating its own replacement as stale', async ({
+    page,
+  }) => {
+    await installSiteToolRegistry(page);
+    await page.addInitScript((source) => {
+      Object.assign(window, {
+        showDirectoryPicker: async () => {
+          const root = await navigator.storage.getDirectory();
+          const directory = await root.getDirectoryHandle('test-project', { create: true });
+          const manifest = JSON.stringify({
+            schemaVersion: 1,
+            name: 'Project map guard',
+            game: 'quake',
+            mapRoots: ['.'],
+            resources: { wads: [] },
+            buildProfiles: [],
+          });
+          for (const [name, contents] of [
+            ['worldview.project.json', manifest],
+            ['one.map', source],
+            ['two.map', source],
+          ]) {
+            const file = await directory.getFileHandle(name!, { create: true });
+            const writer = await file.createWritable();
+            await writer.write(contents!);
+            await writer.close();
+          }
+          return directory;
+        },
+      });
+    }, serializeMap(createStarterDocument()));
+    await page.goto('http://127.0.0.1:5174/');
+    await page.getByRole('button', { name: 'Open project folder', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
+    await expect(page.locator('#status-message')).toContainText('Opened Project map guard: 2 maps');
+    const before = await executeSiteTool(page, 'worldview_inspect_editor');
+    const opened = await executeSiteTool(page, 'worldview_open_project_map', {
+      expectedDocumentId: before.documentId,
+      expectedRevision: before.revision,
+      path: 'two.map',
+      discardUnsavedChanges: true,
+    });
+    expect(opened).toMatchObject({ name: 'two.map', dirty: false });
+    expect(opened.documentId).not.toBe(before.documentId);
+    await expect(page.locator('#status-message')).toContainText('opened project map two.map');
+    await expect(page.locator('.viewport-error')).toBeHidden();
+  });
+
   test('reopens a durable detached hosted map without contacting its room', async ({ page }) => {
     const roomRequests: string[] = [];
     page.on('request', (request) => {

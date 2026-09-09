@@ -343,7 +343,6 @@ Synthetic Quake II area portal.
     });
     const resources = await loadWorkspaceResources(
       await openWorldviewProject(resourceRoot),
-      [],
       new AbortController().signal,
     );
 

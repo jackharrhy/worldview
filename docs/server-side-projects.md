@@ -96,8 +96,12 @@ accepted.
 Every build includes Worldview development textures and named compiler tool textures, plus the
 project's pinned WADs. The service verifies content hashes, rejects unavailable packs and unresolved
 map textures, and supplies safe WAD basenames in a transient compile source without changing the
-canonical map. Later mounts take precedence over earlier mounts and the development pack. A pinned
-768-byte palette is used for generated indexed textures and hosted preview colors. Builds allow up
+canonical map. Later mounts take precedence over earlier mounts and the development pack. Quake
+builds and previews use the included standard palette; a pinned 768-byte custom palette overrides
+it for mods. Placeholder palettes are never substituted. GoldSrc uses WAD3 per-texture palettes
+and explicitly compiles to BSP30. Editor previews
+decode the same generated WAD bytes sent to the worker. Imported WADs must match the target game
+and retain their authored palettes, mipmaps, and fullbright pixels. Builds allow up
 to 15 project WADs and 24 MiB of texture inputs. Hosted editor resource controls lead to project
 resources; browser-only imports cannot silently enter a hosted material catalog.
 

@@ -9,6 +9,7 @@ import {
   MapCompileCoordinator,
   RemoteMapCompiler,
   createEmptyDocument,
+  developmentTexturePack,
   rebaseMapSource,
   serializeMap,
   type BrushBatchClipCandidate,
@@ -45,10 +46,6 @@ import { MapBuildHistoryService } from './build-history.js';
 import { DocumentRecoveryService } from './document-recovery.js';
 import { EditorClipboard } from './editor-clipboard.js';
 import type { EditorShellState } from './editor-shell-state.js';
-import {
-  createDevelopmentMaterials,
-  createDiagnosticQuakePalette,
-} from './editor-material-fixtures.js';
 import type { EditorFileHandle } from './project-files.js';
 import { ProjectLocalStateService } from './project-local-state.js';
 import { AssetMountStateService } from './asset-mount-state.js';
@@ -190,7 +187,6 @@ export class EditorState {
   public readonly projectLocalState = new ProjectLocalStateService();
   public readonly assetMountState = new AssetMountStateService();
   public readonly materialCatalog = new EditorMaterialCatalog();
-  public readonly builtInMaterials = createDevelopmentMaterials();
   public readonly uvEditor: TextureUvEditor;
   public readonly loadedWadSources = new Map<string, ArrayBuffer>();
   public readonly loadedGameAssets = new Map<string, ArrayBuffer>();
@@ -200,7 +196,6 @@ export class EditorState {
   public viewportContext:
     | import('@jackharrhy/worldview-editor').EditorViewportContextMenuEvent
     | null = null;
-  public readonly diagnosticQuakePalette = createDiagnosticQuakePalette();
   public compiledPreviewWarning: string | null = null;
   public readonly recovery: DocumentRecoveryService;
 
@@ -211,6 +206,8 @@ export class EditorState {
     signal: AbortSignal,
     options: EditorStateOptions = {},
   ) {
+    for (const material of developmentTexturePack('quake')!.materials)
+      this.materialCatalog.set(material);
     const configuredCompilerEndpoint =
       new URLSearchParams(window.location.search).get('compiler') ??
       import.meta.env.VITE_WORLDVIEW_COMPILER_ENDPOINT;
@@ -229,7 +226,6 @@ export class EditorState {
         `Build history storage failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
-    for (const material of this.builtInMaterials) this.materialCatalog.set(material);
     const cancelUvPreviewFrame = () => {
       if (this.uvPreviewFrame === null) return;
       window.cancelAnimationFrame(this.uvPreviewFrame);

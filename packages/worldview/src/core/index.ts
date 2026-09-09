@@ -106,6 +106,7 @@ export {
 export { decodeTga, type DecodedTga } from './tga.js';
 export { validateTextureDimensions } from './texture-limits.js';
 export { readPcxPalette } from './pcx.js';
+export { createQuakePalette } from './quake-palette.js';
 export {
   findBspLeaf,
   traceWorldSegment,
