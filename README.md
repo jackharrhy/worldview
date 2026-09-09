@@ -34,10 +34,12 @@ produce headless screenshots at verified camera positions.
 
 ## Development
 
-Worldview requires Node.js 24 or newer and npm 11.
+Worldview development requires Node.js 24.15 or newer and npm 12. The exact npm version is pinned
+in `package.json`; CI and Docker use that pin.
 
 ```sh
-npm install
+npm install --global npm@12.0.2
+npm ci
 npm run dev:editor # editor
 npm run dev        # viewer
 npm run check

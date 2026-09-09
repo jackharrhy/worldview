@@ -65,6 +65,12 @@ review boundary:
 - TypeGPU owns schemas, shaders, pipelines, bindings, textures, and samplers. Raw WebGPU is limited
   to command encoding, canvas and capture interop, and explicit bulk buffer transfers.
 - npm workspaces and the committed `package-lock.json` define the dependency graph.
+  Development uses Node 24.15+ and the npm 12 version pinned in `package.json`, including CI and
+  Docker. Dependency install scripts use explicit versioned approvals. Vitest remains on v4
+  until the Cloudflare and fast-check integrations support v5; Node types follow the Node 24
+  runtime. A scoped Miniflare override selects `sharp` 0.35.4 for GHSA-rgj7-g3m4-5g8c until its
+  upstream pin includes the fix. Playwright stays on 1.62.1 because 1.63's bundled Chromium
+  crashes when restoring OPFS directory handles from IndexedDB, breaking project and export tests.
 - Production modules stay below the repository ceiling, with tighter limits for named coordination
   roots. Hand-written TypeScript, TSX, and CSS under the editor app and package remain covered.
 
@@ -122,7 +128,7 @@ binding over the viewer package's `SnapshotStore`. Surface-specific defaults, co
 reset behavior remain explicit. React calls named, typed commands directly; no string-based generic
 dispatcher reconstructs their parameter types.
 
-The editor uses React Router v7 Data Mode. The home route loads local and authorized hosted work
+The editor uses React Router v8 Data Mode. The home route loads local and authorized hosted work
 without importing the editor, renderer, WebMCP, compiler, collaboration, or editor styles. The
 new-map route may warm the lazy editor graph, but only an editor route constructs presenters or asks
 for WebGPU. The editor bundle may be substantial; keeping it out of the landing route matters more
@@ -161,7 +167,8 @@ The published viewer separates binary parsing and world data from browser and GP
 `createWorldview()` and `<world-view>` use the same `WorldSource` model; the custom element owns one
 atomic source rather than assembling a second URL-only loading contract. Optional walkability is a
 fingerprinted sidecar with its own cancellation generation and does not delay the base map's ready
-state.
+state. The viewer app cancels pending GPU initialization when its canvas detaches, preventing a
+stale attachment from configuring or disposing the active canvas during React remounts.
 
 `TypeGpuWorldRenderer` is a small lifecycle facade for one loaded world. Focused internal owners
 hold scene and material resources, canvas and capture targets, and pass encoding; GPU-independent

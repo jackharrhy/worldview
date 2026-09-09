@@ -8,7 +8,8 @@ COPY apps/editor/package.json apps/editor/package.json
 COPY apps/worldview-service/package.json apps/worldview-service/package.json
 COPY apps/compiler-service/package.json apps/compiler-service/package.json
 COPY apps/collaboration-service/package.json apps/collaboration-service/package.json
-RUN npm ci --ignore-scripts
+RUN npm install --global "$(node -p 'require("./package.json").packageManager')" \
+  && npm ci --ignore-scripts
 COPY packages/worldview packages/worldview
 COPY packages/worldview-editor packages/worldview-editor
 COPY packages/worldview-protocol packages/worldview-protocol

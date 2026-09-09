@@ -287,9 +287,10 @@ async function loadWadCandidates(
         const wad = parseWad(bytes);
         return {
           wad,
-          warnings: wad.warnings.map(
-            (warning): WarningDetail => ({ code: 'asset-warning', message: warning.message }),
-          ),
+          warnings: wad.warnings.map((warning): WarningDetail => ({
+            code: 'asset-warning',
+            message: warning.message,
+          })),
         };
       } catch (error) {
         if (context.signal.aborted) throw error;

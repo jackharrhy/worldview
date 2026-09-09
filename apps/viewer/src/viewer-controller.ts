@@ -35,6 +35,7 @@ export class ViewerController {
   private mapLoadSequence = 0;
   private cameraTimer: number | null = null;
   private attachedCanvas: HTMLCanvasElement | null = null;
+  private viewerCreation: AbortController | null = null;
   private attachmentGeneration = 0;
   private disposed = false;
 
@@ -70,8 +71,15 @@ export class ViewerController {
       });
       return;
     }
+    const creation = new AbortController();
+    this.viewerCreation = creation;
     try {
-      const viewer = await createWorldview({ canvas, controls: 'walk', maxDevicePixelRatio: 2 });
+      const viewer = await createWorldview({
+        canvas,
+        controls: 'walk',
+        maxDevicePixelRatio: 2,
+        signal: creation.signal,
+      });
       if (
         this.disposed ||
         generation !== this.attachmentGeneration ||
@@ -164,6 +172,8 @@ export class ViewerController {
   }
 
   private releaseViewer(): void {
+    this.viewerCreation?.abort();
+    this.viewerCreation = null;
     if (this.cameraTimer !== null) {
       window.clearInterval(this.cameraTimer);
       this.cameraTimer = null;

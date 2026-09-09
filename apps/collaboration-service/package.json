@@ -13,8 +13,8 @@
     "@worldview/protocol": "*"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.1.1",
-    "@cloudflare/workers-types": "5.20260827.1",
-    "wrangler": "4.127.0"
+    "@cloudflare/vitest-plugin": "1.1.6",
+    "@cloudflare/workers-types": "5.20260908.1",
+    "wrangler": "4.130.0"
   }
 }

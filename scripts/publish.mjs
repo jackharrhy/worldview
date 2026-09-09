@@ -114,8 +114,7 @@ function parsePackResult(packageName, version) {
     '--workspace',
     packageName,
   ]);
-  const packages = JSON.parse(result);
-  const packed = packages[0];
+  const packed = JSON.parse(result)[packageName];
   if (!packed || packed.name !== packageName || packed.version !== version) {
     fail('npm produced an unexpected package preview');
   }

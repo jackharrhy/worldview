@@ -27,6 +27,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Use the project npm version
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
       - name: Build Worldview
         run: npm run build --workspace @jackharrhy/worldview
