@@ -1,3 +1,4 @@
+import { translatedBounds, unionBounds } from '../core/math.js';
 import type { Bounds, MapBrush, Vec3 } from '../core/index.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
 
@@ -66,28 +67,6 @@ export function brushSolidSignature(brush: MapBrush, offset: Vec3): string {
   return `${signature}:${offset.join(',')}`;
 }
 
-function translatedBounds(bounds: Bounds, offset: Vec3): Bounds {
-  return {
-    min: [bounds.min[0] + offset[0], bounds.min[1] + offset[1], bounds.min[2] + offset[2]],
-    max: [bounds.max[0] + offset[0], bounds.max[1] + offset[1], bounds.max[2] + offset[2]],
-  };
-}
-
-function includeBounds(target: Bounds, source: Bounds): Bounds {
-  return {
-    min: [
-      Math.min(target.min[0], source.min[0]),
-      Math.min(target.min[1], source.min[1]),
-      Math.min(target.min[2], source.min[2]),
-    ],
-    max: [
-      Math.max(target.max[0], source.max[0]),
-      Math.max(target.max[1], source.max[1]),
-      Math.max(target.max[2], source.max[2]),
-    ],
-  };
-}
-
 function upload(device: GPUDevice, data: Float32Array): GPUBuffer {
   return uploadFloatBuffer(device, data, GPUBufferUsage.VERTEX, 'Worldview solid batch');
 }
@@ -118,7 +97,7 @@ export class SolidBatchBuilder {
     const sourceKey = `${key}\0${sourceSignature}`;
     const existing = this.batches.get(key);
     if (existing) {
-      existing.bounds = includeBounds(existing.bounds, translated);
+      existing.bounds = unionBounds(existing.bounds, translated);
       const source = existing.sources.get(sourceKey);
       if (source) {
         return this.retainedSourceKeys.has(sourceKey)

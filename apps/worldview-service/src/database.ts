@@ -494,10 +494,10 @@ export class WorldviewDatabase {
     userId: string,
   ): readonly HostedResourceMount[] | null {
     if (!this.role(projectId, userId)) return null;
-    return this.resourceMounts(projectId);
+    return this.listResourceMountsForProject(projectId);
   }
 
-  private resourceMounts(projectId: string): readonly HostedResourceMount[] {
+  public listResourceMountsForProject(projectId: string): readonly HostedResourceMount[] {
     const rows = this.sql
       .prepare(`SELECT id,ordinal,provider,provider_asset_id,expected_sha256,kind,display_name,metadata_json,created_at
       FROM resource_mounts WHERE project_id=? ORDER BY ordinal`)
@@ -512,10 +512,6 @@ export class WorldviewDatabase {
       displayName: row.display_name,
       createdAt: row.created_at,
     }));
-  }
-
-  public listResourceMountsForProject(projectId: string): readonly HostedResourceMount[] {
-    return this.resourceMounts(projectId);
   }
 
   public createResourceMount(input: {
@@ -579,26 +575,7 @@ export class WorldviewDatabase {
     metadata: Record<string, unknown>;
   } | null {
     if (!this.role(projectId, userId)) return null;
-    const row = this.sql
-      .prepare(
-        'SELECT expected_sha256,kind,display_name,metadata_json FROM resource_mounts WHERE project_id=? AND id=?',
-      )
-      .get(projectId, mountId) as
-      | {
-          expected_sha256: string;
-          kind: string;
-          display_name: string;
-          metadata_json: string;
-        }
-      | undefined;
-    return row
-      ? {
-          expectedSha256: row.expected_sha256,
-          kind: row.kind,
-          displayName: row.display_name,
-          metadata: ResourceMetadataSchema.parse(JSON.parse(row.metadata_json)),
-        }
-      : null;
+    return this.resourceMountForProject(projectId, mountId);
   }
 
   public resourceMountForProject(

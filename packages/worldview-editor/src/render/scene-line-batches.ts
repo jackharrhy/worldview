@@ -1,3 +1,4 @@
+import { translatedBounds, unionBounds } from '../core/math.js';
 import type { Bounds, Vec3 } from '../core/index.js';
 import { uploadFloatBuffer } from './gpu-buffer.js';
 
@@ -23,28 +24,6 @@ interface PendingLineBatch {
 }
 
 const SPATIAL_BATCH_SIZE = 512;
-
-function translatedBounds(bounds: Bounds, offset: Vec3): Bounds {
-  return {
-    min: [bounds.min[0] + offset[0], bounds.min[1] + offset[1], bounds.min[2] + offset[2]],
-    max: [bounds.max[0] + offset[0], bounds.max[1] + offset[1], bounds.max[2] + offset[2]],
-  };
-}
-
-function includeBounds(target: Bounds, source: Bounds): Bounds {
-  return {
-    min: [
-      Math.min(target.min[0], source.min[0]),
-      Math.min(target.min[1], source.min[1]),
-      Math.min(target.min[2], source.min[2]),
-    ],
-    max: [
-      Math.max(target.max[0], source.max[0]),
-      Math.max(target.max[1], source.max[1]),
-      Math.max(target.max[2], source.max[2]),
-    ],
-  };
-}
 
 /** Retains immutable brush edge data and only uploads spatial batches whose sources changed. */
 export class LineBatchBuilder {
@@ -78,7 +57,7 @@ export class LineBatchBuilder {
     const batch = this.batches.get(cacheKey);
     if (batch) {
       batch.sources.push(source);
-      batch.bounds = includeBounds(batch.bounds, translated);
+      batch.bounds = unionBounds(batch.bounds, translated);
     } else {
       this.batches.set(cacheKey, { cacheKey, sources: [source], bounds: translated });
     }

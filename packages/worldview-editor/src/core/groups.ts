@@ -1,3 +1,4 @@
+import { combinedBounds } from './math.js';
 import { deriveBrush } from './geometry.js';
 import { pointEntityBounds } from './point-entities.js';
 import {
@@ -86,22 +87,6 @@ function isLayerEntity(entity: MapEntity): boolean {
 
 export function isEditorGroupEntity(entity: MapEntity): boolean {
   return isGroupEntity(entity);
-}
-
-function combinedBounds(bounds: readonly Bounds[]): Bounds | null {
-  if (bounds.length === 0) return null;
-  return {
-    min: [
-      Math.min(...bounds.map((entry) => entry.min[0])),
-      Math.min(...bounds.map((entry) => entry.min[1])),
-      Math.min(...bounds.map((entry) => entry.min[2])),
-    ],
-    max: [
-      Math.max(...bounds.map((entry) => entry.max[0])),
-      Math.max(...bounds.map((entry) => entry.max[1])),
-      Math.max(...bounds.map((entry) => entry.max[2])),
-    ],
-  };
 }
 
 function entityWithParent(entity: MapEntity, parentGroupId: string | null): MapEntity {

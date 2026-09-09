@@ -228,6 +228,8 @@ cannot replace the current compiled preview. Browsers never provide arbitrary ex
 commands, or hosted build source. A newly installed preview starts in fly mode from the perspective
 camera captured with the request; camera position, orientation, and field of view are applied before
 the compiled viewer's first frame and remain separate from source viewport state afterward.
+Native launch reports success after the configured process spawns; spawn failures return through
+the launch request instead of escaping as unhandled process errors.
 Missing BSP29/30/BSP2 texture-table entries remain drawable using diagnostic fallback materials and
 emit warnings; missing artwork must not silently discard compiled geometry as tool surfaces.
 Build results offers Download BSP for the selected build, including retained history. Downloads

@@ -1,5 +1,5 @@
 import { brushVertices, deriveBrush } from './geometry.js';
-import { dot, GEOMETRY_EPSILON } from './math.js';
+import { cross, dot, GEOMETRY_EPSILON } from './math.js';
 import { pointEntitiesInDocument, pointEntityBounds } from './point-entities.js';
 import {
   brushesInDocument,
@@ -59,14 +59,6 @@ function normalize(vector: Vec3): Vec3 | null {
   const firstSignificant = result.find((component) => Math.abs(component) > 1e-8) ?? 0;
   if (firstSignificant < 0) result = [-result[0], -result[1], -result[2]];
   return result;
-}
-
-function cross(left: Vec3, right: Vec3): Vec3 {
-  return [
-    left[1] * right[2] - left[2] * right[1],
-    left[2] * right[0] - left[0] * right[2],
-    left[0] * right[1] - left[1] * right[0],
-  ];
 }
 
 function uniqueAxes(axes: readonly Vec3[]): readonly Vec3[] {

@@ -1,3 +1,4 @@
+import { combinedBounds } from './math.js';
 import { findBrush, isMapBrush } from './types.js';
 import { deriveBrush } from './geometry.js';
 import { deriveEditorGroups, isEditorGroupEntity } from './groups.js';
@@ -243,22 +244,7 @@ export function objectClipboardBounds(document: MapDocument): Bounds | null {
       return entityBounds ? [entityBounds] : [];
     }),
   ];
-  if (bounds.length === 0) return null;
-  return bounds.slice(1).reduce<Bounds>(
-    (result, current) => ({
-      min: [
-        Math.min(result.min[0], current.min[0]),
-        Math.min(result.min[1], current.min[1]),
-        Math.min(result.min[2], current.min[2]),
-      ],
-      max: [
-        Math.max(result.max[0], current.max[0]),
-        Math.max(result.max[1], current.max[1]),
-        Math.max(result.max[2], current.max[2]),
-      ],
-    }),
-    bounds[0]!,
-  );
+  return combinedBounds(bounds);
 }
 
 /** Places the clipboard center at a pointer, resting one bounds side on a hit surface when supplied. */

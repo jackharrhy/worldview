@@ -1,4 +1,4 @@
-import type { Vec3 } from './types.js';
+import type { Bounds, Vec3 } from './types.js';
 
 export const GEOMETRY_EPSILON = 0.001;
 
@@ -82,4 +82,37 @@ export function rotateAroundAxis(value: Vec3, axis: Vec3, radians: number): Vec3
     add(scale(value, cosine), scale(cross(unit, value), sine)),
     scale(unit, dot(unit, value) * (1 - cosine)),
   );
+}
+
+export function boundsCenter(bounds: Bounds): Vec3 {
+  return [
+    (bounds.min[0] + bounds.max[0]) / 2,
+    (bounds.min[1] + bounds.max[1]) / 2,
+    (bounds.min[2] + bounds.max[2]) / 2,
+  ];
+}
+
+export function translatedBounds(bounds: Bounds, offset: Vec3): Bounds {
+  return { min: add(bounds.min, offset), max: add(bounds.max, offset) };
+}
+
+export function unionBounds(left: Bounds, right: Bounds): Bounds {
+  return {
+    min: [
+      Math.min(left.min[0], right.min[0]),
+      Math.min(left.min[1], right.min[1]),
+      Math.min(left.min[2], right.min[2]),
+    ],
+    max: [
+      Math.max(left.max[0], right.max[0]),
+      Math.max(left.max[1], right.max[1]),
+      Math.max(left.max[2], right.max[2]),
+    ],
+  };
+}
+
+export function combinedBounds(bounds: readonly Bounds[]): Bounds | null {
+  let result: Bounds | null = null;
+  for (const entry of bounds) result = result ? unionBounds(result, entry) : entry;
+  return result;
 }

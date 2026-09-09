@@ -80,29 +80,19 @@ const MachineTokenSchema = z.looseObject({
 const MACHINE_SCOPES = 'artbin:assets:read artbin:assets:content';
 const RENEWAL_SKEW_MS = 30_000;
 
+const integrationErrorMessages = new Map([
+  ['asset_not_found', 'Artbin asset not found'],
+  ['asset_hash_changed', 'Artbin asset changed since it was mounted'],
+  ['insufficient_scope', 'Artbin machine identity has insufficient scope'],
+  ['invalid_token', 'Artbin machine authentication failed'],
+]);
+
 function integrationError(response: Response, body: ArtbinErrorBody): Error & { status: number } {
   const code = body.error?.code;
   const upstreamMessage = body.error?.message;
   const message =
-    code === 'asset_not_found'
-      ? 'Artbin asset not found'
-      : code === 'asset_hash_changed'
-        ? 'Artbin asset changed since it was mounted'
-        : code === 'insufficient_scope'
-          ? 'Artbin machine identity has insufficient scope'
-          : code === 'invalid_token'
-            ? 'Artbin machine authentication failed'
-            : upstreamMessage || 'Artbin is unavailable';
-  const status =
-    response.status === 404
-      ? 404
-      : response.status === 409
-        ? 409
-        : response.status === 503
-          ? 503
-          : response.status === 400 || response.status === 413 || response.status === 422
-            ? response.status
-            : 502;
+    integrationErrorMessages.get(code ?? '') ?? (upstreamMessage || 'Artbin is unavailable');
+  const status = [400, 404, 409, 413, 422, 503].includes(response.status) ? response.status : 502;
   return Object.assign(new Error(message), { status, code, details: body.error?.details });
 }
 

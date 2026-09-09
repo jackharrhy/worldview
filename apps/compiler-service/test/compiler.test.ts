@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RemoteMapCompiler } from '@jackharrhy/worldview-editor/core';
@@ -11,7 +11,7 @@ import {
   safeAssetName,
   safeMapName,
 } from '../src/compiler.js';
-import { configuredLaunchProfile } from '../src/launch.js';
+import { configuredLaunchProfile, launchBuild } from '../src/launch.js';
 import {
   BoundedBuildHistory,
   helperCapabilities,
@@ -220,6 +220,40 @@ if (${JSON.stringify(status)} === 'failed') {
         WORLDVIEW_LAUNCH_ARGS_JSON: '["+map", 7]',
       }),
     ).toThrow(/JSON array of strings/);
+  });
+
+  it('reports launch spawn failures and installs the BSP before starting a valid executable', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'worldview-launch-'));
+    try {
+      const build = {
+        buildId: 'launch-test',
+        mapName: 'test',
+        sourceDocumentRevision: 4,
+        bspBase64: 'AQID',
+      };
+      const profile = {
+        profileId: 'local',
+        label: 'Local test',
+        game: 'quake' as const,
+        executable: join(directory, 'missing-executable'),
+        arguments: [],
+        workingDirectory: directory,
+        mapDirectory: join(directory, 'maps'),
+      };
+      await expect(launchBuild(build, profile)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(
+        launchBuild(build, { ...profile, executable: process.execPath, arguments: ['--version'] }),
+      ).resolves.toMatchObject({
+        buildId: build.buildId,
+        profileId: profile.profileId,
+        sourceDocumentRevision: 4,
+      });
+      expect(await readFile(join(profile.mapDirectory, 'test.bsp'))).toEqual(
+        Buffer.from([1, 2, 3]),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('enforces loopback origin and configured-profile request boundaries', () => {

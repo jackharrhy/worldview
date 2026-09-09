@@ -30,6 +30,7 @@ import type {
   FaceSelection,
   IdFactory,
   MapBrush,
+  MapDocument,
   Vec3,
 } from './types.js';
 import { findBrush } from './types.js';
@@ -66,6 +67,36 @@ export class SessionGeometryCommands {
     private readonly kernel: SessionGeometryKernel,
     private readonly ports: SessionGeometryPorts,
   ) {}
+
+  private orderBrushEdits(edits: readonly BrushClipEdit[]): BrushClipEdit[] {
+    const entityOrder = new Map(
+      this.kernel.document.entities.map((entity, index) => [entity.id, index]),
+    );
+    const offsets = new Map<EntityId, number>();
+    return edits
+      .toSorted(
+        (left, right) =>
+          entityOrder.get(left.entityId)! - entityOrder.get(right.entityId)! ||
+          left.insertionIndex - right.insertionIndex,
+      )
+      .map((edit) => {
+        const offset = offsets.get(edit.entityId) ?? 0;
+        offsets.set(edit.entityId, offset + edit.after.length - 1);
+        return Object.assign({}, edit, { afterInsertionIndex: edit.insertionIndex + offset });
+      });
+  }
+
+  private applyBrushEdits(edits: readonly BrushClipEdit[]): MapDocument {
+    return replaceBrushSequences(
+      this.kernel.document,
+      edits.map((edit) => ({
+        entityId: edit.entityId,
+        insertionIndex: edit.insertionIndex,
+        expectedBrushIds: [edit.before.id],
+        replacements: edit.after,
+      })),
+    );
+  }
 
   public extrudeSelectedFace(distance: number): boolean {
     const faces = selectedFaceReferences(this.kernel.selection);
@@ -242,24 +273,7 @@ export class SessionGeometryCommands {
         after: splitBrushFace(before, face.faceId, distance, ids),
       };
     });
-    const offsets = new Map<EntityId, number>();
-    const edits = rawEdits
-      .toSorted((left, right) => {
-        const leftEntity = this.kernel.document.entities.findIndex(
-          (entity) => entity.id === left.entityId,
-        );
-        const rightEntity = this.kernel.document.entities.findIndex(
-          (entity) => entity.id === right.entityId,
-        );
-        return leftEntity - rightEntity || left.insertionIndex - right.insertionIndex;
-      })
-      .map<BrushClipEdit>((edit) => {
-        const offset = offsets.get(edit.entityId) ?? 0;
-        offsets.set(edit.entityId, offset + edit.after.length - 1);
-        return Object.assign({}, edit, {
-          afterInsertionIndex: edit.insertionIndex + offset,
-        });
-      });
+    const edits = this.orderBrushEdits(rawEdits);
     const selectionBefore = [...new Set(normalized.map((face) => face.brushId))];
     return {
       label: edits.length === 1 ? 'Split-extrude face' : 'Split-extrude faces',
@@ -272,15 +286,7 @@ export class SessionGeometryCommands {
           .filter((brush) => distance < 0 || brush.id !== edit.before.id)
           .map((brush) => brush.id),
       ),
-      document: replaceBrushSequences(
-        this.kernel.document,
-        edits.map((edit) => ({
-          entityId: edit.entityId,
-          insertionIndex: edit.insertionIndex,
-          expectedBrushIds: [edit.before.id],
-          replacements: edit.after,
-        })),
-      ),
+      document: this.applyBrushEdits(edits),
     };
   }
 
@@ -399,24 +405,7 @@ export class SessionGeometryCommands {
       return edit ? [edit] : [];
     });
     if (rawEdits.length === 0) return null;
-    const offsets = new Map<EntityId, number>();
-    const edits = rawEdits
-      .toSorted((left, right) => {
-        const leftEntity = this.kernel.document.entities.findIndex(
-          (entity) => entity.id === left.entityId,
-        );
-        const rightEntity = this.kernel.document.entities.findIndex(
-          (entity) => entity.id === right.entityId,
-        );
-        return leftEntity - rightEntity || left.insertionIndex - right.insertionIndex;
-      })
-      .map<BrushClipEdit>((edit) => {
-        const offset = offsets.get(edit.entityId) ?? 0;
-        offsets.set(edit.entityId, offset + edit.after.length - 1);
-        return Object.assign({}, edit, {
-          afterInsertionIndex: edit.insertionIndex + offset,
-        });
-      });
+    const edits = this.orderBrushEdits(rawEdits);
     const byBeforeId = new Map(edits.map((edit) => [edit.before.id, edit] as const));
     const selectionAfter = selectionBefore.flatMap((brushId) => {
       const edit = byBeforeId.get(brushId);
@@ -429,15 +418,7 @@ export class SessionGeometryCommands {
       edits,
       selectionBefore,
       selectionAfter,
-      document: replaceBrushSequences(
-        this.kernel.document,
-        edits.map((edit) => ({
-          entityId: edit.entityId,
-          insertionIndex: edit.insertionIndex,
-          expectedBrushIds: [edit.before.id],
-          replacements: edit.after,
-        })),
-      ),
+      document: this.applyBrushEdits(edits),
     };
   }
 
@@ -557,15 +538,7 @@ export class SessionGeometryCommands {
       });
       return;
     }
-    const document = replaceBrushSequences(
-      this.kernel.document,
-      candidate.edits.map((edit) => ({
-        entityId: edit.entityId,
-        insertionIndex: edit.insertionIndex,
-        expectedBrushIds: [edit.before.id],
-        replacements: edit.after,
-      })),
-    );
+    const document = this.applyBrushEdits(candidate.edits);
     this.ports.commitMutation({
       document,
       selection: createBrushSelection(candidate.selectionAfter),
@@ -602,29 +575,14 @@ export class SessionGeometryCommands {
       }
     }
     if (rawEdits.length !== replacements.size) return null;
-    const offsets = new Map<EntityId, number>();
-    const edits = rawEdits.map<BrushClipEdit>((edit) => {
-      const offset = offsets.get(edit.entityId) ?? 0;
-      offsets.set(edit.entityId, offset + edit.after.length - 1);
-      return Object.assign({}, edit, {
-        afterInsertionIndex: edit.insertionIndex + offset,
-      });
-    });
+    const edits = this.orderBrushEdits(rawEdits);
     return {
       label,
       baseDocumentRevision: this.kernel.document.revision,
       edits,
       selectionBefore: selectedBrushIds(this.kernel.selection),
       selectionAfter,
-      document: replaceBrushSequences(
-        this.kernel.document,
-        edits.map((edit) => ({
-          entityId: edit.entityId,
-          insertionIndex: edit.insertionIndex,
-          expectedBrushIds: [edit.before.id],
-          replacements: edit.after,
-        })),
-      ),
+      document: this.applyBrushEdits(edits),
     };
   }
 
@@ -656,15 +614,7 @@ export class SessionGeometryCommands {
       });
       return;
     }
-    const document = replaceBrushSequences(
-      this.kernel.document,
-      candidate.edits.map((edit) => ({
-        entityId: edit.entityId,
-        insertionIndex: edit.insertionIndex,
-        expectedBrushIds: [edit.before.id],
-        replacements: edit.after,
-      })),
-    );
+    const document = this.applyBrushEdits(candidate.edits);
     this.ports.commitMutation({
       document,
       selection: createBrushSelection(candidate.selectionAfter),

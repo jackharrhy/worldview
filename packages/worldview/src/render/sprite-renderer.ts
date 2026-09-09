@@ -8,9 +8,7 @@ import type { CameraState, TextureFiltering } from './types.js';
 import {
   spriteAdditiveFragment,
   spriteAlphaTestFragment,
-  spriteOpaqueFragment,
-  spriteTranslucentAlphaTestFragment,
-  spriteTranslucentFragment,
+  spriteFragment,
   worldVertex,
 } from './shaders.js';
 import { MaterialUniform, materialLayout, worldVertexLayout } from './schemas.js';
@@ -60,7 +58,7 @@ function createPipelines(root: TgpuRoot, format: GPUTextureFormat) {
     alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
   };
   const pipeline = (
-    fragment: typeof spriteOpaqueFragment,
+    fragment: typeof spriteFragment,
     depthWriteEnabled: boolean,
     blend?: GPUBlendState,
   ) =>
@@ -78,12 +76,12 @@ function createPipelines(root: TgpuRoot, format: GPUTextureFormat) {
       multisample: { count: RENDER_SAMPLE_COUNT },
     });
   return {
-    opaque: pipeline(spriteOpaqueFragment, true),
+    opaque: pipeline(spriteFragment, true),
     alphaTest: pipeline(spriteAlphaTestFragment, true),
-    translucent: pipeline(spriteTranslucentFragment, true, alphaBlend),
-    translucentAlphaTest: pipeline(spriteTranslucentAlphaTestFragment, true, alphaBlend),
-    translucentNoDepth: pipeline(spriteTranslucentFragment, false, alphaBlend),
-    translucentAlphaTestNoDepth: pipeline(spriteTranslucentAlphaTestFragment, false, alphaBlend),
+    translucent: pipeline(spriteFragment, true, alphaBlend),
+    translucentAlphaTest: pipeline(spriteAlphaTestFragment, true, alphaBlend),
+    translucentNoDepth: pipeline(spriteFragment, false, alphaBlend),
+    translucentAlphaTestNoDepth: pipeline(spriteAlphaTestFragment, false, alphaBlend),
     additive: pipeline(spriteAdditiveFragment, false, additiveBlend),
   };
 }

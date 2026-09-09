@@ -1,6 +1,7 @@
+import { boundsCenter } from './math.js';
 import { deriveBrush } from './geometry.js';
 import { pointEntityBounds } from './point-entities.js';
-import type { Bounds, EditorSelection, EntityId, MapDocument, MapEntity, Vec3 } from './types.js';
+import type { EditorSelection, EntityId, MapDocument, MapEntity, Vec3 } from './types.js';
 
 export type EntityLinkProperty = 'target' | 'killtarget';
 export type EntityLinkMode = 'all' | 'transitive' | 'direct' | 'none';
@@ -15,14 +16,6 @@ export interface EntityLink {
 }
 
 const entityLinksByDocument = new WeakMap<MapDocument, readonly EntityLink[]>();
-
-function boundsCenter(bounds: Bounds): Vec3 {
-  return [
-    (bounds.min[0] + bounds.max[0]) / 2,
-    (bounds.min[1] + bounds.max[1]) / 2,
-    (bounds.min[2] + bounds.max[2]) / 2,
-  ];
-}
 
 function entityAnchor(entity: MapEntity): Vec3 | null {
   if (entity.primitives.length === 0) {

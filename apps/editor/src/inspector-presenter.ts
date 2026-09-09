@@ -418,7 +418,7 @@ export class InspectorPresenter {
           : `${selectedGroup.brushIds.length + selectedGroup.pointEntityIds.length} objects`
         : 'Selection';
     const brushObjectSelected = Boolean(brush && selectedFaces.length === 0 && !selectedGroup);
-    const selectionBrushOwners = objectBrushIds.flatMap((selectedBrushId) => {
+    const selectedBrushOwners = objectBrushIds.flatMap((selectedBrushId) => {
       const owner = document.entities.find((entity) =>
         entity.primitives.some((candidate) => candidate.id === selectedBrushId),
       );
@@ -428,8 +428,8 @@ export class InspectorPresenter {
       brushObjectSelected &&
       objectEntityIds.length === 0 &&
       !selection?.groupId &&
-      selectionBrushOwners.length === objectBrushIds.length &&
-      selectionBrushOwners.every(
+      selectedBrushOwners.length === objectBrushIds.length &&
+      selectedBrushOwners.every(
         (owner) =>
           owner.properties.classname === 'worldspawn' ||
           isEditorGroupEntity(owner) ||
@@ -523,12 +523,6 @@ export class InspectorPresenter {
     const worldspawn = document.entities.find(
       (entity) => entity.properties.classname?.toLowerCase() === 'worldspawn',
     );
-    const selectedBrushOwners = objectBrushIds.flatMap((selectedBrushId) => {
-      const owner = document.entities.find((entity) =>
-        entity.primitives.some((candidate) => candidate.id === selectedBrushId),
-      );
-      return owner ? [owner] : [];
-    });
     const canMakeStructural = !(
       !brushObjectSelected ||
       !worldspawn ||

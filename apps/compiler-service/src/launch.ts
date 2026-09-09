@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { z } from 'zod';
@@ -78,6 +79,7 @@ export async function launchBuild(
       stdio: 'ignore',
     },
   );
+  await once(child, 'spawn');
   child.unref();
   return {
     buildId: build.buildId,

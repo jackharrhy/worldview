@@ -224,9 +224,9 @@ compatibility mouseup. Face resize must commit once, survive the delayed duplica
 capture-loss recovery window, and undo exactly. Keep the rapid perspective creation/move and genuine
 pointercancel/capture-loss cancellation tests passing alongside it.
 
-`editor-surface-grid.spec.ts` captures unselected textured brushes with 16/32-unit grids in dark and
-light themes and verifies the source document stays unchanged. Inspect the GPU screenshots under
-`artifacts/verification/surface-grid/` for visible face-aligned lines and distance fading.
+`editor-surface-grid.spec.ts` checks that grid axes remain visible across perspective zoom levels
+and rejects GPU errors. Inspect its screenshots under `artifacts/verification/surface-grid/` for
+face-aligned lines and distance fading; those visual details require inspection.
 
 Magnetic face extrusion: `editor-face-magnet.spec.ts` loads the dedicated playground, snaps to its
 75-unit off-grid plane, continues beyond the attraction zone, returns and commits exactly, then
@@ -260,9 +260,9 @@ Context-menu browser coverage checks that selected objects and faces omit redund
 commands, while other commands and keyboard navigation remain available. Toolbar coverage checks
 that document-menu section headings are absent and iconless labels align with icon-bearing labels.
 
-The design-route browser specimen check verifies the V2 toolbar, both themes, interactive controls,
-and the downloadable 84-icon SVG (named vector groups and a successfully rendered image). Evidence
-is under `artifacts/verification/design-v2/`. Keep previews using the shared runtime icon styles;
+The design-route browser specimen check verifies both themes and the downloadable SVG, including
+that it contains vector artwork rather than embedded images or font glyphs.
+Keep previews using the shared runtime icon styles;
 external sheet edits are explicitly ported back to the runtime components, not auto-imported.
 
 Multi-face extrusion: `editor-select-resize-and-sweep.spec.ts` verifies that one selected brush

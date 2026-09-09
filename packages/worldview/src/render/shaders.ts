@@ -153,7 +153,7 @@ export function additiveFragment(input: FragmentInput): d.v4f {
   return d.vec4f(adjustedColor(diffuse.rgb).mul(materialLayout.$.material.renderColor.w), 1);
 }
 
-function spriteColor(input: FragmentInput): d.v4f {
+export function spriteFragment(input: FragmentInput): d.v4f {
   'use gpu';
   clipOverview(input.worldPosition);
   const diffuse = sampleDiffuse(input.diffuseUv);
@@ -163,33 +163,16 @@ function spriteColor(input: FragmentInput): d.v4f {
   );
 }
 
-export function spriteOpaqueFragment(input: FragmentInput): d.v4f {
-  'use gpu';
-  return spriteColor(input);
-}
-
 export function spriteAlphaTestFragment(input: FragmentInput): d.v4f {
   'use gpu';
-  const color = spriteColor(input);
-  if (color.a <= materialLayout.$.material.options.z) std.discard();
-  return color;
-}
-
-export function spriteTranslucentFragment(input: FragmentInput): d.v4f {
-  'use gpu';
-  return spriteColor(input);
-}
-
-export function spriteTranslucentAlphaTestFragment(input: FragmentInput): d.v4f {
-  'use gpu';
-  const color = spriteColor(input);
+  const color = spriteFragment(input);
   if (color.a <= materialLayout.$.material.options.z) std.discard();
   return color;
 }
 
 export function spriteAdditiveFragment(input: FragmentInput): d.v4f {
   'use gpu';
-  const color = spriteColor(input);
+  const color = spriteFragment(input);
   return d.vec4f(color.rgb.mul(color.a), 1);
 }
 

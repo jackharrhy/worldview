@@ -1,3 +1,4 @@
+import { combinedBounds } from './math.js';
 import { removeBrushes } from './document.js';
 import { deriveBrush } from './geometry.js';
 import { deriveEditorGroups, isEditorGroupEntity, selectedEditorGroup } from './groups.js';
@@ -62,22 +63,6 @@ export function isEditorLayerEntity(entity: MapEntity): boolean {
     entity.properties[TYPE_PROPERTY] === TRENCHBROOM_LAYER_TYPE &&
     Boolean(entity.properties[ID_PROPERTY]?.trim())
   );
-}
-
-function combinedBounds(bounds: readonly Bounds[]): Bounds | null {
-  if (bounds.length === 0) return null;
-  return {
-    min: [
-      Math.min(...bounds.map((entry) => entry.min[0])),
-      Math.min(...bounds.map((entry) => entry.min[1])),
-      Math.min(...bounds.map((entry) => entry.min[2])),
-    ],
-    max: [
-      Math.max(...bounds.map((entry) => entry.max[0])),
-      Math.max(...bounds.map((entry) => entry.max[1])),
-      Math.max(...bounds.map((entry) => entry.max[2])),
-    ],
-  };
 }
 
 function normalizedLayerId(

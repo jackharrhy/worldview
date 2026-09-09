@@ -1,13 +1,7 @@
+import { boundsCenter } from '../core/math.js';
+export { boundsCenter } from '../core/math.js';
 import type { Bounds, TransformAxis, Vec3 } from '../core/index.js';
 import type { ScaleHandle, ScaleSide } from './viewport-geometry.js';
-
-export function boundsCenter(bounds: Bounds): Vec3 {
-  return [
-    (bounds.min[0] + bounds.max[0]) / 2,
-    (bounds.min[1] + bounds.max[1]) / 2,
-    (bounds.min[2] + bounds.max[2]) / 2,
-  ];
-}
 
 export function scaleHandles(
   bounds: Bounds,

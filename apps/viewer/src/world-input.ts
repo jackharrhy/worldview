@@ -68,17 +68,7 @@ export async function sourceFromFiles(files: Iterable<File>): Promise<WorldSourc
   const isCompleteSkybox = (group: PartialSkybox): group is Record<SkyboxSuffix, File> =>
     skyboxSuffixes.every((suffix) => group[suffix] !== undefined);
   const completeSkyboxes = [...skyboxGroups.values()].filter(isCompleteSkybox);
-  const completeSkybox = completeSkyboxes.length === 1 ? completeSkyboxes[0] : undefined;
-  const skybox = completeSkybox
-    ? {
-        rt: completeSkybox.rt,
-        bk: completeSkybox.bk,
-        lf: completeSkybox.lf,
-        ft: completeSkybox.ft,
-        up: completeSkybox.up,
-        dn: completeSkybox.dn,
-      }
-    : undefined;
+  const skybox = completeSkyboxes.length === 1 ? completeSkyboxes[0] : undefined;
   return {
     bsp,
     ...(palette ? { palette } : {}),

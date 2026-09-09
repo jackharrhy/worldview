@@ -1,3 +1,4 @@
+import { cross } from './math.js';
 import type { TransformAxis } from './document.js';
 import type { EntityDefinitionCatalog } from './entity-definitions.js';
 import type { Bounds, EntityId, MapDocument, MapEntity, Vec3 } from './types.js';
@@ -144,14 +145,6 @@ function multiplyMatrices(left: Matrix3, right: Matrix3): Matrix3 {
     [cell(0, 0), cell(0, 1), cell(0, 2)],
     [cell(1, 0), cell(1, 1), cell(1, 2)],
     [cell(2, 0), cell(2, 1), cell(2, 2)],
-  ];
-}
-
-function cross(left: Vec3, right: Vec3): Vec3 {
-  return [
-    left[1] * right[2] - left[2] * right[1],
-    left[2] * right[0] - left[0] * right[2],
-    left[0] * right[1] - left[1] * right[0],
   ];
 }
 
