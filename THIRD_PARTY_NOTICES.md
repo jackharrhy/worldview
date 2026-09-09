@@ -132,6 +132,16 @@ MIT-licensed Phosphor Icons 2.1.2 vector paths from the installed package's Regu
 alongside original Worldview geometry icons. The complete Phosphor MIT notice is embedded in the
 SVG metadata. `scripts/export-editor-icons.mjs` exports these paths without embedding a font.
 
+## Engine lighting compatibility research
+
+Xash3D FWGS `engine/common/imagelib/img_wad.c` and `ref/gl/gl_rsurf.c` at commit
+[`1de8289f2980aa34c70760ae0ebfb2e00ddb0f9e`](https://github.com/FWGS/xash3d-fwgs/tree/1de8289f2980aa34c70760ae0ebfb2e00ddb0f9e)
+were consulted to confirm Quake fullbright palette indices and dark sampleless surfaces in lit
+maps. id Software's Quake II `ref_gl/gl_light.c` was consulted to preserve that format's different
+sampleless-surface behavior. These GPL sources are compatibility references only; no engine
+implementation code or game palettes are included. Worldview's fixes and synthetic tests are
+independently authored.
+
 ## fflate
 
 The editor uses [fflate](https://github.com/101arrowz/fflate) to package build exports as ZIP files.

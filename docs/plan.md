@@ -222,6 +222,10 @@ used non-tool texture names, attach the WADs, and rewrite only transient compile
 Later project packs override earlier packs and defaults, matching sidebar resolution. Missing,
 corrupt, or oversized inputs stop the build. The public editor core exports development-material
 generators and `serializeMapForCompile` to share validation, omitted-layer handling, and precedence.
+Generated WAD2 colours use only Quake's non-emissive palette range (0–223); index 255 is
+reserved for explicitly masked pixels. The diagnostic palette remains a preview fallback, not
+a replacement for the target game's palette: matching exported colours requires the project
+palette and a rebuild.
 
 A stale result remains inspectable but
 cannot replace the current compiled preview. Browsers never provide arbitrary executable paths,
@@ -232,6 +236,12 @@ Native launch reports success after the configured process spawns; spawn failure
 the launch request instead of escaping as unhandled process errors.
 Missing BSP29/30/BSP2 texture-table entries remain drawable using diagnostic fallback materials and
 emit warnings; missing artwork must not silently discard compiled geometry as tool surfaces.
+The standalone viewer and compiled editor preview share lighting behavior. `ParsedWorld.hasLighting`
+records whether the BSP lighting lump is present. In Quake/GoldSrc maps with baked lighting,
+sampleless opaque and masked faces stay dark; maps without baked lighting remain viewable unlit.
+Quake II retains its sampleless-surface behavior. Lightmaps always use linear filtering independently
+of the diffuse-texture filtering setting. The compiled editor preview uses the same default linear
+texture filtering as the standalone viewer.
 Build results offers Download BSP for the selected build, including retained history. Downloads
 preserve the compiler's filename and exact artifact bytes for use in a compatible local engine.
 

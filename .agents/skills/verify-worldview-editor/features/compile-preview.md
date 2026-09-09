@@ -32,6 +32,10 @@ Check browser page errors after the preview renders and after switching back to 
 source viewport must skip GPU frames with zero layout extent, then resume rendering when shown.
 Assert visible rendered pixels, including fallback geometry when the compiler emits missing MIPTEX
 entries. A visible canvas and successful build status alone do not prove that the map renders.
+`tests/browser/viewer-lighting.spec.ts` verifies dark sampleless faces, wholly unlit BSPs, and
+smooth lighting with nearest-filtered textures through the shared public viewer. For lighting
+reports, inspect the actual retained BSP and compiler logs and capture it before and after changes;
+do not replace authored shadows with ambient light just to make the preview brighter.
 Capture Playwright's download event and compare the saved BSP bytes and filename with the selected
 compiler artifact.
 `editor-build-export.spec.ts` additionally checks automatic BSP output, ZIP source/WAD contents,

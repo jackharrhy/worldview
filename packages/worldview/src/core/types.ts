@@ -176,6 +176,8 @@ export interface ParsedWorld {
   readonly faces: readonly ParsedFace[];
   readonly batches: readonly DrawBatch[];
   readonly models: readonly ParsedModel[];
+  /** Whether the BSP contains baked lighting, even if individual faces have no samples. */
+  readonly hasLighting: boolean;
   readonly lightmapPages: readonly LightmapPage[];
   readonly lightmapBytesPerTexel: 1 | 3;
   readonly hasAnimatedLightmaps: boolean;

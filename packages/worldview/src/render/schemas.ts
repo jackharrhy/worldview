@@ -38,6 +38,7 @@ export const materialLayout = tgpu
     skyAlpha: { texture: d.texture2d(d.f32) },
     skybox: { texture: d.texture2dArray(d.f32) },
     textureSampler: { sampler: 'filtering' },
+    lightmapSampler: { sampler: 'filtering' },
     skyboxSampler: { sampler: 'filtering' },
   })
   .$idx(1);

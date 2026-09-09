@@ -12,6 +12,8 @@ import {
   createStarterDocument,
   compiledBspVersion,
   deriveBrush,
+  createDevelopmentMaterials,
+  createDiagnosticQuakePalette,
   encodeQuakeWad2,
   parseMap,
   serializeMap,
@@ -23,7 +25,7 @@ import {
   type MapCompileResult,
   type MapCompiler,
 } from '../src/core/index.js';
-import { makeTestPalette, makeTestWad } from './support/core-fixtures.js';
+import { makeTestWad } from './support/core-fixtures.js';
 
 describe('Valve 220 source documents', () => {
   it('round trips normalized source without changing derived geometry or projections', () => {
@@ -101,34 +103,33 @@ describe('editor material catalog', () => {
     expect(catalog.size).toBe(0);
   });
 
-  it('encodes generated materials as compiler-ready WAD2 mip textures', () => {
-    const palette = makeTestPalette();
-    const rgba = new Uint8Array(16 * 16 * 4);
-    rgba.fill(255);
-    const wad = parseWad(
-      encodeQuakeWad2(
-        [
-          {
-            name: 'DEV_TEST',
-            sourceName: 'test',
-            width: 16,
-            height: 16,
-            rgba,
-            alphaTest: false,
-          },
-        ],
-        palette,
-      ),
-    );
+  it('keeps generated Quake mip colors out of the fullbright range, preserving transparency', () => {
+    const palette = createDiagnosticQuakePalette();
+    const materials = createDevelopmentMaterials();
+    const masked = {
+      ...materials[0]!,
+      name: '{DEV_MASKED',
+      alphaTest: true,
+      rgba: materials[0]!.rgba.slice(),
+    };
+    masked.rgba[3] = 0;
+    const wad = parseWad(encodeQuakeWad2([...materials, masked], palette));
 
     expect(wad.version).toBe(2);
-    expect(wad.lumps).toHaveLength(1);
-    expect(wad.lumps[0]).toMatchObject({ name: 'DEV_TEST', type: 0x44 });
-    expect(decodeMipTexture(wad.lumps[0]!.data, palette)).toMatchObject({
-      name: 'DEV_TEST',
-      width: 16,
-      height: 16,
-    });
+    for (const lump of wad.lumps) {
+      const data = lump.data;
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      for (let level = 0; level < 4; level += 1) {
+        const offset = view.getUint32(24 + level * 4, true);
+        const size = (64 >> level) ** 2;
+        const opaque = data.slice(offset, offset + size).filter((index) => index !== 255);
+        expect(Math.max(...opaque)).toBeLessThan(224);
+        if (lump.name !== masked.name) expect(data.slice(offset, offset + size)).not.toContain(255);
+      }
+    }
+    const decoded = decodeMipTexture(wad.lumps.at(-1)!.data, palette);
+    expect(decoded.levels[0]!.rgba.slice(0, 4)).toEqual(new Uint8Array([0, 0, 0, 0]));
+    expect(decoded.levels[0]!.rgba[7]).toBe(255);
   });
 });
 

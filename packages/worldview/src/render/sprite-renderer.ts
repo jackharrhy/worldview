@@ -380,6 +380,7 @@ export class TypeGpuSpriteRenderer {
               skyAlpha: diffuse,
               skybox: skyboxView,
               textureSampler: this.sampler,
+              lightmapSampler: this.sampler,
               skyboxSampler: this.sampler,
             }),
           };

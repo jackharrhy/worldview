@@ -55,6 +55,7 @@ function checkerboard(): DecodedMipTexture {
 export class WorldMaterialResources {
   private readonly device: GPUDevice;
   private readonly sampler;
+  private readonly lightmapSampler;
   private readonly skyboxSampler;
   private readonly buffers: Array<{ destroy(): void }> = [];
   private readonly textures: TgpuTexture[] = [];
@@ -85,6 +86,12 @@ export class WorldMaterialResources {
       addressModeV: 'clamp-to-edge',
       magFilter: filtering,
       minFilter: filtering,
+    });
+    this.lightmapSampler = root.createSampler({
+      addressModeU: 'clamp-to-edge',
+      addressModeV: 'clamp-to-edge',
+      magFilter: 'linear',
+      minFilter: 'linear',
     });
     try {
       this.upload();
@@ -145,7 +152,13 @@ export class WorldMaterialResources {
     const missing = this.uploadDecoded(checkerboard());
     const white = this.uploadRgba('__white__', 1, 1, [new Uint8Array([255, 255, 255, 255])]);
     const skybox = this.uploadSkybox();
-    this.lightmapTextures.set(-1, white);
+    // In Quake/GoldSrc a sampleless face in a lit BSP is dark. Only a wholly unlit BSP
+    // gets the fullbright fallback; Quake II retains its sampleless-surface behavior.
+    const missingLightmap =
+      this.loaded.world.hasLighting && this.loaded.world.format !== 'quake2-bsp38'
+        ? this.uploadRgba('__dark__', 1, 1, [new Uint8Array([0, 0, 0, 255])])
+        : white;
+    this.lightmapTextures.set(-1, missingLightmap);
     for (const page of this.loaded.world.lightmapPages) {
       const rgba = buildLightmapPage(page, this.loaded.world.lightmapBytesPerTexel);
       this.lightmapTextures.set(
@@ -202,7 +215,7 @@ export class WorldMaterialResources {
           diffuse: missing,
           skyAlpha: missing,
         };
-        const lightmap = this.lightmapTextures.get(batch.lightmapPage) ?? white;
+        const lightmap = this.lightmapTextures.get(batch.lightmapPage) ?? missingLightmap;
         const uniform = this.root.createUniform(MaterialUniform, {
           sizes: [
             loadedTexture?.logicalWidth ?? uploaded.diffuse.width,
@@ -231,6 +244,7 @@ export class WorldMaterialResources {
           skyAlpha: uploaded.skyAlpha.view,
           skybox: skybox.view,
           textureSampler: this.sampler,
+          lightmapSampler: this.lightmapSampler,
           skyboxSampler: this.skyboxSampler,
         });
         sharedBindings.set(key, group);

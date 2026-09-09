@@ -191,7 +191,8 @@ export function selectedWorldPipeline(
   }
   if (batch.kind === 'water') return brush ? pipelines.waterBrush : pipelines.water;
   const alpha = batch.kind === 'alpha-test' || (world.version === 30 && model?.renderMode === 4);
-  const lightmapped = batch.lightmapPage >= 0;
+  const lightmapped =
+    batch.lightmapPage >= 0 || (world.hasLighting && world.format !== 'quake2-bsp38');
   if (alpha) {
     if (lightmapped) return brush ? pipelines.alphaBrush : pipelines.alpha;
     return brush ? pipelines.unlitAlphaBrush : pipelines.unlitAlpha;

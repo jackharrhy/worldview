@@ -137,13 +137,8 @@ function encodeMipTexture(material: EditorMaterial, palette: Uint8Array): Uint8A
       const key = red | (green << 8) | (blue << 16);
       let paletteIndex = colorCache.get(key);
       if (paletteIndex === undefined) {
-        paletteIndex = nearestPaletteIndex(
-          red,
-          green,
-          blue,
-          palette,
-          material.alphaTest ? 254 : 255,
-        );
+        // Quake reserves 224–255 for fullbright pixels; generated RGBA has no emissive intent.
+        paletteIndex = nearestPaletteIndex(red, green, blue, palette, 223);
         colorCache.set(key, paletteIndex);
       }
       indexed[pixel] = paletteIndex;

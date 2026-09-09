@@ -30,6 +30,8 @@ test.describe('Editor compiled preview', () => {
     bspView.setInt32(textureOffset + 4, -1, true);
     const faceOffset = bspView.getUint32(4 + 7 * 8, true);
     bspView.setInt32(faceOffset + 16, -1, true);
+    bsp.fill(255, faceOffset + 12, faceOffset + 16);
+    bspView.setUint32(8 + 8 * 8, 0, true);
     const vertexOffset = bspView.getUint32(4 + 3 * 8, true);
     [-2048, -2048, 0, -2048, 2048, 0, 2048, 2048, 0, 2048, -2048, 0].forEach((value, index) =>
       bspView.setFloat32(vertexOffset + index * 4, value, true),

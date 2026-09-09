@@ -101,7 +101,7 @@ function lightmapped(input: FragmentInput): d.v4f {
   }
   const lightmap = std.textureSample(
     materialLayout.$.lightmap,
-    materialLayout.$.textureSampler,
+    materialLayout.$.lightmapSampler,
     input.lightmapUv.div(materialLayout.$.material.sizes.zw),
   );
   return d.vec4f(adjustedColor(diffuse.rgb.mul(lightmap.rgb).mul(2)), diffuse.a);

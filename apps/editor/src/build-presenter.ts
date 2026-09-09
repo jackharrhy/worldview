@@ -327,7 +327,6 @@ export class BuildPresenter {
       controls: 'fly',
       autoStart: false,
       audio: false,
-      textureFiltering: 'nearest',
       clearColor: resolveEditorRenderTheme().background,
     });
     try {

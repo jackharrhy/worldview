@@ -542,6 +542,7 @@ export function parseBsp38(
     faces: geometry.faces,
     batches: geometry.batches,
     models,
+    hasLighting: lighting.byteLength > 0,
     lightmapPages: packer.finish(lightmaps),
     lightmapBytesPerTexel: 3,
     hasAnimatedLightmaps: lightmaps.some((lightmap) =>
