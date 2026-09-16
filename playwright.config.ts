@@ -21,9 +21,9 @@ const headlessChromiumArguments = [
 
 const viewerWebServers = [
   {
-    command: 'npm run dev --workspace @worldview/viewer',
-    url: 'http://127.0.0.1:5173',
-    reuseExistingServer: !process.env.CI,
+    command: 'npm run dev --workspace @worldview/viewer -- --port 15173 --strictPort',
+    url: 'http://127.0.0.1:15173',
+    reuseExistingServer: false,
   },
   {
     command: 'node tests/browser/serve-static.mjs',
@@ -49,7 +49,7 @@ export default defineConfig({
         ? [editorWebServer]
         : [...viewerWebServers, editorWebServer],
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: 'http://127.0.0.1:15173',
     viewport: { width: 1440, height: 900 },
     launchOptions: {
       args:

@@ -24,7 +24,10 @@ const viewer = await createWorldview({
 ```
 
 Walking is the default control mode. Press `V` to switch between walking and flying. Map audio
-starts only after a canvas interaction or an explicit `enableAudio()` call.
+starts only after a canvas interaction or an explicit `enableAudio()` call. Canvas interactions
+also resume suspended audio without reloading the map. The `<world-view>` element enables this
+behavior by default; `audio="false"` disables automatic activation on interaction. A click while
+map assets are loading enables the audio context, and sounds start when those assets arrive.
 
 Movement and audio settings can change at runtime:
 
@@ -197,6 +200,11 @@ The standalone module registers the element for pages without a build step:
 <script type="module" src="/vendor/worldview/standalone.js"></script>
 <world-view game-base-url="/games/id1/" src="maps/start.bsp"></world-view>
 ```
+
+Run `npm run test:browser:viewer` in this repository for headless WebGPU checks, including the
+packaged element's shadow-root pointer lock and gesture-activated audio. These tests use generated
+maps and WAVs to measure camera movement, nonzero audio output, and recovery from suspended audio
+without requiring game files or speakers.
 
 ## Runtime utilities
 

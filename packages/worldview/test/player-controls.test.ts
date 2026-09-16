@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { parseBsp } from '../src/core/index.js';
 
@@ -96,8 +96,10 @@ describe('player controls', () => {
 
   it('applies GoldSrc sensitivity and custom mouse acceleration to pointer input', () => {
     const listeners = new Map<string, EventListener>();
+    const root = { pointerLockElement: null as HTMLCanvasElement | null };
     const canvas = {
       tabIndex: 0,
+      getRootNode: () => root,
       getAttribute: () => null,
       setAttribute: () => undefined,
       removeAttribute: () => undefined,
@@ -117,7 +119,7 @@ describe('player controls', () => {
       () => undefined,
       { mouseSensitivity: 3, mouseAcceleration: 0.04 },
     );
-    vi.stubGlobal('document', { pointerLockElement: canvas });
+    root.pointerLockElement = canvas;
     listeners.get('mousemove')?.({
       movementX: 10,
       movementY: -5,
@@ -127,6 +129,5 @@ describe('player controls', () => {
     expect(look?.yaw).toBeCloseTo(-10 * radiansPerCount);
     expect(look?.pitch).toBeCloseTo(5 * radiansPerCount);
     controls.dispose();
-    vi.unstubAllGlobals();
   });
 });

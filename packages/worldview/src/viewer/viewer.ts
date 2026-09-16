@@ -650,7 +650,8 @@ class WorldviewViewerImplementation extends EventTarget implements WorldviewView
   }
 
   private readonly onAudioInteraction = (): void => {
-    if (!this.enableAudioOnInteraction || this.audio.enabled) return;
+    const audio = this.audio;
+    if (!this.enableAudioOnInteraction || (audio.enabled && !audio.suspended)) return;
     void this.enableAudio().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       this.emit('warning', {

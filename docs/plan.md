@@ -170,6 +170,13 @@ fingerprinted sidecar with its own cancellation generation and does not delay th
 state. The viewer app cancels pending GPU initialization when its canvas detaches, preventing a
 stale attachment from configuring or disposing the active canvas during React remounts.
 
+Pointer-lock ownership is resolved in the canvas's document or shadow root so embedded
+`<world-view>` elements receive mouse look. Audio activates on canvas interaction by default,
+including while map assets load, and subsequent interactions resume a suspended context without
+reloading the map or duplicating emitters. The element's `audio="false"` attribute opts out of
+automatic activation. Browser smoke tests exercise real pointer capture and measured audio output
+through the packaged element.
+
 `TypeGpuWorldRenderer` is a small lifecycle facade for one loaded world. Focused internal owners
 hold scene and material resources, canvas and capture targets, and pass encoding; GPU-independent
 frame planning decides visibility, ordering, and which passes are needed. This keeps disposal

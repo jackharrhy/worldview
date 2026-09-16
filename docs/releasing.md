@@ -37,6 +37,7 @@ serialized viewer browser suite. It checks the package contents, prints the pack
 tag, commit, and tarball sizes, and requires the exact version to be typed before publishing. The
 full monorepo gate remains `npm run check`; editor, service, and collaboration builds and tests do
 not gate a viewer-package release, and the viewer browser suite does not start the editor dev
-server. Prereleases need an explicit tag, such as `npm run publish -- --tag next`.
+server. Viewer browser tests start their own server on port 15173, separate from the usual Vite
+development port. Prereleases need an explicit tag, such as `npm run publish -- --tag next`.
 
 Authentication stays in npm's local configuration. Do not add registry tokens to this repository.

@@ -149,7 +149,7 @@ export class WorldControls {
     return (
       this.pressed.size > 0 ||
       this.pendingToggle ||
-      document.pointerLockElement === this.canvas ||
+      this.pointerLocked ||
       (this.currentMode === 'walk' && this.movement !== null && !this.movement.onGround)
     );
   }
@@ -421,8 +421,12 @@ export class WorldControls {
     void this.canvas.requestPointerLock();
   };
 
+  private get pointerLocked(): boolean {
+    return (this.canvas.getRootNode() as Document | ShadowRoot).pointerLockElement === this.canvas;
+  }
+
   private readonly onMouseMove = (event: MouseEvent): void => {
-    if (document.pointerLockElement !== this.canvas) return;
+    if (!this.pointerLocked) return;
     const distance = Math.hypot(event.movementX, event.movementY);
     const sensitivity =
       this.settingsValue.mouseSensitivity + distance * this.settingsValue.mouseAcceleration;
@@ -455,7 +459,7 @@ export class WorldControls {
   };
 
   private readonly onContextMenu = (event: MouseEvent): void => {
-    if (document.pointerLockElement === this.canvas) event.preventDefault();
+    if (this.pointerLocked) event.preventDefault();
   };
 
   private isMovementKey(code: string): boolean {
