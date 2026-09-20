@@ -20,7 +20,7 @@
     "test:browser": "npm run build:browser-tests && npm run test:consumer && playwright test",
     "test:browser:ci": "npm run build:browser-tests && npm run test:consumer && playwright test --grep @ci-smoke --workers=1",
     "test:browser:editor": "npm run build:browser-tests && WORLDVIEW_PLAYWRIGHT_SCOPE=editor playwright test tests/browser/editor/ --project=chromium --workers=1",
-    "test:browser:viewer": "npm run build --workspace @jackharrhy/worldview && npm run test:consumer && WORLDVIEW_PLAYWRIGHT_SCOPE=viewer playwright test tests/browser/viewer*.spec.ts --workers=1",
+    "test:browser:viewer": "npm run build --workspace @jackharrhy/worldview && npm run test:consumer && WORLDVIEW_PLAYWRIGHT_SCOPE=viewer playwright test tests/browser/viewer*.spec.ts --fully-parallel --workers=2",
     "test:editor": "npm test --workspace @jackharrhy/worldview-editor && npm test --workspace @worldview/editor",
     "test:viewer": "npm test --workspace @jackharrhy/worldview && npm test --workspace @worldview/viewer",
     "test:editor-performance": "npm run build --workspace @jackharrhy/worldview-editor && WORLDVIEW_PLAYWRIGHT_SCOPE=editor WORLDVIEW_PERF_GATE=1 playwright test tests/browser/editor-performance.spec.ts --project=chromium",

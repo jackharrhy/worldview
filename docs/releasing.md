@@ -33,11 +33,14 @@ npm run publish
 
 The publisher opens npm's browser login when there is no active session. It then runs the repository
 checks scoped to the published package, its development viewer, its consumer fixture, and the
-serialized viewer browser suite. It checks the package contents, prints the package name, version,
-tag, commit, and tarball sizes, and requires the exact version to be typed before publishing. The
-full monorepo gate remains `npm run check`; editor, service, and collaboration builds and tests do
-not gate a viewer-package release, and the viewer browser suite does not start the editor dev
-server. Viewer browser tests start their own server on port 15173, separate from the usual Vite
+viewer browser suite with two parallel workers. It checks the package contents, prints the package
+name, version, tag, commit, and tarball sizes, and requires the exact version to be typed before
+publishing. The full monorepo gate remains `npm run check`; editor, service, and collaboration
+builds and tests do not gate a viewer-package release, and the viewer browser suite does not start
+the editor dev server. Viewer browser tests start their own server on port 15173, separate from the usual Vite
 development port. Prereleases need an explicit tag, such as `npm run publish -- --tag next`.
+
+The package preview accepts both npm 11 and npm 12 JSON output. To reduce browser concurrency
+on a resource-constrained machine, run `npm run test:browser:viewer -- --workers=1`.
 
 Authentication stays in npm's local configuration. Do not add registry tokens to this repository.
