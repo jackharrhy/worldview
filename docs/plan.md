@@ -400,7 +400,11 @@ The ordered implementation work for additional formats lives only in
 
 ## Verification and provenance
 
-Collaboration packages the Worker and the maintained Celld fork in one `:latest` application image.
+Collaboration packages the Worker and the maintained Celld 0.5.1 fork in one `:latest` application
+image. CI resolves the runtime to one digest, records it in the image, and publishes the exact
+collaboration image that passed persistence tests. Upgrade qualification also restores old-runtime
+fixtures, checks existing snapshots and checkpoints, and persists new writes across another cold
+restore. The 0.5 alarm-format migration requires a stopped runtime and a complete rollback backup.
 It diagnoses a SQLite object store and deploys the Worker before starting the runtime, without an
 Azurite or bootstrap container. Authoritative objects and disposable replicas occupy separate
 paths under the existing persistent Celld volume. The web/compiler service and its project data
