@@ -1,3 +1,6 @@
+ARG CELLD_IMAGE=ghcr.io/jackharrhy/celld:latest
+FROM ${CELLD_IMAGE} AS celld
+
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
@@ -28,12 +31,14 @@ RUN npm run build -w @jackharrhy/worldview \
   && npm run build -w @worldview/compiler-service
 
 FROM node:24-bookworm-slim AS collaboration
+ARG CELLD_IMAGE
+LABEL dev.jackharrhy.worldview.celld-image=${CELLD_IMAGE}
 WORKDIR /app
 ENV CELLD_BIN=/usr/local/bin/celld \
     CELLD_BUCKET=sqlite:///var/lib/celld/object-store/objects.sqlite3 \
     CELLD_WATCH=/var/lib/celld/state-sqlite \
     CELLD_DURABILITY=bucket
-COPY --from=ghcr.io/jackharrhy/celld:latest /usr/local/bin/celld /usr/local/bin/celld
+COPY --from=celld /usr/local/bin/celld /usr/local/bin/celld
 COPY --from=build /app /app
 COPY scripts/start-celld.sh scripts/start-celld.sh
 EXPOSE 8080

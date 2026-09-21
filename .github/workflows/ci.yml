@@ -58,6 +58,11 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve the collaboration runtime
+        id: celld
+        run: |
+          docker pull ghcr.io/jackharrhy/celld:latest
+          echo "image=$(docker image inspect ghcr.io/jackharrhy/celld:latest --format '{{index .RepoDigests 0}}')" >> "$GITHUB_OUTPUT"
       - name: Build Worldview collaboration
         uses: docker/build-push-action@v7
         with:
@@ -66,6 +71,7 @@ jobs:
           pull: true
           load: true
           tags: worldview-celld:ci
+          build-args: CELLD_IMAGE=${{ steps.celld.outputs.image }}
       - name: Verify collaboration persistence with the built image
         run: npm run test:collaboration-celld-live
         env:
@@ -78,6 +84,7 @@ jobs:
           tags: |
             type=raw,value=main
             type=raw,value=latest
+            type=sha,format=long
       - name: Build and push Worldview
         uses: docker/build-push-action@v7
         with:
@@ -91,5 +98,7 @@ jobs:
         run: |
           docker tag worldview-celld:ci ghcr.io/${{ github.repository }}-celld:main
           docker tag worldview-celld:ci ghcr.io/${{ github.repository }}-celld:latest
+          docker tag worldview-celld:ci ghcr.io/${{ github.repository }}-celld:sha-${{ github.sha }}
+          docker push ghcr.io/${{ github.repository }}-celld:sha-${{ github.sha }}
           docker push ghcr.io/${{ github.repository }}-celld:main
           docker push ghcr.io/${{ github.repository }}-celld:latest

@@ -110,7 +110,10 @@ persist-before-ack operations, and non-durable presence. Clients see no Celld-sp
 
 Local development remains available through `npm run dev:collaboration:celld`.
 Production uses one `ghcr.io/jackharrhy/worldview-celld:latest` container (`Dockerfile` target
-`collaboration`), built with `ghcr.io/jackharrhy/celld:latest`. On each start it diagnoses the
+`collaboration`). CI resolves `ghcr.io/jackharrhy/celld:latest` to a digest, passes it as
+`CELLD_IMAGE`, and tests the exact image it publishes. The collaboration image records that
+runtime reference in `dev.jackharrhy.worldview.celld-image`; commit tags retain both application
+and collaboration builds for rollback. On each start it diagnoses the
 store, deploys its bundled Worker, and execs Celld. No Azurite or bootstrap container is needed.
 The web/compiler application stays separate and also publishes a `:latest` image.
 
@@ -149,3 +152,21 @@ Collaboration is dependable only while solo editing works with the service absen
 disconnects survive restart and reconcile within their bounds, detached work survives locally,
 connected replicas converge, accepted geometry stays valid, personalized undo preserves remote
 work, and room state exports to source-safe `.map`.
+
+### Celld 0.5 upgrade
+
+The maintained fork follows upstream Celld 0.5.1 while retaining the single-node SQLite object
+store. Celld 0.5 changes persisted alarm data, so this is an offline migration even when the
+application protocol is unchanged. Qualify the previous production image against the candidate
+with the migration mode in [the verification guide](./verification.md#collaboration).
+
+Stop Worldview's web/compiler writers and collaboration runtime before taking a consistent copy
+of both project data and the entire Celld volume, including the authoritative SQLite database
+and any WAL files. Record the previous application and collaboration image digests. Keep the
+backup outside the mounted runtime directory. Start only the new runtime against the existing
+store, then start the web/compiler services and verify authentication, an existing map snapshot,
+a WebSocket edit and checkpoint, and persistence across a restart.
+
+Never start the old runtime against a store opened by Celld 0.5. Rollback requires stopping all
+writers, restoring the complete pre-upgrade data snapshot, and restoring the recorded image
+digests together. Writes made after the backup will be lost on rollback.

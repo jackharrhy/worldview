@@ -17,6 +17,10 @@ import {
 } from '@jackharrhy/worldview-editor/core';
 
 const image = process.env.CELLD_TEST_IMAGE;
+const previousImage = process.env.CELLD_PREVIOUS_TEST_IMAGE;
+const previousBinary = process.env.CELLD_PREVIOUS_BIN;
+if (previousImage && !image) throw new Error('CELLD_PREVIOUS_TEST_IMAGE requires CELLD_TEST_IMAGE');
+if (previousBinary && image) throw new Error('CELLD_PREVIOUS_BIN requires binary test mode');
 const requestedBinary = process.env.CELLD_BIN ?? join(homedir(), '.local', 'bin', 'celld');
 const state = await mkdtemp(join(tmpdir(), 'worldview-celld-sqlite-'));
 const celld = join(state, 'celld');
@@ -51,10 +55,10 @@ async function availablePort() {
   return port;
 }
 
-function startNode(name) {
+function startNode(name, runtimeImage = image) {
   const container = `worldview-sqlite-test-${runId}-${name}`;
-  const command = image ? 'docker' : 'sh';
-  const args = image
+  const command = runtimeImage ? 'docker' : 'sh';
+  const args = runtimeImage
     ? [
         'run',
         '--rm',
@@ -78,7 +82,7 @@ function startNode(name) {
         'CELLD_ASSET_CACHE_DIR=/var/lib/celld/asset-cache',
         '--env',
         `CELLD_VAR_WORLDVIEW_REALTIME_TICKET_SECRET=${ticketSecret}`,
-        image,
+        runtimeImage,
       ]
     : [
         join(process.cwd(), 'scripts/start-celld.sh'),
@@ -93,7 +97,7 @@ function startNode(name) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.logs = '';
-  child.container = image ? container : undefined;
+  child.container = runtimeImage ? container : undefined;
   child.once('error', (error) => {
     child.spawnError = error;
   });
@@ -208,9 +212,9 @@ async function stop(child, signal = 'SIGTERM') {
 try {
   if (!image) {
     await access(requestedBinary);
-    await copyFile(requestedBinary, celld, fsConstants.COPYFILE_FICLONE);
+    await copyFile(previousBinary ?? requestedBinary, celld, fsConstants.COPYFILE_FICLONE);
   }
-  const nodeA = startNode('replica-a');
+  const nodeA = startNode('replica-a', previousImage ?? image);
   await waitForNode(nodeA);
 
   const starter = createStarterDocument();
@@ -263,6 +267,9 @@ try {
   await rm(join(state, 'replica-a'), { recursive: true, force: true });
   console.log('Node A was SIGKILLed and its local replica was deleted');
 
+  if (previousBinary) {
+    await copyFile(requestedBinary, celld, fsConstants.COPYFILE_FICLONE);
+  }
   const nodeB = startNode('replica-b');
   await waitForNode(nodeB);
   const recovered = await snapshot();
@@ -301,7 +308,36 @@ try {
     'operation receipt remains idempotent',
   );
   assert.deepEqual(await snapshot(), beforeKill, 'retry does not increment the map version');
+  const migratedBrush = createBoxBrush([256, -32, 0], [320, 32, 64], 'UPGRADE_TEST', ids);
+  const migratedDocument = insertBrush(
+    recovered.document,
+    recovered.document.entities[0].id,
+    migratedBrush,
+  );
+  const migratedOperation = {
+    ...operation,
+    operationId: `upgrade-test:${runId}`,
+    transactionId: `upgrade-test:${runId}`,
+    baseMapVersion: 1,
+    label: 'Post-recovery insertion',
+    edits: collaborationEditsBetween(recovered.document, migratedDocument),
+  };
+  const migratedAcknowledgement = await submitOperation(migratedOperation);
+  assert.equal(migratedAcknowledgement.type, 'ack');
+  assert.equal(migratedAcknowledgement.mapVersion, 2);
+  const afterRecoveryWrite = await snapshot();
+  assert.equal(afterRecoveryWrite.sourceSha256, migratedAcknowledgement.sourceSha256);
   await stop(nodeB);
+  await rm(join(state, 'replica-b'), { recursive: true, force: true });
+  const nodeC = startNode('replica-c');
+  await waitForNode(nodeC);
+  assert.deepEqual(
+    await snapshot(),
+    afterRecoveryWrite,
+    'new writes survive a second cold restore',
+  );
+  await stop(nodeC);
+  console.log('Post-recovery map version 2 survived a second cold restore');
   console.log(
     JSON.stringify(
       {
@@ -309,11 +345,13 @@ try {
         recovery: 'fresh Celld node and empty replica restored from SQLite',
         backend: 'sqlite',
         image: image ?? null,
+        previousRuntime: previousImage ?? previousBinary ?? null,
         checks: [
           'authorization',
           'exact snapshot and source hash',
           'checkpoint',
           'idempotent operation receipt',
+          'post-recovery writes and second cold restore',
         ],
         mapId,
         mapVersion: recovered.mapVersion,
