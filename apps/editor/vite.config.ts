@@ -24,8 +24,8 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     proxy: {
-      '/api': serviceEndpoint,
-      '/auth': serviceEndpoint,
+      '/api': { target: serviceEndpoint, changeOrigin: false },
+      '/auth': { target: serviceEndpoint, changeOrigin: false },
       ...(collaborationEndpoint
         ? { '/sync/maps': { target: collaborationEndpoint, ws: true, changeOrigin: true } }
         : {}),
