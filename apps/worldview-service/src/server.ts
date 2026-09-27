@@ -16,18 +16,40 @@ import { serveStaticFile } from './static-files.js';
 
 export type { HostedMapStore, WorldviewServiceOptions } from './service-options.js';
 
+function configuredOrigin(value: string): string {
+  const url = new URL(value);
+  if (
+    (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(`Invalid Worldview public origin: ${value}`);
+  }
+  return url.origin;
+}
+
 export function createWorldviewService(options: WorldviewServiceOptions) {
-  const publicUrl = new URL(options.oauth.publicUrl);
-  const secureCookies = publicUrl.protocol === 'https:';
+  const primaryPublicOrigin = configuredOrigin(options.oauth.publicUrl);
+  const publicOriginsByHost = new Map(
+    [primaryPublicOrigin, ...(options.additionalPublicOrigins ?? [])].map((value) => {
+      const origin = configuredOrigin(value);
+      return [new URL(origin).host, origin];
+    }),
+  );
   const routes = createServiceRoutes(options);
   const server = createServer({ maxHeaderSize: 16 * 1024 }, async (request, response) => {
     try {
+      const publicOrigin =
+        publicOriginsByHost.get(request.headers.host?.toLowerCase() ?? '') ?? primaryPublicOrigin;
       const context: ServiceRequestContext = {
         request,
         response,
-        url: new URL(request.url ?? '/', publicUrl),
-        publicOrigin: publicUrl.origin,
-        secureCookies,
+        url: new URL(request.url ?? '/', publicOrigin),
+        publicOrigin,
+        secureCookies: new URL(publicOrigin).protocol === 'https:',
       };
       if (await dispatchRoutes(routes, context)) return;
       if (
@@ -71,6 +93,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const service = createWorldviewService({
     database,
     blobs,
+    additionalPublicOrigins: (process.env.WORLDVIEW_ADDITIONAL_PUBLIC_ORIGINS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
     oauth: {
       fourmUrl: environment('FOURM_URL', 'http://127.0.0.1:8000'),
       clientId: environment('FOURM_CLIENT_ID', 'worldview'),

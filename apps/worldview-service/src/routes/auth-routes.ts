@@ -28,20 +28,25 @@ export function createAuthRoutes(
     defineRoute('health', 'GET', '/health', ({ response }) => {
       sendJson(response, 200, HostedHealthResponseSchema, { status: 'ok' });
     }),
-    defineRoute('oauth-login', 'GET', '/auth/login', ({ response, secureCookies, url }) => {
-      const auth = beginAuthorization(
-        options.database,
-        options.oauth,
-        url.searchParams.get('returnTo') ?? '/',
-      );
-      setCookie(response, OAUTH_COOKIE, auth.state, 600, secureCookies);
-      redirect(response, auth.url);
-    }),
+    defineRoute(
+      'oauth-login',
+      'GET',
+      '/auth/login',
+      ({ response, secureCookies, url, publicOrigin }) => {
+        const auth = beginAuthorization(
+          options.database,
+          { ...options.oauth, publicUrl: publicOrigin },
+          url.searchParams.get('returnTo') ?? '/',
+        );
+        setCookie(response, OAUTH_COOKIE, auth.state, 600, secureCookies);
+        redirect(response, auth.url);
+      },
+    ),
     defineRoute(
       'oauth-callback',
       'GET',
       '/auth/callback',
-      async ({ request, response, secureCookies, url }) => {
+      async ({ request, response, secureCookies, url, publicOrigin }) => {
         const cookieState = cookie(request, OAUTH_COOKIE);
         setCookie(response, OAUTH_COOKIE, '', 0, secureCookies);
         const error = url.searchParams.get('error');
@@ -55,7 +60,7 @@ export function createAuthRoutes(
         if (!state || !code) return sendError(response, 400, 'OAuth code and state are required');
         const completed = await completeAuthorization({
           database: options.database,
-          config: options.oauth,
+          config: { ...options.oauth, publicUrl: publicOrigin },
           state,
           code,
           cookieState,

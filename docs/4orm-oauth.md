@@ -26,8 +26,14 @@ values. Callback errors never disclose tokens or verifiers.
 
 ## 4orm boundary
 
-4orm needs only a declarative `worldview` client registration with production and localhost
-callback URLs, `authorization_code`, `openid profile`, and its existing required S256 PKCE flow.
+4orm needs only a declarative `worldview` client registration with production, Newport tailnet,
+and localhost callback URLs, `authorization_code`, `openid profile`, and its existing required S256
+PKCE flow. The service selects the callback URL from an exact allowlist of public origins using
+the request Host. The configured production URL remains the default; Newport URLs are listed in
+`WORLDVIEW_ADDITIONAL_PUBLIC_ORIGINS`. Login, callback, cookie security, and mutation origin checks
+use that same selected origin so a tailnet login returns to the browser that initiated it.
+The development editor proxies `/api`, `/auth`, and configured `/sync/maps` traffic so hosted maps
+continue to use the production service and map authority while the UI comes from the checkout.
 There is no new scope, token format, refresh-token vault, OIDC signing work, or Worldview-specific
 endpoint in 4orm. Registration tests and a Worldview callback integration test pin the boundary.
 

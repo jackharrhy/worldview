@@ -56,7 +56,11 @@ afterEach(async () => {
   while (cleanups.length) await cleanups.pop()!();
 });
 
-export async function fixture(fetchImpl?: typeof fetch, compilerFetch?: typeof fetch) {
+export async function fixture(
+  fetchImpl?: typeof fetch,
+  compilerFetch?: typeof fetch,
+  additionalPublicOrigins?: readonly string[],
+) {
   const root = await mkdtemp(join(tmpdir(), 'worldview-service-test-'));
   const database = new WorldviewDatabase(join(root, 'worldview.db'));
   const maps = new FakeMapCells();
@@ -69,6 +73,7 @@ export async function fixture(fetchImpl?: typeof fetch, compilerFetch?: typeof f
       clientId: 'worldview',
       publicUrl: 'http://127.0.0.1',
     },
+    ...(additionalPublicOrigins ? { additionalPublicOrigins } : {}),
     realtimeTicketSecret: TEST_REALTIME_TICKET_SECRET,
     maps,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),

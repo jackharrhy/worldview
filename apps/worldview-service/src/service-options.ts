@@ -16,6 +16,7 @@ export interface WorldviewServiceOptions {
   readonly database: WorldviewDatabase;
   readonly blobs: BlobStore;
   readonly oauth: OAuthConfig;
+  readonly additionalPublicOrigins?: readonly string[];
   readonly staticRoot?: string;
   readonly fetch?: typeof globalThis.fetch;
   readonly realtimeTicketSecret: string;

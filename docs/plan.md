@@ -336,6 +336,8 @@ origin checks, authentication, authorization, version checks, and calls into tra
 database operations visible at the route boundary. Request and JSON response bodies use the same
 shared Zod contracts as browser consumers; binary resources and artifacts remain explicit streamed
 responses. The HTTP request context contains transport state only and is not a service locator.
+Hosted login selects one configured public origin per request so OAuth callbacks, cookies, and
+mutation checks stay on the browser's origin across the public site and Newport tailnet previews.
 
 Each hosted map has one named SQLite-backed `MapCell`. It is the only hosted source authority and
 persists an accepted semantic operation, resulting source and document, receipt, conflict state,

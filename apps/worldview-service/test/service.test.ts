@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
 import { join } from 'node:path';
 import { HostedBuildsResponseSchema, HostedSessionResponseSchema } from '@worldview/protocol';
 import {
@@ -18,6 +19,36 @@ const malformedHumanTokenFetch: typeof fetch = async (input) => {
     });
   throw new Error('Userinfo must not be requested for an invalid token response');
 };
+
+async function requestWithHost(
+  origin: string,
+  path: string,
+  host: string,
+  options: { method?: string; cookie?: string; requestOrigin?: string; body?: string } = {},
+): Promise<{ status: number; headers: IncomingHttpHeaders }> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      new URL(path, origin),
+      {
+        method: options.method ?? 'GET',
+        headers: {
+          Host: host,
+          ...(options.cookie ? { Cookie: options.cookie } : {}),
+          ...(options.requestOrigin ? { Origin: options.requestOrigin } : {}),
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        },
+      },
+      (response) => {
+        response.resume();
+        response.on('end', () =>
+          resolve({ status: response.statusCode ?? 0, headers: response.headers }),
+        );
+      },
+    );
+    request.on('error', reject);
+    request.end(options.body);
+  });
+}
 
 const successfulCompilerFetch: typeof fetch = async (_input, init) => {
   const request = RemoteCompileRequestSchema.parse(JSON.parse(String(init?.body)));
@@ -544,6 +575,49 @@ describe('Worldview hosted project service', () => {
       error: 'OAuth transaction is missing or expired',
     });
     expect(replay.headers.getSetCookie()).toEqual([expect.stringContaining('worldview_oauth=;')]);
+  });
+
+  test('keeps tailnet login, callback, and mutations on the initiating origin', async () => {
+    const tailnetOrigin = 'https://newport.hedgehog-python.ts.net:8457';
+    let tokenRedirectUri: string | null = null;
+    const oauthFetch: typeof fetch = async (input, init) => {
+      if (String(input).endsWith('/oauth/token')) {
+        tokenRedirectUri = new URLSearchParams(String(init?.body)).get('redirect_uri');
+        return Response.json({ access_token: 'access-token', token_type: 'Bearer' });
+      }
+      return Response.json({
+        sub: 'tailnet-user',
+        username: 'mapper',
+        display_name: 'Mapper',
+        is_admin: false,
+      });
+    };
+    const app = await fixture(oauthFetch, undefined, [tailnetOrigin]);
+    const host = 'newport.hedgehog-python.ts.net:8457';
+    const login = await requestWithHost(app.origin, '/auth/login', host);
+    const authorize = new URL(login.headers.location!);
+    expect(authorize.searchParams.get('redirect_uri')).toBe(`${tailnetOrigin}/auth/callback`);
+    const oauthCookie = login.headers['set-cookie']![0]!.split(';', 1)[0]!;
+    expect(login.headers['set-cookie']![0]).toContain('Secure');
+
+    const callback = await requestWithHost(
+      app.origin,
+      `/auth/callback?code=valid&state=${authorize.searchParams.get('state')}`,
+      host,
+      { cookie: oauthCookie },
+    );
+    expect(callback.status).toBe(303);
+    expect(tokenRedirectUri).toBe(`${tailnetOrigin}/auth/callback`);
+    const sessionCookie = callback.headers['set-cookie']!.find((value) =>
+      value.startsWith('worldview_session='),
+    )!.split(';', 1)[0]!;
+    const create = await requestWithHost(app.origin, '/api/projects', host, {
+      method: 'POST',
+      requestOrigin: tailnetOrigin,
+      cookie: sessionCookie,
+      body: JSON.stringify({ name: 'Tailnet map', game: 'quake' }),
+    });
+    expect(create.status).toBe(201);
   });
 
   test('rejects malformed human token metadata and clears the OAuth cookie', async () => {
