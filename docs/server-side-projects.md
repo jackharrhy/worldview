@@ -94,7 +94,7 @@ implement the same editor build contract; hosted artifacts are downloaded throug
 membership-checked content-addressed routes. Browser-provided source or executable paths are not
 accepted.
 
-Every build includes Worldview development textures and named compiler tool textures, plus the
+WAD builds include Worldview development textures and named compiler tool textures, plus the
 project's pinned WADs. The service verifies content hashes, rejects unavailable packs and unresolved
 map textures, and supplies safe WAD basenames in a transient compile source without changing the
 canonical map. Later mounts take precedence over earlier mounts and the development pack. Quake
@@ -107,6 +107,14 @@ packs; builds extract only used texture lumps from up to 15 project WADs. Select
 are limited to 128 MiB. A hosted project may mount 1 GiB of unique content-addressed bytes and
 each imported or uploaded file may be at most 512 MiB. Repeated mounts of one hash count once.
 Project resources also include FGD, DEF, and ENT definitions for the hosted entity catalog.
+
+Gower Complex is a hosted game profile with Valve 220 source and Quake II surface semantics. Its
+game-tree resource recipe preserves `textures/` and `env/` paths, selecting referenced PNG/TGA
+images, adjacent `.wal_json` metadata, and six skybox faces. The editor loads the pinned images
+and generated FGD. An isolated ericw Quake II worker compiles BSP38; the queue checks the BSP
+version and packages it with the selected resources as a ZIP-compatible `.gpk` download. The
+project's storage limit still applies to uploaded files; each build has a separate 128 MiB selected
+asset limit.
 
 ## Production MCP and browser automation
 
@@ -147,8 +155,9 @@ Collaboration rooms accept at most 32 live sockets and four sockets for one acto
 are limited to 240 per connection per minute, and individual WebSocket frames are capped at 512
 KiB. Ephemeral cursor and gesture presence remains separate from durable edit admission.
 
-Quake and GoldSrc use separate constrained internal compiler profiles with operator-provided,
-read-only toolchains. Successful current BSPs may enter the compiled preview. Stale results remain
+Quake, GoldSrc, and Gower use separate constrained internal compiler profiles with operator-provided,
+read-only toolchains. Successful current BSPs may enter the compiled preview when the viewer supports
+their format. Stale results remain
 inspectable but never replace it.
 
 The authenticated queue, admission limits, canonical MapCell source lookup, editor build polling,

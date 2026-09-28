@@ -92,7 +92,7 @@ export class DocumentPresenter {
   }
 
   public serializeCompileDocument(assets: readonly CompileAssetEntry[]): string {
-    if (this.state.activeGameProfile !== 'quake2') {
+    if (this.state.activeGameProfile === 'quake' || this.state.activeGameProfile === 'goldsrc') {
       return serializeMapForCompile(
         this.state.session.document,
         assets,

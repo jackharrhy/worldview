@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Form, useActionData, useNavigate, useNavigation } from 'react-router';
-import type { WorldviewGameProfile } from '@jackharrhy/worldview-editor/core';
+import { worldviewGameProfile, type WorldviewGameProfile } from '@jackharrhy/worldview-editor/core';
 import { ActionButton, Field, ProductHeader, ProductPage } from '../components/ui.js';
 import type { action } from './new-map-action.js';
 import { NEW_MAP_PROFILES } from './new-map-options.js';
@@ -67,7 +67,7 @@ export function Component() {
               </select>
             </Field>
             <p>{selected.description}</p>
-            {profile !== 'quake2' ? (
+            {worldviewGameProfile(profile).materialFormat !== 'wal' ? (
               <div>
                 <strong>Included texture pack</strong>
                 <p>

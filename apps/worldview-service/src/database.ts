@@ -8,11 +8,13 @@ import {
   type HostedProjectAccessUser as ProjectAccessUser,
   type HostedProjectMap as HostedMapSummary,
   type HostedProjectSummary as ProjectSummary,
+  type HostedGame,
   type HostedResourceMount,
   type ProjectRole as ProtocolProjectRole,
 } from '@worldview/protocol';
 import { z } from 'zod';
 import { createHostedId, hostedSlug, isHostedId } from './hosted-identity.js';
+import { initializeWorldviewDatabase } from './database-schema.js';
 import { MAX_PROJECT_ASSET_BYTES, MAX_RESOURCE_FILE_BYTES } from './resource-limits.js';
 
 export type ProjectRole = ProtocolProjectRole;
@@ -97,95 +99,11 @@ export class WorldviewDatabase {
   ) {
     this.sql = new DatabaseSync(path);
     this.sql.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
-    this.migrate();
+    initializeWorldviewDatabase(this.sql);
   }
 
   public close(): void {
     this.sql.close();
-  }
-
-  private migrate(): void {
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY, fourm_sub TEXT NOT NULL UNIQUE, username TEXT NOT NULL,
-        display_name TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS sessions (
-        token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS automation_grants (
-        code_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS automation_sessions (
-        token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS oauth_transactions (
-        state_hash TEXT PRIMARY KEY, verifier TEXT NOT NULL, return_to TEXT NOT NULL,
-        expires_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS projects (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, game TEXT NOT NULL CHECK(game IN ('quake','goldsrc')),
-        created_by TEXT NOT NULL REFERENCES users(id), archived_at INTEGER,
-        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS project_members (
-        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        role TEXT NOT NULL CHECK(role IN ('owner','editor','viewer')),
-        PRIMARY KEY(project_id, user_id)
-      );
-      CREATE TABLE IF NOT EXISTS folders (
-        id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE, name TEXT NOT NULL,
-        created_at INTEGER NOT NULL, UNIQUE(user_id, parent_id, name)
-      );
-      CREATE TABLE IF NOT EXISTS folder_projects (
-        folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
-        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        PRIMARY KEY(folder_id, project_id)
-      );
-      CREATE TABLE IF NOT EXISTS maps (
-        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        name TEXT NOT NULL, format TEXT NOT NULL CHECK(format IN ('valve-220','quake')),
-        created_by TEXT NOT NULL REFERENCES users(id),
-        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(project_id, name)
-      );
-      CREATE TABLE IF NOT EXISTS resource_mounts (
-        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        ordinal INTEGER NOT NULL, provider TEXT NOT NULL, provider_asset_id TEXT NOT NULL,
-        expected_sha256 TEXT NOT NULL, kind TEXT NOT NULL, display_name TEXT NOT NULL,
-        metadata_json TEXT NOT NULL DEFAULT '{}', created_by TEXT NOT NULL REFERENCES users(id),
-        created_at INTEGER NOT NULL, UNIQUE(project_id, ordinal)
-      );
-      CREATE TABLE IF NOT EXISTS builds (
-        id TEXT PRIMARY KEY, map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-        requested_by TEXT NOT NULL REFERENCES users(id), map_version INTEGER NOT NULL,
-        profile_id TEXT NOT NULL, quality TEXT NOT NULL CHECK(quality IN ('preview','final')),
-        status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled')),
-        source_sha256 TEXT, result_json TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS project_members_by_user
-        ON project_members(user_id, project_id);
-      CREATE INDEX IF NOT EXISTS builds_by_map_created
-        ON builds(map_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS builds_by_requester_status
-        ON builds(requested_by, status);
-      CREATE INDEX IF NOT EXISTS builds_by_requester_created
-        ON builds(requested_by, created_at DESC);
-      CREATE INDEX IF NOT EXISTS builds_by_status
-        ON builds(status);
-    `);
-    this.sql
-      .prepare(
-        "UPDATE builds SET status='failed',result_json=?,updated_at=? WHERE status IN ('queued','running')",
-      )
-      .run(JSON.stringify({ error: 'Build interrupted by service restart' }), Date.now());
   }
 
   public beginOauth(returnTo: string, verifier: string): { state: string; expiresAt: number } {
@@ -337,7 +255,7 @@ export class WorldviewDatabase {
     throw new Error(`Could not allocate a unique ${table} ID`);
   }
 
-  public createProject(userId: string, name: string, game: 'quake' | 'goldsrc'): ProjectSummary {
+  public createProject(userId: string, name: string, game: HostedGame): ProjectSummary {
     const now = Date.now();
     this.sql.exec('BEGIN IMMEDIATE');
     try {
@@ -368,7 +286,7 @@ export class WorldviewDatabase {
       .all(userId) as {
       id: string;
       name: string;
-      game: 'quake' | 'goldsrc';
+      game: HostedGame;
       updated_at: number;
       role: ProjectRole;
     }[];
@@ -449,7 +367,7 @@ export class WorldviewDatabase {
     const row = this.sql
       .prepare('SELECT id,name,game,updated_at FROM projects WHERE id=? AND archived_at IS NULL')
       .get(projectId) as
-      | { id: string; name: string; game: 'quake' | 'goldsrc'; updated_at: number }
+      | { id: string; name: string; game: HostedGame; updated_at: number }
       | undefined;
     if (!row) return null;
     const maps = this.sql
@@ -519,7 +437,7 @@ export class WorldviewDatabase {
     readonly projectId: string;
     readonly projectSlug: string;
     readonly projectName: string;
-    readonly game: 'quake' | 'goldsrc';
+    readonly game: HostedGame;
     readonly name: string;
     readonly format: 'valve-220' | 'quake';
     readonly role: ProjectRole;
@@ -539,7 +457,7 @@ export class WorldviewDatabase {
           name: string;
           format: 'valve-220' | 'quake';
           project_name: string;
-          game: 'quake' | 'goldsrc';
+          game: HostedGame;
           role: ProjectRole;
         }
       | undefined;

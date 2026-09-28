@@ -218,7 +218,7 @@ const MapCompileArtifactObjectSchema = z.strictObject({
   name: z.string().min(1).max(MAX_TEXT_LENGTH),
   mediaType: z.string().min(1).max(256),
   data: z.instanceof(ArrayBuffer),
-  kind: z.enum(['bsp', 'portal', 'leak-path', 'log', 'other']),
+  kind: z.enum(['bsp', 'package', 'portal', 'leak-path', 'log', 'other']),
   stage: z.string().min(1).max(256).optional(),
 });
 export const MapCompileLogSchema: z.ZodType<MapCompileLog> = z.strictObject({

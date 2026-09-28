@@ -13,7 +13,7 @@ import { subsetWadTextures } from './wad-subset.js';
 const MAX_BUILD_TEXTURE_BYTES = 128 * 1024 * 1024;
 
 /** Resolves pinned project bytes, never browser-provided files or remote mutable content. */
-export async function prepareHostedBuildResources(
+export async function prepareWadBuildResources(
   source: string,
   game: 'quake' | 'goldsrc',
   mounts: readonly HostedResourceMount[],

@@ -3,7 +3,7 @@ import {
   createCompilerToolMaterials,
   createDevelopmentMaterials,
 } from './development-materials.js';
-import type { WorldviewGameProfile } from './game-profiles.js';
+import { worldviewGameProfile, type WorldviewGameProfile } from './game-profiles.js';
 import type { EditorMaterial } from './materials.js';
 import { encodeGoldSrcWad3, encodeQuakeWad2 } from './wad-encoding.js';
 
@@ -15,7 +15,7 @@ export function developmentTexturePack(
   readonly wad: ArrayBuffer;
   readonly materials: readonly EditorMaterial[];
 } | null {
-  if (game === 'quake2') return null;
+  if (worldviewGameProfile(game).materialFormat === 'wal') return null;
   const quakePalette = game === 'quake' ? (palette ?? createQuakePalette()) : undefined;
   const originals = createDevelopmentMaterials();
   const inputs = [...originals, ...createCompilerToolMaterials()];

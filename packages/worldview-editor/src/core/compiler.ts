@@ -3,7 +3,7 @@ import type { WorldviewGameProfile } from './game-profiles.js';
 export type MapCompilerBackend = 'wasm' | 'remote';
 export type MapCompileQuality = 'preview' | 'final';
 export type MapCompileStatus = 'succeeded' | 'failed';
-export type MapCompileArtifactKind = 'bsp' | 'portal' | 'leak-path' | 'log' | 'other';
+export type MapCompileArtifactKind = 'bsp' | 'package' | 'portal' | 'leak-path' | 'log' | 'other';
 
 export interface MapCompileInputAsset {
   readonly name: string;

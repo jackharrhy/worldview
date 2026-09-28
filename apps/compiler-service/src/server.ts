@@ -33,13 +33,14 @@ const allowedOrigins = new Set(
 );
 
 const gameProfile = parseCompilerGameProfile(process.env.WORLDVIEW_GAME_PROFILE);
+const ericwTarget = { quake: 'quake', goldsrc: 'goldsrc', gower: 'quake2' } as const;
 const config: NativeCompilerConfig = {
   toolchain:
     gameProfile === 'quake2'
       ? { kind: 'q2tool', executable: process.env.WORLDVIEW_Q2TOOL ?? '' }
       : {
           kind: 'ericw',
-          game: gameProfile,
+          target: ericwTarget[gameProfile],
           qbsp: process.env.ERICW_QBSP ?? '',
           vis: process.env.ERICW_VIS ?? '',
           light: process.env.ERICW_LIGHT ?? '',

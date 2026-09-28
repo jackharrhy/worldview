@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { worldviewGameProfile, type WorldviewGameProfile } from './game-profiles.js';
+import {
+  WorldviewGameProfileSchema,
+  worldviewGameProfile,
+  type WorldviewGameProfile,
+} from './game-profiles.js';
 
 export type { WorldviewGameProfile } from './game-profiles.js';
 export type EntityDefinitionFormat = 'fgd' | 'def' | 'ent';
@@ -98,9 +102,7 @@ const ProjectManifestObjectSchema = z
   .strictObject({
     schemaVersion: z.literal(1, { error: 'only schemaVersion 1 is supported' }),
     name: nonEmptyString,
-    game: z.enum(['quake', 'goldsrc', 'quake2'], {
-      error: 'must be quake, goldsrc, or quake2',
-    }),
+    game: WorldviewGameProfileSchema,
     mapRoots: uniquePaths(true).min(1, { error: 'must contain at least one map root' }),
     resources: ProjectResourcesSchema,
     buildProfiles: z.array(BuildProfileSchema, { error: 'must be an array' }).default([]),

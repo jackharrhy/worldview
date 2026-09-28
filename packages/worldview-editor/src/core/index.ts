@@ -348,6 +348,7 @@ export {
 } from './worldview-project.js';
 export {
   WORLDVIEW_GAME_PROFILES,
+  WorldviewGameProfileSchema,
   gameProfileSupportsFaceSyntax,
   isWorldviewGameProfile,
   worldviewGameProfile,

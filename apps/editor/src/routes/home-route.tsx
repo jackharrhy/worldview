@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useLoaderData, useNavigate } from 'react-router';
+import { worldviewGameProfile } from '@worldview/protocol';
 import { ProjectLocalStateService } from '../project-local-state.js';
 import type { EditorDirectoryHandle } from '../project-workspace.js';
 import { ActionButton, ProductPage, SectionHeading } from '../components/ui.js';
@@ -132,7 +133,7 @@ export function Component() {
                     >
                       <strong>{project.name}</strong>
                       <span>
-                        {project.game === 'goldsrc' ? 'GoldSrc' : 'Quake'}, {project.role}
+                        {worldviewGameProfile(project.game).label}, {project.role}
                       </span>
                       <small>{new Date(project.updatedAt).toLocaleDateString()}</small>
                     </button>

@@ -1,5 +1,7 @@
 import { canEditProject } from './access-policy.js';
-import { prepareHostedBuildResources } from './build-resources.js';
+import { prepareWadBuildResources } from './wad-build-resources.js';
+import { prepareGameTreeBuildResources } from './game-tree-build-resources.js';
+import { hostedBuildProfile } from './hosted-game-profiles.js';
 import { ServiceHttpError, MAX_HOSTED_MAP_BYTES } from './service-http.js';
 import type { WorldviewServiceOptions } from './service-options.js';
 
@@ -43,12 +45,12 @@ export async function submitHostedBuild(
   if (admission !== 'allowed') throw admissionError(admission);
   let resources;
   try {
-    resources = await prepareHostedBuildResources(
-      snapshot.source,
-      map.game,
-      options.database.listResourceMounts(map.projectId, input.userId) ?? [],
-      options.blobs,
-    );
+    const mounts = options.database.listResourceMounts(map.projectId, input.userId) ?? [];
+    const profile = hostedBuildProfile(map.game);
+    resources =
+      profile.resourceLayout === 'game-tree'
+        ? await prepareGameTreeBuildResources(snapshot.source, mounts, options.blobs, profile)
+        : await prepareWadBuildResources(snapshot.source, profile.wadGame, mounts, options.blobs);
   } catch (error) {
     throw new ServiceHttpError(422, error instanceof Error ? error.message : String(error));
   }

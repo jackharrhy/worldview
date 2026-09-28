@@ -1,6 +1,8 @@
 import type { MapFaceSyntax } from './types.js';
+import { z } from 'zod';
 import { QUAKE2_SURFACE_SEMANTICS, type SurfaceSemantics } from './surface-semantics.js';
-export type WorldviewGameProfile = 'quake' | 'goldsrc' | 'quake2';
+export const WorldviewGameProfileSchema = z.enum(['quake', 'goldsrc', 'quake2', 'gower']);
+export type WorldviewGameProfile = z.infer<typeof WorldviewGameProfileSchema>;
 export type WorldviewMaterialFormat = 'wad2' | 'wad3' | 'wal';
 
 export interface WorldviewGameProfileDefinition {
@@ -53,14 +55,22 @@ export const WORLDVIEW_GAME_PROFILES: readonly WorldviewGameProfileDefinition[] 
     entityDefinitionFormats: ['def', 'ent'],
     surfaceSemantics: QUAKE2_SURFACE_SEMANTICS,
   },
+  {
+    id: 'gower',
+    version: 1,
+    label: 'Gower Complex',
+    description: 'Gower Complex Valve 220 maps, Quake II surface flags, and image materials.',
+    supportedFaceSyntaxes: ['valve-220'],
+    defaultFaceSyntax: 'valve-220',
+    materialFormat: 'wal',
+    wadVersions: [],
+    entityDefinitionFormats: ['fgd'],
+    surfaceSemantics: QUAKE2_SURFACE_SEMANTICS,
+  },
 ] as const;
 
-const WORLDVIEW_GAME_PROFILE_IDS = new Set<WorldviewGameProfile>(
-  WORLDVIEW_GAME_PROFILES.map(({ id }) => id),
-);
-
 export function isWorldviewGameProfile(value: unknown): value is WorldviewGameProfile {
-  return typeof value === 'string' && WORLDVIEW_GAME_PROFILE_IDS.has(value as WorldviewGameProfile);
+  return WorldviewGameProfileSchema.safeParse(value).success;
 }
 
 export function worldviewGameProfile(id: WorldviewGameProfile): WorldviewGameProfileDefinition {

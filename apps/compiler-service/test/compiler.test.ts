@@ -49,7 +49,7 @@ describe('native compiler planning', () => {
         maxThreads: 2,
         toolchain: {
           kind: 'ericw',
-          game: 'quake',
+          target: 'quake',
           qbsp: '/tools/qbsp',
           vis: '/tools/vis',
           light: '/tools/light',
@@ -75,7 +75,7 @@ describe('native compiler planning', () => {
       gameDirectory: '/srv/cstrike',
       toolchain: {
         kind: 'ericw',
-        game: 'goldsrc',
+        target: 'goldsrc',
         qbsp: '/tools/qbsp',
         vis: '/tools/vis',
         light: '/tools/light',
@@ -122,10 +122,36 @@ describe('native compiler planning', () => {
     ).toEqual(expect.arrayContaining(['-rad', '-extra']));
   });
 
+  it('bounds each ericw Quake II stage and keeps the game-root paths', () => {
+    const stages = compilerStages(
+      'final',
+      '/tmp/assets/maps/course.map',
+      '/tmp/assets/maps/course.bsp',
+      {
+        maxThreads: 6,
+        toolchain: {
+          kind: 'ericw',
+          target: 'quake2',
+          qbsp: '/tools/qbsp',
+          vis: '/tools/vis',
+          light: '/tools/light',
+        },
+      },
+      '/tmp/assets',
+    );
+    expect(stages.map(({ stage }) => stage)).toEqual(['qbsp', 'vis', 'light']);
+    expect(stages.every(({ args }) => args.join(' ').includes('-threads 6'))).toBe(true);
+    expect(stages[0]?.args).toEqual(
+      expect.arrayContaining(['-q2bsp', '-noallowupgrade', '-leaktest']),
+    );
+    expect(stages[2]?.args).toEqual(expect.arrayContaining(['-extra4', '-visapprox', 'vis']));
+  });
+
   it('parses configured game profiles without silently downgrading invalid values', () => {
     expect(parseCompilerGameProfile(undefined)).toBe('quake');
     expect(parseCompilerGameProfile('quake2')).toBe('quake2');
-    expect(() => parseCompilerGameProfile('q2')).toThrow(/quake, goldsrc, or quake2/);
+    expect(parseCompilerGameProfile('gower')).toBe('gower');
+    expect(() => parseCompilerGameProfile('q2')).toThrow(/not a supported game/);
   });
 
   it('rejects names that could escape the isolated compile directory', () => {

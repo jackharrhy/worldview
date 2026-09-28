@@ -111,6 +111,12 @@ export class BuildPresenter {
         );
         if (artifact) downloadFileCopy(artifact.name, artifact.data, artifact.mediaType);
       },
+      downloadPackage: () => {
+        const artifact = this.state.latestBuild?.artifacts.find(
+          (entry) => entry.kind === 'package',
+        );
+        if (artifact) downloadFileCopy(artifact.name, artifact.data, artifact.mediaType);
+      },
     });
   }
 
@@ -239,6 +245,7 @@ export class BuildPresenter {
       canDownloadBsp: result.artifacts.some(
         (entry) => entry.kind === 'bsp' || entry.name.toLowerCase().endsWith('.bsp'),
       ),
+      canDownloadPackage: result.artifacts.some((entry) => entry.kind === 'package'),
     });
     this.ui.editorCommands.updateActions({
       launch: {

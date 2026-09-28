@@ -23,6 +23,7 @@ export function Component() {
               <select name="game" defaultValue="quake">
                 <option value="quake">Quake</option>
                 <option value="goldsrc">GoldSrc</option>
+                <option value="gower">Gower Complex</option>
               </select>
             </Field>
             <p>This project's maps, resources, history, and builds are saved on the server.</p>

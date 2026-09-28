@@ -176,6 +176,11 @@ function BuildLogDialog({ shellState }: { readonly shellState: EditorShellState 
         >
           Download BSP
         </Button>
+        {build.canDownloadPackage ? (
+          <Button size="compact" onPress={() => shellState.buildLog.downloadPackage()}>
+            Download package
+          </Button>
+        ) : null}
         <Button size="compact" onPress={close}>
           Close
         </Button>

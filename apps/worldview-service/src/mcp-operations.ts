@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { HostedGameSchema } from '@worldview/protocol';
 import { canEditProject } from './access-policy.js';
 import type { WorldviewUser } from './database.js';
 import { submitHostedBuild } from './hosted-build-operation.js';
@@ -60,7 +61,7 @@ export const mcpOperations = [
   operation(
     'worldview_create_project',
     'Create a hosted Worldview project owned by this account.',
-    z.strictObject({ name: Name, game: z.enum(['quake', 'goldsrc']) }),
+    z.strictObject({ name: Name, game: HostedGameSchema }),
     false,
     (options, user, input) => ({
       project: options.database.createProject(user.id, input.name, input.game),

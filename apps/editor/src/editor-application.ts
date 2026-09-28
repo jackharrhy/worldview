@@ -295,7 +295,7 @@ export class EditorApplication {
           restoreRecovery: false,
         });
         this.signal.throwIfAborted();
-        this.project.loadHostedResources(launch.resources ?? [], launch.projectId);
+        await this.project.loadHostedResources(launch.resources ?? [], launch.projectId);
         const result = await this.collaborationUi.joinHostedMap(
           launch.id,
           launch.actorId,

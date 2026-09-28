@@ -1,15 +1,17 @@
 import type { BlobStore } from './blob-store.js';
 import type { WorldviewDatabase } from './database.js';
+import { hostedBuildProfile } from './hosted-game-profiles.js';
+import { createWorldPackage } from './world-package.js';
 import {
   RemoteCompileResultSchema,
   compiledBspVersion,
   type RemoteCompileRequest,
 } from '@jackharrhy/worldview-editor/core';
-import { HostedErrorResponseSchema } from '@worldview/protocol';
+import { HostedErrorResponseSchema, type HostedGame } from '@worldview/protocol';
 
 interface QueuedBuild {
   readonly id: string;
-  readonly game: 'quake' | 'goldsrc';
+  readonly game: HostedGame;
   readonly mapName: string;
   readonly source: string;
   readonly mapVersion: number;
@@ -25,13 +27,13 @@ export class RemoteBuildQueue {
   public constructor(
     private readonly database: WorldviewDatabase,
     private readonly blobs: BlobStore,
-    private readonly endpoints: Partial<Record<'quake' | 'goldsrc', string>>,
+    private readonly endpoints: Partial<Record<HostedGame, string>>,
     private readonly fetch: typeof globalThis.fetch = globalThis.fetch,
     private readonly concurrency = 1,
     private readonly maxPending = 3,
   ) {}
 
-  public supports(game: 'quake' | 'goldsrc'): boolean {
+  public supports(game: HostedGame): boolean {
     return Boolean(this.endpoints[game]);
   }
 
@@ -47,6 +49,7 @@ export class RemoteBuildQueue {
     try {
       const endpoint = this.endpoints[input.game];
       if (!endpoint) throw new Error(`No ${input.game} build worker is configured`);
+      const profile = hostedBuildProfile(input.game);
       const response = await this.fetch(new URL('/compile', endpoint), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,7 +65,7 @@ export class RemoteBuildQueue {
             base64: Buffer.from(asset.bytes).toString('base64'),
           })),
         } satisfies RemoteCompileRequest),
-        signal: AbortSignal.timeout(190_000),
+        signal: AbortSignal.timeout(profile.buildTimeoutMilliseconds),
       });
       const payload: unknown = await response.json().catch(() => null);
       const result = RemoteCompileResultSchema.safeParse(payload);
@@ -81,7 +84,7 @@ export class RemoteBuildQueue {
         const version = bsp
           ? compiledBspVersion(Uint8Array.from(Buffer.from(bsp.base64, 'base64')).buffer)
           : null;
-        if (input.game === 'goldsrc' ? version !== 30 : version !== 29 && version !== 'BSP2')
+        if (version === null || !profile.bspVersions.includes(version))
           throw new Error(
             `Build worker returned the wrong BSP format for ${input.game}. Check its game profile configuration.`,
           );
@@ -95,6 +98,25 @@ export class RemoteBuildQueue {
           mediaType: artifact.mediaType,
           sha256: blob.sha256,
           size: blob.size,
+        });
+      }
+      const packageExtension =
+        profile.resourceLayout === 'game-tree' ? profile.packageExtension : undefined;
+      if (packageExtension && result.data.status === 'succeeded') {
+        const bsp = result.data.artifacts.find((artifact) => artifact.kind === 'bsp');
+        if (!bsp) throw new Error('Compiler returned no BSP');
+        const packageBytes = createWorldPackage(
+          bsp.name,
+          Buffer.from(bsp.base64, 'base64'),
+          input.assets,
+        );
+        const stored = await this.blobs.put(packageBytes);
+        artifacts.push({
+          name: bsp.name.replace(/\.bsp$/i, `.${packageExtension}`),
+          kind: 'package' as const,
+          mediaType: 'application/zip',
+          sha256: stored.sha256,
+          size: stored.size,
         });
       }
       this.database.updateBuild(

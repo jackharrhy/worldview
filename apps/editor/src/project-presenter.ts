@@ -40,7 +40,7 @@ import type { EditorStatePort } from './editor-state-port.js';
 import { recoverySourceIdFactory, type DocumentRecoverySnapshot } from './document-recovery.js';
 import type { ProjectActionId } from './project-build-ui-state.js';
 import type { DetachedHostedMap } from './collaboration-outbox.js';
-import { loadWorkspaceResources } from './project-resource-loader.js';
+import { loadHostedGameAssets, loadWorkspaceResources } from './project-resource-loader.js';
 import type { LoadedProjectResources } from './project-resource-loader.js';
 import { importGameWad, installDevelopmentMaterials } from './game-materials.js';
 
@@ -540,14 +540,14 @@ export class ProjectPresenter {
     if (restoreError) this.ui.resourceSettings.update({ tone: 'error', message: restoreError });
   }
 
-  public loadHostedResources(
+  public async loadHostedResources(
     resources: readonly {
       readonly name: string;
       readonly kind: string;
       readonly data: ArrayBuffer;
     }[],
     projectId: string,
-  ): void {
+  ): Promise<void> {
     this.state.quakePalette = undefined;
     for (const resource of resources) {
       if (resource.kind !== 'palette') continue;
@@ -565,6 +565,11 @@ export class ProjectPresenter {
         this.state.quakePalette,
       );
       this.state.loadedWadSources.set(resource.name, resource.data);
+    }
+    if (worldviewGameProfile(this.state.activeGameProfile).materialFormat === 'wal') {
+      const loaded = await loadHostedGameAssets(resources, this.signal);
+      for (const [path, data] of loaded.gameAssets) this.state.loadedGameAssets.set(path, data);
+      for (const material of loaded.materials) this.state.materialCatalog.set(material);
     }
     const definitionResources = resources.filter((resource) =>
       ['fgd', 'def', 'ent'].includes(resource.kind),
@@ -621,8 +626,8 @@ export class ProjectPresenter {
       message:
         this.state.activeGameProfile === 'quake' && !this.state.quakePalette
           ? 'Standard Quake palette included. Custom palettes override it for previews and builds.'
-          : this.state.activeGameProfile === 'quake2'
-            ? 'Add the Quake II game textures and palette in project Resources.'
+          : worldviewGameProfile(this.state.activeGameProfile).materialFormat === 'wal'
+            ? 'Add game textures in project Resources.'
             : 'Texture previews and builds use the selected game’s palettes.',
     });
   }

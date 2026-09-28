@@ -1,5 +1,6 @@
 import {
   orderAssetMounts,
+  WorldviewGameProfileSchema,
   type AssetMountDescriptor,
   type WorldviewGameProfile,
 } from '@jackharrhy/worldview-editor/core';
@@ -16,7 +17,7 @@ const StoredAssetMountBaseSchema = {
   scopeId: z.string().min(1).max(4_096),
   label: z.string().min(1).max(4_096),
   priority: z.number().int(),
-  profile: z.enum(['quake', 'goldsrc', 'quake2']),
+  profile: WorldviewGameProfileSchema,
   data: z.instanceof(ArrayBuffer).optional(),
 };
 

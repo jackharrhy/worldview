@@ -11,7 +11,7 @@ import {
   serializeMap,
 } from '@jackharrhy/worldview-editor/core';
 import type { HostedResourceMount } from '@worldview/protocol';
-import { prepareHostedBuildResources } from '../src/build-resources.js';
+import { prepareWadBuildResources } from '../src/wad-build-resources.js';
 import { createQuakePalette, parseWad, decodeMipTexture } from '@jackharrhy/worldview/core';
 
 const source = serializeMap(createStarterDocument());
@@ -42,7 +42,7 @@ const paletteMount: HostedResourceMount = { ...pack('palette.lmp', palette), kin
 describe('hosted build textures', () => {
   test('uses a pinned palette for generated development textures', async () => {
     const customPalette = new Uint8Array(768).fill(120);
-    const result = await prepareHostedBuildResources(
+    const result = await prepareWadBuildResources(
       source,
       'quake',
       [{ ...pack('palette.lmp', customPalette), kind: 'palette' }],
@@ -55,7 +55,7 @@ describe('hosted build textures', () => {
     expect(result.assets[0]?.bytes).toEqual(new Uint8Array(expected));
   });
   test('includes the shared development pack without changing canonical source', async () => {
-    const result = await prepareHostedBuildResources(source, 'goldsrc', [], store(null));
+    const result = await prepareWadBuildResources(source, 'goldsrc', [], store(null));
     expect(result.assets.map(({ name }) => name)).toEqual(['worldview_dev.wad']);
     const document = parseMap(result.mapText);
     expect(document.entities[0]?.properties.wad).toBe('worldview_dev.wad');
@@ -68,7 +68,7 @@ describe('hosted build textures', () => {
   });
 
   test('builds Quake with the standard palette when no custom palette is pinned', async () => {
-    const result = await prepareHostedBuildResources(source, 'quake', [], store(null));
+    const result = await prepareWadBuildResources(source, 'quake', [], store(null));
     const wad = parseWad(result.assets[0]!.bytes);
     expect(wad.version).toBe(2);
     const floor = decodeMipTexture(
@@ -90,7 +90,7 @@ describe('hosted build textures', () => {
         palette,
       ),
     );
-    const result = await prepareHostedBuildResources(
+    const result = await prepareWadBuildResources(
       source.replaceAll('DEV_FLOOR', 'CUSTOM'),
       'quake',
       [paletteMount, pack('../custom pack.wad', bytes)],
@@ -112,17 +112,17 @@ describe('hosted build textures', () => {
       encodeQuakeWad2([createDeveloperMaterial('CUSTOM', [80, 40, 20])], palette),
     );
     const mounts = [pack('custom.wad', bytes)];
-    await expect(prepareHostedBuildResources(source, 'quake', mounts, store(null))).rejects.toThrow(
+    await expect(prepareWadBuildResources(source, 'quake', mounts, store(null))).rejects.toThrow(
       'custom.wad is unavailable',
     );
     await expect(
-      prepareHostedBuildResources(source, 'quake', mounts, store(new Uint8Array([1]))),
+      prepareWadBuildResources(source, 'quake', mounts, store(new Uint8Array([1]))),
     ).rejects.toThrow('does not match its pinned content');
   });
 
   test('names unresolved map textures and does not require artwork for skip faces', async () => {
     await expect(
-      prepareHostedBuildResources(
+      prepareWadBuildResources(
         source.replaceAll('DEV_FLOOR', 'MISSING'),
         'quake',
         [paletteMount],
@@ -130,7 +130,7 @@ describe('hosted build textures', () => {
       ),
     ).rejects.toThrow('Missing build textures: MISSING');
     await expect(
-      prepareHostedBuildResources(
+      prepareWadBuildResources(
         source.replaceAll('DEV_FLOOR', 'skip'),
         'quake',
         [paletteMount],

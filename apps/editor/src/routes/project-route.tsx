@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { worldviewGameProfile } from '@jackharrhy/worldview-editor/core';
+import { isGameTreeAssetPath } from '@worldview/protocol';
 import {
   Form,
   Link,
@@ -13,6 +15,16 @@ import type { loader } from './project-loader.js';
 import { hostedMapPath, hostedProjectPath, hostedProjectSectionPath } from './hosted-route.js';
 import { Icon } from '../components/ui/icon.js';
 
+function uploadedGameAssetPath(file: File): string | null {
+  const parts = file.webkitRelativePath.split('/');
+  const root = parts.findIndex(
+    (part) => part === 'assets' || part === 'textures' || part === 'env',
+  );
+  if (root < 0) return null;
+  const relative = parts.slice(root + (parts[root] === 'assets' ? 1 : 0)).join('/');
+  return isGameTreeAssetPath(relative) ? relative : null;
+}
+
 export function Component() {
   const { project, section, mounts, assets, assetQuery, accessUsers } =
     useLoaderData<typeof loader>();
@@ -20,22 +32,37 @@ export function Component() {
   const navigate = useNavigate();
   const navigation = useNavigation();
   const revalidator = useRevalidator();
+  const gameProfile = worldviewGameProfile(project.game);
+  const hasGameAssets = gameProfile.materialFormat === 'wal';
   const resourceInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const uploadResources = async () => {
-    const files = [...(resourceInput.current?.files ?? [])];
+  const uploadResources = async (folder = false) => {
+    const files = [...((folder ? folderInput : resourceInput).current?.files ?? [])];
     if (files.length === 0) return;
     setUploading(true);
     try {
-      for (const [index, file] of files.entries()) {
-        const extension = file.name.split('.').pop()?.toLowerCase();
+      const uploads = files.flatMap((file) => {
+        const name = folder ? uploadedGameAssetPath(file) : file.name;
+        if (!name) return [];
+        const extension = name.split('.').pop()?.toLowerCase();
         const kind = extension === 'lmp' ? 'palette' : extension;
-        if (!kind || !['wad', 'palette', 'fgd', 'def', 'ent', 'sprite'].includes(kind)) {
-          throw new Error(`Unsupported project resource: ${file.name}`);
+        return [{ file, name, kind }];
+      });
+      if (uploads.length === 0)
+        throw new Error('No supported project assets found in that folder.');
+      for (const [index, { file, name, kind }] of uploads.entries()) {
+        if (
+          !kind ||
+          !['wad', 'palette', 'fgd', 'def', 'ent', 'sprite', 'png', 'tga', 'wal_json'].includes(
+            kind,
+          )
+        ) {
+          throw new Error(`Unsupported project resource: ${name}`);
         }
-        setUploadStatus(`Uploading ${index + 1} of ${files.length}: ${file.name}`);
-        const query = new URLSearchParams({ name: file.name, kind });
+        setUploadStatus(`Uploading ${index + 1} of ${uploads.length}: ${name}`);
+        const query = new URLSearchParams({ name, kind });
         const response = await fetch(
           `/api/projects/${encodeURIComponent(project.id)}/resources/upload?${query}`,
           {
@@ -53,8 +80,11 @@ export function Component() {
           throw new Error(message);
         }
       }
-      setUploadStatus(`Added ${files.length} project resource${files.length === 1 ? '' : 's'}.`);
+      setUploadStatus(
+        `Added ${uploads.length} project resource${uploads.length === 1 ? '' : 's'}.`,
+      );
       if (resourceInput.current) resourceInput.current.value = '';
+      if (folderInput.current) folderInput.current.value = '';
       void revalidator.revalidate();
     } catch (error) {
       setUploadStatus(error instanceof Error ? error.message : String(error));
@@ -79,7 +109,7 @@ export function Component() {
           </Link>
           <h1>{project.name}</h1>
           <p className="project-meta">
-            <span>{project.game === 'goldsrc' ? 'GoldSrc' : 'Quake'}</span>
+            <span>{gameProfile.label}</span>
             <span className="project-role">{project.role}</span>
           </p>
         </header>
@@ -164,7 +194,9 @@ export function Component() {
                 <p>
                   {project.game === 'quake'
                     ? 'Worldview development textures and the standard Quake palette are included. Add a custom palette below if your mod uses different colors.'
-                    : 'Includes Worldview development textures and this project’s GoldSrc texture packs and palettes.'}
+                    : hasGameAssets
+                      ? 'Add the game’s textures, skybox, and FGD on the Resources page.'
+                      : 'Includes Worldview development textures and this project’s GoldSrc texture packs and palettes.'}
                 </p>
               </div>
               <footer>
@@ -223,10 +255,12 @@ export function Component() {
               <h2>Project resources</h2>
               <span>{Math.ceil(projectAssetBytes / (1024 * 1024))} / 1024 MiB</span>
             </div>
-            <div className="landing-recent">
-              <strong>Worldview development textures</strong>
-              <span>Used by every map and build</span>
-            </div>
+            {!hasGameAssets ? (
+              <div className="landing-recent">
+                <strong>Worldview development textures</strong>
+                <span>Used by every map and build</span>
+              </div>
+            ) : null}
             {mounts.length === 0 ? (
               <p className="landing-empty">No other resources.</p>
             ) : (
@@ -258,16 +292,38 @@ export function Component() {
                       ref={resourceInput}
                       type="file"
                       multiple
-                      accept=".wad,.lmp,.fgd,.def,.ent,.spr"
+                      accept={hasGameAssets ? '.fgd' : '.wad,.lmp,.fgd,.def,.ent,.spr'}
                     />
                   </label>
                   <p>
-                    WADs, palettes, and entity definitions are copied into this project. Up to 512
-                    MiB per file.
+                    {hasGameAssets
+                      ? 'Upload entity definitions here, or add a game asset folder below. Assets are copied into the project.'
+                      : 'WADs, palettes, and entity definitions are copied into this project.'}{' '}
+                    Up to 512 MiB per file.
                   </p>
                   <button type="button" disabled={uploading} onClick={() => void uploadResources()}>
                     {uploading ? 'Uploading…' : 'Upload files'}
                   </button>
+                  {hasGameAssets ? (
+                    <>
+                      <label>
+                        Game asset folder
+                        <input
+                          ref={folderInput}
+                          type="file"
+                          multiple
+                          {...{ webkitdirectory: '' }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={uploading}
+                        onClick={() => void uploadResources(true)}
+                      >
+                        {uploading ? 'Uploading…' : 'Upload folder'}
+                      </button>
+                    </>
+                  ) : null}
                   {uploadStatus ? <p role="status">{uploadStatus}</p> : null}
                 </div>
                 <Form method="get" className="route-form">

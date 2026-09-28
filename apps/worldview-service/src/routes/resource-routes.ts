@@ -14,7 +14,7 @@ import {
   sendOk,
 } from '../service-http.js';
 import { defineRoute, pathParameter } from '../service-routing.js';
-import { RESOURCE_KINDS, resourceName } from '../resource-input.js';
+import { RESOURCE_KINDS, resourceName, resourcePathMatchesKind } from '../resource-input.js';
 import { MAX_RESOURCE_FILE_BYTES } from '../resource-limits.js';
 import type { WorldviewServiceOptions } from '../service-options.js';
 
@@ -71,13 +71,12 @@ export function createResourceRoutes(
         }
         const { assetId } = await requestBody(context.request, MountHostedAssetRequestSchema);
         const { asset } = await options.artbin.metadata(assetId);
-        if (asset.size > MAX_RESOURCE_FILE_BYTES) {
+        if (asset.size > MAX_RESOURCE_FILE_BYTES)
           return sendError(
             context.response,
             413,
             'Project assets must be at most 512 MiB per file',
           );
-        }
         if (!asset.sha256 || !/^[a-f0-9]{64}$/.test(asset.sha256)) {
           return sendError(context.response, 422, 'Artbin asset has no stable SHA-256');
         }
@@ -119,6 +118,9 @@ export function createResourceRoutes(
         const kind = context.url.searchParams.get('kind');
         if (!name || !kind || !RESOURCE_KINDS.has(kind)) {
           return sendError(context.response, 400, 'Choose a supported resource name and kind');
+        }
+        if (!resourcePathMatchesKind(name, kind)) {
+          return sendError(context.response, 400, 'Choose a safe textures/ or env/ asset path');
         }
         const declaredSize = Number(context.request.headers['content-length'] ?? 0);
         if (!Number.isSafeInteger(declaredSize) || declaredSize > MAX_RESOURCE_FILE_BYTES) {

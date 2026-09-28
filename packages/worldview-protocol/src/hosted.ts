@@ -2,6 +2,7 @@ import {
   MapCompileDiagnosticSchema,
   MapCompileLogSchema,
   MapDocumentSchema,
+  WorldviewGameProfileSchema,
 } from '@jackharrhy/worldview-editor/core';
 import { z } from 'zod';
 
@@ -14,7 +15,8 @@ const name = z.string().min(1).max(256);
 const timestamp = z.number().int().nonnegative();
 const sha256 = z.string().regex(/^[a-f\d]{64}$/i);
 
-export const HostedGameSchema = z.enum(['quake', 'goldsrc']);
+export const HostedGameSchema = WorldviewGameProfileSchema.extract(['quake', 'goldsrc', 'gower']);
+export type HostedGame = z.infer<typeof HostedGameSchema>;
 export const HostedMapFormatSchema = z.enum(['valve-220', 'quake']);
 
 export const HostedSessionUserSchema = z.strictObject({
@@ -111,7 +113,7 @@ export type HostedMapLaunch = z.infer<typeof HostedMapLaunchSchema>;
 
 export const HostedBuildArtifactSchema = z.strictObject({
   name,
-  kind: z.enum(['bsp', 'portal', 'leak-path', 'log', 'other']),
+  kind: z.enum(['bsp', 'package', 'portal', 'leak-path', 'log', 'other']),
   mediaType: z.string().min(1).max(256),
   sha256,
   size: z.number().int().nonnegative(),

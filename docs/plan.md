@@ -241,8 +241,11 @@ sources.
 Build requests name a source revision, fixed profile, and preview or final quality. Results carry
 logs, diagnostics, artifacts, and the source fingerprint. Worldview development textures are an
 explicitly listed default pack shared by editor and compiler. Hosted maps inherit pinned project
-WADs. Hosted editor sessions load full pinned packs and definition files. Builds verify pinned bytes,
-select only WAD texture lumps used by the map, and rewrite transient compile-source references.
+resources. Hosted editor sessions load full pinned packs and definition files. WAD builds verify
+pinned bytes, select only used texture lumps, and rewrite transient compile-source references.
+Game-tree builds select referenced texture images, adjacent material metadata, and skybox faces from
+the same pinned resources. A hosted game profile defines the resource recipe, expected BSP versions,
+and package extension; the compiler selects a toolchain recipe.
 The selected build texture input is limited to 128 MiB independently of project storage.
 Later project packs override earlier packs and defaults, matching sidebar resolution. Missing,
 corrupt, or oversized inputs stop the build. The public editor core exports development-material
@@ -261,6 +264,12 @@ during compilation make its result stale. Quake II requires its own game resourc
 generated WAD.
 GoldSrc compiler profiles explicitly request `qbsp -hlbsp` and validate BSP30 output; the hosted
 queue also rejects successful worker results with the wrong game's BSP format.
+Gower Complex uses Valve 220 source with Quake II surface semantics, PNG/TGA textures and adjacent
+`.wal_json` metadata, and a six-face TGA skybox. Its isolated ericw Quake II recipe emits BSP38;
+Worldview packages the BSP and selected resources into a ZIP-compatible `.gpk` artifact. Gower's
+generated FGD is a project resource. Worldview is the authoring source for its three initial maps;
+Gower's old generators remain as references, and map exports can be copied back into the game
+repository when needed.
 
 A stale result remains inspectable but
 cannot replace the current compiled preview. Browsers never provide arbitrary executable paths,

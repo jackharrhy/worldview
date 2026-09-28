@@ -1,5 +1,6 @@
 import {
   gameProfileSupportsFaceSyntax,
+  WorldviewGameProfileSchema,
   worldviewGameProfile,
 } from '@jackharrhy/worldview-editor/core';
 import { z } from 'zod';
@@ -8,7 +9,7 @@ const EditorNavigationStateSchema = z.strictObject({
   newMap: z.strictObject({
     workspaceId: z.string().min(1).max(128),
     name: z.string().max(4_096),
-    profile: z.enum(['quake', 'goldsrc', 'quake2']),
+    profile: WorldviewGameProfileSchema,
     format: z.enum(['valve-220', 'quake']),
   }),
 });

@@ -19,3 +19,5 @@ export {
   type RealtimeTicketPayload,
 } from './realtime-ticket.js';
 export * from './hosted.js';
+export { worldviewGameProfile } from '@jackharrhy/worldview-editor/core';
+export { gameTreeAssetPath, isGameTreeAssetPath } from './game-tree-assets.js';

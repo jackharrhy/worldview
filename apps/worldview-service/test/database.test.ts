@@ -83,4 +83,43 @@ describe('Worldview hosted database', () => {
     inspection.close();
     store.close();
   });
+
+  test('migrates an existing project constraint without losing memberships or maps', async () => {
+    const { path, store } = await database();
+    const owner = user(store);
+    const project = store.createProject(owner.id, 'Existing', 'quake');
+    store.createMap({
+      id: store.createMapId(),
+      projectId: project.id,
+      userId: owner.id,
+      name: 'room.map',
+      format: 'valve-220',
+    });
+    store.close();
+
+    const old = new DatabaseSync(path);
+    old.exec(`
+      PRAGMA foreign_keys=OFF;
+      BEGIN IMMEDIATE;
+      CREATE TABLE projects_old (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL,
+        game TEXT NOT NULL CHECK(game IN ('quake','goldsrc')),
+        created_by TEXT NOT NULL REFERENCES users(id), archived_at INTEGER,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+      INSERT INTO projects_old SELECT * FROM projects;
+      DROP TABLE projects;
+      ALTER TABLE projects_old RENAME TO projects;
+      COMMIT;
+    `);
+    old.close();
+
+    const migrated = new WorldviewDatabase(path);
+    expect(migrated.project(project.id, owner.id)?.maps).toHaveLength(1);
+    expect(migrated.createProject(owner.id, 'Gower', 'gower').game).toBe('gower');
+    migrated.close();
+    const inspection = new DatabaseSync(path);
+    expect(inspection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    inspection.close();
+  });
 });

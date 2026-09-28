@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { gameTreeAssetPath } from '@worldview/protocol';
 
 import type {
   MapCompileDiagnostic as NativeCompileDiagnostic,
@@ -11,6 +12,7 @@ import type {
   RemoteCompileResult as NativeCompilerResult,
   WorldviewGameProfile as CompilerGameProfile,
 } from '@jackharrhy/worldview-editor/core';
+import { WorldviewGameProfileSchema } from '@jackharrhy/worldview-editor/core';
 
 export type {
   MapCompileQuality as CompileQuality,
@@ -21,14 +23,15 @@ export type {
 
 export function parseCompilerGameProfile(value: string | undefined): CompilerGameProfile {
   if (value === undefined || value.trim() === '') return 'quake';
-  if (value === 'quake' || value === 'goldsrc' || value === 'quake2') return value;
-  throw new Error('WORLDVIEW_GAME_PROFILE must be quake, goldsrc, or quake2');
+  const parsed = WorldviewGameProfileSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  throw new Error('WORLDVIEW_GAME_PROFILE is not a supported game');
 }
 
 export type NativeCompilerToolchain =
   | {
       readonly kind: 'ericw';
-      readonly game: 'quake' | 'goldsrc';
+      readonly target: 'quake' | 'goldsrc' | 'quake2';
       readonly qbsp: string;
       readonly vis: string;
       readonly light: string;
@@ -93,6 +96,33 @@ export function compilerStages(
   config: Pick<NativeCompilerConfig, 'gameDirectory' | 'maxThreads' | 'toolchain'>,
   assetDirectory?: string,
 ): readonly NativeCompilerStage[] {
+  if (config.toolchain.kind === 'ericw' && config.toolchain.target === 'quake2') {
+    if (!assetDirectory) throw new Error('Quake II builds require a game asset root');
+    const common = ['-gamedir', assetDirectory];
+    const threads = ['-threads', String(config.maxThreads)];
+    return [
+      {
+        stage: 'qbsp',
+        executable: config.toolchain.qbsp,
+        args: [...common, ...threads, '-q2bsp', '-noallowupgrade', '-leaktest', mapPath],
+      },
+      { stage: 'vis', executable: config.toolchain.vis, args: [...threads, bspPath] },
+      {
+        stage: 'light',
+        executable: config.toolchain.light,
+        args: [
+          ...common,
+          ...threads,
+          '-extra4',
+          '-emissivequality',
+          'low',
+          '-visapprox',
+          'vis',
+          bspPath,
+        ],
+      },
+    ];
+  }
   if (config.toolchain.kind === 'q2tool') {
     return [
       {
@@ -123,7 +153,7 @@ export function compilerStages(
       executable: config.toolchain.qbsp,
       args: [
         ...common,
-        ...(config.toolchain.game === 'goldsrc' ? ['-hlbsp'] : []),
+        ...(config.toolchain.target === 'goldsrc' ? ['-hlbsp'] : []),
         ...(assetDirectory ? ['-wadpath', assetDirectory] : []),
         ...(quality === 'preview' ? ['-nofill'] : []),
         mapPath,
@@ -290,24 +320,27 @@ export async function compileNativeMap(
   if (!workingDirectory.startsWith(expectedPrefix)) {
     throw new Error('Refusing to use an unexpected compiler working directory');
   }
-  const mapPath = join(workingDirectory, `${mapName}.map`);
-  const bspPath = join(workingDirectory, `${mapName}.bsp`);
-  const assetDirectory = request.assets?.length ? join(workingDirectory, 'assets') : undefined;
+  const gameTree = config.toolchain.kind === 'ericw' && config.toolchain.target === 'quake2';
+  const assetDirectory =
+    request.assets?.length || gameTree ? join(workingDirectory, 'assets') : undefined;
+  const outputDirectory = gameTree ? join(workingDirectory, 'assets', 'maps') : workingDirectory;
+  const mapPath = join(outputDirectory, `${mapName}.map`);
+  const bspPath = join(outputDirectory, `${mapName}.bsp`);
   try {
+    if (gameTree) await mkdir(outputDirectory, { recursive: true });
     await writeFile(mapPath, request.mapText, { encoding: 'utf8', flag: 'wx' });
     if (assetDirectory && request.assets) {
-      await mkdir(assetDirectory);
+      await mkdir(assetDirectory, { recursive: true });
       for (const asset of request.assets) {
         if (!/^[a-zA-Z0-9+/]*={0,2}$/.test(asset.base64)) {
           throw new Error(`Asset ${asset.name} is not valid base64`);
         }
-        await writeFile(
-          join(assetDirectory, safeAssetName(asset.name)),
-          Buffer.from(asset.base64, 'base64'),
-          {
-            flag: 'wx',
-          },
-        );
+        const path = gameTree ? gameTreeAssetPath(asset.name) : safeAssetName(asset.name);
+        const destination = join(assetDirectory, path);
+        if (gameTree) await mkdir(join(destination, '..'), { recursive: true });
+        await writeFile(destination, Buffer.from(asset.base64, 'base64'), {
+          flag: 'wx',
+        });
       }
     }
     const stages: StageResult[] = [];
@@ -319,7 +352,7 @@ export async function compileNativeMap(
             stage.stage,
             stage.executable,
             stage.args,
-            workingDirectory,
+            outputDirectory,
             config,
             signal,
           ),
@@ -333,9 +366,9 @@ export async function compileNativeMap(
         throw error;
       }
     }
-    const artifacts = await collectArtifacts(workingDirectory, config.maxArtifactBytes);
+    const artifacts = await collectArtifacts(outputDirectory, config.maxArtifactBytes);
     const diagnostics = stages.flatMap(({ stage, output }) => stageDiagnostics(stage, output));
-    if (!failure && config.toolchain.kind === 'ericw' && config.toolchain.game === 'goldsrc') {
+    if (!failure && config.toolchain.kind === 'ericw' && config.toolchain.target === 'goldsrc') {
       const bsp = artifacts.find((artifact) => artifact.kind === 'bsp');
       const bytes = bsp ? Buffer.from(bsp.base64, 'base64') : null;
       if (bytes && (bytes.length < 124 || bytes.readUInt32LE(0) !== 30)) {

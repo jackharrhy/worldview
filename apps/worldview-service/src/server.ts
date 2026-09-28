@@ -89,6 +89,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     ...(process.env.WORLDVIEW_GOLDSRC_COMPILER_URL
       ? { goldsrc: process.env.WORLDVIEW_GOLDSRC_COMPILER_URL }
       : {}),
+    ...(process.env.WORLDVIEW_GOWER_COMPILER_URL
+      ? { gower: process.env.WORLDVIEW_GOWER_COMPILER_URL }
+      : {}),
   };
   const service = createWorldviewService({
     database,

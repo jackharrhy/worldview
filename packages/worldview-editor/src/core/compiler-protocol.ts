@@ -1,6 +1,7 @@
 import type { MapBuildCapabilities, MapLaunchResult } from './compiler.js';
 import { MapCompileDiagnosticSchema, MapCompileLogSchema } from './runtime-schemas.js';
 import { z } from 'zod';
+import { WorldviewGameProfileSchema } from './game-profiles.js';
 
 // Shared by the remote browser adapter, hosted build queue, and native helper.
 export const RemoteCompileRequestSchema = z.strictObject({
@@ -32,7 +33,7 @@ export const RemoteCompileArtifactSchema = z.strictObject({
   name: z.string().min(1).max(4_096),
   mediaType: z.string().min(1).max(256),
   base64: z.string(),
-  kind: z.enum(['bsp', 'portal', 'leak-path', 'log', 'other']),
+  kind: z.enum(['bsp', 'package', 'portal', 'leak-path', 'log', 'other']),
   stage: z.string().min(1).max(256).optional(),
 });
 export const RemoteCompileResultSchema = z.strictObject({
@@ -51,7 +52,7 @@ export const MapBuildCapabilitiesSchema = z.strictObject({
     z.strictObject({
       id: z.string().min(1).max(256),
       label: z.string().min(1).max(256),
-      game: z.enum(['quake', 'goldsrc', 'quake2']),
+      game: WorldviewGameProfileSchema,
       qualities: z.array(z.enum(['preview', 'final'])).max(2),
     }),
   ),
@@ -59,7 +60,7 @@ export const MapBuildCapabilitiesSchema = z.strictObject({
     z.strictObject({
       id: z.string().min(1).max(256),
       label: z.string().min(1).max(256),
-      game: z.enum(['quake', 'goldsrc', 'quake2']),
+      game: WorldviewGameProfileSchema,
     }),
   ),
 }) satisfies z.ZodType<MapBuildCapabilities>;

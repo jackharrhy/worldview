@@ -63,6 +63,28 @@ export interface LoadedProjectResources {
   readonly messages: readonly string[];
 }
 
+export async function loadHostedGameAssets(
+  resources: readonly {
+    readonly name: string;
+    readonly kind: string;
+    readonly data: ArrayBuffer;
+  }[],
+  signal: AbortSignal,
+) {
+  const assets = new Map<string, LoadedGameAsset>();
+  for (const resource of resources) {
+    if (!['png', 'tga', 'wal_json', 'wal'].includes(resource.kind)) continue;
+    const logicalPath = resource.name.toLowerCase();
+    assets.set(logicalPath, { sourcePath: resource.name, data: resource.data });
+  }
+  const decoded = await decodeReplacementMaterials(assets, signal);
+  return {
+    gameAssets: new Map([...assets].map(([path, asset]) => [path, asset.data])),
+    materials: decoded.materials,
+    messages: decoded.messages,
+  };
+}
+
 async function explicitPalette(
   workspace: WorldviewProjectWorkspace,
 ): Promise<Uint8Array | undefined> {
