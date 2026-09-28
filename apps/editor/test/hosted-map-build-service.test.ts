@@ -128,6 +128,39 @@ describe('HostedMapBuildService', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  test('waits for the server result when a build runs longer than two minutes', async () => {
+    vi.useFakeTimers();
+    try {
+      let polls = 0;
+      const service = new HostedMapBuildService({
+        mapId: 'map-1',
+        game: 'quake',
+        pollIntervalMilliseconds: 61_000,
+        fetch: async (_input, init) => {
+          if (init?.method === 'POST')
+            return Response.json({ build: build('queued') }, { status: 202 });
+          polls += 1;
+          return Response.json({
+            builds: [build(polls < 3 ? 'running' : 'succeeded')],
+            capability: { profileId: 'default' },
+          });
+        },
+      });
+      const result = service.compile({
+        mapName: 'room.map',
+        mapText: '',
+        quality: 'preview',
+        expectedDocumentRevision: 4,
+      });
+
+      await vi.advanceTimersByTimeAsync(183_000);
+      await expect(result).resolves.toMatchObject({ status: 'succeeded' });
+      expect(polls).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('surfaces service admission and snapshot errors', async () => {
     const service = new HostedMapBuildService({
       mapId: 'map-1',

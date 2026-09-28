@@ -16,7 +16,6 @@ interface HostedMapBuildServiceOptions {
   readonly game: WorldviewGameProfile;
   readonly fetch?: typeof globalThis.fetch;
   readonly pollIntervalMilliseconds?: number;
-  readonly timeoutMilliseconds?: number;
 }
 
 function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -39,12 +38,10 @@ export class HostedMapBuildService implements MapBuildService {
   public readonly backend = 'remote' as const;
   private readonly fetch: typeof globalThis.fetch;
   private readonly pollIntervalMilliseconds: number;
-  private readonly timeoutMilliseconds: number;
 
   public constructor(private readonly options: HostedMapBuildServiceOptions) {
     this.fetch = (options.fetch ?? globalThis.fetch).bind(globalThis);
     this.pollIntervalMilliseconds = options.pollIntervalMilliseconds ?? 500;
-    this.timeoutMilliseconds = options.timeoutMilliseconds ?? 120_000;
   }
 
   public async capabilities(signal?: AbortSignal): Promise<MapBuildCapabilities> {
@@ -90,10 +87,8 @@ export class HostedMapBuildService implements MapBuildService {
       }),
       HostedBuildCreatedResponseSchema,
     );
-    const deadline = Date.now() + this.timeoutMilliseconds;
     let build = created.build;
     while (build.status === 'queued' || build.status === 'running') {
-      if (Date.now() >= deadline) throw new Error('Hosted build timed out');
       await delay(this.pollIntervalMilliseconds, request.signal);
       const listed = await decodeHostedResponse(
         await this.fetch(endpoint, {

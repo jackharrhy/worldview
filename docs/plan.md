@@ -339,9 +339,11 @@ document, gesture, or render hot paths.
 
 The editor core owns the native compiler wire schemas used by its browser adapter, the native
 compiler service, and the hosted build queue. The hosted queue rejects results for a different
-source revision. Hosted browser APIs share response decoding while retaining their endpoint-specific
-schemas. Every workspace uses the shared strict TypeScript options, including unit-test fixtures;
-the collaboration Worker substitutes its own runtime libraries and generated bindings.
+source revision. The hosted build queue owns build deadlines and terminal status; the browser polls
+until the queue reports a result or the user cancels. Hosted browser APIs share response decoding
+while retaining their endpoint-specific schemas. Every workspace uses the shared strict TypeScript
+options, including unit-test fixtures; the collaboration Worker substitutes its own runtime
+libraries and generated bindings.
 
 ## Hosted projects
 
