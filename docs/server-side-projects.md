@@ -118,8 +118,9 @@ artifact chunks can be inspected without a browser session.
 
 An MCP tool can issue a one-time code for one project where the caller can edit. The code expires
 after ten minutes. Redeeming it from a browser creates a project-scoped cookie for up to one hour.
-The scoped browser can load that project, its resources and maps, edit through the normal MapCell
-ticket flow, and run builds. It cannot enumerate other projects or manage membership. Headless
+The scoped browser can load that project, import and upload its resources if the account is an
+owner, edit maps through the normal MapCell ticket flow, and run builds. It cannot enumerate other
+projects or manage membership. Headless
 Chrome runs on the agent's machine and uses the editor's existing browser WebMCP tools.
 
 Hosted map source is limited to 2 MiB. One user may have one active build and submit at most six

@@ -43,6 +43,14 @@ describe('browser automation grant', () => {
     expect(
       (await scoped(`/api/projects/${first.id}/members/${owner.user.id}`, 'DELETE')).status,
     ).toBe(401);
+    const upload = (projectId: string) =>
+      fetch(`${app.origin}/api/projects/${projectId}/resources/upload?name=defs.fgd&kind=fgd`, {
+        method: 'PUT',
+        headers: { Cookie: cookie, 'Content-Type': 'text/plain' },
+        body: '@PointClass = info_test []',
+      });
+    expect((await upload(first.id)).status).toBe(201);
+    expect((await upload(second.id)).status).toBe(401);
     expect(
       (
         await scoped(
