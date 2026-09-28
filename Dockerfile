@@ -67,10 +67,12 @@ COPY --from=build /app/node_modules/zod node_modules/zod
 COPY --from=build /app/node_modules/@sindresorhus/slugify node_modules/@sindresorhus/slugify
 COPY --from=build /app/node_modules/@sindresorhus/transliterate node_modules/@sindresorhus/transliterate
 COPY --from=build /app/node_modules/escape-string-regexp node_modules/escape-string-regexp
+COPY --from=build /app/node_modules/fflate node_modules/fflate
 COPY --from=build /app/apps/worldview-service/node_modules/nanoid apps/worldview-service/node_modules/nanoid
 RUN mkdir -p node_modules/@jackharrhy node_modules/@worldview \
   && ln -s ../../packages/worldview node_modules/@jackharrhy/worldview \
   && ln -s ../../packages/worldview-editor node_modules/@jackharrhy/worldview-editor \
   && ln -s ../../packages/worldview-protocol node_modules/@worldview/protocol
+RUN node --input-type=module -e "await import('./apps/worldview-service/dist/server.js'); await import('./apps/compiler-service/dist/compiler.js')"
 EXPOSE 8789
 CMD ["node", "apps/worldview-service/dist/server.js"]
