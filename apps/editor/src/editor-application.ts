@@ -257,7 +257,7 @@ export class EditorApplication {
       this.materials.renderReferenceScenes();
       this.document.connectWorkspaceResizers(this.signal);
       this.document.setInspectorOpen(!window.matchMedia('(max-width: 760px)').matches);
-      void this.build.checkCompilerService();
+      if (launch?.kind !== 'hosted-map') void this.build.checkCompilerService();
       await this.renderer.start(this.signal);
       this.signal.throwIfAborted();
       this.contextMenu.connect();

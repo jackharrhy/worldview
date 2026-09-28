@@ -601,6 +601,7 @@ export class ProjectPresenter {
     }
     this.ui.resourceSettings.update({ projectResourcesUrl: `/project/${projectId}` });
     this.refreshGameMaterials();
+    await this.build.checkCompilerService();
   }
 
   private resetGameMaterials(): void {
