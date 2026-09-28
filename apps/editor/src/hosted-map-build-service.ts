@@ -61,6 +61,9 @@ export class HostedMapBuildService implements MapBuildService {
               label: 'Worldview hosted compiler',
               game: this.options.game,
               qualities: ['preview', 'final'],
+              ...(response.capability.durationHint
+                ? { durationHint: response.capability.durationHint }
+                : {}),
             },
           ]
         : [],

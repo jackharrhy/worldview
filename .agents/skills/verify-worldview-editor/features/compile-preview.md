@@ -7,6 +7,8 @@ history, and compiled BSP preview. Compile and launch capabilities are game-matc
 Hosted maps use the same build contract while the service compiles its canonical MapCell snapshot;
 the browser polls the authenticated build record and downloads membership-checked artifacts.
 The service owns the build deadline, and the browser keeps polling until a terminal result or cancellation.
+Profiles that advertise a duration hint show it in the Build menu before starting and in the status
+message while the build runs.
 Each newly installed preview starts in fly mode at the perspective camera position, orientation, and
 field of view captured when the user requested the build. The compiled viewer receives that camera
 before its first frame; later source-camera movement must not change the requested preview view.

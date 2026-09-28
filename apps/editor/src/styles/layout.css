@@ -932,6 +932,15 @@ textarea:focus-visible {
   border-radius: 0;
   flex: none;
 }
+.build-menu-duration-hint {
+  max-width: 248px;
+  margin: 0;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .build-export-dialog {
   width: min(440px, calc(100vw - 32px));
 }

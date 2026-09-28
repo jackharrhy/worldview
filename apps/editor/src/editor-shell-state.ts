@@ -75,19 +75,25 @@ export class DocumentNamePort {
 export interface CompileStateSnapshot {
   readonly label: string;
   readonly state: 'offline' | 'ready' | 'busy' | 'stale';
+  readonly durationHint: string | null;
 }
 
 export class CompileStatePort {
   private readonly store = new SnapshotStore<CompileStateSnapshot>({
     label: 'COMPILER OFFLINE',
     state: 'offline',
+    durationHint: null,
   });
 
   public readonly subscribe = this.store.subscribe;
   public readonly getSnapshot = this.store.getSnapshot;
 
   public set(label: string, state: CompileStateSnapshot['state']): void {
-    this.store.set({ label, state });
+    this.store.set({ ...this.store.getSnapshot(), label, state });
+  }
+
+  public setDurationHint(durationHint: string | null): void {
+    this.store.set({ ...this.store.getSnapshot(), durationHint });
   }
 }
 

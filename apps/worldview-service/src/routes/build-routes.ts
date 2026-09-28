@@ -5,6 +5,7 @@ import {
 } from '@worldview/protocol';
 
 import { submitHostedBuild } from '../hosted-build-operation.js';
+import { hostedBuildProfile } from '../hosted-game-profiles.js';
 import {
   allowMutation,
   requestBody,
@@ -28,7 +29,12 @@ export function createBuildRoutes(
       if (!map) return sendError(context.response, 404, 'Map not found');
       sendJson(context.response, 200, HostedBuildsResponseSchema, {
         builds: [...(options.database.listBuilds(mapId, user.id) ?? [])],
-        capability: options.builds?.supports(map.game) ? { profileId: 'default' } : null,
+        capability: options.builds?.supports(map.game)
+          ? {
+              profileId: 'default',
+              durationHint: hostedBuildProfile(map.game).durationHint,
+            }
+          : null,
       });
     }),
     defineRoute(

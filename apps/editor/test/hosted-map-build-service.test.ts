@@ -5,7 +5,10 @@ import { HostedMapBuildService } from '../src/hosted-map-build-service.js';
 const enabledCapabilityFetch: typeof fetch = async function (this: unknown) {
   // Native browser fetch requires the Window receiver; keep this production regression covered.
   expect(this).toBe(globalThis);
-  return Response.json({ builds: [], capability: { profileId: 'default' } });
+  return Response.json({
+    builds: [],
+    capability: { profileId: 'default', durationHint: 'Large maps may take several minutes.' },
+  });
 };
 
 function build(status: HostedBuild['status'], result: HostedBuild['result'] = null): HostedBuild {
@@ -35,7 +38,9 @@ describe('HostedMapBuildService', () => {
       fetch: async () => Response.json({ builds: [], capability: null }),
     });
     await expect(enabled.capabilities()).resolves.toMatchObject({
-      compileProfiles: [{ id: 'default', game: 'quake' }],
+      compileProfiles: [
+        { id: 'default', game: 'quake', durationHint: 'Large maps may take several minutes.' },
+      ],
     });
     await expect(disabled.capabilities()).resolves.toMatchObject({ compileProfiles: [] });
   });

@@ -54,6 +54,7 @@ export const MapBuildCapabilitiesSchema = z.strictObject({
       label: z.string().min(1).max(256),
       game: WorldviewGameProfileSchema,
       qualities: z.array(z.enum(['preview', 'final'])).max(2),
+      durationHint: z.string().min(1).max(256).optional(),
     }),
   ),
   launchProfiles: z.array(

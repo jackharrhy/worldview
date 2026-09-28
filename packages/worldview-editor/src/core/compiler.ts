@@ -58,6 +58,7 @@ export interface MapBuildProfileCapability {
   readonly label: string;
   readonly game: WorldviewGameProfile;
   readonly qualities: readonly MapCompileQuality[];
+  readonly durationHint?: string | undefined;
 }
 
 export interface MapLaunchProfileCapability {

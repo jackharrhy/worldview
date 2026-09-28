@@ -189,7 +189,9 @@ export const HostedRealtimeTicketResponseSchema = z.strictObject({
 });
 export const HostedBuildsResponseSchema = z.strictObject({
   builds: z.array(HostedBuildSchema).max(10_000),
-  capability: z.strictObject({ profileId: id }).nullable(),
+  capability: z
+    .strictObject({ profileId: id, durationHint: z.string().min(1).max(256).optional() })
+    .nullable(),
 });
 export const HostedBuildCreatedResponseSchema = z.strictObject({ build: HostedBuildSchema });
 export const HostedCheckpointResponseSchema = z.strictObject({

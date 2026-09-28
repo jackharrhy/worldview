@@ -246,6 +246,8 @@ pinned bytes, select only used texture lumps, and rewrite transient compile-sour
 Game-tree builds select referenced texture images, adjacent material metadata, and skybox faces from
 the same pinned resources. A hosted game profile defines the resource recipe, expected BSP versions,
 and package extension; the compiler selects a toolchain recipe.
+Hosted compiler profiles can advertise a duration hint. The editor shows it in the Build menu and
+while a build is running so long compiles do not appear stuck.
 The selected build texture input is limited to 128 MiB independently of project storage.
 Later project packs override earlier packs and defaults, matching sidebar resolution. Missing,
 corrupt, or oversized inputs stop the build. The public editor core exports development-material

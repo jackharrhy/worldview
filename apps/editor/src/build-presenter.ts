@@ -354,8 +354,11 @@ export class BuildPresenter {
     const quality = this.state.activeCompileQuality;
     this.ui.editorCommands.updateActions({ compile: { disabled: true } });
     this.setCompileState(`COMPILING ${quality.toUpperCase()}`, 'busy');
+    const durationHint = this.ui.compileState.getSnapshot().durationHint;
     this.ui.statusMessage.set(
-      `Sending document revision ${this.state.session.document.revision} to the compiler.`,
+      durationHint
+        ? `Build started. ${durationHint}`
+        : `Sending document revision ${this.state.session.document.revision} to the compiler.`,
     );
     try {
       const assets = this.document.compileAssets();
@@ -461,6 +464,7 @@ export class BuildPresenter {
     this.signal.throwIfAborted();
     await this.exports.loadSettings();
     if (!this.state.buildServiceEnabled) {
+      this.ui.compileState.setDurationHint(null);
       this.ui.editorCommands.updateActions({
         compile: { disabled: true },
         launch: { disabled: true },
@@ -486,6 +490,7 @@ export class BuildPresenter {
         ...(preferredCompileProfileId ? { preferredId: preferredCompileProfileId } : {}),
         quality: this.state.activeCompileQuality,
       });
+      this.ui.compileState.setDurationHint(compileProfile?.durationHint ?? null);
       if (this.state.projectWorkspace && this.state.projectKey && logicalProfile) {
         if (compileProfile && preferredCompileProfileId !== compileProfile.id) {
           await this.state.projectLocalState.setBuildBinding(
@@ -516,6 +521,7 @@ export class BuildPresenter {
       else this.setCompileState('COMPILER UNCONFIGURED', 'offline');
     } catch {
       if (this.signal.aborted) return;
+      this.ui.compileState.setDurationHint(null);
       this.ui.editorCommands.updateActions({
         compile: { disabled: true },
         launch: { disabled: true },

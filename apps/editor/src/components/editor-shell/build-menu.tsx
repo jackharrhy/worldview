@@ -40,6 +40,12 @@ export function BuildMenu({ shellState }: { readonly shellState: EditorShellStat
         placement="bottom end"
         offset={0}
       >
+        {compile.durationHint ? (
+          <p className="build-menu-duration-hint" role="note">
+            {compile.state === 'busy' ? 'Building. ' : ''}
+            {compile.durationHint}
+          </p>
+        ) : null}
         <Menu aria-label="Build">
           <MenuSection label="Build" showHeading={false}>
             <MenuItem

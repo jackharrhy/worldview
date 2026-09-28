@@ -63,6 +63,8 @@ test.describe('Editor compiled preview', () => {
                 label: 'Quake preview',
                 game: 'quake',
                 qualities: ['preview', 'final'],
+                durationHint:
+                  'Large maps can take 10 minutes or more to build, including previews.',
               },
             ],
             launchProfiles: [],
@@ -99,6 +101,7 @@ test.describe('Editor compiled preview', () => {
     await expect(
       page.getByRole('menuitem', { name: 'Build & preview', exact: true }),
     ).toBeEnabled();
+    await expect(page.getByRole('note')).toContainText('can take 10 minutes or more');
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
 
@@ -115,6 +118,7 @@ test.describe('Editor compiled preview', () => {
     await page.getByRole('button', { name: 'Build menu', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Build & preview', exact: true }).click();
     await compileStarted;
+    await expect(page.locator('#status-message')).toContainText('can take 10 minutes or more');
 
     await page.mouse.move(center.x, center.y);
     await page.mouse.down({ button: 'right' });

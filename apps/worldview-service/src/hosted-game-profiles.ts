@@ -7,11 +7,13 @@ export type HostedBuildProfile =
       readonly wadGame: 'quake' | 'goldsrc';
       readonly bspVersions: readonly (number | 'BSP2')[];
       readonly buildTimeoutMilliseconds: number;
+      readonly durationHint?: string;
     }
   | {
       readonly resourceLayout: 'game-tree';
       readonly bspVersions: readonly (number | 'BSP2')[];
       readonly buildTimeoutMilliseconds: number;
+      readonly durationHint?: string;
       readonly faceSyntax: MapFaceSyntax;
       readonly imageExtensions: readonly ('png' | 'tga')[];
       readonly materialMetadataExtension: 'wal_json';
@@ -37,6 +39,7 @@ const PROFILES: Record<HostedGame, HostedBuildProfile> = {
     resourceLayout: 'game-tree',
     bspVersions: [38],
     buildTimeoutMilliseconds: 60 * 60_000,
+    durationHint: 'Large maps can take 10 minutes or more to build, including previews.',
     faceSyntax: 'valve-220',
     imageExtensions: ['png', 'tga'],
     materialMetadataExtension: 'wal_json',
