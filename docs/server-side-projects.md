@@ -119,12 +119,14 @@ artifact chunks can be inspected without a browser session.
 To connect Codex, add the server and request its specific scope during login:
 
 ```sh
-codex mcp add worldview --url https://worldview.harrhy.xyz/mcp --oauth-resource https://worldview.harrhy.xyz/mcp --oauth-client-registration dcr
+codex mcp add worldview --url https://worldview.harrhy.xyz/mcp --oauth-client-registration dcr
 codex mcp login worldview --scopes openid,worldview:admin --oauth-client-registration dcr --no-browser
 ```
 
 Complete the 4orm approval in a browser and paste the full callback URL into the waiting CLI.
-Requesting the scope explicitly matters because 4orm also serves other OAuth resources.
+Requesting the scope explicitly matters because 4orm also serves other OAuth resources. Codex
+discovers the MCP resource from the server; setting `oauth_resource` as well duplicates the
+authorization parameter, which 4orm rejects.
 
 An MCP tool can issue a one-time code for one project where the caller can edit. The code expires
 after ten minutes. Redeeming it from a browser creates a project-scoped cookie for up to one hour.
