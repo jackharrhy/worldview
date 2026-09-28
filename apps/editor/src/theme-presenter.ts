@@ -67,7 +67,7 @@ export class ThemePresenter {
       .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
       ?.setAttribute(
         'content',
-        theme === 'light' ? 'oklch(96.5% 0.004 255)' : 'oklch(12.63% 0.0069 258.37)',
+        theme === 'light' ? 'oklch(96.5% 0.004 255)' : 'oklch(21% 0.006 285.885)',
       );
     if (updateRenderer) this.state.renderer?.setTheme(resolveEditorRenderTheme());
   }

@@ -29,6 +29,8 @@ adapters or migrations unless a release explicitly promises otherwise.
 
 - `.map` is authoritative geometry. `worldview.project.json` is portable configuration, not a
   geometry container.
+- Local Quake projects may use FGD, DEF, or ENT entity definitions alongside WAD2 textures. A
+  project manifest references user-provided game assets; it does not embed or redistribute them.
 - New maps contain an empty `worldspawn`. Valve 220 is the default; classic Quake face syntax stays
   classic until the user converts it.
 - Chromium provides the full directory-handle workflow. Other WebGPU browsers keep import,
@@ -133,6 +135,12 @@ without importing the editor, renderer, WebMCP, compiler, collaboration, or edit
 new-map route may warm the lazy editor graph, but only an editor route constructs presenters or asks
 for WebGPU. The editor bundle may be substantial; keeping it out of the landing route matters more
 than an arbitrary size target once editing begins.
+Pre-editor routes share a compact application header with a document menu for opening work. The
+home route puts direct editor, New, Open map, and Open folder actions beside available hosted and
+local work, and hides empty local lists.
+Hosted project pages use Maps, Access, and Resources navigation. Maps is the default view, with a
+neutral New map action at the right of the project navigation that opens a separate creation page. The views load only their
+relevant project data.
 
 React Aria Components provide conventional control behavior. Worldview owns component composition,
 semantic CSS variables, density, iconography, and renderer colors. The canonical visual and control
@@ -223,16 +231,19 @@ Portable project configuration names the game profile, maps, resource roots, def
 and logical build profiles. Browser handles, executable paths, recovery snapshots, view state,
 resource-cache entries, and local compiler endpoints are machine-local records.
 
-Resources resolve in declared order and use stable logical identities. Hosted mounts pin provider
-asset IDs and SHA-256 hashes; provider changes never silently replace project content. Entity
+Resources resolve in declared order and use stable logical identities. Hosted uploads and Artbin
+imports create Worldview-owned, content-addressed copies. Artbin is an import source rather than a
+live dependency. A project may mount 1 GiB of unique asset bytes, with a 512 MiB per-file limit.
+Repeated mounts of the same SHA-256 count once. Entity
 definitions use the same catalog boundary regardless of whether they came from FGD, DEF, or ENT
 sources.
 
 Build requests name a source revision, fixed profile, and preview or final quality. Results carry
 logs, diagnostics, artifacts, and the source fingerprint. Worldview development textures are an
 explicitly listed default pack shared by editor and compiler. Hosted maps inherit pinned project
-WADs; browser-only WAD imports are unavailable in hosted workspaces. Builds verify pinned bytes and
-used non-tool texture names, attach the WADs, and rewrite only transient compile-source references.
+WADs. Hosted editor sessions load full pinned packs and definition files. Builds verify pinned bytes,
+select only WAD texture lumps used by the map, and rewrite transient compile-source references.
+The selected build texture input is limited to 128 MiB independently of project storage.
 Later project packs override earlier packs and defaults, matching sidebar resolution. Missing,
 corrupt, or oversized inputs stop the build. The public editor core exports development-material
 generators and `serializeMapForCompile` to share validation, omitted-layer handling, and precedence.
@@ -331,7 +342,11 @@ realtime tickets. It authorizes a request before touching a map cell, compiler, 
 store.
 
 The service dispatches a small, named route table into focused authentication, project, resource,
-map, and build handlers. Each handler receives only its domain dependencies and keeps mutation
+map, build, and MCP handlers. Production MCP uses 4orm OAuth resource audiences, current 4orm
+administrator status, and project membership checks. Its tools create and inspect projects and
+maps, queue and inspect builds, and read bounded artifact chunks. A one-time browser grant can be
+redeemed within ten minutes for one editable project; its scoped session expires after one hour.
+Each handler receives only its domain dependencies and keeps mutation
 origin checks, authentication, authorization, version checks, and calls into transactional
 database operations visible at the route boundary. Request and JSON response bodies use the same
 shared Zod contracts as browser consumers; binary resources and artifacts remain explicit streamed

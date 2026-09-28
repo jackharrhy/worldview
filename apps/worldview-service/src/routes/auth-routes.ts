@@ -1,11 +1,14 @@
 import { HostedHealthResponseSchema, HostedSessionResponseSchema } from '@worldview/protocol';
+import { z } from 'zod';
 
 import {
   allowMutation,
+  AUTOMATION_COOKIE,
   cookie,
   OAUTH_COOKIE,
   publicSessionUser,
   redirect,
+  requestBody,
   sendError,
   sendJson,
   sendOk,
@@ -88,6 +91,31 @@ export function createAuthRoutes(
       sendJson(context.response, 200, HostedSessionResponseSchema, {
         user: publicSessionUser(sessionUser(context, options.database)),
       });
+    }),
+    defineRoute('automation-redeem', 'POST', '/api/automation/redeem', async (context) => {
+      if (!allowMutation(context)) return;
+      const input = await requestBody(
+        context.request,
+        z.strictObject({ code: z.string().min(32).max(256) }),
+      );
+      const grant = options.database.redeemAutomationGrant(input.code);
+      if (!grant) return sendError(context.response, 401, 'Browser grant is invalid or expired');
+      setCookie(
+        context.response,
+        AUTOMATION_COOKIE,
+        grant.token,
+        (grant.expiresAt - Date.now()) / 1000,
+        context.secureCookies,
+      );
+      sendJson(
+        context.response,
+        200,
+        z.strictObject({ projectId: z.string(), expiresAt: z.number() }),
+        {
+          projectId: grant.projectId,
+          expiresAt: grant.expiresAt,
+        },
+      );
     }),
   ] as const;
 }

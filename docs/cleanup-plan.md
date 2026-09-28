@@ -18,6 +18,18 @@ belong in [the architecture plan](./plan.md); delivered editor behavior belongs 
 
 ## Hosted product
 
+### H0: Project setup from existing game folders
+
+Add a browser setup flow that scans a selected local folder for maps, WADs, palettes, and entity
+definitions, lets the user review the detected files and game profile, and writes
+`worldview.project.json` into that folder. Resolve FGD includes and report missing resources before
+opening the project. Keep game data in the user's folder. Hosted projects already accept direct
+uploads and pinned Artbin copies with larger WAD support; a browser folder scan and rights review
+remain for a guided import flow.
+
+Done when a user can set up a Quake mod from the UI without editing JSON and the resulting local
+project opens with its maps, textures, palette, and entity catalog.
+
 ### H1: Hosted project workflows
 
 The hosted foundation supports identity, memberships, maps, resources, live editing, and builds.

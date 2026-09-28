@@ -25,6 +25,7 @@ function pack(name: string, bytes: Uint8Array): HostedResourceMount {
     expectedSha256: createHash('sha256').update(bytes).digest('hex'),
     kind: 'wad',
     displayName: name,
+    size: bytes.byteLength,
     createdAt: 0,
   };
 }
@@ -79,7 +80,7 @@ describe('hosted build textures', () => {
     ).toEqual(new Uint8Array([175, 103, 35, 255]));
   });
 
-  test('delivers pinned WAD bytes in the native compiler last-pack-wins order', async () => {
+  test('sends only used pinned textures in the native compiler last-pack-wins order', async () => {
     const bytes = new Uint8Array(
       encodeQuakeWad2(
         [
@@ -98,7 +99,9 @@ describe('hosted build textures', () => {
         get: async (sha256: string) => (sha256 === paletteMount.expectedSha256 ? palette : bytes),
       },
     );
-    expect(result.assets[1]?.bytes).toEqual(bytes);
+    const sent = parseWad(result.assets[1]!.bytes);
+    expect(sent.lumps.map(({ name }) => name)).toEqual(['CUSTOM']);
+    expect(result.assets[1]!.bytes.byteLength).toBeLessThan(bytes.byteLength);
     expect(parseMap(result.mapText).entities[0]?.properties.wad).toBe(
       'worldview_dev.wad;project_1.wad',
     );

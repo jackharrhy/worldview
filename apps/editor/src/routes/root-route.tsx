@@ -1,4 +1,5 @@
 import { Outlet, isRouteErrorResponse, useLocation, useRouteError } from 'react-router';
+import { ApplicationHeader } from '../components/application-header.js';
 
 export interface RouteErrorPresentation {
   readonly status: number;
@@ -41,7 +42,18 @@ export function routeErrorPresentation(error: unknown): RouteErrorPresentation {
 }
 
 export function Component() {
-  return <Outlet />;
+  const { pathname } = useLocation();
+  const isEditor =
+    pathname === '/editor' ||
+    /^\/local-map\/[^/]+$/.test(pathname) ||
+    /^\/project\/[^/]+\/map\/[^/]+$/.test(pathname);
+  if (isEditor) return <Outlet />;
+  return (
+    <div className="application-start-shell">
+      <ApplicationHeader />
+      <Outlet />
+    </div>
+  );
 }
 
 export function ErrorBoundary() {

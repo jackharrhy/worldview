@@ -208,6 +208,19 @@ export class ArtbinClient {
     return bytes;
   }
 
+  public async contentStream(
+    assetId: string,
+    expectedSha256: string,
+  ): Promise<AsyncIterable<Uint8Array>> {
+    const parameters = new URLSearchParams({ sha256: expectedSha256 });
+    const response = await this.request(
+      `/api/assets/${encodeURIComponent(assetId)}/content?${parameters}`,
+    );
+    if (!response.body)
+      throw Object.assign(new Error('Artbin sent no asset content'), { status: 502 });
+    return response.body;
+  }
+
   public async inspectWad(assetId: string): Promise<ArtbinWadInspection> {
     return payload(
       await this.request(`/api/assets/${encodeURIComponent(assetId)}/wad`),

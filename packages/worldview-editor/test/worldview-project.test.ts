@@ -31,6 +31,18 @@ describe('Worldview project manifests', () => {
     expect(serialized.endsWith('\n')).toBe(true);
   });
 
+  it('accepts Quake FGD definitions for mods using WAD2 textures', () => {
+    const project = {
+      ...PROJECT,
+      resources: {
+        ...PROJECT.resources,
+        entityDefinitions: [{ path: 'entities/mod.fgd', format: 'fgd' }],
+      },
+    } as const;
+
+    expect(parseWorldviewProject(serializeWorldviewProject(project))).toEqual(project);
+  });
+
   it('accepts Quake II as a portable project profile without requiring WAD resources', () => {
     const quake2 = {
       ...PROJECT,

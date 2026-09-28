@@ -59,6 +59,55 @@ body {
   background: var(--bg);
   color: var(--text);
 }
+.application-start-shell {
+  height: 100dvh;
+  overflow: auto;
+  background: var(--bg);
+}
+.application-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 48px;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+.application-menu-trigger.wv-button {
+  width: 44px;
+  min-width: 44px;
+  height: 47px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 18px;
+}
+.application-topbar-name {
+  flex: none;
+  padding: 0 16px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+}
+.application-menu-heading {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+.application-header-error {
+  margin: 0;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--danger);
+  color: var(--danger);
+}
 button,
 input,
 select {
@@ -138,6 +187,10 @@ a:focus-visible {
   min-height: 100dvh;
   margin: 0 auto;
   padding: 64px 0 80px;
+}
+.application-start-shell .product-page,
+.application-start-shell .landing-page {
+  min-height: calc(100dvh - 48px);
 }
 .product-page-wide {
   width: min(1320px, calc(100% - 48px));
@@ -228,42 +281,130 @@ a:focus-visible {
 .landing-card > header p {
   color: var(--muted);
 }
-.landing-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.hosted-project-card {
+  gap: 0;
 }
-.product-header + .landing-actions {
-  margin-top: 28px;
+.hosted-project-card > header h1 {
+  font-size: clamp(26px, 3vw, 34px);
 }
-.landing-actions + .landing-recents {
-  margin-top: 36px;
+.hosted-project-card .route-back {
+  margin-bottom: 22px;
 }
-.landing-actions .wv-button-primary {
-  min-width: 150px;
-}
-.home-page {
-  padding-top: clamp(72px, 12vh, 128px);
-}
-.home-page .landing-actions {
-  justify-content: center;
-  margin-top: 32px;
-}
-.home-page .landing-actions + .landing-recents {
-  margin-top: 72px;
-}
-.home-page .landing-recents + .landing-recents {
-  margin-top: 48px;
-}
-.home-page .section-heading-row {
-  padding-bottom: 12px;
+.hosted-project-card > header {
+  padding-bottom: 0;
   border-bottom: 0;
 }
-.home-page .landing-empty,
-.home-page .empty-state {
-  padding: 16px 10px;
-  border: 1px solid var(--line);
+.project-meta {
+  display: flex;
+  gap: 18px;
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+.project-role {
+  color: var(--quiet);
+  text-transform: capitalize;
+}
+.project-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 24px 0 20px;
+  border-bottom: 1px solid var(--line-strong);
+  overflow-x: auto;
+}
+.project-tabs > a:not(.project-new-map-button) {
+  flex: none;
+  padding: 10px 14px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+}
+.project-tabs > a:not(.project-new-map-button):hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+.project-tabs > a[aria-current='page'] {
+  border-bottom-color: var(--accent);
+  color: var(--text-strong);
+}
+.project-tabs .project-new-map-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  min-height: 28px;
+  margin: 0 0 4px auto;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
   background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+}
+.project-tabs .project-new-map-button:hover {
+  border-color: var(--line-emphasis);
+  background: var(--surface-hover);
+}
+.project-new-map-button span {
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1;
+}
+.project-tab-content {
+  max-width: 720px;
+}
+.project-tab-content h2 {
+  margin: 0 0 16px;
+  color: var(--text-strong);
+  font-size: 14px;
+}
+.home-page {
+  width: min(1120px, calc(100% - 48px));
+  padding-top: 48px;
+}
+.home-workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: clamp(40px, 6vw, 88px);
+  align-items: start;
+}
+.home-start h1 {
+  margin: 0 0 18px;
+  color: var(--text-strong);
+  font-size: 26px;
+  line-height: 1.1;
+}
+.home-start-actions,
+.home-recent-work {
+  display: grid;
+  gap: 8px;
+}
+.home-start-actions .wv-button {
+  justify-content: flex-start;
+  min-height: 38px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+.home-start-actions .wv-icon {
+  font-size: 17px;
+}
+.home-start-actions .home-start-primary {
+  background: var(--surface-raised);
+}
+.home-recent-work {
+  gap: 28px;
+}
+.home-page .landing-empty {
+  padding: 14px 10px;
+}
+.home-page .landing-auth {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .landing-recents {
   display: grid;
@@ -288,6 +429,13 @@ a:focus-visible {
 .section-heading-row span {
   color: var(--quiet);
   font: 11px var(--font-mono);
+}
+.section-heading-actions {
+  margin-left: auto;
+}
+.section-heading-actions .wv-button span {
+  color: inherit;
+  font: inherit;
 }
 .landing-recent-list {
   display: grid;
@@ -318,6 +466,10 @@ a:focus-visible {
   grid-column: 2;
   grid-row: 1 / span 2;
   align-self: center;
+}
+.hosted-project-row > span {
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .project-access-row {
@@ -446,6 +598,9 @@ a:focus-visible {
   place-items: center;
   background: var(--bg);
   color: var(--muted);
+}
+.application-start-shell .route-loading {
+  min-height: calc(100dvh - 48px);
 }
 
 .route-error-page {
@@ -615,6 +770,16 @@ a:focus-visible {
 }
 
 @media (max-width: 760px) {
+  .application-topbar-name {
+    padding-inline: 10px;
+  }
+  .home-workspace {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .home-page {
+    padding-top: 32px;
+  }
   .product-page,
   .landing-page,
   .new-map-route,
@@ -627,10 +792,6 @@ a:focus-visible {
   }
   .product-header-aside {
     display: none;
-  }
-  .landing-actions {
-    display: grid;
-    grid-template-columns: 1fr;
   }
   .new-map-page {
     padding-top: 24px;

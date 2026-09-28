@@ -8,6 +8,7 @@ import { RemoteBuildQueue } from '../src/build-queue.js';
 import { WorldviewDatabase, type WorldviewUser } from '../src/database.js';
 import type { HostedMapCheckpoint, HostedMapSnapshot } from '../src/map-cell-client.js';
 import { createWorldviewService } from '../src/server.js';
+import type { WorldviewMcpAuthConfig } from '../src/mcp-auth.js';
 
 export const TEST_REALTIME_TICKET_SECRET = 'test-worldview-realtime-ticket-secret-0001';
 
@@ -60,6 +61,7 @@ export async function fixture(
   fetchImpl?: typeof fetch,
   compilerFetch?: typeof fetch,
   additionalPublicOrigins?: readonly string[],
+  mcpAuth?: WorldviewMcpAuthConfig,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'worldview-service-test-'));
   const database = new WorldviewDatabase(join(root, 'worldview.db'));
@@ -74,6 +76,7 @@ export async function fixture(
       publicUrl: 'http://127.0.0.1',
     },
     ...(additionalPublicOrigins ? { additionalPublicOrigins } : {}),
+    ...(mcpAuth ? { mcpAuth } : {}),
     realtimeTicketSecret: TEST_REALTIME_TICKET_SECRET,
     maps,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),

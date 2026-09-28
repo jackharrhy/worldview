@@ -1,19 +1,30 @@
 import { createHash } from 'node:crypto';
 import {
   developmentTexturePack,
+  documentWithoutOmittedLayers,
+  materialUsageInDocument,
   parseMap,
   serializeMapForCompile,
 } from '@jackharrhy/worldview-editor/core';
 import type { HostedResourceMount } from '@worldview/protocol';
 import type { BlobStore } from './blob-store.js';
+import { subsetWadTextures } from './wad-subset.js';
+
+const MAX_BUILD_TEXTURE_BYTES = 128 * 1024 * 1024;
 
 /** Resolves pinned project bytes, never browser-provided files or remote mutable content. */
 export async function prepareHostedBuildResources(
   source: string,
   game: 'quake' | 'goldsrc',
   mounts: readonly HostedResourceMount[],
-  blobs: BlobStore,
+  blobs: Pick<BlobStore, 'get'>,
 ) {
+  const document = parseMap(source);
+  const usedNames = new Set(
+    materialUsageInDocument(documentWithoutOmittedLayers(document)).map(({ material }) =>
+      material.toLowerCase(),
+    ),
+  );
   const assets: { name: string; mediaType: string; bytes: Uint8Array }[] = [];
   let totalBytes = 0;
   let palette: Uint8Array | undefined;
@@ -32,20 +43,22 @@ export async function prepareHostedBuildResources(
     if (createHash('sha256').update(bytes).digest('hex') !== mount.expectedSha256) {
       throw new Error(`Texture pack ${mount.displayName} does not match its pinned content.`);
     }
-    totalBytes += bytes.byteLength;
-    if (totalBytes > 24 * 1024 * 1024)
-      throw new Error('Build texture packs exceed the 24 MiB limit.');
     if (mount.kind === 'palette') {
       if (bytes.byteLength !== 768)
         throw new Error(`Palette ${mount.displayName} must contain 768 bytes.`);
       palette = bytes;
       continue;
     }
+    const selected = subsetWadTextures(bytes, game === 'quake' ? 2 : 3, usedNames);
+    if (!selected) continue;
     if (assets.length >= 15) throw new Error('Builds support at most 15 project texture packs.');
+    totalBytes += selected.byteLength;
+    if (totalBytes > MAX_BUILD_TEXTURE_BYTES)
+      throw new Error('Selected build textures exceed the 128 MiB limit.');
     assets.push({
       name: `project_${assets.length + 1}.wad`,
       mediaType: 'application/x-wad',
-      bytes,
+      bytes: selected,
     });
   }
   const development = developmentTexturePack(game, palette)!;
@@ -54,16 +67,16 @@ export async function prepareHostedBuildResources(
     mediaType: 'application/x-wad',
     bytes: new Uint8Array(development.wad),
   });
-  if (totalBytes + development.wad.byteLength > 24 * 1024 * 1024)
-    throw new Error('Build texture packs exceed the 24 MiB limit.');
+  if (totalBytes + development.wad.byteLength > MAX_BUILD_TEXTURE_BYTES)
+    throw new Error('Selected build textures exceed the 128 MiB limit.');
   const mapText = serializeMapForCompile(
-    parseMap(source),
+    document,
     assets.map(({ name, bytes }) => ({ name, data: bytes })),
     game,
   );
   if (
     assets.reduce((sum, asset) => sum + Math.ceil(asset.bytes.byteLength / 3) * 4, 0) >
-    32 * 1024 * 1024
+    172 * 1024 * 1024
   ) {
     throw new Error('Encoded build texture packs exceed the compiler input limit.');
   }

@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@jackharrhy/worldview": "*",
     "@jackharrhy/worldview-editor": "*",
     "@sindresorhus/slugify": "^3.0.1",
     "@worldview/protocol": "*",

@@ -13,6 +13,7 @@ import {
 } from '@worldview/protocol';
 import { z } from 'zod';
 import { createHostedId, hostedSlug, isHostedId } from './hosted-identity.js';
+import { MAX_PROJECT_ASSET_BYTES, MAX_RESOURCE_FILE_BYTES } from './resource-limits.js';
 
 export type ProjectRole = ProtocolProjectRole;
 export type {
@@ -68,11 +69,12 @@ interface SqlUser {
 interface SqlResourceMount {
   readonly id: string;
   readonly ordinal: number;
-  readonly provider: 'artbin';
+  readonly provider: 'artbin' | 'upload' | 'worldview';
   readonly provider_asset_id: string;
   readonly expected_sha256: string;
   readonly kind: string;
   readonly display_name: string;
+  readonly metadata_json: string;
   readonly created_at: number;
 }
 
@@ -111,6 +113,16 @@ export class WorldviewDatabase {
       );
       CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS automation_grants (
+        code_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS automation_sessions (
+        token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS oauth_transactions (
@@ -244,6 +256,63 @@ export class WorldviewDatabase {
 
   public deleteSession(value: string | undefined): void {
     if (value) this.sql.prepare('DELETE FROM sessions WHERE token_hash=?').run(digest(value));
+  }
+
+  public createAutomationGrant(
+    userId: string,
+    projectId: string,
+  ): { code: string; expiresAt: number } | null {
+    if (!this.role(projectId, userId) || this.role(projectId, userId) === 'viewer') return null;
+    const code = token();
+    const expiresAt = Date.now() + 10 * 60_000;
+    this.sql
+      .prepare(
+        'INSERT INTO automation_grants(code_hash,user_id,project_id,expires_at,created_at) VALUES (?,?,?,?,?)',
+      )
+      .run(digest(code), userId, projectId, expiresAt, Date.now());
+    return { code, expiresAt };
+  }
+
+  public redeemAutomationGrant(
+    code: string,
+  ): { token: string; expiresAt: number; projectId: string } | null {
+    const grant = this.sql
+      .prepare(
+        'DELETE FROM automation_grants WHERE code_hash=? AND expires_at>? RETURNING user_id,project_id',
+      )
+      .get(digest(code), Date.now()) as { user_id: string; project_id: string } | undefined;
+    if (
+      !grant ||
+      !this.role(grant.project_id, grant.user_id) ||
+      this.role(grant.project_id, grant.user_id) === 'viewer'
+    )
+      return null;
+    const value = token();
+    const expiresAt = Date.now() + 60 * 60_000;
+    this.sql
+      .prepare(
+        'INSERT INTO automation_sessions(token_hash,user_id,project_id,expires_at,created_at) VALUES (?,?,?,?,?)',
+      )
+      .run(digest(value), grant.user_id, grant.project_id, expiresAt, Date.now());
+    return { token: value, expiresAt, projectId: grant.project_id };
+  }
+
+  public automationSession(
+    value: string | undefined,
+  ): { user: WorldviewUser; projectId: string } | null {
+    if (!value) return null;
+    const row = this.sql
+      .prepare(`SELECT u.id,u.fourm_sub,u.username,u.display_name,u.is_admin,s.project_id
+      FROM automation_sessions s JOIN users u ON u.id=s.user_id
+      WHERE s.token_hash=? AND s.expires_at>?`)
+      .get(digest(value), Date.now()) as (SqlUser & { project_id: string }) | undefined;
+    if (
+      !row ||
+      !this.role(row.project_id, row.id) ||
+      this.role(row.project_id, row.id) === 'viewer'
+    )
+      return null;
+    return { user: this.user(row), projectId: row.project_id };
   }
 
   private user(row: SqlUser): WorldviewUser {
@@ -510,21 +579,39 @@ export class WorldviewDatabase {
       expectedSha256: row.expected_sha256,
       kind: row.kind,
       displayName: row.display_name,
+      size: Number(ResourceMetadataSchema.parse(JSON.parse(row.metadata_json)).size ?? 0),
       createdAt: row.created_at,
     }));
+  }
+
+  public projectAssetBytes(projectId: string): number {
+    const mounts = this.listResourceMountsForProject(projectId);
+    const unique = new Map(mounts.map((mount) => [mount.expectedSha256, mount.size]));
+    return [...unique.values()].reduce((sum, size) => sum + size, 0);
   }
 
   public createResourceMount(input: {
     projectId: string;
     userId: string;
+    provider: 'artbin' | 'upload' | 'worldview';
     providerAssetId: string;
     expectedSha256: string;
     kind: string;
     displayName: string;
+    size: number;
     metadata: unknown;
   }): HostedResourceMount | null {
     const role = this.role(input.projectId, input.userId);
     if (role !== 'owner') return null;
+    if (!Number.isSafeInteger(input.size) || input.size < 0 || input.size > MAX_RESOURCE_FILE_BYTES)
+      throw Object.assign(new Error('Project assets must be at most 512 MiB per file'), {
+        status: 413,
+      });
+    const existing = this.sql
+      .prepare('SELECT 1 FROM resource_mounts WHERE project_id=? AND expected_sha256=? LIMIT 1')
+      .get(input.projectId, input.expectedSha256);
+    if (!existing && this.projectAssetBytes(input.projectId) + input.size > MAX_PROJECT_ASSET_BYTES)
+      throw Object.assign(new Error('Project assets exceed the 1 GiB quota'), { status: 413 });
     const id = randomUUID();
     const ordinal = (
       this.sql
@@ -543,23 +630,24 @@ export class WorldviewDatabase {
         id,
         input.projectId,
         ordinal,
-        'artbin',
+        input.provider,
         input.providerAssetId,
         input.expectedSha256,
         input.kind,
         input.displayName,
-        JSON.stringify(input.metadata),
+        JSON.stringify({ ...ResourceMetadataSchema.parse(input.metadata), size: input.size }),
         input.userId,
         createdAt,
       );
     return {
       id,
       ordinal,
-      provider: 'artbin',
+      provider: input.provider,
       providerAssetId: input.providerAssetId,
       expectedSha256: input.expectedSha256,
       kind: input.kind,
       displayName: input.displayName,
+      size: input.size,
       createdAt,
     };
   }
@@ -576,6 +664,14 @@ export class WorldviewDatabase {
   } | null {
     if (!this.role(projectId, userId)) return null;
     return this.resourceMountForProject(projectId, mountId);
+  }
+
+  public deleteResourceMount(projectId: string, mountId: string, userId: string): boolean {
+    if (this.role(projectId, userId) !== 'owner') return false;
+    const result = this.sql
+      .prepare('DELETE FROM resource_mounts WHERE project_id=? AND id=?')
+      .run(projectId, mountId);
+    return result.changes > 0;
   }
 
   public resourceMountForProject(

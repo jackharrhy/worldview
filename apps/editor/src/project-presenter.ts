@@ -14,6 +14,7 @@ import {
 } from './project-workspace.js';
 import {
   EntityDefinitionCatalog,
+  parseEntityDefinitionFile,
   BUILTIN_POINT_ENTITY_DEFINITIONS,
   createEmptyDocument,
   createSequentialIdFactory,
@@ -564,6 +565,34 @@ export class ProjectPresenter {
         this.state.quakePalette,
       );
       this.state.loadedWadSources.set(resource.name, resource.data);
+    }
+    const definitionResources = resources.filter((resource) =>
+      ['fgd', 'def', 'ent'].includes(resource.kind),
+    );
+    if (definitionResources.length > 0) {
+      const paths = new Set(definitionResources.map(({ name }) => name.toLowerCase()));
+      const parsed = definitionResources.map((resource) => {
+        const format = resource.kind as 'fgd' | 'def' | 'ent';
+        const file = parseEntityDefinitionFile(
+          format,
+          new TextDecoder().decode(resource.data),
+          resource.name,
+        );
+        const parent = resource.name.includes('/')
+          ? resource.name.slice(0, resource.name.lastIndexOf('/') + 1)
+          : '';
+        for (const include of file.includes) {
+          if (!paths.has(`${parent}${include}`.toLowerCase())) {
+            throw new Error(`FGD ${resource.name} includes missing ${include}`);
+          }
+        }
+        const error = file.diagnostics.find(({ severity }) => severity === 'error');
+        if (error) throw new Error(`Entity definitions ${resource.name}: ${error.message}`);
+        return file;
+      });
+      this.state.entityDefinitions = new EntityDefinitionCatalog(parsed);
+      this.state.renderer?.setEntityDefinitions(this.state.entityDefinitions);
+      this.refreshEntityDefinitionPresets();
     }
     this.ui.resourceSettings.update({ projectResourcesUrl: `/project/${projectId}` });
     this.refreshGameMaterials();

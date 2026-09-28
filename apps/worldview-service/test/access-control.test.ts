@@ -68,10 +68,12 @@ async function createAccessFixture() {
   const mount = app.database.createResourceMount({
     projectId: project.id,
     userId: owner.user.id,
+    provider: 'artbin',
     providerAssetId: 'resource-fixture',
     expectedSha256: resource.sha256,
     kind: 'wad',
     displayName: 'resource.wad',
+    size: resource.size,
     metadata: { mimeType: 'application/octet-stream' },
   });
   if (!mount) throw new Error('Owner could not create the resource fixture');

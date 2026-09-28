@@ -49,15 +49,20 @@ const router = createBrowserRouter([
           Component: async () => (await import('./routes/new-project-route.js')).Component,
         },
       },
-      {
-        path: '/project/:projectRef',
+      ...[
+        '/project/:projectRef',
+        '/project/:projectRef/new-map',
+        '/project/:projectRef/access',
+        '/project/:projectRef/resources',
+      ].map((path) => ({
+        path,
         HydrateFallback: RouteLoading,
         lazy: {
           loader: async () => (await import('./routes/project-loader.js')).loader,
           action: async () => (await import('./routes/project-action.js')).action,
           Component: async () => (await import('./routes/project-route.js')).Component,
         },
-      },
+      })),
       {
         path: '/project/:projectRef/map/:mapRef',
         HydrateFallback: RouteLoading,

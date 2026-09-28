@@ -2,13 +2,8 @@ import { useRef, useState } from 'react';
 import { useLoaderData, useNavigate } from 'react-router';
 import { ProjectLocalStateService } from '../project-local-state.js';
 import type { EditorDirectoryHandle } from '../project-workspace.js';
-import {
-  ActionButton,
-  EmptyState,
-  ProductHeader,
-  ProductPage,
-  SectionHeading,
-} from '../components/ui.js';
+import { ActionButton, ProductPage, SectionHeading } from '../components/ui.js';
+import { Icon } from '../components/ui/icon.js';
 import { setPendingEditorLaunch } from './editor-launch.js';
 import type { loader } from './home-loader.js';
 import { hostedProjectPath } from './hosted-route.js';
@@ -61,122 +56,131 @@ export function Component() {
 
   return (
     <ProductPage className="home-page">
-      <ProductHeader
-        title="Worldview Editor"
-        description="Make Quake and GoldSrc maps in your browser. Work locally, or sign in to continue on another computer."
-        centered
-        showWordmark={false}
-      />
-      <div className="landing-actions">
-        <ActionButton type="button" tone="primary" onPress={() => void navigate('/new-map')}>
-          New map
-        </ActionButton>
-        <ActionButton type="button" onPress={() => void openProject()}>
-          Open project folder
-        </ActionButton>
-        <ActionButton type="button" onPress={() => mapInput.current?.click()}>
-          Open map file
-        </ActionButton>
-        <input
-          ref={mapInput}
-          type="file"
-          accept=".map,text/plain"
-          hidden
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            if (!file) return;
-            setPendingEditorLaunch({ kind: 'map', file });
-            void navigate('/editor');
-          }}
-        />
-      </div>
-      <section className="landing-recents" aria-labelledby="hosted-title">
-        <SectionHeading title="Hosted projects" detail="Saved to your account" />
-        {hosted.status === 'signed-out' ? (
-          <EmptyState>
-            <a className="landing-auth" href="/auth/login">
-              Sign in with 4orm
-            </a>{' '}
-            to access the same projects from another browser.
-          </EmptyState>
-        ) : null}
-        {hosted.status === 'offline' ? (
-          <p className="landing-empty">
-            Hosted projects are unavailable right now. You can still edit local maps and projects.
-          </p>
-        ) : null}
-        {hosted.status === 'ready' ? (
-          <div className="landing-recent-list">
+      <div className="home-workspace">
+        <section className="home-start" aria-labelledby="start-title">
+          <h1 id="start-title">Start</h1>
+          <div className="home-start-actions">
             <ActionButton
               type="button"
-              tone="primary"
-              onPress={() => void navigate('/new-project')}
+              className="home-start-primary"
+              onPress={() => void navigate('/editor')}
             >
-              New hosted project
+              <Icon name="viewport-3d" /> Open editor
             </ActionButton>
-            {hosted.projects.length === 0 ? (
-              <p className="landing-empty">You have no hosted projects yet.</p>
-            ) : (
-              hosted.projects.map((project) => (
-                <button
-                  type="button"
-                  className="landing-recent"
-                  key={project.id}
-                  onClick={() => void navigate(hostedProjectPath(project))}
-                >
-                  <strong>{project.name}</strong>
-                  <span>
-                    {project.game === 'goldsrc' ? 'GoldSrc' : 'Quake'} · {project.role}
-                  </span>
-                  <small>{new Date(project.updatedAt).toLocaleString()}</small>
-                </button>
-              ))
-            )}
+            <ActionButton type="button" onPress={() => void navigate('/new-map')}>
+              <Icon name="new-map" /> New map
+            </ActionButton>
+            <ActionButton type="button" onPress={() => mapInput.current?.click()}>
+              <Icon name="open-map" /> Open map file
+            </ActionButton>
+            <ActionButton type="button" onPress={() => void openProject()}>
+              <Icon name="open-project" /> Open project folder
+            </ActionButton>
           </div>
-        ) : null}
-      </section>
-      <section className="landing-recents" aria-labelledby="local-maps-title">
-        <SectionHeading title="Local maps" detail="Recovered from interrupted hosted sessions" />
-        <div className="landing-recent-list">
-          {localMaps.length === 0 ? (
-            <p className="landing-empty">No detached local maps.</p>
-          ) : (
-            localMaps.map((map) => (
-              <button
-                type="button"
-                className="landing-recent"
-                key={map.id}
-                onClick={() => void navigate(detachedMapPath(map.id))}
-              >
-                <strong>{map.name}</strong>
-                <span>{map.reason}</span>
-                <small>{new Date(map.updatedAt).toLocaleString()}</small>
-              </button>
-            ))
-          )}
+          <input
+            ref={mapInput}
+            type="file"
+            accept=".map,text/plain"
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (!file) return;
+              setPendingEditorLaunch({ kind: 'map', file });
+              void navigate('/editor');
+            }}
+          />
+        </section>
+        <div className="home-recent-work">
+          <section className="landing-recents" aria-labelledby="hosted-title">
+            <SectionHeading
+              id="hosted-title"
+              title="Hosted projects"
+              action={
+                hosted.status === 'ready' ? (
+                  <ActionButton
+                    type="button"
+                    size="compact"
+                    onPress={() => void navigate('/new-project')}
+                  >
+                    <span aria-hidden="true">+</span> New project
+                  </ActionButton>
+                ) : undefined
+              }
+            />
+            {hosted.status === 'signed-out' ? (
+              <p className="landing-empty">
+                <a className="landing-auth" href="/auth/login">
+                  Sign in with 4orm
+                </a>{' '}
+                to open your projects across browsers.
+              </p>
+            ) : null}
+            {hosted.status === 'offline' ? (
+              <p className="landing-empty">Hosted projects are unavailable right now.</p>
+            ) : null}
+            {hosted.status === 'ready' ? (
+              <div className="landing-recent-list">
+                {hosted.projects.length === 0 ? (
+                  <p className="landing-empty">No hosted projects yet.</p>
+                ) : (
+                  hosted.projects.map((project) => (
+                    <button
+                      type="button"
+                      className="landing-recent hosted-project-row"
+                      key={project.id}
+                      onClick={() => void navigate(hostedProjectPath(project))}
+                    >
+                      <strong>{project.name}</strong>
+                      <span>
+                        {project.game === 'goldsrc' ? 'GoldSrc' : 'Quake'}, {project.role}
+                      </span>
+                      <small>{new Date(project.updatedAt).toLocaleDateString()}</small>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : null}
+          </section>
+          {localMaps.length > 0 ? (
+            <section className="landing-recents" aria-labelledby="local-maps-title">
+              <SectionHeading id="local-maps-title" title="Local maps" />
+              <div className="landing-recent-list">
+                {localMaps.map((map) => (
+                  <button
+                    type="button"
+                    className="landing-recent"
+                    key={map.id}
+                    onClick={() => void navigate(detachedMapPath(map.id))}
+                  >
+                    <strong>{map.name}</strong>
+                    <span>{map.reason}</span>
+                    <small>{new Date(map.updatedAt).toLocaleDateString()}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+          {localProjects.length > 0 ? (
+            <section className="landing-recents" aria-labelledby="recents-title">
+              <SectionHeading id="recents-title" title="Local projects" />
+              <div className="landing-recent-list">
+                {localProjects.map((recent) => (
+                  <button
+                    type="button"
+                    className="landing-recent"
+                    key={recent.projectKey}
+                    onClick={() => void reopenProject(recent.projectKey)}
+                  >
+                    <strong>{recent.displayName}</strong>
+                    <span>{recent.detail}</span>
+                    <small>{new Date(recent.updatedAt).toLocaleDateString()}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
-      </section>
-      <section className="landing-recents" aria-labelledby="recents-title">
-        <SectionHeading title="Local projects" detail="Saved in this browser" />
-        <div className="landing-recent-list">
-          {localProjects.length === 0 ? (
-            <p className="landing-empty">No local project folders yet.</p>
-          ) : (
-            localProjects.map((recent) => (
-              <button
-                type="button"
-                className="landing-recent"
-                key={recent.projectKey}
-                onClick={() => void reopenProject(recent.projectKey)}
-              >
-                <strong>{recent.displayName}</strong>
-                <span>{recent.detail}</span>
-                <small>{new Date(recent.updatedAt).toLocaleString()}</small>
-              </button>
-            ))
-          )}
-        </div>
-      </section>
+      </div>
       {error ? (
         <p className="landing-error" role="alert">
           {error}

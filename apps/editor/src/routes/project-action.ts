@@ -56,19 +56,39 @@ export async function action({
       return { error: error instanceof Error ? error.message : String(error) };
     }
   }
+  if (intent === 'remove-resource') {
+    try {
+      await apiJson(
+        HostedOkResponseSchema,
+        new URL(
+          `/api/projects/${encodeURIComponent(projectId)}/resources/${encodeURIComponent(String(data.get('resourceId') ?? ''))}`,
+          request.url,
+        ),
+        { method: 'DELETE' },
+      );
+      return { resourceRemoved: true };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
   const name = String(data.get('name') ?? '').trim();
   const format = String(data.get('format') ?? 'valve-220');
+  const sourceFile = data.get('sourceFile');
   if (!name) return { error: 'Enter a map name.' };
   if (format !== 'valve-220' && format !== 'quake')
     return { error: 'Choose a supported map format.' };
+  if (sourceFile instanceof File && sourceFile.size > 2 * 1024 * 1024)
+    return { error: 'Map files must be at most 2 MiB.' };
   try {
+    const source =
+      sourceFile instanceof File && sourceFile.size > 0 ? await sourceFile.text() : undefined;
     const result = await apiJson(
       HostedMapCreatedResponseSchema,
       new URL(`/api/projects/${encodeURIComponent(projectId)}/maps`, request.url),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, format }),
+        body: JSON.stringify({ name, format, ...(source ? { source } : {}) }),
       },
     );
     return { createdMap: result.map };

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="oklch(12.63% 0.0069 258.37)" />
+    <meta name="theme-color" content="oklch(21% 0.006 285.885)" />
     <title>Worldview Editor</title>
     <script>
       try {
@@ -17,6 +17,9 @@
       } catch {
         document.documentElement.dataset.theme = 'dark';
       }
+      if (document.documentElement.dataset.theme === 'light') {
+        document.querySelector('meta[name="theme-color"]').content = 'oklch(96.5% 0.004 255)';
+      }
     </script>
     <style>
       html,
@@ -24,7 +27,7 @@
       #app {
         min-height: 100%;
         margin: 0;
-        background: oklch(12.63% 0.0069 258.37);
+        background: oklch(21% 0.006 285.885);
       }
 
       html[data-theme='light'],

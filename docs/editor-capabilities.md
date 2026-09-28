@@ -12,15 +12,15 @@ Status terms:
 
 ## Workspace and source
 
-| Capability                 | Status    | Current behavior                                                                                                                                                           |
-| -------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| New maps                   | Delivered | Creates an empty `worldspawn`; Valve 220 is the default and classic Quake syntax is preserved until explicit conversion.                                                   |
-| Map parsing and saving     | Delivered | Structure-preserving source state retains comments, whitespace, property order, syntax, and opaque constructs. Unsafe rewrites are blocked; normalized export is separate. |
-| Local projects             | Delivered | `worldview.project.json` describes profile, map/resource roots, definitions, and logical build profiles. Directory handles and executable bindings stay browser-local.     |
-| Hosted projects            | Delivered | Private 4orm-authenticated projects and maps use short readable routes, role enforcement, authoritative room persistence, Artbin mounts, and server-owned builds.          |
-| Recent work                | Delivered | The home route lists browser-local and authorized hosted work without loading the editor bundle.                                                                           |
-| Recovery                   | Delivered | Debounced IndexedDB recovery, protected checkpoints, retention, quota handling, and external-file conflict checks avoid destructive overwrite.                             |
-| View workspace persistence | Delivered | Per-map 2D/3D cameras, pane layout, inspector width, and expanded perspective state persist as local view preferences.                                                     |
+| Capability                 | Status    | Current behavior                                                                                                                                                                                                                                           |
+| -------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New maps                   | Delivered | Creates an empty `worldspawn`; Valve 220 is the default and classic Quake syntax is preserved until explicit conversion.                                                                                                                                   |
+| Map parsing and saving     | Delivered | Structure-preserving source state retains comments, whitespace, property order, syntax, and opaque constructs. Unsafe rewrites are blocked; normalized export is separate.                                                                                 |
+| Local projects             | Delivered | `worldview.project.json` describes profile, map/resource roots, definitions, and logical build profiles. Directory handles and executable bindings stay browser-local.                                                                                     |
+| Hosted projects            | Delivered | Private 4orm-authenticated projects and maps use short readable routes, role enforcement, authoritative room persistence, pinned uploads and Artbin imports, and server-owned builds. Projects hold up to 1 GiB of unique assets, with a 512 MiB file cap. |
+| Recent work                | Delivered | The home route lists browser-local and authorized hosted work without loading the editor bundle.                                                                                                                                                           |
+| Recovery                   | Delivered | Debounced IndexedDB recovery, protected checkpoints, retention, quota handling, and external-file conflict checks avoid destructive overwrite.                                                                                                             |
+| View workspace persistence | Delivered | Per-map 2D/3D cameras, pane layout, inspector width, and expanded perspective state persist as local view preferences.                                                                                                                                     |
 
 ## Interface and viewports
 

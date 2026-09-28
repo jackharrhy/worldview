@@ -91,7 +91,7 @@ function collaborationEndpoint(): string {
     endpoint.protocol = 'http:';
     endpoint.hostname = '127.0.0.1';
     endpoint.port = '8787';
-  } else if (endpoint.port === '8444') {
+  } else if (endpoint.port === '8444' && import.meta.env.PROD) {
     endpoint.protocol = 'https:';
     endpoint.port = '8443';
   }

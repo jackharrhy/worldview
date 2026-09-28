@@ -74,7 +74,8 @@ operations, map version, disconnect bounds, and an exact source/document recover
 Reconnection uses the existing deterministic operation/rebase rules. Crossing a dirty-reconnect
 bound atomically turns that recovery state into an independent local map and removes the operations
 from hosted replay. Resources use a SHA-256 browser cache and never silently update when a remote
-provider changes.
+provider changes. Direct uploads and Artbin imports become immutable Worldview-owned blobs;
+the original Artbin asset can move or disappear without changing the project.
 
 These browser records are recovery data, never a second hosted authority. Initial HTTP loads, live
 joins, reloads, checkpoints, and builds resolve the same named MapCell and its single monotonically
@@ -101,9 +102,25 @@ builds and previews use the included standard palette; a pinned 768-byte custom 
 it for mods. Placeholder palettes are never substituted. GoldSrc uses WAD3 per-texture palettes
 and explicitly compiles to BSP30. Editor previews
 decode the same generated WAD bytes sent to the worker. Imported WADs must match the target game
-and retain their authored palettes, mipmaps, and fullbright pixels. Builds allow up
-to 15 project WADs and 24 MiB of texture inputs. Hosted editor resource controls lead to project
-resources; browser-only imports cannot silently enter a hosted material catalog.
+and retain their authored palettes, mipmaps, and fullbright pixels. The editor loads full project
+packs; builds extract only used texture lumps from up to 15 project WADs. Selected build textures
+are limited to 128 MiB. A hosted project may mount 1 GiB of unique content-addressed bytes and
+each imported or uploaded file may be at most 512 MiB. Repeated mounts of one hash count once.
+Project resources also include FGD, DEF, and ENT definitions for the hosted entity catalog.
+
+## Production MCP and browser automation
+
+`https://worldview.harrhy.xyz/mcp` exposes project, map, and build tools through 4orm OAuth.
+Only current 4orm administrators may use the MCP endpoint initially; every project operation
+still requires membership. The server validates token activity, audience, scope, expiration,
+identity, and current administrator status before tool execution. Build logs, diagnostics, and
+artifact chunks can be inspected without a browser session.
+
+An MCP tool can issue a one-time code for one project where the caller can edit. The code expires
+after ten minutes. Redeeming it from a browser creates a project-scoped cookie for up to one hour.
+The scoped browser can load that project, its resources and maps, edit through the normal MapCell
+ticket flow, and run builds. It cannot enumerate other projects or manage membership. Headless
+Chrome runs on the agent's machine and uses the editor's existing browser WebMCP tools.
 
 Hosted map source is limited to 2 MiB. One user may have one active build and submit at most six
 builds per hour; the process admits no more than four active/queued jobs globally and retains only

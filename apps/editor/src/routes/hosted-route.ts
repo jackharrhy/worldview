@@ -21,6 +21,13 @@ export function hostedProjectPath(project: HostedRouteResource): string {
   return `/project/${routeReference(project)}`;
 }
 
+export function hostedProjectSectionPath(
+  project: HostedRouteResource,
+  section: 'new-map' | 'access' | 'resources',
+): string {
+  return `${hostedProjectPath(project)}/${section}`;
+}
+
 export function hostedMapPath(project: HostedRouteResource, map: HostedRouteResource): string {
   return `${hostedProjectPath(project)}/map/${routeReference(map)}`;
 }

@@ -60,11 +60,12 @@ export type HostedProjectAccessUser = z.infer<typeof HostedProjectAccessUserSche
 export const HostedResourceMountSchema = z.strictObject({
   id,
   ordinal: z.number().int().nonnegative(),
-  provider: z.literal('artbin'),
+  provider: z.enum(['artbin', 'upload', 'worldview']),
   providerAssetId: id,
   expectedSha256: sha256,
   kind: z.string().min(1).max(128),
   displayName: name,
+  size: z.number().int().nonnegative(),
   createdAt: timestamp,
 });
 export type HostedResourceMount = z.infer<typeof HostedResourceMountSchema>;

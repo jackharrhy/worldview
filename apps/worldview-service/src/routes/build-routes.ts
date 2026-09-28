@@ -4,34 +4,17 @@ import {
   HostedBuildsResponseSchema,
 } from '@worldview/protocol';
 
-import { canEditProject } from '../access-policy.js';
-import { prepareHostedBuildResources } from '../build-resources.js';
+import { submitHostedBuild } from '../hosted-build-operation.js';
 import {
   allowMutation,
-  MAX_HOSTED_MAP_BYTES,
   requestBody,
   requireUser,
   sendError,
   sendJson,
-  type ServiceRequestContext,
+  ServiceHttpError,
 } from '../service-http.js';
 import { defineRoute, pathParameter } from '../service-routing.js';
 import type { WorldviewServiceOptions } from '../service-options.js';
-
-const BUILD_ADMISSION_REJECTIONS = {
-  'user-active': { retryAfter: '30', message: 'Wait for your current build to finish' },
-  'user-hourly': { retryAfter: '3600', message: 'Build limit reached; try again later' },
-  'global-capacity': { retryAfter: '30', message: 'The build worker is at capacity' },
-} as const;
-
-function rejectBuildAdmission(
-  context: ServiceRequestContext,
-  admission: keyof typeof BUILD_ADMISSION_REJECTIONS,
-): void {
-  const rejection = BUILD_ADMISSION_REJECTIONS[admission];
-  context.response.setHeader('Retry-After', rejection.retryAfter);
-  sendError(context.response, 429, rejection.message);
-}
 
 export function createBuildRoutes(
   options: Pick<WorldviewServiceOptions, 'blobs' | 'builds' | 'database' | 'maps'>,
@@ -56,74 +39,27 @@ export function createBuildRoutes(
         if (!allowMutation(context)) return;
         const user = requireUser(context, options.database);
         if (!user) return;
-        if (!options.builds) {
-          return sendError(context.response, 503, 'Remote builds are not configured');
-        }
-        const map = options.database.map(pathParameter(match, 0), user.id);
-        if (!map || !canEditProject(map.role)) {
-          return sendError(context.response, 403, 'Editor access required');
-        }
-        if (!options.builds.supports(map.game)) {
-          return sendError(context.response, 503, `No ${map.game} build worker is configured`);
-        }
         const input = await requestBody(context.request, CreateHostedBuildRequestSchema);
-        const snapshot = await options.maps.snapshot(map.id);
-        if (
-          input.expectedMapVersion !== undefined &&
-          input.expectedMapVersion !== snapshot.mapVersion
-        ) {
-          return sendError(
-            context.response,
-            409,
-            'The hosted map has not saved this revision yet; wait a moment and try again',
-          );
-        }
-        if (new TextEncoder().encode(snapshot.source).byteLength > MAX_HOSTED_MAP_BYTES) {
-          return sendError(context.response, 413, 'Hosted builds are limited to 2 MiB map sources');
-        }
-        const initialAdmission = options.database.buildAdmission(user.id);
-        if (initialAdmission !== 'allowed') return rejectBuildAdmission(context, initialAdmission);
-        let resources;
         try {
-          resources = await prepareHostedBuildResources(
-            snapshot.source,
-            map.game,
-            options.database.listResourceMounts(map.projectId, user.id) ?? [],
-            options.blobs,
-          );
+          const build = await submitHostedBuild(options, {
+            mapId: pathParameter(match, 0),
+            userId: user.id,
+            quality: input.quality,
+            ...(input.expectedMapVersion !== undefined
+              ? { expectedMapVersion: input.expectedMapVersion }
+              : {}),
+          });
+          sendJson(context.response, 202, HostedBuildCreatedResponseSchema, { build });
         } catch (error) {
-          return sendError(
-            context.response,
-            422,
-            error instanceof Error ? error.message : String(error),
-          );
+          if (!(error instanceof ServiceHttpError)) throw error;
+          if (error.status === 429) {
+            context.response.setHeader(
+              'Retry-After',
+              error.message === 'Build limit reached; try again later' ? '3600' : '30',
+            );
+          }
+          sendError(context.response, error.status, error.message);
         }
-        const admission = options.database.buildAdmission(user.id);
-        if (admission !== 'allowed') return rejectBuildAdmission(context, admission);
-        const build = options.database.createBuild({
-          mapId: map.id,
-          userId: user.id,
-          mapVersion: snapshot.mapVersion,
-          profileId: 'default',
-          quality: input.quality,
-        });
-        const queued = options.builds.enqueue({
-          id: build.id,
-          game: map.game,
-          mapName: map.name,
-          source: resources.mapText,
-          mapVersion: snapshot.mapVersion,
-          sourceSha256: snapshot.sourceSha256,
-          profileId: 'default',
-          quality: input.quality,
-          assets: resources.assets,
-        });
-        if (!queued) {
-          options.database.updateBuild(build.id, 'failed', { error: 'Build queue is full' });
-          context.response.setHeader('Retry-After', '30');
-          return sendError(context.response, 429, 'The build queue is full');
-        }
-        sendJson(context.response, 202, HostedBuildCreatedResponseSchema, { build });
       },
     ),
     defineRoute(

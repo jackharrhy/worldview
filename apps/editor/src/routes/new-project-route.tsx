@@ -11,7 +11,7 @@ export function Component() {
       <section className="new-map-route-content">
         <ProductHeader
           title="New hosted project"
-          description="Keep maps and pinned resources available across browsers."
+          description="Save maps and pinned resources to your account."
           backTo="/"
         />
         <Form method="post" className="route-form">
@@ -25,7 +25,7 @@ export function Component() {
                 <option value="goldsrc">GoldSrc</option>
               </select>
             </Field>
-            <p>Maps, resources, history, and builds for this project live on the server.</p>
+            <p>This project's maps, resources, history, and builds are saved on the server.</p>
             {actionData?.error ? (
               <p className="landing-error" role="alert">
                 {actionData.error}

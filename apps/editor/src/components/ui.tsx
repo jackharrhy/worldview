@@ -60,14 +60,19 @@ export function ProductHeader({
 export function SectionHeading({
   title,
   detail,
+  action,
+  id,
 }: {
   readonly title: string;
   readonly detail?: ReactNode;
+  readonly action?: ReactNode;
+  readonly id?: string;
 }) {
   return (
     <header className="section-heading-row">
-      <h2>{title}</h2>
+      <h2 id={id}>{title}</h2>
       {detail ? <span>{detail}</span> : null}
+      {action ? <div className="section-heading-actions">{action}</div> : null}
     </header>
   );
 }

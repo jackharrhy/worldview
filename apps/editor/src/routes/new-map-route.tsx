@@ -72,8 +72,8 @@ export function Component() {
                 <strong>Included texture pack</strong>
                 <p>
                   {profile === 'quake'
-                    ? 'Worldview development textures use the included standard Quake palette for matching previews and builds.'
-                    : 'Worldview development textures include their own palettes for Half-Life and Counter-Strike builds.'}
+                    ? 'Worldview development textures use the standard Quake palette in previews and builds.'
+                    : 'Worldview development textures include palettes for Half-Life and Counter-Strike builds.'}
                 </p>
               </div>
             ) : null}

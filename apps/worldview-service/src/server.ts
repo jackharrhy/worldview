@@ -64,7 +64,7 @@ export function createWorldviewService(options: WorldviewServiceOptions) {
       handleRequestError(response, error);
     }
   });
-  server.requestTimeout = 30_000;
+  server.requestTimeout = 10 * 60_000;
   server.headersTimeout = 15_000;
   server.keepAliveTimeout = 5_000;
   server.maxHeadersCount = 64;
@@ -102,6 +102,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       clientId: environment('FOURM_CLIENT_ID', 'worldview'),
       publicUrl: environment('WORLDVIEW_URL', 'http://localhost:8789'),
     },
+    ...(process.env.WORLDVIEW_4ORM_INTROSPECTION_SECRET
+      ? {
+          mcpAuth: {
+            fourmUrl: environment('FOURM_URL', 'http://127.0.0.1:8000'),
+            publicUrl: environment('WORLDVIEW_URL', 'http://localhost:8789'),
+            clientId: environment('WORLDVIEW_4ORM_INTROSPECTION_CLIENT_ID', 'worldview-server'),
+            clientSecret: process.env.WORLDVIEW_4ORM_INTROSPECTION_SECRET,
+          },
+        }
+      : {}),
     staticRoot: environment('WORLDVIEW_STATIC_ROOT', '../editor/dist'),
     realtimeTicketSecret: environment(
       'WORLDVIEW_REALTIME_TICKET_SECRET',
