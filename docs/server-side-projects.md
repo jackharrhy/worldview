@@ -116,12 +116,24 @@ still requires membership. The server validates token activity, audience, scope,
 identity, and current administrator status before tool execution. Build logs, diagnostics, and
 artifact chunks can be inspected without a browser session.
 
+To connect Codex, add the server and request its specific scope during login:
+
+```sh
+codex mcp add worldview --url https://worldview.harrhy.xyz/mcp --oauth-resource https://worldview.harrhy.xyz/mcp --oauth-client-registration dcr
+codex mcp login worldview --scopes openid,worldview:admin --oauth-client-registration dcr --no-browser
+```
+
+Complete the 4orm approval in a browser and paste the full callback URL into the waiting CLI.
+Requesting the scope explicitly matters because 4orm also serves other OAuth resources.
+
 An MCP tool can issue a one-time code for one project where the caller can edit. The code expires
 after ten minutes. Redeeming it from a browser creates a project-scoped cookie for up to one hour.
 The scoped browser can load that project, import and upload its resources if the account is an
 owner, edit maps through the normal MapCell ticket flow, and run builds. It cannot enumerate other
-projects or manage membership. Headless
-Chrome runs on the agent's machine and uses the editor's existing browser WebMCP tools.
+projects or manage membership. Headless Chrome runs on the agent's machine and uses the editor's
+existing browser WebMCP tools.
+Automation should wait for the editor's collaboration status to reach **Live** before issuing
+edits, so the initial document sync does not replace local undo history.
 
 Hosted map source is limited to 2 MiB. One user may have one active build and submit at most six
 builds per hour; the process admits no more than four active/queued jobs globally and retains only
