@@ -95,7 +95,7 @@ test.describe('WebMCP site authoring', () => {
     await page.reload();
     await expect(page.getByRole('heading', { name: 'New map', exact: true })).toBeVisible();
     await page.goBack();
-    await expect(page.getByRole('heading', { name: 'Worldview Editor' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Start' })).toBeVisible();
     await page.goForward();
     await page.getByLabel('Game').selectOption('quake2');
     await expect(page.getByLabel('Map format').locator('option')).toHaveText(['Classic Quake']);

@@ -25,7 +25,7 @@ test.describe('Application routing', () => {
     const requestedModules: string[] = [];
     page.on('request', (request) => requestedModules.push(new URL(request.url()).pathname));
     await page.goto(editorOrigin);
-    await expect(page.getByRole('heading', { name: 'Worldview Editor' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Start' })).toBeVisible();
     await page.waitForLoadState('networkidle');
 
     expect(requestedModules.some((pathname) => pathname.includes('/editor-route'))).toBe(false);
