@@ -37,12 +37,15 @@ export function Component() {
               <p className="landing-empty">This project has no maps yet.</p>
             ) : (
               project.maps.map((map) => (
-                <div className="landing-recent" key={map.id}>
-                  <button type="button" onClick={() => void navigate(hostedMapPath(project, map))}>
-                    <strong>{map.name}</strong>
-                    <span>{map.format === 'valve-220' ? 'Valve 220' : 'Classic Quake'}</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="landing-recent"
+                  key={map.id}
+                  onClick={() => void navigate(hostedMapPath(project, map))}
+                >
+                  <strong>{map.name}</strong>
+                  <span>{map.format === 'valve-220' ? 'Valve 220' : 'Classic Quake'}</span>
+                </button>
               ))
             )}
           </div>
