@@ -8,6 +8,9 @@ import {
   type RemoteCompileRequest,
 } from '@jackharrhy/worldview-editor/core';
 import { HostedErrorResponseSchema, type HostedGame } from '@worldview/protocol';
+import { Agent } from 'undici';
+
+const compileDispatcher = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
 
 interface QueuedBuild {
   readonly id: string;
@@ -50,7 +53,7 @@ export class RemoteBuildQueue {
       const endpoint = this.endpoints[input.game];
       if (!endpoint) throw new Error(`No ${input.game} build worker is configured`);
       const profile = hostedBuildProfile(input.game);
-      const response = await this.fetch(new URL('/compile', endpoint), {
+      const requestOptions = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -66,7 +69,9 @@ export class RemoteBuildQueue {
           })),
         } satisfies RemoteCompileRequest),
         signal: AbortSignal.timeout(profile.buildTimeoutMilliseconds),
-      });
+        dispatcher: compileDispatcher,
+      };
+      const response = await this.fetch(new URL('/compile', endpoint), requestOptions);
       const payload: unknown = await response.json().catch(() => null);
       const result = RemoteCompileResultSchema.safeParse(payload);
       if (!response.ok || !result.success) {

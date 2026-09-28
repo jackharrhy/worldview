@@ -168,6 +168,9 @@ const server = createServer({ maxHeaderSize: 16 * 1024 }, async (request, respon
 
   const controller = new AbortController();
   request.once('aborted', () => controller.abort());
+  response.once('close', () => {
+    if (!response.writableEnded) controller.abort();
+  });
   activeCompiles += 1;
   try {
     const requested = parseCompileRequest(await readJson(request), {

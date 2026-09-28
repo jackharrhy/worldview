@@ -68,6 +68,7 @@ COPY --from=build /app/node_modules/@sindresorhus/slugify node_modules/@sindreso
 COPY --from=build /app/node_modules/@sindresorhus/transliterate node_modules/@sindresorhus/transliterate
 COPY --from=build /app/node_modules/escape-string-regexp node_modules/escape-string-regexp
 COPY --from=build /app/node_modules/fflate node_modules/fflate
+COPY --from=build /app/node_modules/undici node_modules/undici
 COPY --from=build /app/apps/worldview-service/node_modules/nanoid apps/worldview-service/node_modules/nanoid
 RUN mkdir -p node_modules/@jackharrhy node_modules/@worldview \
   && ln -s ../../packages/worldview node_modules/@jackharrhy/worldview \
