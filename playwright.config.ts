@@ -32,9 +32,10 @@ const viewerWebServers = [
   },
 ];
 
+const editorTestPort = Number(process.env.WORLDVIEW_EDITOR_TEST_PORT ?? 5174);
 const editorWebServer = {
-  command: 'npm run dev --workspace @worldview/editor -- --host 127.0.0.1',
-  url: 'http://127.0.0.1:5174',
+  command: `npm run dev --workspace @worldview/editor -- --host 127.0.0.1 --port ${editorTestPort} --strictPort`,
+  url: `http://127.0.0.1:${editorTestPort}`,
   reuseExistingServer: !process.env.CI,
 };
 

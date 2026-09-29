@@ -358,7 +358,8 @@ The [linked project sync](./local-hosted-project-sync.md) lets a portable local 
 name hosted map identities while keeping edits in local files and using explicit, conflict-checked
 Pull and Push. The browser stores sync baselines locally; the MapCell remains the hosted source
 authority. The editor's Project sync dialog can write links into a local manifest after checking
-for external changes.
+for external changes. A hosted project's Maps page can open its matching local project folder
+directly, before any hosted map is opened.
 
 The service dispatches a small, named route table into focused authentication, project, resource,
 map, build, and MCP handlers. Production MCP uses 4orm OAuth resource audiences, current 4orm

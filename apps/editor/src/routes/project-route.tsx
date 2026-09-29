@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { worldviewGameProfile } from '@jackharrhy/worldview-editor/core';
+import { parseWorldviewProject, worldviewGameProfile } from '@jackharrhy/worldview-editor/core';
 import { isGameTreeAssetPath } from '@worldview/protocol';
 import {
   Form,
@@ -14,6 +14,8 @@ import type { action } from './project-action.js';
 import type { loader } from './project-loader.js';
 import { hostedMapPath, hostedProjectPath, hostedProjectSectionPath } from './hosted-route.js';
 import { Icon } from '../components/ui/icon.js';
+import { setPendingEditorLaunch } from './editor-launch.js';
+import { WORLDVIEW_PROJECT_FILE, pickProjectDirectory, projectFile } from '../project-workspace.js';
 
 function uploadedGameAssetPath(file: File): string | null {
   const parts = file.webkitRelativePath.split('/');
@@ -38,6 +40,33 @@ export function Component() {
   const folderInput = useRef<HTMLInputElement>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [localProjectError, setLocalProjectError] = useState<string | null>(null);
+  const openLocalProject = async () => {
+    setLocalProjectError(null);
+    try {
+      if (!('showDirectoryPicker' in window))
+        throw new Error('Project folders require Chromium File System Access.');
+      const handle = await pickProjectDirectory();
+      if (!handle) return;
+      const manifest = parseWorldviewProject(
+        await (await projectFile(handle, WORLDVIEW_PROJECT_FILE)).text(),
+      );
+      if (manifest.game !== project.game)
+        throw new Error(
+          `This folder is a ${manifest.game} project; ${project.name} uses ${project.game}.`,
+        );
+      if (
+        manifest.hosted &&
+        (manifest.hosted.projectId !== project.id || manifest.hosted.origin !== location.origin)
+      )
+        throw new Error('This folder is linked to a different hosted project or origin.');
+      setPendingEditorLaunch({ kind: 'project', handle });
+      void navigate('/editor');
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') return;
+      setLocalProjectError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
   const uploadResources = async (folder = false) => {
     const files = [...((folder ? folderInput : resourceInput).current?.files ?? [])];
     if (files.length === 0) return;
@@ -134,6 +163,15 @@ export function Component() {
           >
             Resources
           </Link>
+          {section === 'maps' ? (
+            <button
+              type="button"
+              className="project-open-local-button"
+              onClick={() => void openLocalProject()}
+            >
+              <Icon name="open-project" /> Open local project
+            </button>
+          ) : null}
           {canEdit && section !== 'new-map' ? (
             <Link
               to={hostedProjectSectionPath(project, 'new-map')}
@@ -143,6 +181,11 @@ export function Component() {
             </Link>
           ) : null}
         </nav>
+        {localProjectError ? (
+          <p className="landing-error" role="alert">
+            {localProjectError}
+          </p>
+        ) : null}
         {section === 'maps' ? (
           <section className="landing-recents" aria-label="Maps">
             <div className="landing-recent-list">

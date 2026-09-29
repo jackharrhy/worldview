@@ -19,6 +19,8 @@ The project menu lists local maps and opens Project sync. The sync dialog lists 
 source status, and a link to each hosted map. Switching away from an
 unsaved local document offers Save, Discard, or Cancel. A browser without directory write access
 keeps the existing download workflow and cannot claim a completed local sync.
+The hosted project's Maps page can select a local folder directly; it verifies the folder's game
+and hosted project link before opening the local editor.
 
 ## Portable configuration
 
