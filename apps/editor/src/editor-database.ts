@@ -10,9 +10,10 @@ import type {
 } from './collaboration-outbox.js';
 import type { DocumentRecoverySnapshot } from './document-recovery.js';
 import type { LocalProjectState } from './project-local-state.js';
+import type { ProjectSyncBaseline } from './project-sync.js';
 
 export const EDITOR_DATABASE_NAME = 'worldview-editor';
-export const EDITOR_DATABASE_VERSION = 2;
+export const EDITOR_DATABASE_VERSION = 3;
 
 export const EDITOR_STORES = {
   buildExports: 'build-exports',
@@ -22,6 +23,7 @@ export const EDITOR_STORES = {
   collaborationSessions: 'collaboration-sessions',
   detachedMaps: 'detached-maps',
   localProjects: 'local-projects',
+  projectSync: 'project-sync',
   recoveryHistory: 'recovery-history',
   recoveryLatest: 'recovery-latest',
 } as const;
@@ -59,6 +61,7 @@ interface EditorDatabaseSchema extends DBSchema {
     readonly key: string;
     readonly value: LocalProjectState;
   };
+  'project-sync': { readonly key: string; readonly value: ProjectSyncBaseline };
   'recovery-history': {
     readonly key: string;
     readonly value: DocumentRecoverySnapshot;
@@ -114,6 +117,7 @@ export function openEditorDatabase(): Promise<EditorDatabase> {
       if (oldVersion === 0) createStores(database);
       if (oldVersion < 2)
         database.createObjectStore(EDITOR_STORES.buildExports, { keyPath: 'scopeId' });
+      if (oldVersion < 3) database.createObjectStore(EDITOR_STORES.projectSync, { keyPath: 'key' });
     },
     blocking() {
       connection?.close();

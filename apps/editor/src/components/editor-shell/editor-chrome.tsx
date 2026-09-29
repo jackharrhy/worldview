@@ -479,6 +479,13 @@ function TopBar({ shellState }: EditorChromeProps) {
             </MenuSection>
             <MenuSection label="Application" showHeading={false}>
               {project.maps.length > 0 ? (
+                <MenuItem
+                  id="project-sync"
+                  label="Project sync…"
+                  onAction={() => shellState.projectSync.open()}
+                />
+              ) : null}
+              {project.maps.length > 0 ? (
                 <Submenu
                   label="Project maps"
                   menuProps={{ onAction: (key) => shellState.projectToolbar.openMap(String(key)) }}

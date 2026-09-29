@@ -218,6 +218,23 @@ export const MountHostedAssetRequestSchema = z.strictObject({ assetId: id });
 export const CreateHostedCheckpointRequestSchema = z.strictObject({
   name: z.string().trim().min(1).max(120),
 });
+export const ReplaceHostedMapSourceRequestSchema = z.strictObject({
+  expectedMapVersion: z.number().int().nonnegative(),
+  expectedSourceSha256: sha256,
+  source: z
+    .string()
+    .min(1)
+    .max(8 * 1_024 * 1_024),
+});
+export const ReplaceHostedMapSourceResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({ status: z.literal('replaced'), map: HostedMapSnapshotSchema }),
+  z.strictObject({
+    status: z.literal('conflict'),
+    mapVersion: z.number().int().nonnegative(),
+    sourceSha256: sha256,
+  }),
+]);
+export type ReplaceHostedMapSourceResult = z.infer<typeof ReplaceHostedMapSourceResultSchema>;
 export const CreateHostedBuildRequestSchema = z.strictObject({
   quality: z.enum(['preview', 'final']).default('preview'),
   expectedMapVersion: z.number().int().nonnegative().optional(),

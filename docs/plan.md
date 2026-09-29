@@ -354,6 +354,12 @@ application sessions, project metadata, membership, resource mounts, build admis
 realtime tickets. It authorizes a request before touching a map cell, compiler, Artbin, or blob
 store.
 
+The [linked project sync](./local-hosted-project-sync.md) lets a portable local manifest
+name hosted map identities while keeping edits in local files and using explicit, conflict-checked
+Pull and Push. The browser stores sync baselines locally; the MapCell remains the hosted source
+authority. The editor's Project sync dialog can write links into a local manifest after checking
+for external changes.
+
 The service dispatches a small, named route table into focused authentication, project, resource,
 map, build, and MCP handlers. Production MCP uses 4orm OAuth resource audiences, current 4orm
 administrator status, and project membership checks. Its tools create and inspect projects and

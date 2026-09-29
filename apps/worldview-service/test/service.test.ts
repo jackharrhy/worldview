@@ -204,6 +204,58 @@ describe('Worldview hosted project service', () => {
     ).toMatchObject({ map: { source, mapVersion: 7, sourceSha256: 'b'.repeat(64) } });
   });
 
+  test('replaces linked map source only at the reviewed hosted version', async () => {
+    const app = await fixture();
+    const { cookie } = session(app.database);
+    const project = (await (
+      await fetch(`${app.origin}/api/projects`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Sync', game: 'quake' }),
+      })
+    ).json()) as { project: { id: string } };
+    const created = (await (
+      await fetch(`${app.origin}/api/projects/${project.project.id}/maps`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'linked.map', format: 'quake' }),
+      })
+    ).json()) as { map: { id: string } };
+    const mapId = created.map.id;
+    const snapshot = (await (
+      await fetch(`${app.origin}/api/maps/${mapId}`, { headers: { Cookie: cookie } })
+    ).json()) as { map: { mapVersion: number; sourceSha256: string } };
+    const endpoint = `${app.origin}/api/projects/${project.project.id}/maps/${mapId}/source`;
+    const payload = {
+      expectedMapVersion: snapshot.map.mapVersion,
+      expectedSourceSha256: snapshot.map.sourceSha256,
+      source: '{\n"classname" "worldspawn"\n"message" "local sync"\n}\n',
+    };
+    const replace = await fetch(endpoint, {
+      method: 'PUT',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    expect(replace.status).toBe(200);
+    expect(await replace.json()).toMatchObject({
+      status: 'replaced',
+      map: { mapVersion: 1, source: payload.source },
+    });
+    const stale = await fetch(endpoint, {
+      method: 'PUT',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ status: 'conflict', mapVersion: 1 });
+    const anonymous = await fetch(endpoint, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    expect(anonymous.status).toBe(401);
+  });
+
   test('does not expose map metadata when MapCell initialization fails', async () => {
     const app = await fixture();
     const { cookie } = session(app.database);

@@ -146,6 +146,13 @@ export function sessionUser(
     )
       return grant.user;
     if (method === 'POST' && tail === 'maps') return grant.user;
+    const mapSourcePath = /^maps\/([^/]+)\/source$/.exec(tail);
+    if (
+      method === 'PUT' &&
+      mapSourcePath &&
+      database.map(mapSourcePath[1]!, grant.user.id)?.projectId === grant.projectId
+    )
+      return grant.user;
     if (method === 'POST' && tail === 'resources') return grant.user;
     if (method === 'PUT' && tail === 'resources/upload') return grant.user;
     if (method === 'DELETE' && /^resources\/[^/]+$/.test(tail)) return grant.user;

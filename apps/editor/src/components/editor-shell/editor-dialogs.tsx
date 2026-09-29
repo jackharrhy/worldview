@@ -8,6 +8,7 @@ import { TextField } from '../ui/text-field.js';
 import { Select } from '../ui/select.js';
 import { CollaborationDialog } from './collaboration-ui.js';
 import { useModalDialog } from '../ui/use-modal-dialog.js';
+import { ProjectSyncDialog } from './project-sync-dialog.js';
 
 function ViewFilterPopover({ shellState }: { readonly shellState: EditorShellState }) {
   const filters = useSyncExternalStore(
@@ -320,6 +321,7 @@ export function EditorDialogs({ shellState }: { readonly shellState: EditorShell
       <RecoveryDialog shellState={shellState} />
       <CheckpointDialog shellState={shellState} />
       <CollaborationDialog port={shellState.collaborationUi} />
+      <ProjectSyncDialog port={shellState.projectSync} />
       <ViewFilterPopover shellState={shellState} />
     </>
   );

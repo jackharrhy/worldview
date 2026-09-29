@@ -2,8 +2,10 @@ import { signRealtimeTicket } from './realtime-ticket.js';
 import {
   HostedCheckpointResponseSchema,
   HostedMapSnapshotSchema,
+  ReplaceHostedMapSourceResultSchema,
   type HostedCheckpoint as HostedMapCheckpoint,
   type HostedMapSnapshot,
+  type ReplaceHostedMapSourceResult,
 } from '@worldview/protocol';
 
 export type {
@@ -69,6 +71,34 @@ export class MapCellClient {
   public async snapshot(mapId: string): Promise<HostedMapSnapshot> {
     const payload: unknown = await (await this.request(mapId, 'snapshot')).json();
     return HostedMapSnapshotSchema.parse(payload);
+  }
+
+  public async replaceSource(
+    mapId: string,
+    actorId: string,
+    expectedMapVersion: number,
+    expectedSourceSha256: string,
+    source: string,
+  ): Promise<ReplaceHostedMapSourceResult> {
+    const response = await this.fetcher(
+      new URL(`/sync/maps/${encodeURIComponent(mapId)}/source`, this.endpoint),
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${this.ticket(mapId, actorId)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ expectedMapVersion, expectedSourceSha256, source }),
+      },
+    );
+    if (response.status !== 200 && response.status !== 409) {
+      throw new Error(`MapCell source replacement failed (${response.status})`);
+    }
+    const result = ReplaceHostedMapSourceResultSchema.parse(await response.json());
+    if ((response.status === 200) !== (result.status === 'replaced')) {
+      throw new Error('MapCell source replacement status mismatch');
+    }
+    return result;
   }
 
   public async createCheckpoint(

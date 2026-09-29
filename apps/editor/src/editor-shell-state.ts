@@ -23,6 +23,7 @@ import {
   RecoveryVersionsPort,
 } from './project-build-ui-state.js';
 import { PointEntityToolPort } from './point-entity-tool-state.js';
+import { ProjectSyncPort } from './project-sync-ui-state.js';
 import { EditorToolSettingsPort } from './editor-tool-settings-state.js';
 import { EditorCommandPort } from './editor-command-state.js';
 import { SelectionInspectorPort } from './selection-inspector-state.js';
@@ -655,6 +656,7 @@ export interface EditorShellState {
   readonly entityLinks: EntityLinksPort;
   readonly referenceScenes: ReferenceScenesPort;
   readonly projectToolbar: ProjectToolbarPort;
+  readonly projectSync: ProjectSyncPort;
   readonly projectUi: ProjectUiPort;
   readonly recoveryVersions: RecoveryVersionsPort;
   readonly buildLog: BuildLogPort;
@@ -694,6 +696,7 @@ export function createEditorShellState(): EditorShellState {
     entityLinks: new EntityLinksPort(),
     referenceScenes: new ReferenceScenesPort(),
     projectToolbar: new ProjectToolbarPort(),
+    projectSync: new ProjectSyncPort(),
     projectUi: new ProjectUiPort(),
     recoveryVersions: new RecoveryVersionsPort(),
     buildLog: new BuildLogPort(),

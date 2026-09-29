@@ -21,6 +21,7 @@ roadmaps or completion diaries.
   boundaries.
 - [Interface system](./interface-system.md): controls, themes, iconography, and editor UI language.
 - [Server-side projects](./server-side-projects.md): hosted storage, permissions, routes, and builds.
+- [Linked project sync](./local-hosted-project-sync.md): local folder and hosted map linkage.
 - [4orm OAuth](./4orm-oauth.md): login, sessions, identity, and authorization separation.
 - [Artbin integration](./artbin-integration.md): remote asset authentication, mounts, and content
   verification.

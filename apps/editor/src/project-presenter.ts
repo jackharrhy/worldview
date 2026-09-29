@@ -59,6 +59,7 @@ type ProjectState = EditorStatePort<
   | 'activeGameProfile'
   | 'assetMountState'
   | 'currentDocumentName'
+  | 'documentDirty'
   | 'currentFileHandle'
   | 'currentMapSource'
   | 'documentKey'
@@ -117,6 +118,11 @@ interface ProjectViewportWorkspaceCommands {
   restore(documentKey: string): boolean;
 }
 
+interface ProjectSyncCommands {
+  setWorkspace(workspace: WorldviewProjectWorkspace | null): void;
+  dispose(): void;
+}
+
 export class ProjectPresenter {
   private recoverySnapshots = new Map<string, DocumentRecoverySnapshot>();
   private projectOpenController: AbortController | null = null;
@@ -130,6 +136,7 @@ export class ProjectPresenter {
     private readonly materials: ProjectMaterialCommands,
     private readonly session: ProjectSessionCommands,
     private readonly viewportWorkspace: ProjectViewportWorkspaceCommands,
+    private readonly sync: ProjectSyncCommands,
     private readonly signal: AbortSignal,
   ) {
     this.ui.projectToolbar.bind({
@@ -155,6 +162,7 @@ export class ProjectPresenter {
   public dispose(): void {
     this.cancelProjectOpen();
     this.ui.projectToolbar.unbind();
+    this.sync.dispose();
     this.ui.recoveryVersions.unbind();
     this.ui.projectUi.unbind();
   }
@@ -162,14 +170,33 @@ export class ProjectPresenter {
   private async openProjectMap(path: string): Promise<void> {
     const map = this.state.projectWorkspace?.maps.find((candidate) => candidate.path === path);
     if (!map) return;
-    this.ui.projectToolbar.update({ selectedMapId: path });
+    if (
+      this.state.documentDirty &&
+      this.ui.projectToolbar.getSnapshot().selectedMapId !== null &&
+      this.ui.projectToolbar.getSnapshot().selectedMapId !== path
+    ) {
+      const save = window.confirm(
+        `Save changes to ${this.state.currentDocumentName} before opening ${path}?\n\nOK saves. Cancel lets you choose whether to discard or stay.`,
+      );
+      if (save) {
+        await this.saveCurrentMap();
+        if (this.state.documentDirty) return;
+      } else if (
+        !window.confirm(
+          `Discard unsaved changes to ${this.state.currentDocumentName}?\n\nCancel keeps this map open.`,
+        )
+      )
+        return;
+    }
     await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
+    this.ui.projectToolbar.update({ selectedMapId: path });
   }
 
   private detachProjectContext(): void {
     this.cancelProjectOpen();
     if (!this.state.projectWorkspace) return;
     this.state.projectWorkspace = null;
+    this.sync.setWorkspace(null);
     this.state.projectKey = null;
     this.ui.projectToolbar.set({
       maps: [],
@@ -286,6 +313,7 @@ export class ProjectPresenter {
       this.viewportWorkspace.restore(viewportWorkspaceKey);
       if (belongsToCurrentProject && this.state.projectKey) {
         await this.state.projectLocalState.setLastMap(this.state.projectKey, logicalName);
+        this.ui.projectToolbar.update({ selectedMapId: logicalName });
       }
       await this.restoreBrowserAssetMounts();
       assertExpectedDocument({
@@ -374,6 +402,12 @@ export class ProjectPresenter {
     const signal = AbortSignal.any([this.signal, controller.signal]);
     try {
       const workspace = await openWorldviewProject(handle);
+      if (workspace.manifest.hosted) {
+        for (const entry of workspace.manifest.hosted.maps) {
+          if (!workspace.maps.some((map) => map.path === entry.path))
+            throw new Error(`Linked map is not under a project map root: ${entry.path}`);
+        }
+      }
       signal.throwIfAborted();
       const resources = await loadWorkspaceResources(workspace, signal);
       signal.throwIfAborted();
@@ -387,6 +421,7 @@ export class ProjectPresenter {
 
       this.applyProjectResources(workspace, resources);
       this.state.projectWorkspace = workspace;
+      this.sync.setWorkspace(workspace);
       this.state.projectKey = remembered?.projectKey ?? provisionalProjectKey;
       this.state.workspaceId = remembered?.workspaceId ?? `project:${this.state.projectKey}`;
       this.state.activeGameProfile = workspace.manifest.game;

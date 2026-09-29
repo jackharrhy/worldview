@@ -13,6 +13,7 @@ import {
   type CollaborationServerFrame,
   type HostedCheckpoint,
   type HostedMapSnapshot,
+  type ReplaceHostedMapSourceResult,
 } from '@worldview/protocol';
 
 interface SocketAttachment {
@@ -24,7 +25,6 @@ interface SocketAttachment {
 
 type MapSnapshot = HostedMapSnapshot;
 type MapCheckpoint = HostedCheckpoint;
-
 interface StateRow {
   readonly [key: string]: string | number;
   readonly map_id: string;
@@ -133,6 +133,81 @@ export class MapCell extends DurableObject<Env> {
     return this.toSnapshot(state);
   }
 
+  public async replaceSource(
+    mapId: string,
+    actorId: string,
+    expectedMapVersion: number,
+    expectedSourceSha256: string,
+    source: string,
+  ): Promise<ReplaceHostedMapSourceResult> {
+    if (new TextEncoder().encode(source).byteLength > MAX_MAP_SOURCE_BYTES) {
+      throw new Error('Hosted maps are limited to 2 MiB of source');
+    }
+    const before = this.state();
+    if (before.map_id !== mapId) throw new Error('MapCell identity mismatch');
+    if (
+      before.map_version !== expectedMapVersion ||
+      before.source_sha256 !== expectedSourceSha256
+    ) {
+      return {
+        status: 'conflict',
+        mapVersion: before.map_version,
+        sourceSha256: before.source_sha256,
+      };
+    }
+    if (before.source_text === source) return { status: 'replaced', map: this.toSnapshot(before) };
+    const document = parseMapSource(source).document;
+    const sourceSha256 = await sha256(source);
+    const documentJson = JSON.stringify(document);
+    const committed = this.ctx.storage.transactionSync(() => {
+      const current = this.state();
+      if (
+        current.map_version !== expectedMapVersion ||
+        current.source_sha256 !== expectedSourceSha256
+      ) {
+        return false;
+      }
+      const now = Date.now();
+      this.ctx.storage.sql.exec(
+        'INSERT INTO checkpoints VALUES(?,?,?,?,?,?,?)',
+        crypto.randomUUID(),
+        'Before project sync',
+        current.map_version,
+        current.source_text,
+        current.source_sha256,
+        actorId,
+        now,
+      );
+      this.ctx.storage.sql.exec(
+        `DELETE FROM checkpoints WHERE id IN (
+          SELECT id FROM checkpoints ORDER BY created_at DESC LIMIT -1 OFFSET ?
+        )`,
+        MAX_CHECKPOINTS,
+      );
+      this.ctx.storage.sql.exec(
+        `UPDATE map_state SET map_version=?,document_json=?,source_text=?,source_sha256=?,updated_at=?
+         WHERE singleton=1`,
+        current.map_version + 1,
+        documentJson,
+        source,
+        sourceSha256,
+        now,
+      );
+      return true;
+    });
+    if (!committed) {
+      const current = this.state();
+      return {
+        status: 'conflict',
+        mapVersion: current.map_version,
+        sourceSha256: current.source_sha256,
+      };
+    }
+    this.documentCache = { serialized: documentJson, document };
+    for (const socket of this.ctx.getWebSockets())
+      socket.close(1012, 'Map source replaced; reconnect');
+    return { status: 'replaced', map: this.snapshot(mapId) };
+  }
   public async submit(
     actorId: string,
     operation: CollaborationOperation,

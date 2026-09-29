@@ -38,6 +38,13 @@ export interface WorldviewProjectManifest {
   readonly resources: WorldviewProjectResources;
   readonly buildProfiles: readonly WorldviewProjectBuildProfile[];
   readonly defaultBuildProfile?: string | undefined;
+  readonly hosted?:
+    | {
+        readonly origin: string;
+        readonly projectId: string;
+        readonly maps: readonly { readonly path: string; readonly mapId: string }[];
+      }
+    | undefined;
 }
 
 export class WorldviewProjectParseError extends Error {
@@ -98,6 +105,33 @@ const BuildProfileSchema = z.strictObject({
   quality: z.enum(['preview', 'final'], { error: 'must be preview or final' }),
 });
 
+const HostedProjectLinkSchema = z
+  .strictObject({
+    origin: z
+      .url()
+      .refine((value) => new URL(value).origin === value, 'must be an origin without a path'),
+    projectId: z.string().regex(/^[a-z0-9]{12}$/),
+    maps: z
+      .array(
+        z.strictObject({
+          path: relativePathSchema(),
+          mapId: z.string().regex(/^[a-z0-9]{12}$/),
+        }),
+      )
+      .max(10_000),
+  })
+  .superRefine((link, context) => {
+    for (const field of ['path', 'mapId'] as const) {
+      const values = link.maps.map((map) => map[field]);
+      if (new Set(values).size !== values.length)
+        context.addIssue({
+          code: 'custom',
+          path: ['maps'],
+          message: `hosted maps must have unique ${field} values`,
+        });
+    }
+  });
+
 const ProjectManifestObjectSchema = z
   .strictObject({
     schemaVersion: z.literal(1, { error: 'only schemaVersion 1 is supported' }),
@@ -107,6 +141,7 @@ const ProjectManifestObjectSchema = z
     resources: ProjectResourcesSchema,
     buildProfiles: z.array(BuildProfileSchema, { error: 'must be an array' }).default([]),
     defaultBuildProfile: nonEmptyString.optional(),
+    hosted: HostedProjectLinkSchema.optional(),
   })
   .superRefine((project, context) => {
     const ids = project.buildProfiles.map(({ id }) => id);
@@ -135,6 +170,18 @@ const ProjectManifestObjectSchema = z
           path: ['resources', 'entityDefinitions', index, 'format'],
           message: `${definition.format} is not supported by the ${project.game} profile`,
         });
+      }
+    }
+    if (project.hosted) {
+      for (const key of ['path', 'mapId'] as const) {
+        const values = project.hosted.maps.map((map) => map[key].toLowerCase());
+        if (new Set(values).size !== values.length) {
+          context.addIssue({
+            code: 'custom',
+            path: ['hosted', 'maps'],
+            message: `hosted map ${key}s must be unique`,
+          });
+        }
       }
     }
   });

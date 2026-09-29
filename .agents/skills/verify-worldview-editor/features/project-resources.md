@@ -6,6 +6,9 @@
 and entity-definition loading, remembered browser-local handles, project map switching, and
 authenticated content-addressed mounts for hosted projects. Quake II game roots expose bounded
 `textures/`, `pics/colormap.pcx`, and `env/` assets to both source materials and compiled preview.
+An optional hosted link in the portable manifest maps local paths to hosted map IDs. Project sync
+uses explicit Pull and Push, a source diff, local IndexedDB baselines, and conditional hosted
+source replacement. The local directory still opens when the hosted origin is unavailable.
 
 ## How to get to it (user POV)
 

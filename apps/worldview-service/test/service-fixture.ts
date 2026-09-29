@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach } from 'vitest';
-import { createStarterDocument } from '@jackharrhy/worldview-editor/core';
+import { createStarterDocument, parseMapSource } from '@jackharrhy/worldview-editor/core';
 import { FileBlobStore } from '../src/blob-store.js';
 import { RemoteBuildQueue } from '../src/build-queue.js';
 import { WorldviewDatabase, type WorldviewUser } from '../src/database.js';
@@ -17,12 +17,13 @@ export class FakeMapCells {
   readonly checkpoints: { mapId: string; name: string }[] = [];
 
   async initialize(mapId: string, source: string): Promise<HostedMapSnapshot> {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source));
     const snapshot = {
       mapId,
       mapVersion: 0,
       document: createStarterDocument(),
       source,
-      sourceSha256: 'a'.repeat(64),
+      sourceSha256: Buffer.from(digest).toString('hex'),
     };
     this.snapshots.set(mapId, snapshot);
     return snapshot;
@@ -32,6 +33,37 @@ export class FakeMapCells {
     const snapshot = this.snapshots.get(mapId);
     if (!snapshot) throw new Error('MapCell is not initialized');
     return snapshot;
+  }
+
+  async replaceSource(
+    mapId: string,
+    _actorId: string,
+    expectedMapVersion: number,
+    expectedSourceSha256: string,
+    source: string,
+  ) {
+    const current = await this.snapshot(mapId);
+    if (
+      current.mapVersion !== expectedMapVersion ||
+      current.sourceSha256 !== expectedSourceSha256
+    ) {
+      return {
+        status: 'conflict' as const,
+        mapVersion: current.mapVersion,
+        sourceSha256: current.sourceSha256,
+      };
+    }
+    if (current.source === source) return { status: 'replaced' as const, map: current };
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source));
+    const next = {
+      ...current,
+      mapVersion: current.mapVersion + 1,
+      document: parseMapSource(source).document,
+      source,
+      sourceSha256: Buffer.from(digest).toString('hex'),
+    };
+    this.snapshots.set(mapId, next);
+    return { status: 'replaced' as const, map: next };
   }
 
   async createCheckpoint(

@@ -1,5 +1,9 @@
 # Third-party notices
 
+## jsdiff
+
+The editor uses [jsdiff](https://github.com/kpdecker/jsdiff) to display local and hosted map source differences. It is distributed under the BSD 3-Clause License. Copyright © 2009–2015 Kevin Decker. The license text is included with the installed `diff` package in `node_modules/diff/LICENSE` and in its published distribution.
+
 Worldview contains code adapted from the IdTech2/GoldSrc renderer in
 [noclip.website](https://github.com/magcius/noclip.website).
 

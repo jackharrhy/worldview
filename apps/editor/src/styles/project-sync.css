@@ -1,0 +1,160 @@
+.project-sync-dialog {
+  width: min(1100px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  color: var(--text);
+  background: var(--surface-popover);
+  border: 1px solid var(--line-emphasis);
+}
+.project-sync-dialog::backdrop {
+  background: var(--overlay);
+}
+.project-sync-dialog > header,
+.project-sync-summary,
+.project-sync-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.project-sync-dialog > header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.project-sync-dialog > header div,
+.project-sync-summary div {
+  display: grid;
+  gap: 3px;
+}
+.project-sync-dialog header span,
+.project-sync-summary span,
+.project-sync-dialog footer span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.project-sync-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 440px;
+}
+.project-sync-body nav {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding: 10px;
+  border-right: 1px solid var(--line);
+}
+.project-sync-body nav button {
+  padding: 8px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.project-sync-body nav button:hover,
+.project-sync-body nav button.selected {
+  background: var(--surface-active);
+}
+.project-sync-body section {
+  min-width: 0;
+  padding: 14px;
+}
+.project-sync-summary a {
+  color: var(--accent-text);
+  font-size: 12px;
+}
+.project-sync-hint,
+.project-sync-warning,
+.project-sync-error {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.project-sync-warning {
+  color: var(--accent-text);
+}
+.project-sync-error {
+  color: var(--danger-text);
+}
+.project-sync-diff {
+  height: min(54vh, 540px);
+  overflow: auto;
+  background: var(--surface-deep);
+  border: 1px solid var(--line);
+  font: 11px/1.35 var(--font-mono);
+}
+.project-sync-diff div {
+  display: flex;
+  white-space: pre;
+  min-width: max-content;
+}
+.project-sync-diff div span {
+  width: 22px;
+  flex: none;
+  padding-left: 7px;
+  color: var(--quiet);
+}
+.project-sync-diff .local {
+  background: var(--surface-danger);
+}
+.project-sync-diff .hosted {
+  background: oklch(25% 0.03 145);
+}
+.project-sync-dialog footer {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.project-sync-dialog footer span {
+  margin-right: auto;
+}
+.project-sync-setup h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.project-sync-setup p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.project-sync-setup form {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin: 16px 0;
+}
+.project-sync-setup label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+.project-sync-setup input,
+.project-sync-setup select {
+  width: 100%;
+  padding: 7px 8px;
+  color: var(--text);
+  background: var(--surface-input);
+  border: 1px solid var(--line);
+  font: inherit;
+}
+.project-sync-mapping {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+.project-sync-mapping label {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 1fr);
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .project-sync-body {
+    grid-template-columns: 1fr;
+  }
+  .project-sync-body nav {
+    display: flex;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}

@@ -31,6 +31,39 @@ describe('Worldview project manifests', () => {
     expect(serialized.endsWith('\n')).toBe(true);
   });
 
+  it('round-trips hosted map links and rejects duplicate identities', () => {
+    const hosted = {
+      origin: 'https://worldview.example',
+      projectId: 'abcdefghijkl',
+      maps: [{ path: 'maps/one.map', mapId: 'mnopqrstuvwx' }],
+    };
+    expect(parseWorldviewProject(serializeWorldviewProject({ ...PROJECT, hosted })).hosted).toEqual(
+      hosted,
+    );
+    expect(() =>
+      parseWorldviewProject(
+        JSON.stringify({
+          ...PROJECT,
+          hosted: {
+            ...hosted,
+            maps: [...hosted.maps, { path: 'maps/one.map', mapId: 'yz0123456789' }],
+          },
+        }),
+      ),
+    ).toThrow(/unique path/);
+    expect(() =>
+      parseWorldviewProject(
+        JSON.stringify({
+          ...PROJECT,
+          hosted: {
+            ...hosted,
+            maps: [...hosted.maps, { path: '../outside.map', mapId: 'yz0123456789' }],
+          },
+        }),
+      ),
+    ).toThrow(WorldviewProjectParseError);
+  });
+
   it('accepts Quake FGD definitions for mods using WAD2 textures', () => {
     const project = {
       ...PROJECT,

@@ -2,19 +2,26 @@ export { MapCell } from './map-cell.js';
 import {
   MapCellCheckpointRequestSchema,
   MapCellInitializeRequestSchema,
+  ReplaceHostedMapSourceRequestSchema,
 } from '@worldview/protocol';
 import { verifyHostedRealtimeTicket } from './realtime-ticket.js';
 
-type MapAction = 'snapshot' | 'live' | 'initialize' | 'checkpoints';
+type MapAction = 'snapshot' | 'live' | 'initialize' | 'checkpoints' | 'source';
 
 function isMapAction(value: string | undefined): value is MapAction {
   return (
-    value === 'snapshot' || value === 'live' || value === 'initialize' || value === 'checkpoints'
+    value === 'snapshot' ||
+    value === 'live' ||
+    value === 'initialize' ||
+    value === 'checkpoints' ||
+    value === 'source'
   );
 }
 
 function mapFromPath(pathname: string): { mapId: string; action: MapAction } | null {
-  const match = /^\/sync\/maps\/([^/]+)\/(snapshot|live|initialize|checkpoints)$/.exec(pathname);
+  const match = /^\/sync\/maps\/([^/]+)\/(snapshot|live|initialize|checkpoints|source)$/.exec(
+    pathname,
+  );
   return match?.[1] && isMapAction(match[2])
     ? { mapId: decodeURIComponent(match[1]), action: match[2] }
     : null;
@@ -68,6 +75,21 @@ export default {
       }
       if (request.method === 'GET' && route.action === 'snapshot') {
         return json(await stub.snapshot(route.mapId));
+      }
+      if (request.method === 'PUT' && route.action === 'source') {
+        const input = ReplaceHostedMapSourceRequestSchema.safeParse(
+          await request.json().catch(() => null),
+        );
+        if (!input.success)
+          return json({ error: 'Valid map source and version are required' }, { status: 400 });
+        const result = await stub.replaceSource(
+          route.mapId,
+          ticket.actorId,
+          input.data.expectedMapVersion,
+          input.data.expectedSourceSha256,
+          input.data.source,
+        );
+        return json(result, { status: result.status === 'conflict' ? 409 : 200 });
       }
       if (request.method === 'GET' && route.action === 'checkpoints') {
         return json({ checkpoints: await stub.listCheckpoints() });

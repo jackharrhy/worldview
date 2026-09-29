@@ -33,6 +33,7 @@ const routeCases: readonly (readonly [ServiceMethod, string, string])[] = [
   ['DELETE', '/api/projects/project-1/resources/mount-1', 'delete-project-resource'],
   ['GET', '/api/projects/project-1/resources/mount-1/content', 'get-project-resource-content'],
   ['GET', '/api/maps/map-1', 'get-map'],
+  ['PUT', '/api/projects/project-1/maps/map-1/source', 'replace-map-source'],
   ['POST', '/api/maps/map-1/checkpoints', 'create-map-checkpoint'],
   ['POST', '/api/maps/map-1/realtime-ticket', 'create-realtime-ticket'],
   ['GET', '/api/maps/map-1/builds', 'list-map-builds'],

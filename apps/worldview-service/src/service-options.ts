@@ -1,4 +1,8 @@
-import type { HostedCheckpoint, HostedMapSnapshot } from '@worldview/protocol';
+import type {
+  HostedCheckpoint,
+  HostedMapSnapshot,
+  ReplaceHostedMapSourceResult,
+} from '@worldview/protocol';
 
 import type { ArtbinClient } from './artbin.js';
 import type { BlobStore } from './blob-store.js';
@@ -11,6 +15,13 @@ export interface HostedMapStore {
   initialize(mapId: string, source: string): Promise<HostedMapSnapshot>;
   snapshot(mapId: string): Promise<HostedMapSnapshot>;
   createCheckpoint(mapId: string, name: string, actorId: string): Promise<HostedCheckpoint>;
+  replaceSource(
+    mapId: string,
+    actorId: string,
+    expectedMapVersion: number,
+    expectedSourceSha256: string,
+    source: string,
+  ): Promise<ReplaceHostedMapSourceResult>;
 }
 
 export interface WorldviewServiceOptions {

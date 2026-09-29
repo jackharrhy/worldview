@@ -89,6 +89,7 @@ describe('hosted project access control', () => {
       ['PUT', '/api/projects/project-1/members/user-1'],
       ['DELETE', '/api/projects/project-1/members/user-1'],
       ['POST', '/api/projects/project-1/maps'],
+      ['PUT', '/api/projects/project-1/maps/map-1/source'],
       ['POST', '/api/projects/project-1/resources'],
       ['POST', '/api/maps/map-1/checkpoints'],
       ['POST', '/api/maps/map-1/realtime-ticket'],
@@ -104,6 +105,31 @@ describe('hosted project access control', () => {
       expect(response.status, `${method} ${pathname}`).toBe(403);
       await expect(response.json()).resolves.toEqual({ error: 'Cross-origin mutation rejected' });
     }
+  });
+
+  test('limits conditional source replacement to editors in the owning project', async () => {
+    const { app, owner, editor, viewer, outsider, project, mapId } = await createAccessFixture();
+    const snapshot = await app.maps.snapshot(mapId);
+    const body = JSON.stringify({
+      expectedMapVersion: snapshot.mapVersion,
+      expectedSourceSha256: snapshot.sourceSha256,
+      source: snapshot.source,
+    });
+    const url = `${app.origin}/api/projects/${project.id}/maps/${mapId}/source`;
+    for (const [principal, expected] of [
+      [viewer, 403],
+      [outsider, 404],
+      [editor, 200],
+      [owner, 200],
+    ] as const) {
+      const response = await fetch(url, { method: 'PUT', headers: headers(principal, true), body });
+      expect(response.status).toBe(expected);
+    }
+    const wrongProject = await fetch(
+      `${app.origin}/api/projects/another-project/maps/${mapId}/source`,
+      { method: 'PUT', headers: headers(owner, true), body },
+    );
+    expect(wrongProject.status).toBe(404);
   });
 
   test('allows project members to read hosted state without disclosing it to outsiders', async () => {

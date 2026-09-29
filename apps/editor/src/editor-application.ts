@@ -13,6 +13,7 @@ import { KeyboardEvents } from './keyboard-events.js';
 import { MaterialsPresenter } from './materials-presenter.js';
 import { OrganizationPresenter } from './organization-presenter.js';
 import { ProjectPresenter } from './project-presenter.js';
+import { ProjectSyncPresenter } from './project-sync-presenter.js';
 import { RendererPresenter } from './renderer-presenter.js';
 import { SessionPresenter } from './session-presenter.js';
 import { ToolEvents } from './tool-events.js';
@@ -70,13 +71,8 @@ export class EditorApplication {
         this.inspector.updateFaceInspector(document, selection),
       publishCollaborationPreview: (document) => this.collaboration.publishPreview(document),
     };
-    this.state = new EditorState(
-      ui,
-      elements.uvEditorSvg,
-      () => stateHost,
-      this.lifetime.signal,
-      options,
-    );
+    const editorSignal = this.lifetime.signal;
+    this.state = new EditorState(ui, elements.uvEditorSvg, () => stateHost, editorSignal, options);
     this.viewportWorkspace = new ViewportWorkspacePresenter(undefined, (error) => {
       if (this.signal.aborted) return;
       console.error('Viewport workspace persistence failed', error);
@@ -184,6 +180,9 @@ export class EditorApplication {
       publishCollaborationPreview: (document) => this.collaboration.publishPreview(document),
       publishCollaborationPointer: () => this.collaboration.publishPointer(),
     });
+    const projectSync = new ProjectSyncPresenter(this.state, ui, (...args) =>
+      this.project.openEditorMap(...args),
+    );
     this.project = new ProjectPresenter(
       this.state,
       ui,
@@ -193,6 +192,7 @@ export class EditorApplication {
       this.materials,
       this.session,
       this.viewportWorkspace,
+      projectSync,
       this.lifetime.signal,
     );
     this.webmcp = new WebMcpPresenter(

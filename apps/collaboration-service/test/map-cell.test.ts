@@ -62,6 +62,33 @@ function nextSocketFrame(socket: WebSocket): Promise<unknown> {
 }
 
 describe('MapCell', () => {
+  it('checkpoints the old source and rejects a stale project sync push', async () => {
+    const mapId = 'project-sync-cell';
+    const cell = env.MAP_CELLS.getByName(mapId);
+    const original = serializeMap(createStarterDocument());
+    const first = await cell.initialize(mapId, original);
+    const changed = `${original}\n// edited on disk\n`;
+    const replaced = await cell.replaceSource(
+      mapId,
+      'user-1',
+      first.mapVersion,
+      first.sourceSha256,
+      changed,
+    );
+    expect(replaced).toMatchObject({ status: 'replaced', map: { mapVersion: 1, source: changed } });
+    expect(await cell.listCheckpoints()).toMatchObject([
+      { name: 'Before project sync', mapVersion: 0 },
+    ]);
+    const stale = await cell.replaceSource(
+      mapId,
+      'user-1',
+      first.mapVersion,
+      first.sourceSha256,
+      original,
+    );
+    expect(stale).toMatchObject({ status: 'conflict', mapVersion: 1 });
+    expect((await cell.snapshot(mapId)).source).toBe(changed);
+  });
   it('requires signed map access and initializes one canonical snapshot', async () => {
     const mapId = 'map-auth';
     const preflight = await SELF.fetch(`https://map.test/sync/maps/${mapId}/initialize`, {
