@@ -78,8 +78,10 @@ export class ProjectUiPort extends EditorUiPort<ProjectUiSnapshot, ProjectUiActi
 }
 
 export interface ProjectToolbarSnapshot {
+  readonly projectName: string | null;
   readonly maps: readonly ProjectToolbarOption[];
   readonly selectedMapId: string | null;
+  readonly lastMapId: string | null;
   readonly buildProfiles: readonly ProjectToolbarOption[];
   readonly selectedBuildProfileId: string | null;
 }
@@ -90,8 +92,10 @@ export interface ProjectToolbarActions {
 }
 
 const EMPTY_PROJECT_TOOLBAR: ProjectToolbarSnapshot = {
+  projectName: null,
   maps: [],
   selectedMapId: null,
+  lastMapId: null,
   buildProfiles: [],
   selectedBuildProfileId: null,
 };

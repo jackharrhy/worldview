@@ -360,6 +360,8 @@ Pull and Push. The browser stores sync baselines locally; the MapCell remains th
 authority. The editor's Project sync dialog can write links into a local manifest after checking
 for external changes. A hosted project's Maps page can open its matching local project folder
 directly, before any hosted map is opened.
+Opening a local project presents its map list in the editor before a map is selected, including
+when reopening a recent project. The last opened map is marked for quick selection.
 
 The service dispatches a small, named route table into focused authentication, project, resource,
 map, build, and MCP handlers. Production MCP uses 4orm OAuth resource audiences, current 4orm

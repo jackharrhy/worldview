@@ -7,6 +7,7 @@ import { Tab, TabList, TabPanel, Tabs } from '../ui/tabs.js';
 import { MapInspector } from './map-inspector.js';
 import { ObjectInspector } from './object-inspector.js';
 import { TextureInspector } from './texture-inspector.js';
+import { ProjectMapSelector } from './project-map-selector.js';
 
 import type { EditorShellState } from '../../editor-shell-state.js';
 
@@ -62,6 +63,11 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
     shellState.workspaceLayout.subscribe,
     shellState.workspaceLayout.getSnapshot,
   );
+  const project = useSyncExternalStore(
+    shellState.projectToolbar.subscribe,
+    shellState.projectToolbar.getSnapshot,
+  );
+  const choosingProjectMap = project.projectName !== null && project.selectedMapId === null;
   const { perspectiveOnly, rendererReady } = viewportLayout;
   const perspectiveToggleLabel = perspectiveOnly
     ? 'Restore four viewports'
@@ -69,7 +75,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
 
   return (
     <section
-      className={`workspace${inspectorLayout.open ? '' : ' inspector-closed'}`}
+      className={`workspace${inspectorLayout.open ? '' : ' inspector-closed'}${choosingProjectMap ? ' project-awaiting-map' : ''}`}
       style={{ '--inspector-width': `${workspaceLayout.inspectorWidth}px` } as CSSProperties}
     >
       <section
@@ -243,6 +249,7 @@ export function EditorWorkspace({ shellState }: EditorWorkspaceProps) {
           </TabPanel>
         </Tabs>
       </aside>
+      {choosingProjectMap ? <ProjectMapSelector shellState={shellState} project={project} /> : null}
     </section>
   );
 }

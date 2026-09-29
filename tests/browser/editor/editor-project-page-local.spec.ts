@@ -77,4 +77,19 @@ test('opens a matching local project from the hosted Maps page without opening a
   await expect(page).toHaveURL(`${origin}/editor`);
   await expect(page.locator('html')).toHaveAttribute('data-worldview-editor-ready', 'true');
   await expect(page.locator('#status-message')).toContainText('Opened Gower Complex: 1 maps');
+  await expect(page.getByRole('heading', { name: 'Gower Complex' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open home.map' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open home.map' }).click();
+  await expect(page.getByRole('heading', { name: 'Gower Complex' })).toBeHidden();
+  await expect(page.locator('#status-message')).toContainText('home.map');
+
+  await page.goto(origin);
+  await page
+    .locator('.landing-recents')
+    .filter({ has: page.getByRole('heading', { name: 'Local projects' }) })
+    .getByRole('button', { name: /Gower Complex/ })
+    .click();
+  await expect(page).toHaveURL(`${origin}/editor`);
+  await expect(page.getByRole('heading', { name: 'Gower Complex' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open home.map' })).toContainText('Last opened');
 });

@@ -47,6 +47,7 @@ import { importGameWad, installDevelopmentMaterials } from './game-materials.js'
 type ProjectUi = Pick<
   EditorShellState,
   | 'pointEntityTool'
+  | 'documentName'
   | 'projectToolbar'
   | 'projectUi'
   | 'recoveryVersions'
@@ -189,7 +190,6 @@ export class ProjectPresenter {
         return;
     }
     await this.openEditorMap(await map.handle.getFile(), map.handle, map.path);
-    this.ui.projectToolbar.update({ selectedMapId: path });
   }
 
   private detachProjectContext(): void {
@@ -199,8 +199,10 @@ export class ProjectPresenter {
     this.sync.setWorkspace(null);
     this.state.projectKey = null;
     this.ui.projectToolbar.set({
+      projectName: null,
       maps: [],
       selectedMapId: null,
+      lastMapId: null,
       buildProfiles: [],
       selectedBuildProfileId: null,
     });
@@ -313,7 +315,7 @@ export class ProjectPresenter {
       this.viewportWorkspace.restore(viewportWorkspaceKey);
       if (belongsToCurrentProject && this.state.projectKey) {
         await this.state.projectLocalState.setLastMap(this.state.projectKey, logicalName);
-        this.ui.projectToolbar.update({ selectedMapId: logicalName });
+        this.ui.projectToolbar.update({ selectedMapId: logicalName, lastMapId: logicalName });
       }
       await this.restoreBrowserAssetMounts();
       assertExpectedDocument({
@@ -426,8 +428,10 @@ export class ProjectPresenter {
       this.state.workspaceId = remembered?.workspaceId ?? `project:${this.state.projectKey}`;
       this.state.activeGameProfile = workspace.manifest.game;
       this.ui.projectToolbar.set({
+        projectName: workspace.manifest.name,
         maps: workspace.maps.map(({ path }) => ({ id: path, label: path })),
         selectedMapId: null,
+        lastMapId: remembered?.lastMapPath ?? null,
         buildProfiles: workspace.manifest.buildProfiles.map((profile) => ({
           id: profile.id,
           label: `${profile.label} · ${profile.quality}`,
@@ -435,6 +439,7 @@ export class ProjectPresenter {
         selectedBuildProfileId:
           workspace.manifest.defaultBuildProfile ?? workspace.manifest.buildProfiles[0]?.id ?? null,
       });
+      this.ui.documentName.set('Choose a map', workspace.manifest.name);
       await this.build.checkCompilerService();
       signal.throwIfAborted();
       const summary = `Opened ${workspace.manifest.name}: ${workspace.maps.length} maps, ${this.state.entityDefinitions.size} entity definitions.`;
@@ -526,13 +531,6 @@ export class ProjectPresenter {
     }
     this.signal.throwIfAborted();
     await this.openProjectDirectory(recent.handle);
-    if (!recent.lastMapPath) return;
-    const map = this.state.projectWorkspace?.maps.find(({ path }) => path === recent.lastMapPath);
-    if (map) {
-      const file = await map.handle.getFile();
-      this.signal.throwIfAborted();
-      await this.openEditorMap(file, map.handle, map.path);
-    }
   }
 
   public async restoreBrowserAssetMounts(): Promise<void> {

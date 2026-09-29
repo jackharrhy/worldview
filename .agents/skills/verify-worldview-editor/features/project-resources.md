@@ -12,8 +12,10 @@ source replacement. The local directory still opens when the hosted origin is un
 
 ## How to get to it (user POV)
 
-Choose Open project, authorize a directory containing `worldview.project.json`, select a map, and
-inspect materials, definitions, sprites, diagnostics, and project status.
+Choose Open project, authorize a directory containing `worldview.project.json`, then choose a map
+from the editor's project map selector. Reopening a recent project shows the same selector and marks
+the last opened map. Select a map to inspect materials, definitions, sprites, diagnostics, and
+project status.
 From a hosted project's Maps page, Open local project selects the directory and checks its game and
 hosted project link before entering the editor. It does not require opening a hosted map first.
 
