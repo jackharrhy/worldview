@@ -15,7 +15,7 @@
     "@worldview/protocol": "*",
     "fflate": "^0.8.3",
     "nanoid": "^6.0.1",
-    "undici": "^7.29.0",
+    "undici": "^7.29.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {
